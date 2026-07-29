@@ -1,0 +1,343 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: -0.01em;
+    background-color: #F6F3EC;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, .font-vintage {
+    font-family: 'Fraunces', serif;
+    letter-spacing: -0.02em;
+  }
+
+  /* Smooth scrollbar for webkit browsers */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(27, 77, 62, 0.2);
+    border-radius: 99px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(27, 77, 62, 0.4);
+  }
+
+  /* Smooth selection */
+  ::selection {
+    background: rgba(16, 185, 129, 0.2);
+    color: #064e3b;
+  }
+}
+
+/* 🚫 Hide Leaflet Map Attribution & Zoom Controls (+/-) */
+.leaflet-control-attribution,
+.leaflet-control-zoom {
+  display: none !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SKEUOMORPHIC UI TOKEN CLASSES
+   ══════════════════════════════════════════════════════════════ */
+
+/* Tactile 3D Cards */
+.skeuo-card {
+  background: linear-gradient(145deg, #FFFFFF 0%, #FAFAF8 100%);
+  border: 1px solid rgba(220, 215, 202, 0.8);
+  box-shadow: 
+    0 2px 0 rgba(255, 255, 255, 0.9) inset,
+    0 4px 12px -2px rgba(45, 38, 25, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.skeuo-card-interactive {
+  background: linear-gradient(145deg, #FFFFFF 0%, #FDFCF9 100%);
+  border: 1px solid rgba(215, 208, 192, 0.9);
+  box-shadow: 
+    0 1px 0 rgba(255, 255, 255, 1) inset,
+    0 6px 16px -3px rgba(35, 30, 20, 0.09),
+    0 2px 4px rgba(0, 0, 0, 0.03);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.skeuo-card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 1px 0 rgba(255, 255, 255, 1) inset,
+    0 10px 24px -4px rgba(30, 25, 15, 0.14),
+    0 3px 6px rgba(0, 0, 0, 0.04);
+}
+.skeuo-card-interactive:active {
+  transform: translateY(0) scale(0.98);
+  transition-duration: 0.1s;
+}
+
+/* 3D Tactile Buttons */
+.skeuo-btn-emerald {
+  background: linear-gradient(180deg, #2D6A4F 0%, #1B4D3E 100%);
+  border: 1px solid #143A2E;
+  box-shadow: 
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 3px 8px rgba(27, 77, 62, 0.35),
+    0 1px 2px rgba(0, 0, 0, 0.15);
+  color: #FFFFFF;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.skeuo-btn-emerald:active {
+  transform: translateY(1px);
+  box-shadow: 
+    0 1px 2px rgba(0, 0, 0, 0.4) inset,
+    0 1px 2px rgba(27, 77, 62, 0.2);
+}
+
+.skeuo-btn-light {
+  background: linear-gradient(180deg, #FFFFFF 0%, #F4F1EA 100%);
+  border: 1px solid #D6CEBE;
+  box-shadow: 
+    0 1px 0 #FFFFFF inset,
+    0 2px 5px rgba(0, 0, 0, 0.06);
+  color: #2D4A3E;
+}
+.skeuo-btn-light:active {
+  background: #EBE5D8;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15) inset;
+}
+
+/* Inset Cutout Search Slot */
+.skeuo-inset-input {
+  background: #EFECE4;
+  border: 1px solid #D8D2C4;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08) inset, 0 1px 0 #FFFFFF;
+}
+
+/* Vintage Badges */
+.skeuo-badge-amber {
+  background: linear-gradient(180deg, #F59E0B 0%, #D97706 100%);
+  border: 1px solid #B45309;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.4) inset, 0 2px 4px rgba(217, 119, 6, 0.3);
+  text-shadow: 0 1px 1px rgba(0,0,0,0.25);
+}
+
+.skeuo-badge-emerald {
+  background: linear-gradient(180deg, #10B981 0%, #059669 100%);
+  border: 1px solid #047857;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.4) inset, 0 2px 4px rgba(5, 150, 105, 0.3);
+  text-shadow: 0 1px 1px rgba(0,0,0,0.25);
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   PRODUCTION ANIMATIONS
+   ══════════════════════════════════════════════════════════════ */
+
+/* Fade In (general purpose) */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Stagger entrance for lists */
+@keyframes staggerIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-stagger-in {
+  animation: staggerIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+/* Pop bump for cart */
+@keyframes popBump {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+.animate-pop-bump {
+  animation: popBump 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* Shimmer loading skeleton */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.animate-shimmer {
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+/* Toast slide-in from top-right */
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+@keyframes toastOut {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%) scale(0.9);
+  }
+}
+.animate-toast-in {
+  animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.animate-toast-out {
+  animation: toastOut 0.3s ease-in forwards;
+}
+
+/* Cart modal slide-in from right */
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.animate-slide-in-right {
+  animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Modal scale-in */
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-scale-in {
+  animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Slide in Left */
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in-left {
+  animation: slideInLeft 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Slide in Up */
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-in-up {
+  animation: slideInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Floating animation for decorative elements */
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-15px) rotate(2deg); }
+}
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Pulse glow for live status indicators */
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+}
+.animate-pulse-glow {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+/* Counter animation for balance changes */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-count-up {
+  animation: countUp 0.3s ease-out forwards;
+}
+
+/* Ripple effect */
+@keyframes ripple {
+  0% { transform: scale(0); opacity: 0.5; }
+  100% { transform: scale(4); opacity: 0; }
+}
+.ripple-effect {
+  position: relative;
+  overflow: hidden;
+}
+.ripple-effect::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, rgba(27, 77, 62, 0.12) 0%, transparent 70%);
+  transform: scale(0);
+  opacity: 0;
+  pointer-events: none;
+}
+.ripple-effect:active::after {
+  animation: ripple 0.6s ease-out forwards;
+}
+
+/* Crossfade transition for hero banner */
+.crossfade-enter {
+  opacity: 0;
+  transform: scale(1.02);
+}
+.crossfade-active {
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+
+/* Flying item animation */
+.flying-product-item {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+  border-radius: 9999px;
+  box-shadow: 0 10px 25px -5px rgba(27, 77, 62, 0.5);
+  transition: all 0.75s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+/* Scrollbar hide helper */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Image blur-up lazy load */
+.img-lazy {
+  filter: blur(8px);
+  transition: filter 0.4s ease-out;
+}
+.img-lazy.loaded {
+  filter: blur(0);
+}
+
+/* Active tab underline indicator */
+@keyframes tabIndicator {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.tab-active-indicator {
+  animation: tabIndicator 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: center;
+}
+
+/* Header scroll shadow */
+.header-scrolled {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08);
+  border-bottom-color: rgba(220, 213, 198, 0.9);
+}

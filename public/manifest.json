@@ -1,0 +1,17 @@
+{
+  "short_name": "VegBazzar",
+  "name": "VegBazzar - Artisanal Fresh Basket",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#FAF7F2",
+  "theme_color": "#1B4D3E",
+  "display": "standalone",
+  "orientation": "portrait"
+}

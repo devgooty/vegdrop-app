@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VegBazzar - Artisanal Fresh Basket</title>
+    
+    <!-- 📱 Progressive Web App (PWA) Config -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#1B4D3E" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+
+    <!-- 🔍 Rich SEO Meta Tags -->
+    <meta name="description" content="Savor 100% organic, handpicked fresh vegetables and fruits. Hyperlocal 15-minute delivery at VegBazzar Artisanal Basket." />
+    <meta name="keywords" content="organic vegetables, fresh fruits, online grocery, 15 minute delivery, local produce" />
+    <meta name="author" content="VegBazzar" />
+
+    <!-- Open Graph (Facebook/LinkedIn) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="VegBazzar - Artisanal Fresh Basket" />
+    <meta property="og:description" content="Savor 100% organic, handpicked fresh vegetables and fruits delivered to your doorstep." />
+    <meta property="og:image" content="/logo.png" />
+    <meta property="og:url" content="http://localhost:3000/" />
+
+    <!-- Twitter Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="VegBazzar - Artisanal Fresh Basket" />
+    <meta name="twitter:description" content="Savor 100% organic, handpicked fresh vegetables and fruits delivered to your doorstep." />
+    <meta name="twitter:image" content="/logo.png" />
+
+    <!-- Google Font Preconnect & Embedding -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!--
+      Fonts load without blocking first paint: the browser fetches the sheet at
+      low priority and applies it on load. display=swap means text renders
+      immediately in a fallback face rather than staying invisible.
+    -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    </noscript>
+
+    <!--
+      Leaflet is NOT loaded from a CDN here. MapLocationPicker.jsx imports both
+      leaflet and leaflet/dist/leaflet.css from npm, so CDN copies were a
+      duplicate download of an already-bundled library plus a render-blocking
+      stylesheet. It now ships inside the lazily-loaded vendor-maps chunk, which
+      only the routes that render a map ever request.
+    -->
+  </head>
+  <body class="bg-[#F8F5EF] font-sans antialiased text-[#2D2A26] selection:bg-emerald-200 selection:text-emerald-900">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

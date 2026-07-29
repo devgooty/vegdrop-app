@@ -1,0 +1,47 @@
+{
+  "name": "bazzar",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "server": "node server/index.js",
+    "server:dev": "node --watch server/index.js",
+    "server:demo": "node server/scripts/dev-with-memory-db.js",
+    "test": "node --test --test-concurrency=1 \"server/test/**/*.test.js\"",
+    "test:watch": "node --test --watch --test-concurrency=1 \"server/test/**/*.test.js\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "bcryptjs": "^3.0.3",
+    "compression": "^1.8.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.6.0",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.26.0",
+    "mongoose": "^9.8.0",
+    "razorpay": "^2.9.8",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-leaflet": "^5.0.0",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.1.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^11.2.0",
+    "supertest": "^7.2.2"
+  }
+}
