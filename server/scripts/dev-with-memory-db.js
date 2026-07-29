@@ -25,14 +25,24 @@ async function main() {
   process.env.MONGODB_URI = replSet.getUri('vegbazzar');
 
   const config = require('../config/env');
-  const { connect, disconnect } = require('../db/connect');
+  const { connect, disconnect, ensureIndexes } = require('../db/connect');
   const { createApp } = require('../app');
   const { seedIfEmpty } = require('../utils/seed');
+  const fulfilment = require('../services/fulfilment');
 
   await connect();
   console.info('[dev] connected to in-memory MongoDB (transactions available)');
 
+  // Mirrors server/index.js. Autoindex is off, so without this the 2dsphere
+  // index does not exist and every nearest-market query fails with
+  // "$geoNear requires a 2d or 2dsphere index".
+  const { total, failed } = await ensureIndexes();
+  console.info(`[dev] indexes ready (${total - failed}/${total} models)`);
+
   await seedIfEmpty();
+
+  // Auto-rejects stall slices nobody answered, releasing the hold and the stock.
+  fulfilment.startSweeper();
 
   const app = createApp();
   const server = app.listen(config.port, () => {
@@ -47,6 +57,7 @@ async function main() {
 
   async function shutdown() {
     server.close(async () => {
+      fulfilment.stopSweeper();
       await disconnect().catch(() => {});
       await replSet.stop().catch(() => {});
       process.exit(0);

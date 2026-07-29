@@ -3,22 +3,32 @@
 const mongoose = require('mongoose');
 
 const ORDER_STATUSES = Object.freeze([
-  'Pending',
-  'Preparing',
+  'Awaiting Acceptance', // fanned out to stalls, none have answered yet
+  'Confirmed',           // every stall accepted; payment captured
+  'Preparing',           // stalls are packing
+  'Ready for Pickup',    // all stalls packed, waiting on a rider
   'Out for Delivery',
   'Delivered',
+  'Rejected',            // at least one stall declined or timed out
   'Cancelled',
 ]);
 
 /**
  * Legal status transitions. Enforced server-side so a client cannot jump an
  * order straight to Delivered, or resurrect a cancelled one.
+ *
+ * `Awaiting Acceptance` is only ever left by services/fulfilment.js, which
+ * decides based on the StallOrder rows. No client-facing route moves an order
+ * out of that state directly.
  */
 const STATUS_TRANSITIONS = Object.freeze({
-  Pending: ['Preparing', 'Cancelled'],
-  Preparing: ['Out for Delivery', 'Cancelled'],
+  'Awaiting Acceptance': ['Confirmed', 'Rejected', 'Cancelled'],
+  Confirmed: ['Preparing', 'Cancelled'],
+  Preparing: ['Ready for Pickup', 'Out for Delivery', 'Cancelled'],
+  'Ready for Pickup': ['Out for Delivery', 'Cancelled'],
   'Out for Delivery': ['Delivered', 'Cancelled'],
   Delivered: [],
+  Rejected: [],
   Cancelled: [],
 });
 
@@ -44,6 +54,29 @@ const orderSchema = new mongoose.Schema(
     phone: { type: String, required: true, maxlength: 20 },
     address: { type: String, required: true, maxlength: 500 },
 
+    /**
+     * Delivery pin, used to route the rider and to rank fallback markets.
+     * `type` has no default deliberately — see the pre-validate hook below.
+     */
+    deliveryLocation: {
+      type: { type: String, enum: ['Point'] },
+      coordinates: { type: [Number], default: undefined }, // [lng, lat]
+    },
+
+    /**
+     * A basket is locked to one market. Mixing markets would mean a rider
+     * criss-crossing the city for one order, so checkout rejects it outright.
+     */
+    market: { type: mongoose.Schema.Types.ObjectId, ref: 'Market', required: true, index: true },
+
+    /** Denormalized counters so "are we there yet?" is not an aggregation. */
+    stallOrderCount: { type: Number, required: true, min: 1 },
+    acceptedCount: { type: Number, default: 0, min: 0 },
+
+    /** Populated when the order fails, to explain it and drive the retry UI. */
+    rejectionReason: { type: String, default: null, maxlength: 300 },
+    rejectedByStall: { type: mongoose.Schema.Types.ObjectId, ref: 'Stall', default: null },
+
     items: {
       type: [orderItemSchema],
       required: true,
@@ -62,12 +95,20 @@ const orderSchema = new mongoose.Schema(
     paymentStatus: {
       type: String,
       required: true,
-      enum: ['pending', 'paid', 'refunded', 'failed'],
+      // `held` is the acceptance-phase state: the customer's funds are committed
+      // but not yet earned, and are released in full if any stall declines.
+      enum: ['pending', 'held', 'paid', 'refunded', 'failed'],
       default: 'pending',
       index: true,
     },
 
-    status: { type: String, required: true, enum: ORDER_STATUSES, default: 'Pending', index: true },
+    status: {
+      type: String,
+      required: true,
+      enum: ORDER_STATUSES,
+      default: 'Awaiting Acceptance',
+      index: true,
+    },
 
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
 
@@ -89,6 +130,27 @@ const orderSchema = new mongoose.Schema(
 
 orderSchema.index({ customer: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
+orderSchema.index({ market: 1, status: 1, createdAt: -1 });
+
+orderSchema.virtual('stallOrders', {
+  ref: 'StallOrder',
+  localField: '_id',
+  foreignField: 'order',
+});
+
+/**
+ * Store no `deliveryLocation` rather than a `{ type: 'Point' }` with no
+ * coordinates: partial GeoJSON is not indexable, and a customer who never shared
+ * a pin should simply have no point at all.
+ */
+orderSchema.pre('validate', function dropEmptyLocation() {
+  const coordinates = this.deliveryLocation?.coordinates;
+  if (!Array.isArray(coordinates) || coordinates.length !== 2) {
+    this.deliveryLocation = undefined;
+  } else if (!this.deliveryLocation.type) {
+    this.deliveryLocation.type = 'Point';
+  }
+});
 
 orderSchema.virtual('id').get(function getId() {
   return this._id.toHexString();

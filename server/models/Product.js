@@ -4,7 +4,21 @@ const mongoose = require('mongoose');
 
 const productSchema = new mongoose.Schema(
   {
-    sku: { type: String, required: true, unique: true, index: true, trim: true },
+    /**
+     * A SKU is unique within a stall, not globally: two vendors in the same
+     * market both sell VEG-TOMATO-1000, at their own prices and stock levels.
+     * See the compound index below.
+     */
+    sku: { type: String, required: true, index: true, trim: true },
+
+    /** The owning stall. Every catalog write is authorized through this. */
+    stall: { type: mongoose.Schema.Types.ObjectId, ref: 'Stall', required: true, index: true },
+    /**
+     * Denormalized from the stall so browsing a market's catalog is a single
+     * indexed read rather than a join across every stall in it. Kept in step by
+     * routes/products.js, which always derives it from the stall.
+     */
+    market: { type: mongoose.Schema.Types.ObjectId, ref: 'Market', required: true, index: true },
 
     categoryId: { type: Number, required: true, index: true },
     name: { type: String, required: true, trim: true, maxlength: 200 },
@@ -48,6 +62,11 @@ const productSchema = new mongoose.Schema(
     toObject: { virtuals: true, versionKey: false },
   }
 );
+
+// One listing per SKU per stall; the same SKU may exist in every other stall.
+productSchema.index({ stall: 1, sku: 1 }, { unique: true });
+// Drives the customer-facing "everything on sale in this market" query.
+productSchema.index({ market: 1, isActive: 1, categoryId: 1 });
 
 productSchema.virtual('id').get(function getId() {
   return this._id.toHexString();

@@ -22,7 +22,7 @@ delete process.env.RAZORPAY_KEY_SECRET;
 const { MongoMemoryReplSet } = require('mongodb-memory-server');
 const request = require('supertest');
 
-const { connect, disconnect, mongoose } = require('../db/connect');
+const { connect, disconnect, ensureIndexes, mongoose } = require('../db/connect');
 const { createApp } = require('../app');
 const User = require('../models/User');
 const passwords = require('../services/password');
@@ -35,6 +35,8 @@ async function startTestServer() {
   replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
   await connect(replSet.getUri('vegbazzar_test'));
   app = createApp();
+  // Mirrors server/index.js: geo queries fail hard without their 2dsphere index.
+  await ensureIndexes();
   return app;
 }
 

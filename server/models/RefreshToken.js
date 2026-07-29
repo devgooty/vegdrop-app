@@ -18,7 +18,11 @@ const refreshTokenSchema = new mongoose.Schema(
     // Shared by every token descended from a single login.
     family: { type: String, required: true, index: true },
 
-    expiresAt: { type: Date, required: true, index: true },
+    // No `index: true` here — the TTL index is declared below. Declaring both
+    // produces two definitions for the same key name, the plain one is created
+    // first, and the TTL variant is then silently refused as a conflict, leaving
+    // expired tokens in the collection forever.
+    expiresAt: { type: Date, required: true },
     revokedAt: { type: Date, default: null },
     replacedByHash: { type: String, default: null },
 

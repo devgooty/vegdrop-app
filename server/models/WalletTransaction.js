@@ -40,7 +40,21 @@ const walletTransactionSchema = new mongoose.Schema(
     reason: {
       type: String,
       required: true,
-      enum: ['razorpay_topup', 'order_payment', 'order_refund', 'promotional_credit', 'admin_adjustment'],
+      enum: [
+        'razorpay_topup',
+        'order_payment',
+        'order_refund',
+        /**
+         * A multi-stall order takes the money as a hold at checkout and releases
+         * it in full if any stall declines. Distinct reasons from
+         * payment/refund so a released hold is not reported to the customer as a
+         * refund for a purchase that never happened.
+         */
+        'order_hold',
+        'order_hold_release',
+        'promotional_credit',
+        'admin_adjustment',
+      ],
     },
 
     /**

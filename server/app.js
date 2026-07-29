@@ -18,6 +18,10 @@ const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
 const userRoutes = require('./routes/users');
 const walletRoutes = require('./routes/wallet');
+const marketRoutes = require('./routes/markets');
+const stallRoutes = require('./routes/stalls');
+const stallOrderRoutes = require('./routes/stallOrders');
+const deliveryRoutes = require('./routes/delivery');
 
 function createApp() {
   const app = express();
@@ -137,6 +141,10 @@ function createApp() {
   app.use('/api/orders', orderRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/wallet', walletRoutes);
+  app.use('/api/markets', marketRoutes);
+  app.use('/api/stalls', stallRoutes);
+  app.use('/api/stall-orders', stallOrderRoutes);
+  app.use('/api/delivery', deliveryRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
