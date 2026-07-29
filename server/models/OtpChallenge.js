@@ -38,7 +38,9 @@ const otpChallengeSchema = new mongoose.Schema(
     attempts: { type: Number, default: 0 },
     maxAttempts: { type: Number, required: true },
 
-    expiresAt: { type: Date, required: true, index: true },
+    // No `index: true` here — see the TTL index below. Declaring both leaves the
+    // TTL variant unapplied, so consumed challenges are never reaped.
+    expiresAt: { type: Date, required: true },
     consumedAt: { type: Date, default: null },
     lastSentAt: { type: Date, default: Date.now },
   },

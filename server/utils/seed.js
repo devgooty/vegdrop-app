@@ -4,6 +4,8 @@ const crypto = require('crypto');
 const config = require('../config/env');
 const User = require('../models/User');
 const Product = require('../models/Product');
+const Market = require('../models/Market');
+const Stall = require('../models/Stall');
 const passwords = require('../services/password');
 
 /**
@@ -24,15 +26,65 @@ const SEED_PRODUCTS = [
 ];
 
 /**
+ * Two markets so the "try another market" fallback has somewhere to point, and
+ * three stalls in the primary one so a normal basket genuinely spans vendors.
+ * Coordinates are real Hyderabad locations; distances between them are a few km,
+ * which exercises the geo search meaningfully.
+ */
+const SEED_MARKETS = [
+  {
+    key: 'GUDIMALKAPUR',
+    slug: 'gudimalkapur-market',
+    name: 'Gudimalkapur Vegetable Market',
+    address: 'Gudimalkapur, Mehdipatnam',
+    city: 'Hyderabad',
+    pincode: '500028',
+    latitude: 17.3833,
+    longitude: 78.4333,
+    serviceRadiusM: 8000,
+  },
+  {
+    key: 'BOWENPALLY',
+    slug: 'bowenpally-market',
+    name: 'Bowenpally Wholesale Market',
+    address: 'Bowenpally, Secunderabad',
+    city: 'Hyderabad',
+    pincode: '500011',
+    latitude: 17.4747,
+    longitude: 78.4869,
+    serviceRadiusM: 8000,
+  },
+];
+
+/**
+ * Stall vendors. Each needs its own shopkeeper account because a stall's owner
+ * is what authorizes every catalog write — sharing one login across stalls would
+ * reinstate exactly the cross-vendor access this model exists to prevent.
+ *
+ * `skus` distributes the catalog so no single stall holds a whole basket.
+ */
+const SEED_STALLS = [
+  { marketKey: 'GUDIMALKAPUR', accountKey: 'SHOPKEEPER',   stallNumber: 'A-01', name: 'Ravi Fresh Greens',   skus: ['VEG-SPINACH-250', 'VEG-BROCCOLI-500'], latitude: 17.38340, longitude: 78.43310 },
+  { marketKey: 'GUDIMALKAPUR', accountKey: 'SHOPKEEPER_2', stallNumber: 'B-12', name: 'Lakshmi Vegetables',  skus: ['VEG-TOMATO-1000', 'VEG-ONION-1000'],   latitude: 17.38352, longitude: 78.43365 },
+  { marketKey: 'GUDIMALKAPUR', accountKey: 'SHOPKEEPER_3', stallNumber: 'C-04', name: 'Sunrise Exotic Fruit', skus: ['FRT-AVOCADO-350'],                    latitude: 17.38310, longitude: 78.43402 },
+  // The fallback market stocks everything, so "try another market" can succeed.
+  { marketKey: 'BOWENPALLY',   accountKey: 'SHOPKEEPER_4', stallNumber: 'W-07', name: 'Bowenpally Traders',  skus: ['VEG-SPINACH-250', 'VEG-BROCCOLI-500', 'VEG-TOMATO-1000', 'VEG-ONION-1000', 'FRT-AVOCADO-350'], latitude: 17.47480, longitude: 78.48700 },
+];
+
+/**
  * Accounts created for local development. Contact details are non-routable
  * example.com addresses and reserved-range phone numbers — never real people.
  */
 const SEED_ACCOUNTS = [
   { key: 'CUSTOMER', name: 'Demo Customer', email: 'customer@example.com', phone: '9000000001', role: 'customer' },
-  { key: 'SHOPKEEPER', name: 'Demo Shopkeeper', email: 'shopkeeper@example.com', phone: '9000000002', role: 'shopkeeper' },
+  { key: 'SHOPKEEPER', name: 'Ravi (Stall A-01)', email: 'shopkeeper@example.com', phone: '9000000002', role: 'shopkeeper' },
   { key: 'DELIVERY', name: 'Demo Delivery Agent', email: 'delivery@example.com', phone: '9000000003', role: 'delivery' },
   { key: 'MARKET_OWNER', name: 'Demo Market Owner', email: 'owner@example.com', phone: '9000000004', role: 'market_owner' },
   { key: 'DEVELOPER', name: 'Demo Developer', email: 'developer@example.com', phone: '9000000005', role: 'developer' },
+  // One account per stall — see SEED_STALLS for why they cannot be shared.
+  { key: 'SHOPKEEPER_2', name: 'Lakshmi (Stall B-12)', email: 'stall2@example.com', phone: '9000000006', role: 'shopkeeper' },
+  { key: 'SHOPKEEPER_3', name: 'Sunrise (Stall C-04)', email: 'stall3@example.com', phone: '9000000007', role: 'shopkeeper' },
+  { key: 'SHOPKEEPER_4', name: 'Bowenpally Traders (W-07)', email: 'stall4@example.com', phone: '9000000008', role: 'shopkeeper' },
 ];
 
 /** Random, meets the strength policy, and never written to disk. */
@@ -40,12 +92,73 @@ function generatePassword() {
   return `${crypto.randomBytes(12).toString('base64url')}aA1!`;
 }
 
-async function seedProducts() {
-  const count = await Product.estimatedDocumentCount();
-  if (count > 0) return 0;
+/**
+ * Markets, stalls, and the catalog spread across them.
+ *
+ * Products are created per stall rather than globally, because a product with no
+ * owning stall cannot be authorized, priced, or picked up — the SKU is shared
+ * across stalls, the listing is not.
+ */
+async function seedMarketsAndCatalog() {
+  const existing = await Market.estimatedDocumentCount();
+  if (existing > 0) return { markets: 0, stalls: 0, products: 0 };
 
-  await Product.insertMany(SEED_PRODUCTS);
-  return SEED_PRODUCTS.length;
+  const marketsByKey = new Map();
+  for (const { key, latitude, longitude, ...rest } of SEED_MARKETS) {
+    const market = await Market.create({
+      ...rest,
+      location: { type: 'Point', coordinates: [longitude, latitude] },
+    });
+    marketsByKey.set(key, market);
+  }
+
+  const productsBySku = new Map(SEED_PRODUCTS.map((p) => [p.sku, p]));
+
+  let stallCount = 0;
+  let productCount = 0;
+
+  for (const spec of SEED_STALLS) {
+    const market = marketsByKey.get(spec.marketKey);
+    const account = SEED_ACCOUNTS.find((a) => a.key === spec.accountKey);
+    if (!market || !account) continue;
+
+    const owner = await User.findOne({ phone: account.phone }).select('_id').lean();
+    if (!owner) continue;
+
+    const stall = await Stall.create({
+      market: market._id,
+      owner: owner._id,
+      stallNumber: spec.stallNumber,
+      name: spec.name,
+      phone: account.phone,
+      location: { type: 'Point', coordinates: [spec.longitude, spec.latitude] },
+    });
+    stallCount += 1;
+
+    for (const sku of spec.skus) {
+      const template = productsBySku.get(sku);
+      if (!template) continue;
+
+      /**
+       * Vary price and stock slightly per stall. Identical listings would hide
+       * the whole point of a marketplace, and would make it impossible to tell
+       * during testing which stall a basket line actually came from.
+       */
+      const jitter = 1 + ((stallCount % 3) - 1) * 0.05;
+
+      await Product.create({
+        ...template,
+        pricePaise: Math.round(template.pricePaise * jitter),
+        oldPricePaise: template.oldPricePaise ? Math.round(template.oldPricePaise * jitter) : null,
+        stock: template.stock,
+        stall: stall._id,
+        market: market._id,
+      });
+      productCount += 1;
+    }
+  }
+
+  return { markets: marketsByKey.size, stalls: stallCount, products: productCount };
 }
 
 async function seedAccounts() {
@@ -83,10 +196,14 @@ async function seedIfEmpty() {
     return;
   }
 
-  const productCount = await seedProducts();
-  if (productCount > 0) console.info(`[seed] inserted ${productCount} demo products.`);
-
+  // Accounts first: a stall cannot be created without an owner to authorize it.
   const accounts = await seedAccounts();
+
+  const { markets, stalls, products } = await seedMarketsAndCatalog();
+  if (markets > 0) {
+    console.info(`[seed] inserted ${markets} markets, ${stalls} stalls, ${products} stall listings.`);
+  }
+
   if (accounts.length === 0) return;
 
   const generated = accounts.filter((a) => a.generated);
@@ -108,4 +225,4 @@ async function seedIfEmpty() {
   }
 }
 
-module.exports = { seedIfEmpty, SEED_ACCOUNTS };
+module.exports = { seedIfEmpty, SEED_ACCOUNTS, SEED_MARKETS, SEED_STALLS, SEED_PRODUCTS };

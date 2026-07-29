@@ -1,9 +1,10 @@
 'use strict';
 
 const config = require('./config/env');
-const { connect, disconnect } = require('./db/connect');
+const { connect, disconnect, ensureIndexes } = require('./db/connect');
 const { createApp } = require('./app');
 const { seedIfEmpty } = require('./utils/seed');
+const fulfilment = require('./services/fulfilment');
 
 /**
  * Process bootstrap: connect, seed (development only), listen, and shut down
@@ -15,7 +16,20 @@ async function main() {
   try {
     await connect();
     console.info('[db] connected');
+
+    // Before any traffic: $geoNear is a hard error without its 2dsphere index.
+    const { total, failed } = await ensureIndexes();
+    console.info(`[db] indexes ready (${total - failed}/${total} models)`);
+
     await seedIfEmpty();
+
+    /**
+     * Auto-rejects stall slices whose response deadline has passed. Without it an
+     * unattended stall would hold the customer's funds and the reserved stock
+     * indefinitely.
+     */
+    fulfilment.startSweeper();
+    console.info(`[fulfilment] acceptance window ${fulfilment.ACCEPTANCE_WINDOW_SECONDS}s, sweeper running`);
   } catch (err) {
     // The API answers /api/health and returns 503 elsewhere rather than dying,
     // so an orchestrator can observe the unhealthy state and retry.
@@ -48,6 +62,7 @@ async function main() {
     force.unref();
 
     server.close(async () => {
+      fulfilment.stopSweeper();
       await disconnect().catch(() => {});
       clearTimeout(force);
       console.info('[http] shutdown complete');

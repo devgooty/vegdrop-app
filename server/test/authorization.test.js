@@ -10,10 +10,13 @@ const {
   api,
   createUser,
   authenticatedUser,
+  signIn,
   auth,
 } = require('./helpers');
 
 const Product = require('../models/Product');
+const Market = require('../models/Market');
+const Stall = require('../models/Stall');
 const WalletTransaction = require('../models/WalletTransaction');
 const PaymentIntent = require('../models/PaymentIntent');
 
@@ -21,9 +24,34 @@ test.before(startTestServer);
 test.after(stopTestServer);
 test.beforeEach(resetDatabase);
 
-async function seedProduct(overrides = {}) {
+/**
+ * Every product now belongs to a stall in a market — that ownership is what
+ * authorizes catalog writes. Pass `owner` to make a specific shopkeeper the
+ * vendor, which is required for any test asserting they may edit it.
+ */
+async function seedProduct({ owner = null, ...overrides } = {}) {
+  const market = await Market.create({
+    name: 'Test Market',
+    slug: `market-${Math.random().toString(36).slice(2, 10)}`,
+    address: 'Somewhere',
+    city: 'Hyderabad',
+    location: { type: 'Point', coordinates: [78.4333, 17.3833] },
+  });
+
+  const stallOwner = owner || (await createUser({ role: 'shopkeeper' })).user;
+
+  const stall = await Stall.create({
+    market: market._id,
+    owner: stallOwner._id,
+    stallNumber: `S-${Math.floor(Math.random() * 900 + 100)}`,
+    name: 'Test Stall',
+    phone: stallOwner.phone,
+  });
+
   return Product.create({
     sku: `SKU-${Math.random().toString(36).slice(2, 10)}`,
+    stall: stall._id,
+    market: market._id,
     categoryId: 1,
     name: 'Test Tomatoes',
     pricePaise: 4000,
@@ -92,8 +120,11 @@ test('a customer cannot change product stock', async () => {
 });
 
 test('a shopkeeper can change product stock', async () => {
-  const product = await seedProduct();
-  const { accessToken } = await authenticatedUser('shopkeeper');
+  // The shopkeeper must own the stall — a bare shopkeeper role is no longer
+  // enough to write to an arbitrary vendor's catalog.
+  const { user, password } = await createUser({ role: 'shopkeeper' });
+  const product = await seedProduct({ owner: user });
+  const { accessToken } = await signIn({ identifier: user.email, password });
 
   const res = await api()
     .patch(`/api/products/${product._id}/stock`)
@@ -271,7 +302,9 @@ test('a customer cannot mark their own order Delivered', async () => {
 test('illegal status transitions are rejected', async () => {
   const product = await seedProduct({ stock: 10 });
   const customer = await authenticatedUser('customer');
-  const shopkeeper = await authenticatedUser('shopkeeper');
+  // A market owner, not a shopkeeper: vendors act on their own stall order,
+  // never on the parent order.
+  const operator = await authenticatedUser('market_owner');
 
   const created = await api()
     .post('/api/orders')
@@ -282,11 +315,12 @@ test('illegal status transitions are rejected', async () => {
       paymentMethod: 'cod',
     });
 
-  // Pending → Out for Delivery skips Preparing.
+  // A fresh order sits in `Awaiting Acceptance` until every stall answers, so
+  // jumping it straight to `Ready for Pickup` skips confirmation entirely.
   const res = await api()
     .patch(`/api/orders/${created.body.data.id}/status`)
-    .set(auth(shopkeeper.accessToken))
-    .send({ status: 'Out for Delivery' });
+    .set(auth(operator.accessToken))
+    .send({ status: 'Ready for Pickup' });
 
   assert.equal(res.status, 409);
   assert.equal(res.body.error.code, 'INVALID_TRANSITION');
