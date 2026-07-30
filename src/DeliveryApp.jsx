@@ -149,7 +149,6 @@ export default function DeliveryApp() {
     return (
       <LoginPage
         onLogin={handleLogin}
-        onSignUp={() => toast.warning('Delivery accounts are provisioned by an administrator.')}
         appType="delivery"
         storagePrefix="vegbazzar_delivery_"
       />

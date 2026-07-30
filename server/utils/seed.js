@@ -1,18 +1,18 @@
 'use strict';
 
-const crypto = require('crypto');
 const config = require('../config/env');
 const User = require('../models/User');
 const Product = require('../models/Product');
-const passwords = require('../services/password');
 
 /**
  * Development seeding.
  *
  * The previous seeder hardcoded eight accounts with real personal passwords in
- * source. This one refuses to run in production, takes credentials from the
- * environment, and otherwise generates a random password per account and prints
- * it once so it exists nowhere on disk.
+ * source. There are no passwords at all now — signing in as one of these
+ * accounts means requesting a code for its phone number, which the console
+ * transport prints to stdout in development.
+ *
+ * Refuses to run in production.
  */
 
 const SEED_PRODUCTS = [
@@ -28,17 +28,12 @@ const SEED_PRODUCTS = [
  * example.com addresses and reserved-range phone numbers — never real people.
  */
 const SEED_ACCOUNTS = [
-  { key: 'CUSTOMER', name: 'Demo Customer', email: 'customer@example.com', phone: '9000000001', role: 'customer' },
-  { key: 'SHOPKEEPER', name: 'Demo Shopkeeper', email: 'shopkeeper@example.com', phone: '9000000002', role: 'shopkeeper' },
-  { key: 'DELIVERY', name: 'Demo Delivery Agent', email: 'delivery@example.com', phone: '9000000003', role: 'delivery' },
-  { key: 'MARKET_OWNER', name: 'Demo Market Owner', email: 'owner@example.com', phone: '9000000004', role: 'market_owner' },
-  { key: 'DEVELOPER', name: 'Demo Developer', email: 'developer@example.com', phone: '9000000005', role: 'developer' },
+  { name: 'Demo Customer', email: 'customer@example.com', phone: '9000000001', role: 'customer' },
+  { name: 'Demo Shopkeeper', email: 'shopkeeper@example.com', phone: '9000000002', role: 'shopkeeper' },
+  { name: 'Demo Delivery Agent', email: 'delivery@example.com', phone: '9000000003', role: 'delivery' },
+  { name: 'Demo Market Owner', email: 'owner@example.com', phone: '9000000004', role: 'market_owner' },
+  { name: 'Demo Developer', email: 'developer@example.com', phone: '9000000005', role: 'developer' },
 ];
-
-/** Random, meets the strength policy, and never written to disk. */
-function generatePassword() {
-  return `${crypto.randomBytes(12).toString('base64url')}aA1!`;
-}
 
 async function seedProducts() {
   const count = await Product.estimatedDocumentCount();
@@ -55,23 +50,16 @@ async function seedAccounts() {
     const exists = await User.findOne({ phone: account.phone }).select('_id').lean();
     if (exists) continue;
 
-    const envPassword = process.env[`SEED_${account.key}_PASSWORD`];
-    const password = envPassword || generatePassword();
-
-    // Env-supplied passwords still have to satisfy the policy.
-    if (envPassword) passwords.assertPasswordShape(envPassword);
-
     await User.create({
       name: account.name,
       email: account.email,
       phone: account.phone,
-      passwordHash: await passwords.hash(password),
       role: account.role,
       emailVerifiedAt: new Date(),
       phoneVerifiedAt: new Date(),
     });
 
-    created.push({ ...account, password, generated: !envPassword });
+    created.push(account);
   }
 
   return created;
@@ -89,23 +77,14 @@ async function seedIfEmpty() {
   const accounts = await seedAccounts();
   if (accounts.length === 0) return;
 
-  const generated = accounts.filter((a) => a.generated);
-
   console.info(`\n[seed] created ${accounts.length} development account(s):`);
   for (const account of accounts) {
-    console.info(`  ${account.role.padEnd(13)} ${account.email}  /  ${account.phone}`);
+    console.info(`  ${account.role.padEnd(13)} ${account.phone}  (${account.email})`);
   }
-
-  if (generated.length > 0) {
-    console.info('\n[seed] Randomly generated passwords (shown once, not stored anywhere):');
-    for (const account of generated) {
-      console.info(`  ${account.email.padEnd(26)} ${account.password}`);
-    }
-    console.info(
-      '\n[seed] Set SEED_<ROLE>_PASSWORD in .env to choose these yourself.\n' +
-      '[seed] Sign-in also requires the emailed/SMS code, printed to this console in development.\n'
-    );
-  }
+  console.info(
+    '\n[seed] Sign in with the phone number above. There is no password — the\n' +
+    '[seed] verification code is printed to this console by the dev transport.\n'
+  );
 }
 
 module.exports = { seedIfEmpty, SEED_ACCOUNTS };

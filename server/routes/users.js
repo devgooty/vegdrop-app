@@ -67,6 +67,13 @@ router.get(
  * Update a profile. `role` and `status` are deliberately absent from the schema
  * — .strict() turns an attempt to include them into a 400 rather than a silent
  * escalation. Role changes go through the dedicated endpoint below.
+ *
+ * `phone` is absent too, and that one is load-bearing. Sign-in is passwordless,
+ * so the phone number IS the credential: whoever receives its codes owns the
+ * account. Letting a session rewrite it here would mean a stolen session could
+ * be converted into permanent ownership, with nothing left to stop it now that
+ * there is no password. Phone changes go through POST /api/auth/phone/start,
+ * which proves control of the NEW number before anything is written.
  */
 router.patch(
   '/:id',
@@ -77,7 +84,6 @@ router.patch(
       .object({
         name: fields.nonEmptyString(120).optional(),
         email: fields.email.optional(),
-        phone: fields.phone.optional(),
       })
       .strict()
       .refine((data) => Object.keys(data).length > 0, { message: 'No fields to update.' }),
@@ -91,21 +97,18 @@ router.patch(
 
     const update = { ...req.valid.body };
 
-    // Changing a contact channel invalidates its verified status; the user must
-    // re-verify before it can be used as a second-factor destination.
+    // Changing the address invalidates its verified status. Email is not a
+    // credential here — nothing is ever delivered to it — so an unverified one
+    // is harmless; it is recorded as unverified rather than trusted.
     if (update.email) update.emailVerifiedAt = null;
-    if (update.phone) update.phoneVerifiedAt = null;
 
-    const conflict = await User.findOne({
-      _id: { $ne: targetId },
-      $or: [
-        ...(update.email ? [{ email: update.email }] : []),
-        ...(update.phone ? [{ phone: update.phone }] : []),
-      ],
-    }).select('_id').lean();
-
-    if (conflict) {
-      throw new ApiError(409, 'That email or phone is already in use.', 'DUPLICATE');
+    if (update.email) {
+      const conflict = await User.findOne({ _id: { $ne: targetId }, email: update.email })
+        .select('_id')
+        .lean();
+      if (conflict) {
+        throw new ApiError(409, 'That email is already in use.', 'DUPLICATE');
+      }
     }
 
     const user = await User.findOneAndUpdate(

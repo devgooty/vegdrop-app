@@ -100,18 +100,6 @@ const whatsappBotBridgeToken = optional('WHATSAPP_BOT_BRIDGE_TOKEN', '');
 const VALID_TRANSPORTS = ['console', 'whatsapp', 'whatsapp_bot'];
 
 /**
- * Which contact detail a code is addressed to.
- *
- * `auto` keeps the original behaviour — email when the account has one, phone
- * otherwise. `phone` forces every code to the phone number, which is what you
- * want when the only configured transport is a phone one.
- */
-const otpChannel = optional('OTP_CHANNEL', 'auto');
-if (!['auto', 'phone', 'email'].includes(otpChannel)) {
-  fatal.push(`OTP_CHANNEL must be auto, phone or email (got "${otpChannel}").`);
-}
-
-/**
  * Which transport delivers codes to phone numbers.
  *
  * Defaults to whatsapp once credentials exist, so configuring the provider is
@@ -133,17 +121,6 @@ if (notifyTransport === 'whatsapp' && !whatsappConfigured) {
 if (notifyTransport === 'whatsapp_bot' && whatsappBotBridgeToken.length < 16) {
   fatal.push(
     'NOTIFY_TRANSPORT=whatsapp_bot requires WHATSAPP_BOT_BRIDGE_TOKEN (at least 16 characters). Generate one with: node -e "console.log(require(\'crypto\').randomBytes(24).toString(\'base64url\'))"'
-  );
-}
-
-/**
- * No email transport is implemented. Under OTP_CHANNEL=auto an account with an
- * email address is addressed by email, which in production would fall through to
- * the console stub and write codes to the log. Refuse at boot instead.
- */
-if (isProduction && otpChannel !== 'phone') {
-  fatal.push(
-    `OTP_CHANNEL=${otpChannel} can address codes to email, but no email transport is implemented. Set OTP_CHANNEL=phone, or add an email transport in server/services/notify.js.`
   );
 }
 
@@ -187,8 +164,9 @@ const config = Object.freeze({
   }),
 
   // Pepper is mixed into OTP hashes so a database leak alone does not reveal codes.
+  // There is no `channel` setting: a code is the only credential, so it always
+  // goes to the phone. Addressing it to an email would be a second way in.
   otp: Object.freeze({
-    channel: otpChannel,
     pepper: secret('OTP_PEPPER'),
     length: 6,
     ttlSeconds: int('OTP_TTL_SECONDS', 5 * 60),
@@ -196,11 +174,9 @@ const config = Object.freeze({
     resendCooldownSeconds: int('OTP_RESEND_COOLDOWN_SECONDS', 30),
   }),
 
-  auth: Object.freeze({
-    maxFailedLogins: int('AUTH_MAX_FAILED_LOGINS', 8),
-    lockoutSeconds: int('AUTH_LOCKOUT_SECONDS', 15 * 60),
-    minPasswordLength: int('AUTH_MIN_PASSWORD_LENGTH', 10),
-  }),
+  // No `auth` block: there are no passwords, so there is no password policy and
+  // no failed-login lockout. A code is guessable only within one challenge,
+  // which caps its own attempts — see services/otp.js and middleware/rateLimit.js.
 
   notifyTransport,
 

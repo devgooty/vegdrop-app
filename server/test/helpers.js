@@ -25,7 +25,6 @@ const request = require('supertest');
 const { connect, disconnect, mongoose } = require('../db/connect');
 const { createApp } = require('../app');
 const User = require('../models/User');
-const passwords = require('../services/password');
 
 let replSet = null;
 let app = null;
@@ -53,40 +52,43 @@ function api() {
 }
 
 /**
- * Create a user directly, bypassing registration. Used to set up privileged
+ * Create a user directly, bypassing the public flow. Used to set up privileged
  * roles, which by design cannot be produced through the public API.
  */
-async function createUser({ role = 'customer', password = 'CorrectHorse9!', ...overrides } = {}) {
+async function createUser({ role = 'customer', ...overrides } = {}) {
   const suffix = Math.floor(Math.random() * 900000 + 100000);
   const user = await User.create({
     name: overrides.name || `Test ${role}`,
     email: overrides.email || `${role}${suffix}@example.com`,
     phone: overrides.phone || `9${String(suffix).padStart(9, '0')}`.slice(0, 10),
-    passwordHash: await passwords.hash(password),
     role,
     emailVerifiedAt: new Date(),
     phoneVerifiedAt: new Date(),
     ...(overrides.status ? { status: overrides.status } : {}),
   });
-  return { user, password };
+  return { user };
 }
 
 /**
- * Complete the full password + OTP flow.
+ * Complete the OTP flow for a phone number. Creates the account if it is new,
+ * exactly as the public flow does.
  * @returns {Promise<{ accessToken: string, refreshCookie: string, user: object }>}
  */
-async function signIn({ identifier, password }) {
-  const start = await api().post('/api/auth/login').send({ identifier, password });
+async function signIn({ phone, name }) {
+  const start = await api()
+    .post('/api/auth/otp/start')
+    .send(name ? { phone, name } : { phone });
+
   if (start.status !== 202) {
-    throw new Error(`login step 1 failed: ${start.status} ${JSON.stringify(start.body)}`);
+    throw new Error(`otp/start failed: ${start.status} ${JSON.stringify(start.body)}`);
   }
 
   const verify = await api()
-    .post('/api/auth/login/verify')
+    .post('/api/auth/otp/verify')
     .send({ challengeId: start.body.challengeId, code: start.body.devCode });
 
-  if (verify.status !== 200) {
-    throw new Error(`login step 2 failed: ${verify.status} ${JSON.stringify(verify.body)}`);
+  if (![200, 201].includes(verify.status)) {
+    throw new Error(`otp/verify failed: ${verify.status} ${JSON.stringify(verify.body)}`);
   }
 
   const cookies = verify.headers['set-cookie'] || [];
@@ -97,11 +99,11 @@ async function signIn({ identifier, password }) {
   };
 }
 
-/** Create a user and sign in as them in one step. */
+/** Create a user with a given role and sign in as them in one step. */
 async function authenticatedUser(role = 'customer') {
-  const { user, password } = await createUser({ role });
-  const session = await signIn({ identifier: user.email, password });
-  return { ...session, user, password };
+  const { user } = await createUser({ role });
+  const session = await signIn({ phone: user.phone });
+  return { ...session, user };
 }
 
 function auth(token) {

@@ -56,11 +56,12 @@ npm run bot
 
 ```
 NOTIFY_TRANSPORT=whatsapp_bot
-OTP_CHANNEL=phone
 ```
 
-`OTP_CHANNEL=phone` matters: without it, `routes/auth.js` addresses codes to
-`user.email` when the account has one, and this transport cannot deliver email.
+That is the only setting. Codes are always addressed to the phone number, so
+there is no channel to configure — and because sign-in is passwordless, this
+bot being down means nobody can sign in at all. That is the whole risk of
+`whatsapp_bot`: if the number is banned, so is your login.
 
 ## Operating it
 

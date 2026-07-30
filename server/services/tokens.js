@@ -11,7 +11,7 @@ const RefreshToken = require('../models/RefreshToken');
  * Access token: short-lived signed JWT, returned in the response body and held
  * in memory by the client. Stateless, so it is never revocable on its own — the
  * `tv` (token version) claim is checked against the user record on every request
- * so password changes, role changes and forced logout take effect immediately.
+ * so role changes, suspension and forced logout take effect immediately.
  *
  * Refresh token: long-lived opaque random string delivered in an httpOnly,
  * SameSite=Strict cookie. Opaque rather than a JWT because it must be revocable;

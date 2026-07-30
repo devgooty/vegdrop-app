@@ -61,25 +61,26 @@ const email = z
   .pipe(z.email('Must be a valid email address.'))
   .pipe(z.string().max(254));
 
-/** Indian mobile: optional +91/0 prefix, then a 10-digit number starting 6-9. */
+/**
+ * Indian mobile: an optional +91 / 91 / 0 prefix, then a 10-digit number
+ * starting 6-9. Normalised to the bare 10 digits.
+ *
+ * The prefix is stripped by LENGTH, not by pattern. Stripping a leading "91"
+ * unconditionally corrupts every valid number that merely starts with those
+ * digits — 9111111111 is a real mobile, not a country code plus eight digits —
+ * and since the phone number is now the sign-in credential, that turns into
+ * "this person cannot log in" rather than a cosmetic glitch.
+ */
 const phone = z
   .string()
   .trim()
-  .transform((value) => value.replace(/[\s()-]/g, ''))
-  .refine((value) => /^(?:\+91|91|0)?[6-9]\d{9}$/.test(value), 'Must be a valid 10-digit mobile number.')
-  .transform((value) => value.replace(/^(?:\+91|91|0)/, ''));
-
-/** Login accepts either form; normalization happens in the route. */
-const identifier = z
-  .string({ error: 'Identifier must be a string.' })
-  .trim()
-  .min(3)
-  .max(254);
-
-const password = z
-  .string({ error: 'Password must be a string.' })
-  .min(1, 'Password is required.')
-  .max(200);
+  .transform((value) => value.replace(/[\s()-]/g, '').replace(/^\+/, ''))
+  .transform((value) => {
+    if (value.length === 12 && value.startsWith('91')) return value.slice(2);
+    if (value.length === 11 && value.startsWith('0')) return value.slice(1);
+    return value;
+  })
+  .refine((value) => /^[6-9]\d{9}$/.test(value), 'Must be a valid 10-digit mobile number.');
 
 const otpCode = z
   .string()
@@ -92,5 +93,5 @@ const positiveInt = (max) =>
 module.exports = {
   validate,
   z,
-  fields: { nonEmptyString, objectId, email, phone, identifier, password, otpCode, positiveInt },
+  fields: { nonEmptyString, objectId, email, phone, otpCode, positiveInt },
 };

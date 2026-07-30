@@ -40,38 +40,38 @@ const globalLimiter = rateLimit({
   handler: jsonLimitHandler('Too many requests. Please slow down.', 'RATE_LIMITED'),
 });
 
-/** Credential endpoints: keyed on IP + the account being targeted. */
-const authLimiter = rateLimit({
-  ...base,
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
-  keyGenerator: (req) => {
-    const target = typeof req.body?.identifier === 'string'
-      ? req.body.identifier.trim().toLowerCase().slice(0, 120)
-      : 'anonymous';
-    return `${ipKeyGenerator(req.ip)}:${target}`;
-  },
-  // A correct login should not consume budget; only failures count.
-  skipSuccessfulRequests: true,
-  handler: jsonLimitHandler(
-    'Too many sign-in attempts. Please wait a few minutes before trying again.',
-    'AUTH_RATE_LIMITED'
-  ),
-});
-
-/** Requesting a code is expensive (SMS cost) and enumerable, so keep it tight. */
+/**
+ * Requesting a code costs a message and is the whole credential, so keep it
+ * tight. Keyed on the destination number rather than the caller: an attacker
+ * rotating IPs still cannot flood one person's WhatsApp.
+ */
 const otpRequestLimiter = rateLimit({
   ...base,
   windowMs: 10 * 60 * 1000,
   limit: 5,
   keyGenerator: (req) => {
-    const dest = typeof req.body?.identifier === 'string'
-      ? req.body.identifier.trim().toLowerCase().slice(0, 120)
+    const dest = typeof req.body?.phone === 'string'
+      ? req.body.phone.replace(/\D/g, '').slice(-10)
       : ipKeyGenerator(req.ip);
     return `otp:${dest}`;
   },
   handler: jsonLimitHandler(
     'Too many verification codes requested. Please wait before requesting another.',
+    'OTP_RATE_LIMITED'
+  ),
+});
+
+/**
+ * The per-destination limit above says nothing about someone walking a list of
+ * numbers, one code each — which is unsolicited messaging, and the fastest way
+ * to get the WhatsApp number banned. This bounds that per source.
+ */
+const otpStartIpLimiter = rateLimit({
+  ...base,
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  handler: jsonLimitHandler(
+    'Too many verification codes requested from this network. Try again later.',
     'OTP_RATE_LIMITED'
   ),
 });
@@ -90,13 +90,6 @@ const otpVerifyLimiter = rateLimit({
   handler: jsonLimitHandler('Too many verification attempts. Request a new code.', 'OTP_RATE_LIMITED'),
 });
 
-const registrationLimiter = rateLimit({
-  ...base,
-  windowMs: 60 * 60 * 1000,
-  limit: 5,
-  handler: jsonLimitHandler('Too many accounts created from this network. Try again later.', 'RATE_LIMITED'),
-});
-
 const paymentLimiter = rateLimit({
   ...base,
   windowMs: 15 * 60 * 1000,
@@ -106,9 +99,8 @@ const paymentLimiter = rateLimit({
 
 module.exports = {
   globalLimiter,
-  authLimiter,
   otpRequestLimiter,
+  otpStartIpLimiter,
   otpVerifyLimiter,
-  registrationLimiter,
   paymentLimiter,
 };

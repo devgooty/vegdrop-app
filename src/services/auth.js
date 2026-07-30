@@ -1,52 +1,62 @@
 /**
- * Authentication flows.
+ * Authentication flows — passwordless.
  *
  * Every function here is a thin wrapper over a server endpoint. There is
- * deliberately no password comparison, no role derivation, and no OTP checking
- * in this file — all three used to happen in the browser, which meant the
- * credentials were readable in the bundle and the checks were trivially
- * bypassable from devtools.
+ * deliberately no role derivation and no OTP checking in this file — both used
+ * to happen in the browser, which meant the checks were trivially bypassable
+ * from devtools.
  *
- * Both login and registration are two-step: the first call returns a challenge,
- * the second exchanges a verification code for a session. No token exists until
- * the second step succeeds.
+ * Sign-in and sign-up are the same two calls: request a code, then exchange it
+ * for a session. The server decides whether that means signing an existing
+ * account in or creating a new one, and the responses are identical either way
+ * so the client cannot be used to test which phone numbers are registered.
+ * No token exists until the second step succeeds.
  */
 
 import { api, setAccessToken, clearSession, refreshSession } from './apiClient';
 
 /**
- * Step 1 of sign-in. Verifies the password server-side and dispatches a code.
- * @returns {Promise<{challengeId: string, channel: 'email'|'sms', destination: string, expiresAt: string}>}
+ * Step 1. Sends a verification code over WhatsApp to the number given.
+ *
+ * `name` is used only if this number has no account yet; it is ignored for an
+ * existing one. There is no `role` parameter — a self-created account is always
+ * a customer, and the API rejects a request that tries to supply one.
+ *
+ * @returns {Promise<{challengeId: string, channel: string, destination: string, expiresAt: string}>}
  */
-export async function startLogin({ identifier, password }) {
-  return api.post('/auth/login', { identifier, password }, { auth: false });
+export async function startPhoneAuth({ phone, name }) {
+  const payload = { phone };
+  if (name) payload.name = name;
+  return api.post('/auth/otp/start', payload, { auth: false });
 }
 
 /**
- * Step 2 of sign-in. Exchanges the code for a session.
+ * Step 2. Exchanges the code for a session, creating the account if the number
+ * is new.
  * @returns {Promise<object>} the authenticated user
  */
-export async function verifyLogin({ challengeId, code }) {
-  const result = await api.post('/auth/login/verify', { challengeId, code }, { auth: false });
+export async function verifyPhoneAuth({ challengeId, code }) {
+  const result = await api.post('/auth/otp/verify', { challengeId, code }, { auth: false });
   setAccessToken(result.accessToken);
   return result.user;
 }
 
 /**
- * Step 1 of registration. The server holds the pending account until the code
- * is verified, so nothing is persisted for an unverified contact detail.
- *
- * Note there is no `role` parameter. Self-registration always produces a
- * customer; the API rejects a request that tries to supply one.
+ * Step 1 of moving the account to a new number. Sends a code to the NEW number,
+ * because the point is to prove the holder can receive codes there — that is
+ * what sign-in will depend on afterwards.
  */
-export async function startRegistration({ name, phone, email, password }) {
-  const payload = { name, phone, password };
-  if (email) payload.email = email;
-  return api.post('/auth/register/start', payload, { auth: false });
+export async function startPhoneChange({ phone }) {
+  return api.post('/auth/phone/start', { phone });
 }
 
-export async function verifyRegistration({ challengeId, code }) {
-  const result = await api.post('/auth/register/verify', { challengeId, code }, { auth: false });
+/**
+ * Step 2 of moving the account. Signs every other device out, since they
+ * authenticated against the old number, and returns a fresh session for this one.
+ * @returns {Promise<object>} the updated user
+ */
+export async function verifyPhoneChange({ challengeId, code }) {
+  const result = await api.post('/auth/phone/verify', { challengeId, code });
   setAccessToken(result.accessToken);
   return result.user;
 }
@@ -83,21 +93,19 @@ export async function logoutEverywhere() {
   }
 }
 
-export async function changePassword({ currentPassword, newPassword }) {
-  const result = await api.post('/auth/password', { currentPassword, newPassword });
-  setAccessToken(result.accessToken);
-  return result.user;
-}
-
 /**
- * Client-side password guidance. Advisory only, to give immediate feedback —
- * the server enforces the real policy and its answer is the one that counts.
+ * Advisory 10-digit check so the user gets feedback before a round trip. The
+ * server's `fields.phone` is the authoritative rule.
  * @returns {string|null} a problem description, or null when acceptable
  */
-export function describePasswordProblem(password, minLength = 10) {
-  if (typeof password !== 'string' || password.length === 0) return 'Enter a password.';
-  if (password.length < minLength) return `Use at least ${minLength} characters.`;
-  if (/^\s|\s$/.test(password)) return 'Cannot start or end with a space.';
-  if (/^(.)\1+$/.test(password)) return 'Cannot be a single repeated character.';
+export function describePhoneProblem(phone) {
+  let digits = String(phone ?? '').replace(/\D/g, '');
+  // Strip a country/trunk prefix by length, never by pattern: 9111111111 is a
+  // real 10-digit mobile, not "91" plus eight digits. Mirrors `fields.phone`.
+  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+  else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+
+  if (digits.length === 0) return 'Enter your mobile number.';
+  if (!/^[6-9]\d{9}$/.test(digits)) return 'Enter a valid 10-digit mobile number.';
   return null;
 }

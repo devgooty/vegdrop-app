@@ -188,7 +188,6 @@ export default function ShopkeeperApp() {
     return (
       <LoginPage
         onLogin={handleLogin}
-        onSignUp={() => toast.warning('Shopkeeper accounts are provisioned by an administrator.')}
         appType="shopkeeper"
         storagePrefix="vegbazzar_shopkeeper_"
       />

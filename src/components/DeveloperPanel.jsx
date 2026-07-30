@@ -36,7 +36,7 @@ export default function DeveloperPanel({
   const [regRole, setRegRole] = useState('shopkeeper');
 
   const [featureFlags, setFeatureFlags] = useState({
-    enforce2FA: true,
+    passwordlessOtp: true,
     autoRoleDetection: true,
     expressDelivery10Min: true,
     mockPaymentGateway: true,
@@ -105,8 +105,8 @@ export default function DeveloperPanel({
             <div className="text-base font-bold text-emerald-400">{products.length}</div>
           </div>
           <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
-            <div className="text-[10px] text-slate-400 uppercase">System Status</div>
-            <div className="text-base font-bold text-amber-400">2FA Active</div>
+            <div className="text-[10px] text-slate-400 uppercase">Auth Mode</div>
+            <div className="text-base font-bold text-amber-400">Passwordless</div>
           </div>
         </div>
       </div>

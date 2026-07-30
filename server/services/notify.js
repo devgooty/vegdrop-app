@@ -13,7 +13,7 @@ const config = require('../config/env');
 /**
  * @typedef {object} OtpDetails
  * @property {string} code      the plaintext code
- * @property {string} purpose   login | register | profile_update | password_reset
+ * @property {string} purpose   login (sign-up shares it) | phone_change
  * @property {number} ttlSeconds
  */
 
@@ -116,14 +116,15 @@ function resolvePhoneTransport() {
 /**
  * Build the email transport.
  *
- * There is no real one yet. `config/env.js` refuses to boot production while an
- * email destination is reachable and this is still the console stub, so the
- * unimplemented case cannot silently print codes to a production log.
+ * There is no real one, and no code is addressed to an email any more —
+ * routes/auth.js always sends to the phone, because possession of the number is
+ * the entire credential. This exists so that adding an email-addressed
+ * notification later fails loudly in production rather than printing to a log.
  */
 function resolveEmailTransport() {
   if (config.isProduction) {
     throw new Error(
-      'No email transport is implemented. Set OTP_CHANNEL=phone so codes always go to the phone, or add an email transport in server/services/notify.js.'
+      'No email transport is implemented. Verification codes are addressed to the phone; if you are adding an email-addressed notification, implement a transport in server/services/notify.js first.'
     );
   }
   return consoleTransport;
@@ -134,12 +135,11 @@ function resolveEmailTransport() {
  *
  * WHY THIS IS KEYED BY CHANNEL
  *
- * routes/auth.js addresses a challenge to `user.email || user.phone`, so the
- * destination can be either. A single global transport meant that configuring a
- * phone provider (WhatsApp) broke sign-in for every user who had an email
- * address: the phone transport correctly refused the email, and the refusal
- * surfaced as a failed login. Resolution is per channel and lazy, so an
- * unconfigured channel only fails if something actually addresses it.
+ * Resolution is per channel and lazy, so an unconfigured channel only fails if
+ * something actually addresses it. A single global transport used to mean that
+ * configuring a phone provider (WhatsApp) broke sign-in for every user who had
+ * an email address: the phone transport correctly refused the email, and the
+ * refusal surfaced as a failed login.
  */
 const registry = new Map();
 
@@ -162,9 +162,7 @@ async function sendOtp({ channel, to, code, purpose, ttlSeconds }) {
   const minutes = Math.round(ttlSeconds / 60);
   const purposeText = {
     login: 'sign in to',
-    register: 'create your',
-    profile_update: 'update your',
-    password_reset: 'reset the password for',
+    phone_change: 'move',
   }[purpose] || 'verify';
 
   await transportFor(channel).send({

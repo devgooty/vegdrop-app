@@ -29,7 +29,10 @@ const userSchema = new mongoose.Schema(
       maxlength: 20,
     },
 
-    passwordHash: { type: String, required: true, select: false },
+    // There is no password field. Authentication is a one-time code delivered to
+    // the phone number above — see routes/auth.js. Accounts created before that
+    // change may still carry a `passwordHash` in MongoDB; it is absent from this
+    // schema, so nothing reads it and it never reaches a response.
 
     // Role is never accepted from a request body — see routes/auth.js.
     role: { type: String, enum: ROLES, default: 'customer', index: true },
@@ -44,17 +47,12 @@ const userSchema = new mongoose.Schema(
     emailVerifiedAt: { type: Date, default: null },
     phoneVerifiedAt: { type: Date, default: null },
 
-    // Brute-force controls.
-    failedLoginAttempts: { type: Number, default: 0, select: false },
-    lockedUntil: { type: Date, default: null, select: false },
-
     /**
      * Bumped to invalidate every outstanding access token for this user
-     * (password change, forced logout, role change, suspension).
+     * (forced logout, role change, suspension).
      */
     tokenVersion: { type: Number, default: 0 },
 
-    passwordChangedAt: { type: Date, default: null },
     lastLoginAt: { type: Date, default: null },
   },
   {
@@ -66,18 +64,15 @@ const userSchema = new mongoose.Schema(
 
 function stripSensitive(_doc, ret) {
   delete ret._id;
+  // Defensive: `passwordHash` is no longer in the schema, so a legacy document's
+  // copy is dropped on read. Deleting it here too costs nothing and means a
+  // future `strict: false` could not turn it into a leak.
   delete ret.passwordHash;
-  delete ret.failedLoginAttempts;
-  delete ret.lockedUntil;
   return ret;
 }
 
 userSchema.virtual('id').get(function getId() {
   return this._id.toHexString();
-});
-
-userSchema.virtual('isLocked').get(function isLocked() {
-  return Boolean(this.lockedUntil && this.lockedUntil.getTime() > Date.now());
 });
 
 /**

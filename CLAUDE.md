@@ -54,16 +54,24 @@ Each polls `GET /api/orders` every 5s and pauses while the tab is hidden. The pr
 
 The role checks in these components are **UX gates only**. The API authorizes every request independently, so bypassing one in the browser grants nothing.
 
-### Authentication — server-authoritative, two-factor
+### Authentication — server-authoritative, passwordless
 
-This is the part most likely to be misunderstood, because an earlier version did the opposite.
+This is the part most likely to be misunderstood, because two earlier versions did it differently.
 
-**The client never decides anything about identity.** It does not compare passwords, derive roles, or validate codes. Sign-in is two calls:
+**There are no passwords anywhere in this system.** No `passwordHash` field, no hashing service, no password policy, no change-password endpoint. Possession of the phone number is the entire credential, which is why a code is always addressed to the phone and never to an email — an email-addressed code would be a second, weaker way in.
 
-1. `POST /api/auth/login` — server verifies the password, returns `202` with an OTP challenge. **No token is issued here.**
-2. `POST /api/auth/login/verify` — server verifies the code, returns the access token and sets the refresh cookie.
+**The client never decides anything about identity.** It does not derive roles or validate codes. Sign-in is two calls:
 
-Registration mirrors this (`/register/start` → `/register/verify`) and always produces a `customer`. Privileged roles are assigned only via `PATCH /api/users/:id/role` by an admin.
+1. `POST /api/auth/otp/start` — `{ phone, name? }`, returns `202` with an OTP challenge. **No token is issued here.**
+2. `POST /api/auth/otp/verify` — `{ challengeId, code }`, returns the access token and sets the refresh cookie.
+
+**Sign-in and sign-up are the same two calls, deliberately.** A number with no account gets one created at step 2; an existing one is signed in. Splitting them would make "no account for this number" an observable difference, so `start` answers identically either way and `verify`'s response does not reveal which happened. `name` is used only when creating, and is ignored for an existing account — it cannot rename someone else's.
+
+A self-created account is always a `customer`. Privileged roles are assigned only via `PATCH /api/users/:id/role` by an admin, and signing in through the public flow never changes an existing role.
+
+The phone a session is issued for comes from the **stored challenge**, never from the verify request body — otherwise holding a challenge id would let you point it at a number you don't control.
+
+Brute-force protection is per challenge (attempts counted atomically, challenge dies at the cap) plus two rate limiters that must both exist: one keyed on the **destination** number, so rotating IPs cannot flood one person, and one keyed on the **caller**, so one source cannot walk a list of numbers making the bot send unsolicited messages — which is the fastest way to get the WhatsApp number banned.
 
 Token handling, in `src/services/apiClient.js`:
 
@@ -79,9 +87,10 @@ Stateless access tokens are revoked by incrementing `user.tokenVersion`; `middle
 
 `services/notify.js` resolves a transport **per channel**, lazily. `email` and
 `sms` are separate: every real provider handles one or the other, never both.
-Getting this wrong is not hypothetical — a single global transport meant that
-configuring WhatsApp broke sign-in for every user with an email address, because
-`routes/auth.js` addresses a challenge to `user.email || user.phone`.
+Codes are only ever addressed to a phone now, so only the `sms` channel is
+actually reached — the split stays because a single global transport once meant
+that configuring WhatsApp broke sign-in for every user with an email address, and
+that failure mode should not be reintroducible by adding one email notification.
 
 Phone transports, via `NOTIFY_TRANSPORT`:
 
@@ -91,13 +100,16 @@ Phone transports, via `NOTIFY_TRANSPORT`:
 | `whatsapp` | official Cloud API; approved template, paid per message |
 | `whatsapp_bot` | unofficial WhatsApp Web client (`server/bot`); free, against WhatsApp's ToS, bannable |
 
-`OTP_CHANNEL` picks which contact detail a code is addressed to. There is no email
-transport yet, so production requires `OTP_CHANNEL=phone`; boot fails otherwise
-rather than silently falling back to the console stub.
+There is no `OTP_CHANNEL` setting — it was removed rather than left as a knob
+that can no longer change anything.
 
 WhatsApp is a **transport, not a channel**. `OtpChallenge.channel` stays
 `sms`/`email`, so the `phoneVerifiedAt` logic in `routes/auth.js` is untouched —
 a code delivered over WhatsApp still verifies the phone.
+
+**Because sign-in is passwordless, the transport is now a hard dependency**: if
+codes cannot be delivered, nobody can sign in at all. That raises the stakes on
+`whatsapp_bot` specifically, whose number can be banned.
 
 The unofficial bot (`server/bot/`, ESM, separate process — see its README) exists
 because it was asked for, and is deliberately **not** the default. If that number

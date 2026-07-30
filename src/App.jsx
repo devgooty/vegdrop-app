@@ -10,16 +10,16 @@ import CategoryDetailView from './components/CategoryDetailView';
 import ProductDetailView from './components/ProductDetailView';
 import CustomerOrders from './components/CustomerOrders';
 import LoginPage from './components/LoginPage';
-import SignUpPage from './components/SignUpPage';
 import FlyToCartOverlay from './components/FlyToCartOverlay';
 import SplashScreen from './components/SplashScreen';
 import PriceHistory from './components/PriceHistory';
 import AccountHistory from './components/AccountHistory';
 import PageTransition from './components/PageTransition';
+import OTPBoxGroup from './components/OTPBoxGroup';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
 import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon } from 'lucide-react';
-import { restoreSession, logout } from './services/auth';
+import { restoreSession, logout, startPhoneChange, verifyPhoneChange } from './services/auth';
 import useLocalStorage from './hooks/useLocalStorage';
 import { initialCategories, sampleProducts, initialOrders, initialRegisteredUsers, initialScheduledOrders } from './data/mockData';
 import { fetchProducts, updateStock } from './services/products';
@@ -114,19 +114,17 @@ export default function App() {
   const [activeCategoryDetail, setActiveCategoryDetail] = useState(null);
   const [activeProductDetail, setActiveProductDetail] = useState(null);
 
-  // Profile editing & 2FA verification states
+  // Profile editing, plus the verified phone-change flow
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [activeAccountView, setActiveAccountView] = useState('menu');
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [showProfileOTP, setShowProfileOTP] = useState(false);
-  const [profileEmailOTP, setProfileEmailOTP] = useState('');
   const [profileMobileOTP, setProfileMobileOTP] = useState('');
-  const [profilePrevEmailOTP, setProfilePrevEmailOTP] = useState('');
-  const [profilePrevMobileOTP, setProfilePrevMobileOTP] = useState('');
-  const [activeOtpStepIndex, setActiveOtpStepIndex] = useState(0);
   const [profileOtpError, setProfileOtpError] = useState('');
+  // Server-issued challenge for moving the account to a new number.
+  const [phoneChallenge, setPhoneChallenge] = useState(null);
 
   const [flyingItems, setFlyingItems] = useState([]);
   const [cartBump, setCartBump] = useState(false);
@@ -349,11 +347,6 @@ export default function App() {
     toast.success(`Welcome back, ${userData.name}! 🌿`);
   }, [setActiveTab, toast]);
 
-  // Registration now completes inside LoginPage (which verifies a server-issued
-  // code and returns an authenticated user), so sign-up and sign-in converge on
-  // the same handler.
-  const handleSignUp = handleLogin;
-
   const handleLogout = useCallback(async () => {
     const name = user?.name || 'User';
     await logout();
@@ -405,85 +398,78 @@ export default function App() {
     setProfileOtpError('');
   }, [user]);
 
+  /**
+   * Name and email are ordinary profile fields and save directly. The phone
+   * number is not — it is the sign-in credential, so moving it goes through a
+   * code sent to the NEW number and signs other devices out. That check is the
+   * server's; this only drives the UI for it.
+   */
   const handleSaveProfile = useCallback(async (e) => {
     e.preventDefault();
-    if (!editName || !editEmail || !editPhone) {
-      alert("All fields are required.");
+    if (!editName.trim() || !editPhone.trim()) {
+      toast.error('Name and mobile number are required.');
       return;
     }
 
-    const needsOTP = editEmail.trim().toLowerCase() !== user.email?.toLowerCase() || editPhone.trim() !== user.phone;
+    const phoneChanged = editPhone.trim() !== user.phone;
+    const fields = { name: editName.trim() };
+    if (editEmail.trim()) fields.email = editEmail.trim().toLowerCase();
 
-    if (needsOTP) {
-      setActiveOtpStepIndex(0);
-      setShowProfileOTP(true);
-      setProfileOtpError('');
-    } else {
-      try {
-        const updated = await updateUser(user.id, { name: editName.trim() });
-        setUser(updated);
+    try {
+      // Save the ordinary fields first so they land even if the number change
+      // is abandoned at the code step.
+      const updated = await updateUser(user.id, fields);
+      setUser(updated);
+      setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+
+      if (!phoneChanged) {
         setIsEditingProfile(false);
         toast.success('Profile updated successfully!');
-      } catch (err) {
-        toast.error(err.message || 'Could not update your profile.');
+        return;
       }
+
+      const issued = await startPhoneChange({ phone: editPhone.trim() });
+      setPhoneChallenge(issued);
+      setProfileMobileOTP('');
+      setProfileOtpError('');
+      setShowProfileOTP(true);
+    } catch (err) {
+      toast.error(err.message || 'Could not update your profile.');
     }
-  }, [user, editName, editEmail, editPhone, setUser, toast]);
+  }, [user, editName, editEmail, editPhone, setUser, setRegisteredUsers, toast]);
 
   const handleVerifyProfileOTP = useCallback(async (e) => {
     e.preventDefault();
     setProfileOtpError('');
 
-    const emailChanged = editEmail.trim().toLowerCase() !== user.email?.toLowerCase();
-    const phoneChanged = editPhone.trim() !== user.phone;
-
-    const steps = [];
-    if (user.email) {
-      steps.push({ type: 'prevEmail', value: profilePrevEmailOTP, correct: '111111' });
-    }
-    if (user.phone) {
-      steps.push({ type: 'prevPhone', value: profilePrevMobileOTP, correct: '222222' });
-    }
-    if (emailChanged) {
-      steps.push({ type: 'newEmail', value: profileEmailOTP, correct: '333333' });
-    }
-    if (phoneChanged) {
-      steps.push({ type: 'newPhone', value: profileMobileOTP, correct: '444444' });
-    }
-
-    const currentStep = steps[activeOtpStepIndex];
-    if (currentStep.value !== currentStep.correct) {
-      setProfileOtpError(`Incorrect OTP code. Use demo code: ${currentStep.correct}`);
+    if (!profileMobileOTP || profileMobileOTP.trim().length < 6) {
+      setProfileOtpError('Enter the 6-digit verification code.');
       return;
     }
-
-    if (activeOtpStepIndex < steps.length - 1) {
-      setActiveOtpStepIndex((prev) => prev + 1);
+    if (!phoneChallenge) {
+      setProfileOtpError('This request expired. Please start again.');
       return;
     }
-
-    const oldEmailOrPhone = user.email || user.phone;
-    const updatedFields = {
-      name: editName.trim(),
-      email: editEmail.trim().toLowerCase(),
-      phone: editPhone.trim()
-    };
 
     try {
       // The server is the only writer; adopt exactly what it returns rather
       // than optimistically assuming the edit applied.
-      const updated = await updateUser(user.id, updatedFields);
+      const updated = await verifyPhoneChange({
+        challengeId: phoneChallenge.challengeId,
+        code: profileMobileOTP.trim(),
+      });
       setUser(updated);
       setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
     } catch (err) {
-      setProfileOtpError(err.message || 'Could not update your profile.');
+      setProfileOtpError(err.message || 'Could not verify that code.');
       return;
     }
 
     setIsEditingProfile(false);
     setShowProfileOTP(false);
-    toast.success("Profile updated successfully after OTP verification! 🔒");
-  }, [user, editName, editEmail, editPhone, profilePrevEmailOTP, profilePrevMobileOTP, profileEmailOTP, profileMobileOTP, activeOtpStepIndex, setUser, setRegisteredUsers, toast]);
+    setPhoneChallenge(null);
+    toast.success('Mobile number updated. Other devices have been signed out. 🔒');
+  }, [phoneChallenge, profileMobileOTP, setUser, setRegisteredUsers, toast]);
 
   /**
    * Stock edits are optimistic, then reconciled against the server's response.
@@ -734,31 +720,11 @@ export default function App() {
     return <SplashScreen onComplete={() => setShowSplash(false)} />;
   }
 
-  // ROUTE TO STANDALONE LOGIN / SIGN UP PAGES WHEN LOGGED OUT OR SELECTING LOGIN / SIGNUP TAB
-  if (activeTab === 'login' && !user) {
-    return (
-      <LoginPage
-        onLogin={handleLogin}
-        onSignUp={handleSignUp}
-        onGoToSignUp={() => setActiveTab('signup')}
-      />
-    );
+  // One screen for both. Signing in with a number that has no account creates
+  // one, so there is no separate sign-up page to route to.
+  if ((activeTab === 'login' || activeTab === 'signup') && !user) {
+    return <LoginPage onLogin={handleLogin} />;
   }
-
-
-  if (activeTab === 'signup' && !user) {
-    return (
-      <SignUpPage
-        onSignUp={handleSignUp}
-        onGoToLogin={() => setActiveTab('login')}
-      />
-    );
-  }
-
-  const profileEmailChanged = user && editEmail.trim().toLowerCase() !== user.email?.toLowerCase();
-  const profilePhoneChanged = user && editPhone.trim() !== user.phone;
-
-
 
   return (
     <div className="max-w-md mx-auto min-h-screen bg-gray-50 flex flex-col justify-between pb-16 relative shadow-xl border-x border-gray-200/60">
@@ -1013,12 +979,16 @@ export default function App() {
                             </div>
                             <div className="relative group">
                               <label className="block text-slate-500 font-extrabold mb-1.5 text-[10px] uppercase tracking-widest pl-1 group-focus-within:text-[#1B4D3E] transition-colors">Email Address</label>
+                              {/* Optional: signing up needs only a phone number,
+                                  so most accounts have no email at all. Marking
+                                  this required made the form unsubmittable for
+                                  every one of them. */}
                               <input
                                 type="email"
                                 value={editEmail}
                                 onChange={(e) => setEditEmail(e.target.value)}
+                                placeholder="Optional"
                                 className="w-full bg-slate-100/50 border-0 rounded-2xl px-4 py-2.5 font-bold text-slate-800 focus:outline-none focus:ring-0 shadow-[inset_4px_4px_8px_rgba(166,180,200,0.4),inset_-4px_-4px_8px_rgba(255,255,255,0.9)] transition-all"
-                                required
                               />
                             </div>
                             <div className="relative group">
@@ -1080,6 +1050,8 @@ export default function App() {
                         </div>
                       )}
 
+                      {/* Moving the account to a new number. The code goes to the
+                          NEW number, because that is what has to be proven. */}
                       {showProfileOTP && (
                         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
                           <div className="bg-white rounded-3xl w-full max-w-sm p-5 shadow-2xl border border-gray-100 relative overflow-hidden space-y-3.5 text-left text-xs animate-scale-in max-h-[90vh] overflow-y-auto">
@@ -1088,121 +1060,45 @@ export default function App() {
                                 🔐
                               </div>
                               <div>
-                                <h4 className="font-extrabold text-gray-900 text-sm">Verify Profile Update</h4>
+                                <h4 className="font-extrabold text-gray-900 text-sm">Verify New Number</h4>
                                 <p className="text-[10px] text-amber-700 font-semibold">
-                                  Two-step verification is required to update credentials.
+                                  This is your sign-in credential.
                                 </p>
                               </div>
                             </div>
 
                             <form onSubmit={handleVerifyProfileOTP} className="space-y-3">
-                              {(() => {
-                                const steps = [];
-                                if (user.email) {
-                                  steps.push({ type: 'prevEmail', label: 'Current Email OTP', sub: `sent to ${user.email}`, value: profilePrevEmailOTP, setter: setProfilePrevEmailOTP, correct: '111111' });
-                                }
-                                if (user.phone) {
-                                  steps.push({ type: 'prevPhone', label: 'Current Mobile OTP', sub: `sent to ${user.phone}`, value: profilePrevMobileOTP, setter: setProfilePrevMobileOTP, correct: '222222' });
-                                }
-                                if (profileEmailChanged) {
-                                  steps.push({ type: 'newEmail', label: 'New Email OTP', sub: `sent to ${editEmail}`, value: profileEmailOTP, setter: setProfileEmailOTP, correct: '333333' });
-                                }
-                                if (profilePhoneChanged) {
-                                  steps.push({ type: 'newPhone', label: 'New Mobile OTP', sub: `sent to ${editPhone}`, value: profileMobileOTP, setter: setProfileMobileOTP, correct: '444444' });
-                                }
+                              <div className="bg-blue-50/80 p-2.5 rounded-xl border border-blue-100 text-[10px] text-blue-900 font-semibold leading-relaxed">
+                                We sent a 6-digit code on WhatsApp to{' '}
+                                <span className="font-extrabold">{phoneChallenge?.destination || editPhone}</span>.
+                                Enter it to move your account to that number — every other
+                                device will be signed out.
+                              </div>
 
-                                if (steps.length === 0) return null;
+                              <div className="space-y-2 border-t border-gray-100 pt-3">
+                                <label className="block font-bold text-gray-700 mb-2 text-[10px] uppercase tracking-wider text-center">
+                                  WhatsApp OTP
+                                </label>
+                                <OTPBoxGroup value={profileMobileOTP} onChange={setProfileMobileOTP} />
+                              </div>
 
-                                const currentStep = steps[activeOtpStepIndex] || steps[0];
-                                const isLastStep = activeOtpStepIndex >= steps.length - 1;
+                              {profileOtpError && <p className="text-[10px] font-bold text-rose-600">{profileOtpError}</p>}
 
-                                return (
-                                  <>
-                                    <div className="bg-blue-50/80 p-2.5 rounded-xl border border-blue-100 text-[10px] text-blue-900 font-semibold space-y-0.5 animate-fade-in">
-                                      <div className="flex justify-between items-center">
-                                        <span>Verification Progress:</span>
-                                        <span className="font-extrabold bg-blue-200 px-2 py-0.5 rounded-full text-blue-950">Step {activeOtpStepIndex + 1} of {steps.length}</span>
-                                      </div>
-                                    </div>
-
-                                    <div className="bg-amber-50 p-2.5 rounded-xl border border-amber-200 text-[10px] text-amber-950 font-mono font-semibold space-y-1 animate-fade-in">
-                                      <div className="flex justify-between items-center">
-                                        <span>Demo Code for this step:</span>
-                                        <span className="font-extrabold bg-amber-200 px-1.5 py-0.2 rounded text-amber-950">{currentStep.correct}</span>
-                                      </div>
-                                    </div>
-
-                                    <div className="space-y-2 border-t border-gray-100 pt-3 animate-fade-in">
-                                      <div>
-                                        <label className="block font-bold text-gray-700 mb-2 text-[10px] uppercase tracking-wider text-center">{currentStep.label} <span className="normal-case opacity-75">({currentStep.sub})</span></label>
-                                        <div className="flex gap-2 justify-center max-w-xs mx-auto">
-                                          {[0, 1, 2, 3, 4, 5].map((index) => (
-                                            <input
-                                              key={`${currentStep.type}-${index}`}
-                                              id={`otp-${index}`}
-                                              type="text"
-                                              inputMode="numeric"
-                                              maxLength={6} // Allow paste
-                                              value={currentStep.value[index] || ''}
-                                              onChange={(e) => {
-                                                const val = e.target.value.replace(/\D/g, '');
-                                                if (val.length > 1) {
-                                                  currentStep.setter(val.slice(0, 6));
-                                                  const nextIndex = Math.min(val.length, 5);
-                                                  const nextEl = document.getElementById(`otp-${nextIndex}`);
-                                                  if(nextEl) nextEl.focus();
-                                                  return;
-                                                }
-                                                let newOtp = (currentStep.value || '').split('');
-                                                newOtp[index] = val.slice(-1);
-                                                currentStep.setter(newOtp.join(''));
-                                                if (val && index < 5) {
-                                                  const nextEl = document.getElementById(`otp-${index + 1}`);
-                                                  if(nextEl) nextEl.focus();
-                                                }
-                                              }}
-                                              onKeyDown={(e) => {
-                                                if (e.key === 'Backspace') {
-                                                  if (!currentStep.value[index] && index > 0) {
-                                                    const prevEl = document.getElementById(`otp-${index - 1}`);
-                                                    if(prevEl) prevEl.focus();
-                                                  } else {
-                                                    let newOtp = (currentStep.value || '').split('');
-                                                    newOtp[index] = '';
-                                                    currentStep.setter(newOtp.join(''));
-                                                  }
-                                                }
-                                              }}
-                                              onFocus={(e) => e.target.select()}
-                                              className="w-10 h-12 text-center bg-white border border-gray-300 rounded-xl text-lg font-mono font-extrabold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1B4D3E] focus:border-[#1B4D3E] shadow-sm transition-all"
-                                              required
-                                              autoFocus={index === 0}
-                                            />
-                                          ))}
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {profileOtpError && <p className="text-[10px] font-bold text-rose-600">{profileOtpError}</p>}
-
-                                    <div className="flex gap-2 pt-3 border-t border-gray-100">
-                                      <button
-                                        type="button"
-                                        onClick={() => setShowProfileOTP(false)}
-                                        className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 rounded-xl text-center cursor-pointer transition-colors active:scale-95"
-                                      >
-                                        Cancel
-                                      </button>
-                                      <button
-                                        type="submit"
-                                        className="flex-[2] bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-extrabold py-2 rounded-xl text-center cursor-pointer transition-colors active:scale-95 shadow-sm"
-                                      >
-                                        {isLastStep ? 'Verify & Update' : 'Verify & Next'}
-                                      </button>
-                                    </div>
-                                  </>
-                                );
-                              })()}
+                              <div className="flex gap-2 pt-3 border-t border-gray-100">
+                                <button
+                                  type="button"
+                                  onClick={() => { setShowProfileOTP(false); setPhoneChallenge(null); }}
+                                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 rounded-xl text-center cursor-pointer transition-colors active:scale-95"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="submit"
+                                  className="flex-[2] bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-extrabold py-2 rounded-xl text-center cursor-pointer transition-colors active:scale-95 shadow-sm"
+                                >
+                                  Verify &amp; Update
+                                </button>
+                              </div>
                             </form>
                           </div>
                         </div>

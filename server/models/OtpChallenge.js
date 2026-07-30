@@ -14,10 +14,21 @@ const otpChallengeSchema = new mongoose.Schema(
     // Opaque handle handed to the client. Knowing it is not sufficient to pass.
     challengeId: { type: String, required: true, unique: true, index: true },
 
+    /**
+     * `login` covers signing up too — they are one flow, so a challenge issued
+     * for a number with no account is the same kind of challenge as one for an
+     * existing account. `phone_change` proves control of a new number before it
+     * becomes the account's credential.
+     *
+     * Deliberately only the purposes that actually exist: a `password_reset`
+     * value here would describe a flow that cannot exist, since there are no
+     * passwords. `verifyChallenge` filters on this, so a code issued for one
+     * purpose cannot be redeemed against another.
+     */
     purpose: {
       type: String,
       required: true,
-      enum: ['login', 'register', 'profile_update', 'password_reset'],
+      enum: ['login', 'phone_change'],
       index: true,
     },
 

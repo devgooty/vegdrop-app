@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "vegbazzar-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "server:demo"],
+      "port": 5000
     }
   ]
 }
