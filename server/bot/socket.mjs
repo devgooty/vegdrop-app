@@ -26,9 +26,31 @@ import {
   Browsers,
 } from 'baileys';
 import qrcode from 'qrcode-terminal';
+import { readdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
 
 /** Reconnect backoff, capped. Reconnecting in a tight loop looks like abuse. */
 const BACKOFF_MS = [1000, 2000, 5000, 10000, 30000, 60000];
+
+/**
+ * How many times a dead session is cleared automatically before giving up.
+ *
+ * A banned number logs out again the moment it re-pairs, so retrying forever
+ * would be a QR-printing loop that hammers WhatsApp and hides the real problem.
+ */
+const MAX_SESSION_RESETS = 3;
+
+/**
+ * Empty the auth directory WITHOUT removing the directory itself.
+ *
+ * It is a mount point in production (a Railway volume keeps the pairing across
+ * deploys), and removing a mount point fails. Clearing the contents achieves the
+ * same thing and works either way.
+ */
+async function clearSessionDir(authDir) {
+  const entries = await readdir(authDir);
+  await Promise.all(entries.map((name) => rm(join(authDir, name), { recursive: true, force: true })));
+}
 
 /**
  * @param {object} options
@@ -37,13 +59,16 @@ const BACKOFF_MS = [1000, 2000, 5000, 10000, 30000, 60000];
  * @param {boolean} [options.verbose]
  */
 export async function startSocket({ authDir, onMessage, verbose = false }) {
-  const { state, saveCreds } = await useMultiFileAuthState(authDir);
+  // Reassigned when a dead session is cleared, so `connect()` picks up the
+  // fresh credentials rather than the revoked ones.
+  let { state, saveCreds } = await useMultiFileAuthState(authDir);
   const { version } = await fetchLatestBaileysVersion();
 
   let sock = null;
   let connected = false;
   let attempt = 0;
   let stopping = false;
+  let sessionResets = 0;
   /** @type {Promise<void>|null} */
   let readyPromise = null;
   let markReady = () => {};
@@ -116,11 +141,46 @@ export async function startSocket({ authDir, onMessage, verbose = false }) {
         if (stopping) return;
 
         if (statusCode === DisconnectReason.loggedOut) {
-          // Terminal: the device was unlinked, or the number was banned.
+          // The stored credentials are revoked — the device was unlinked, or the
+          // number was banned. Reconnecting with them can never succeed.
+          //
+          // Clear them and offer a fresh QR rather than stopping. Stopping was
+          // survivable when the auth directory died with the container, but the
+          // session now lives on a volume: a revoked session would persist across
+          // every future deploy and restart, leaving the bot permanently unable to
+          // pair with no QR ever printed. Since sign-in is passwordless, that is
+          // not "the bot is down" — it is "nobody can log in, ever, until a human
+          // deletes a directory they cannot easily reach."
+          if (sessionResets >= MAX_SESSION_RESETS) {
+            console.error(
+              `[bot] session logged out again after ${sessionResets} re-pair attempt(s); giving up.\n` +
+                '[bot] This usually means the number is banned rather than merely unlinked.\n' +
+                `[bot] Switch NOTIFY_TRANSPORT to the official Cloud API, or clear ${authDir} manually to retry.`
+            );
+            return;
+          }
+
+          sessionResets += 1;
           console.error(
-            '[bot] session is logged out. The device was unlinked from the phone, or the number was banned.\n' +
-              `[bot] delete ${authDir} and pair again to recover.`
+            '[bot] session is logged out. The device was unlinked from the phone, or the number was banned.'
           );
+
+          clearSessionDir(authDir)
+            .then(async () => {
+              ({ state, saveCreds } = await useMultiFileAuthState(authDir));
+              console.warn(
+                `[bot] cleared the dead session (attempt ${sessionResets}/${MAX_SESSION_RESETS}); ` +
+                  'a fresh QR follows — scan it to re-pair.'
+              );
+              attempt = 0;
+              connect();
+            })
+            .catch((err) => {
+              console.error(
+                `[bot] could not clear ${authDir}: ${err?.message}. Delete it manually and restart.`
+              );
+            });
+
           return;
         }
 
