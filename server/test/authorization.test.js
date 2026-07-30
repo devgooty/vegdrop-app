@@ -292,6 +292,115 @@ test('illegal status transitions are rejected', async () => {
   assert.equal(res.body.error.code, 'INVALID_TRANSITION');
 });
 
+/**
+ * Drive an order to Out for Delivery as staff and, optionally, hand it to a
+ * specific delivery agent. Returns the order id.
+ */
+async function orderOutForDelivery({ customer, staff, product, claimedBy = null }) {
+  const created = await api()
+    .post('/api/orders')
+    .set(auth(customer.accessToken))
+    .send({
+      items: [{ productId: product._id.toHexString(), quantity: 1 }],
+      address: '12 Test Street',
+      paymentMethod: 'cod',
+    })
+    .expect(201);
+
+  const id = created.body.data.id;
+
+  for (const status of ['Preparing', 'Out for Delivery']) {
+    await api()
+      .patch(`/api/orders/${id}/status`)
+      .set(auth(staff.accessToken))
+      .send({ status })
+      .expect(200);
+  }
+
+  if (claimedBy) {
+    await api().post(`/api/orders/${id}/claim`).set(auth(claimedBy.accessToken)).expect(200);
+  }
+
+  return id;
+}
+
+test('a delivery agent cannot complete an order assigned to another agent', async () => {
+  const product = await seedProduct({ stock: 10 });
+  const customer = await authenticatedUser('customer');
+  const staff = await authenticatedUser('shopkeeper');
+  const mine = await authenticatedUser('delivery');
+  const theirs = await authenticatedUser('delivery');
+
+  const id = await orderOutForDelivery({ customer, staff, product, claimedBy: mine });
+
+  const res = await api()
+    .patch(`/api/orders/${id}/status`)
+    .set(auth(theirs.accessToken))
+    .send({ status: 'Delivered' });
+
+  // 404, not 403: another agent's order is not confirmed to exist at all.
+  assert.equal(res.status, 404);
+
+  // And it must not have been marked paid as a side effect.
+  const owner = await api().get(`/api/orders/${id}`).set(auth(mine.accessToken)).expect(200);
+  assert.equal(owner.body.data.status, 'Out for Delivery');
+  assert.equal(owner.body.data.paymentStatus, 'pending');
+});
+
+test("a delivery agent cannot see another agent's assigned order", async () => {
+  const product = await seedProduct({ stock: 10 });
+  const customer = await authenticatedUser('customer');
+  const staff = await authenticatedUser('shopkeeper');
+  const mine = await authenticatedUser('delivery');
+  const theirs = await authenticatedUser('delivery');
+
+  const id = await orderOutForDelivery({ customer, staff, product, claimedBy: mine });
+
+  const list = await api().get('/api/orders').set(auth(theirs.accessToken)).expect(200);
+  assert.equal(list.body.data.length, 0, "another agent's delivery must not be listed");
+
+  const direct = await api().get(`/api/orders/${id}`).set(auth(theirs.accessToken));
+  assert.equal(direct.status, 404);
+});
+
+test('the assigned delivery agent can complete their own order', async () => {
+  const product = await seedProduct({ stock: 10 });
+  const customer = await authenticatedUser('customer');
+  const staff = await authenticatedUser('shopkeeper');
+  const agent = await authenticatedUser('delivery');
+
+  const id = await orderOutForDelivery({ customer, staff, product, claimedBy: agent });
+
+  const res = await api()
+    .patch(`/api/orders/${id}/status`)
+    .set(auth(agent.accessToken))
+    .send({ status: 'Delivered' })
+    .expect(200);
+
+  assert.equal(res.body.data.status, 'Delivered');
+  // COD settles on delivery.
+  assert.equal(res.body.data.paymentStatus, 'paid');
+});
+
+test('completing an unclaimed order records the agent who delivered it', async () => {
+  const product = await seedProduct({ stock: 10 });
+  const customer = await authenticatedUser('customer');
+  const staff = await authenticatedUser('shopkeeper');
+  const agent = await authenticatedUser('delivery');
+
+  // No claim step: the unassigned pool is visible to every agent.
+  const id = await orderOutForDelivery({ customer, staff, product });
+
+  const res = await api()
+    .patch(`/api/orders/${id}/status`)
+    .set(auth(agent.accessToken))
+    .send({ status: 'Delivered' })
+    .expect(200);
+
+  assert.equal(res.body.data.status, 'Delivered');
+  assert.equal(res.body.data.assignedTo, agent.user._id.toHexString());
+});
+
 // ---------------------------------------------------------------------------
 // Wallet
 // ---------------------------------------------------------------------------

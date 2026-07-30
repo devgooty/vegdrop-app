@@ -33,7 +33,20 @@ const FREE_DELIVERY_THRESHOLD_PAISE = 30000; // ₹300
 function visibilityFilter(user) {
   if (STAFF_ROLES.includes(user.role)) return {};
   if (user.role === 'delivery') {
-    return { $or: [{ assignedTo: user._id }, { status: { $in: ['Out for Delivery', 'Preparing'] } }] };
+    /**
+     * An agent sees their own assignments plus the unclaimed pool they may take.
+     *
+     * The previous filter matched every order in Preparing/Out for Delivery
+     * regardless of assignment, which exposed the customer name, phone and
+     * address on another agent's active delivery — and, because the status
+     * handler never checked `assignedTo`, let any agent mark it Delivered.
+     */
+    return {
+      $or: [
+        { assignedTo: user._id },
+        { assignedTo: null, status: { $in: ['Preparing', 'Out for Delivery'] } },
+      ],
+    };
   }
   return { customer: user._id };
 }
@@ -240,6 +253,23 @@ router.patch(
     const order = await Order.findOne({ _id: id, ...visibilityFilter(req.user) });
     if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
 
+    /**
+     * A delivery agent may only complete an order that is theirs.
+     *
+     * The visibility filter above already hides another agent's assignment, so
+     * this is defence in depth — but it belongs at the call site, because the
+     * consequence of getting it wrong is one agent closing another's delivery
+     * and, for a COD order, flipping it to paid.
+     */
+    if (req.user.role === 'delivery') {
+      const assignee = order.assignedTo ? order.assignedTo.toString() : null;
+      if (assignee && assignee !== req.user._id.toHexString()) {
+        throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+      }
+      // Completing an unclaimed order claims it, so the record shows who did.
+      if (!assignee) order.assignedTo = req.user._id;
+    }
+
     // A customer may only cancel their own order, and only before preparation.
     if (req.user.role === 'customer') {
       if (order.customer.toString() !== req.user._id.toHexString()) {
@@ -280,9 +310,10 @@ router.patch(
       order.paymentStatus = 'paid';
     }
 
-    if (status === 'Out for Delivery' && !order.assignedTo && req.user.role === 'delivery') {
-      order.assignedTo = req.user._id;
-    }
+    // NOTE: there was an auto-assign branch here for a `delivery` caller moving
+    // an order to 'Out for Delivery'. It was unreachable — that transition is
+    // restricted to staff by TRANSITION_PERMISSIONS above — and assignment is
+    // now handled by /claim and by the Delivered branch.
 
     order.status = status;
     order.statusHistory.push({ status, at: new Date(), by: req.user._id });

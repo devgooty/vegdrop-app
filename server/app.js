@@ -18,6 +18,9 @@ const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
 const userRoutes = require('./routes/users');
 const walletRoutes = require('./routes/wallet');
+const whatsappRoutes = require('./routes/whatsapp');
+
+const WHATSAPP_WEBHOOK_PATH = '/api/whatsapp';
 
 function createApp() {
   const app = express();
@@ -88,7 +91,24 @@ function createApp() {
 
   // --- Parsing -------------------------------------------------------------
   // An explicit cap: without one, a single large body can exhaust memory.
-  app.use(express.json({ limit: '100kb' }));
+  app.use(
+    express.json({
+      limit: '100kb',
+      /**
+       * Retain the raw bytes for the WhatsApp webhook only.
+       *
+       * Its X-Hub-Signature-256 HMAC covers exactly what Meta sent, and
+       * re-serialising the parsed object does not reproduce those bytes (key
+       * order and number formatting are not preserved). Scoped to the one path
+       * that needs it rather than buffering a second copy of every request body.
+       */
+      verify(req, _res, buf) {
+        if (req.originalUrl && req.originalUrl.startsWith(WHATSAPP_WEBHOOK_PATH)) {
+          req.rawBody = buf;
+        }
+      },
+    })
+  );
   app.use(cookieParser());
 
   // --- Request correlation -------------------------------------------------
@@ -122,6 +142,15 @@ function createApp() {
       timestamp: Date.now(),
     });
   });
+
+  /**
+   * WhatsApp webhook — mounted above the database gate.
+   *
+   * It only reads delivery statuses out of the payload and logs them, so it needs
+   * no database. Answering 503 while Mongo is down would make Meta retry, and
+   * repeated failures get a webhook disabled.
+   */
+  app.use(WHATSAPP_WEBHOOK_PATH, whatsappRoutes);
 
   // --- Database gate -------------------------------------------------------
   app.use('/api', (req, res, next) => {

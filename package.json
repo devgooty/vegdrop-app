@@ -10,6 +10,7 @@
     "server": "node server/index.js",
     "server:dev": "node --watch server/index.js",
     "server:demo": "node server/scripts/dev-with-memory-db.js",
+    "bot": "node server/bot/run.mjs",
     "test": "node --test --test-concurrency=1 \"server/test/**/*.test.js\"",
     "test:watch": "node --test --watch --test-concurrency=1 \"server/test/**/*.test.js\""
   },
@@ -20,6 +21,7 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.0.4",
+    "baileys": "^6.7.24",
     "bcryptjs": "^3.0.3",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
@@ -32,6 +34,7 @@
     "leaflet": "^1.9.4",
     "lucide-react": "^1.26.0",
     "mongoose": "^9.8.0",
+    "qrcode-terminal": "^0.12.0",
     "razorpay": "^2.9.8",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

@@ -13,16 +13,9 @@ export default function ShopkeeperApp() {
 
   const [categories] = useState(initialCategories);
   const [products, setProducts] = useState(sampleProducts);
-  const [orders, setOrders] = useState(() => {
-    try {
-      const saved = localStorage.getItem('vegbazzar_orders');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
-    return initialOrders;
-  });
+  // Seeded from fixtures, then replaced by the server's role-scoped list. Never
+  // read from localStorage: that key is shared with every app on the origin.
+  const [orders, setOrders] = useState(initialOrders);
   const [registeredUsers, setRegisteredUsers] = useState(initialRegisteredUsers);
 
   /**

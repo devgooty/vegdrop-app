@@ -1,24 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, Trash2, Plus, Minus, ShoppingBasket, CheckCircle2, MapPin } from 'lucide-react';
+
+/**
+ * Delivery pricing, mirrored from server/routes/orders.js.
+ *
+ * The server recomputes the fee on every order and its answer is the one that is
+ * charged; these constants exist only so the basket shows the same number. They
+ * were previously ₹0 above ₹200 while the server charged ₹25 until ₹300, so any
+ * basket between the two thresholds displayed FREE and then billed ₹25.
+ */
+const DELIVERY_FEE = 25;
+const FREE_DELIVERY_THRESHOLD = 300;
 
 export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity, onCheckout, walletBalance = 0, onSelectProduct }) {
   const [placed, setPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('COD'); // 'PhonePe' | 'Google Pay' | 'Paytm' | 'COD' | 'VegWallet'
 
-  // Load Razorpay Script dynamically (only once, never remove)
-  useEffect(() => {
-    if (!document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]')) {
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.async = true;
-      document.body.appendChild(script);
-    }
-  }, []);
+  // The Razorpay checkout script is NOT loaded here. This modal no longer opens
+  // checkout itself — card and UPI route through the wallet top-up in
+  // WalletModal, which loads the script on demand via services/wallet.js.
 
   if (!isOpen) return null;
 
   const total = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  const deliveryFee = total > 0 ? (total > 200 ? 0 : 25) : 0;
+  const deliveryFee = total > 0 && total < FREE_DELIVERY_THRESHOLD ? DELIVERY_FEE : 0;
   const grandTotal = total + deliveryFee;
   const savedAddress = localStorage.getItem('vegbazzar_customer_location') || 'Koramangala, Bengaluru, Karnataka - 560034';
 

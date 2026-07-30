@@ -47,16 +47,13 @@ export default function App() {
 
   const [categories] = useState(initialCategories);
   const [products, setProducts] = useState(sampleProducts);
-  const [orders, setOrders] = useState(() => {
-    try {
-      const saved = localStorage.getItem('vegbazzar_orders');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
-    return initialOrders;
-  });
+  /**
+   * Orders come from the server, which scopes them to this caller. They are
+   * deliberately NOT seeded from localStorage: that key is readable by every app
+   * on the origin, so the shopkeeper and delivery apps were picking up the
+   * customer's list (and vice versa).
+   */
+  const [orders, setOrders] = useState(initialOrders);
   const [scheduledOrders, setScheduledOrders] = useState(initialScheduledOrders);
   const [registeredUsers, setRegisteredUsers] = useState(initialRegisteredUsers);
   const [searchVal, setSearchVal] = useState('');
@@ -87,15 +84,14 @@ export default function App() {
     };
   }, []);
 
-  const [cartItems, setCartItems, clearCart] = useLocalStorage('vegbazzar_cart', [
-    {
-      id: 101,
-      name: 'Organic Spinach (Palak)',
-      price: 35,
-      quantity: 2,
-      image: 'https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=150',
-    },
-  ]);
+  /**
+   * The cart starts empty. It previously shipped a demo line item whose `id` was
+   * a mock catalog number (101), not a real product id — so the first thing a new
+   * user saw in their basket was the one thing checkout could not accept: the
+   * server validates every productId as a 24-character ObjectId and rejected the
+   * whole order with a 400.
+   */
+  const [cartItems, setCartItems, clearCart] = useLocalStorage('vegbazzar_cart', []);
   /**
    * Wallet is a read-through cache of the server ledger, never a source of
    * truth. It was previously persisted to localStorage, which meant the balance
@@ -222,75 +218,45 @@ export default function App() {
     };
   }, [isRestoringSession, user]);
 
-  // 🔄 Sync orders to localStorage & BroadcastChannel whenever orders state changes
+  /**
+   * Poll the server for order changes.
+   *
+   * This replaces a localStorage + BroadcastChannel mirror that wrote this
+   * customer's order list to a key every app on the origin could read, and
+   * merged whatever it found back into state. The server already scopes orders
+   * to the caller, so the mirror added nothing but a cross-role leak.
+   *
+   * Polling pauses while the tab is hidden, and does not run at all until there
+   * is a session — an unauthenticated poll just 401s every five seconds.
+   */
   useEffect(() => {
-    try {
-      localStorage.setItem('vegbazzar_orders', JSON.stringify(orders));
-      if (window.BroadcastChannel) {
-        const bc = new BroadcastChannel('vegbazzar_orders_channel');
-        bc.postMessage({ type: 'ORDERS_UPDATED', orders });
-        bc.close();
-      }
-    } catch (e) {}
-  }, [orders]);
+    if (!user) return;
 
-  // 📡 Real-time Cross-Tab Storage Event & 3-Second Background Order Polling
-  useEffect(() => {
-    const handleStorage = (e) => {
-      if (e.key === 'vegbazzar_orders' && e.newValue) {
-        try {
-          const fresh = JSON.parse(e.newValue);
-          if (Array.isArray(fresh)) setOrders(fresh);
-        } catch (err) {}
-      }
-    };
+    let cancelled = false;
 
-    window.addEventListener('storage', handleStorage);
-
-    let bc = null;
-    if (window.BroadcastChannel) {
-      bc = new BroadcastChannel('vegbazzar_orders_channel');
-      bc.onmessage = (event) => {
-        if (event.data?.type === 'ORDERS_UPDATED' && Array.isArray(event.data.orders)) {
-          setOrders(event.data.orders);
-        }
-      };
-    }
-
-    // Background polling every 3 seconds for new orders
-    const interval = setInterval(async () => {
+    const poll = async () => {
+      if (document.hidden) return;
       try {
-        const saved = localStorage.getItem('vegbazzar_orders');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setOrders((prev) => {
-              const currentList = Array.isArray(prev) ? prev : [];
-              const existingIds = new Set(currentList.map((o) => o?.id));
-              const newItems = parsed.filter((o) => o && o.id && !existingIds.has(o.id));
-              if (newItems.length > 0) {
-                return [...newItems, ...currentList];
-              }
-              return currentList;
-            });
-          }
-        }
-
-        // Server is authoritative and scopes the result to this caller's role,
-        // so replace wholesale rather than merging with locally-cached orders.
         const serverOrders = await fetchOrders({ limit: 100 });
-        setOrders(serverOrders);
+        if (!cancelled) setOrders(serverOrders);
       } catch (e) {
         /* Transient poll failure; the next tick retries. */
       }
-    }, 5000);
+    };
+
+    const interval = setInterval(poll, 5000);
+    // Refresh immediately when the tab regains focus, rather than waiting.
+    const onVisible = () => {
+      if (!document.hidden) poll();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
-      window.removeEventListener('storage', handleStorage);
-      if (bc) bc.close();
+      cancelled = true;
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [toast]);
+  }, [user]);
 
   const handleSyncOrders = useCallback(async () => {
     try {

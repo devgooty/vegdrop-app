@@ -75,6 +75,53 @@ Token handling, in `src/services/apiClient.js`:
 
 Stateless access tokens are revoked by incrementing `user.tokenVersion`; `middleware/auth.js` compares the token's `tv` claim against the live record and re-reads the role from the database on every request, so a demotion applies immediately.
 
+### OTP delivery
+
+`services/notify.js` resolves a transport **per channel**, lazily. `email` and
+`sms` are separate: every real provider handles one or the other, never both.
+Getting this wrong is not hypothetical — a single global transport meant that
+configuring WhatsApp broke sign-in for every user with an email address, because
+`routes/auth.js` addresses a challenge to `user.email || user.phone`.
+
+Phone transports, via `NOTIFY_TRANSPORT`:
+
+| Value | What it is |
+|---|---|
+| `console` | dev stub, prints codes; **production refuses to boot on it** |
+| `whatsapp` | official Cloud API; approved template, paid per message |
+| `whatsapp_bot` | unofficial WhatsApp Web client (`server/bot`); free, against WhatsApp's ToS, bannable |
+
+`OTP_CHANNEL` picks which contact detail a code is addressed to. There is no email
+transport yet, so production requires `OTP_CHANNEL=phone`; boot fails otherwise
+rather than silently falling back to the console stub.
+
+WhatsApp is a **transport, not a channel**. `OtpChallenge.channel` stays
+`sms`/`email`, so the `phoneVerifiedAt` logic in `routes/auth.js` is untouched —
+a code delivered over WhatsApp still verifies the phone.
+
+The unofficial bot (`server/bot/`, ESM, separate process — see its README) exists
+because it was asked for, and is deliberately **not** the default. If that number
+is banned, `NOTIFY_TRANSPORT=whatsapp_bot` means nobody can sign in at all.
+
+Things that are easy to get wrong here:
+
+- **WhatsApp cannot send free-form business-initiated text.** Every code goes
+  through a Meta-approved template of category `AUTHENTICATION`, whose body takes
+  exactly one variable. A `type: "text"` send looks accepted and never arrives.
+- **The transport never logs the code** and masks the destination. The console
+  stub prints codes on purpose; a real provider transport must not.
+- **Meta's HTTP status is never reused as the client's.** A 400 from Graph means
+  our template is wrong, not that the caller's request was — the same mistake
+  `middleware/errors.js` calls out for the Razorpay client. Every failure becomes
+  one generic `503 OTP_DELIVERY_FAILED`, which also stops "not a WhatsApp user"
+  from being an account-enumeration oracle.
+- **`POST /messages` returning 200 does not mean delivered.** Delivery status
+  arrives only at `/api/whatsapp/webhook`, which is mounted *above* the database
+  gate (it needs no database) and authenticates Meta via an
+  `X-Hub-Signature-256` HMAC. That HMAC covers the exact bytes sent, which is why
+  `app.js` retains `req.rawBody` for that one path — re-serialising the parsed
+  body does not reproduce them.
+
 ### Money
 
 **All amounts are integer paise on the server** (`pricePaise`, `amountPaise`, `totalAmountPaise`). Rupees exist only at the API boundary and as presentation virtuals. Floats invite rounding drift that surfaces as unreconcilable balances.

@@ -43,6 +43,20 @@ function decoyHash() {
   return decoyHashPromise;
 }
 
+/**
+ * Choose where a verification code is addressed.
+ *
+ * `auto` prefers email when the account has one. That is wrong whenever the only
+ * configured transport is a phone one (WhatsApp), because the code would be
+ * addressed to an email nothing can deliver — so OTP_CHANNEL=phone forces the
+ * phone number. Phone is always present; email is optional.
+ */
+function otpDestinationFor({ email, phone }) {
+  if (config.otp.channel === 'phone') return phone;
+  if (config.otp.channel === 'email') return email || phone;
+  return email || phone;
+}
+
 /** Split a login identifier into the field it should be matched against. */
 function normalizeIdentifier(raw) {
   const clean = String(raw).trim().toLowerCase();
@@ -112,7 +126,7 @@ router.post(
     if (existing) {
       const challenge = await otp.issueChallenge({
         purpose: 'register',
-        destination: email || phone,
+        destination: otpDestinationFor({ email, phone }),
         payload: { duplicate: true },
       });
       return res.status(202).json({ ...challenge, next: 'verify' });
@@ -122,7 +136,7 @@ router.post(
 
     const challenge = await otp.issueChallenge({
       purpose: 'register',
-      destination: email || phone,
+      destination: otpDestinationFor({ email, phone }),
       // Held server-side for the duration of the challenge; never returned.
       payload: { name, phone, email: email || null, passwordHash },
     });
@@ -219,7 +233,7 @@ router.post(
 
     const challenge = await otp.issueChallenge({
       purpose: 'login',
-      destination: user.email || user.phone,
+      destination: otpDestinationFor({ email: user.email, phone: user.phone }),
       user,
     });
 

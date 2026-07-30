@@ -82,6 +82,79 @@ if (isProduction && corsOrigins.length === 0) {
   fatal.push('CORS_ALLOWED_ORIGINS is required in production (comma-separated absolute origins).');
 }
 
+// --- Outbound notifications --------------------------------------------------
+
+const whatsappPhoneNumberId = optional('WHATSAPP_PHONE_NUMBER_ID', '');
+const whatsappAccessToken = optional('WHATSAPP_ACCESS_TOKEN', '');
+const whatsappTemplateName = optional('WHATSAPP_OTP_TEMPLATE_NAME', '');
+const whatsappConfigured = Boolean(whatsappPhoneNumberId && whatsappAccessToken && whatsappTemplateName);
+
+const whatsappBotBridgeToken = optional('WHATSAPP_BOT_BRIDGE_TOKEN', '');
+
+/**
+ * console      — dev stub, prints codes to stdout
+ * whatsapp     — official WhatsApp Cloud API (approved template, paid per message)
+ * whatsapp_bot — UNOFFICIAL WhatsApp Web client via server/bot (free, against
+ *                WhatsApp's Terms of Service, the number can be banned)
+ */
+const VALID_TRANSPORTS = ['console', 'whatsapp', 'whatsapp_bot'];
+
+/**
+ * Which contact detail a code is addressed to.
+ *
+ * `auto` keeps the original behaviour — email when the account has one, phone
+ * otherwise. `phone` forces every code to the phone number, which is what you
+ * want when the only configured transport is a phone one.
+ */
+const otpChannel = optional('OTP_CHANNEL', 'auto');
+if (!['auto', 'phone', 'email'].includes(otpChannel)) {
+  fatal.push(`OTP_CHANNEL must be auto, phone or email (got "${otpChannel}").`);
+}
+
+/**
+ * Which transport delivers codes to phone numbers.
+ *
+ * Defaults to whatsapp once credentials exist, so configuring the provider is
+ * enough to switch over — no second flag to remember. `console` is a development
+ * stub that prints codes to stdout and is refused in production below.
+ */
+const notifyTransport = optional('NOTIFY_TRANSPORT', whatsappConfigured ? 'whatsapp' : 'console');
+
+if (!VALID_TRANSPORTS.includes(notifyTransport)) {
+  fatal.push(`NOTIFY_TRANSPORT must be one of ${VALID_TRANSPORTS.join(', ')} (got "${notifyTransport}").`);
+}
+
+if (notifyTransport === 'whatsapp' && !whatsappConfigured) {
+  fatal.push(
+    'NOTIFY_TRANSPORT=whatsapp requires WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN and WHATSAPP_OTP_TEMPLATE_NAME.'
+  );
+}
+
+if (notifyTransport === 'whatsapp_bot' && whatsappBotBridgeToken.length < 16) {
+  fatal.push(
+    'NOTIFY_TRANSPORT=whatsapp_bot requires WHATSAPP_BOT_BRIDGE_TOKEN (at least 16 characters). Generate one with: node -e "console.log(require(\'crypto\').randomBytes(24).toString(\'base64url\'))"'
+  );
+}
+
+/**
+ * No email transport is implemented. Under OTP_CHANNEL=auto an account with an
+ * email address is addressed by email, which in production would fall through to
+ * the console stub and write codes to the log. Refuse at boot instead.
+ */
+if (isProduction && otpChannel !== 'phone') {
+  fatal.push(
+    `OTP_CHANNEL=${otpChannel} can address codes to email, but no email transport is implemented. Set OTP_CHANNEL=phone, or add an email transport in server/services/notify.js.`
+  );
+}
+
+// Shipping the console stub to production means verification codes are written
+// to server logs instead of being delivered. Fail at boot, not at first send.
+if (isProduction && notifyTransport === 'console') {
+  fatal.push(
+    'A real notification transport is required in production. Configure WhatsApp (WHATSAPP_*) or implement another transport in server/services/notify.js.'
+  );
+}
+
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
 const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
 const razorpayConfigured = Boolean(razorpayKeyId && razorpayKeySecret);
@@ -115,6 +188,7 @@ const config = Object.freeze({
 
   // Pepper is mixed into OTP hashes so a database leak alone does not reveal codes.
   otp: Object.freeze({
+    channel: otpChannel,
     pepper: secret('OTP_PEPPER'),
     length: 6,
     ttlSeconds: int('OTP_TTL_SECONDS', 5 * 60),
@@ -126,6 +200,54 @@ const config = Object.freeze({
     maxFailedLogins: int('AUTH_MAX_FAILED_LOGINS', 8),
     lockoutSeconds: int('AUTH_LOCKOUT_SECONDS', 15 * 60),
     minPasswordLength: int('AUTH_MIN_PASSWORD_LENGTH', 10),
+  }),
+
+  notifyTransport,
+
+  whatsapp: Object.freeze({
+    configured: whatsappConfigured,
+    phoneNumberId: whatsappPhoneNumberId,
+    accessToken: whatsappAccessToken,
+    // Pinned rather than "latest": Graph API versions are deprecated on a
+    // schedule, and an unannounced bump changes payload validation under you.
+    apiVersion: optional('WHATSAPP_API_VERSION', 'v21.0'),
+    templateName: whatsappTemplateName,
+    templateLocale: optional('WHATSAPP_TEMPLATE_LOCALE', 'en'),
+    // Authentication templates normally carry a copy-code button that needs the
+    // code repeated as its parameter. Templates without one reject the extra
+    // component, so this is switchable.
+    includeOtpButton: optional('WHATSAPP_OTP_INCLUDE_BUTTON', 'true') !== 'false',
+    buttonSubType: optional('WHATSAPP_OTP_BUTTON_SUBTYPE', 'url'),
+    // Numbers are stored as 10 local digits; this is prepended when dialling out.
+    defaultCountryCode: optional('WHATSAPP_DEFAULT_COUNTRY_CODE', '91').replace(/\D/g, ''),
+    timeoutMs: int('WHATSAPP_TIMEOUT_MS', 10000),
+    // Verifies inbound webhook calls actually came from Meta.
+    appSecret: optional('WHATSAPP_APP_SECRET', ''),
+    webhookVerifyToken: optional('WHATSAPP_WEBHOOK_VERIFY_TOKEN', ''),
+  }),
+
+  /**
+   * Unofficial WhatsApp bot (server/bot). Free, and against WhatsApp's Terms of
+   * Service — the number can be banned without warning.
+   */
+  whatsappBot: Object.freeze({
+    bridgeHost: optional('WHATSAPP_BOT_BRIDGE_HOST', '127.0.0.1'),
+    bridgePort: int('WHATSAPP_BOT_BRIDGE_PORT', 5055),
+    bridgeUrl: optional('WHATSAPP_BOT_BRIDGE_URL', `http://127.0.0.1:${int('WHATSAPP_BOT_BRIDGE_PORT', 5055)}`),
+    bridgeToken: whatsappBotBridgeToken,
+    // Generous: the bot paces sends on purpose, so a queued message waits.
+    bridgeTimeoutMs: int('WHATSAPP_BOT_BRIDGE_TIMEOUT_MS', 30000),
+
+    authDir: optional('WHATSAPP_BOT_AUTH_DIR', '.auth'),
+    countryCode: optional('WHATSAPP_BOT_COUNTRY_CODE', '91').replace(/\D/g, ''),
+
+    // Ban-avoidance pacing. Raising these raises the risk.
+    minIntervalMs: int('WHATSAPP_BOT_MIN_INTERVAL_MS', 3000),
+    jitterMs: int('WHATSAPP_BOT_JITTER_MS', 2000),
+    dailyCap: int('WHATSAPP_BOT_DAILY_CAP', 200),
+    perRecipientCooldownMs: int('WHATSAPP_BOT_RECIPIENT_COOLDOWN_MS', 60000),
+
+    verbose: optional('WHATSAPP_BOT_VERBOSE', 'false') === 'true',
   }),
 
   razorpay: Object.freeze({

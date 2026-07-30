@@ -1,0 +1,66 @@
+# VegBazzar — Caddy config for a single always-on VM.
+#
+# Serves the built frontend and reverse-proxies /api/* to the local Express
+# process, so the browser and the API share one origin. That matters here:
+# src/services/apiClient.js calls the API with a RELATIVE path (`/api`), so if
+# the frontend were served from a different domain than the API, every request
+# would 404. One origin, one Caddyfile, nothing to misconfigure.
+#
+# Caddy issues and renews HTTPS certificates automatically (Let's Encrypt) the
+# moment you put a real domain name below — no certbot, no manual renewal.
+#
+# Install:  https://caddyserver.com/docs/install  (one static binary, no deps)
+# Run:      sudo caddy run --config /path/to/this/Caddyfile
+# Reload:   sudo caddy reload --config /path/to/this/Caddyfile
+#
+# ─────────────────────────────────────────────────────────────────────────
+# Replace this with your real domain (e.g. shop.example.com) before you
+# have one, use the VM's bare IP instead — see the commented block below.
+# ─────────────────────────────────────────────────────────────────────────
+your-domain.com {
+	# Static frontend build.
+	root * /var/www/vegbazzar/dist
+	encode gzip
+
+	# API traffic goes to Express on the same box. Never proxy /api/whatsapp
+	# to anywhere else — that path carries the Meta webhook, which
+	# authenticates itself via a raw-body HMAC (see server/app.js); it must
+	# reach the API untouched.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:5000
+	}
+
+	# Everything else: serve the SPA, falling back to index.html so client-side
+	# hash routing (#/shopkeeper, #/delivery) and a hard refresh both work.
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+
+	# PWA assets change on every deploy (Vite fingerprints filenames), so this
+	# is safe to cache hard. index.html itself is NOT covered by this glob and
+	# stays default (no aggressive caching) so a deploy is visible immediately.
+	@immutable path /assets/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+}
+
+# ─────────────────────────────────────────────────────────────────────────
+# No domain yet? Comment out the block above and uncomment this one to serve
+# over plain HTTP on the VM's IP. Swap back once you have a domain — HTTPS is
+# not optional for anything handling logins and payments.
+# ─────────────────────────────────────────────────────────────────────────
+# :80 {
+# 	root * /var/www/vegbazzar/dist
+# 	encode gzip
+# 	handle /api/* {
+# 		reverse_proxy 127.0.0.1:5000
+# 	}
+# 	handle {
+# 		try_files {path} /index.html
+# 		file_server
+# 	}
+# }
+
+# The bot's own HTTP surface (server/bot/bridge.mjs) is NOT proxied here and
+# never should be — it binds to 127.0.0.1 only and can send WhatsApp messages
+# as you. Only the Express API on :5000 talks to it, over loopback.

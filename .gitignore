@@ -39,6 +39,12 @@ app.db
 adb.zip
 platform-tools/
 
+# WhatsApp bot session credentials.
+# These ARE the linked-device session: anyone with a copy can send WhatsApp
+# messages as you. Never commit them.
+server/bot/.auth/
+server/bot/.auth*/
+
 
 # Editor directories and files
 .vscode/*

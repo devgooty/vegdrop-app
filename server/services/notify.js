@@ -11,9 +11,22 @@ const config = require('../config/env');
  */
 
 /**
+ * @typedef {object} OtpDetails
+ * @property {string} code      the plaintext code
+ * @property {string} purpose   login | register | profile_update | password_reset
+ * @property {number} ttlSeconds
+ */
+
+/**
  * @typedef {object} Transport
  * @property {string} name
- * @property {(msg: { channel: 'sms'|'email', to: string, subject?: string, text: string }) => Promise<void>} send
+ * @property {(msg: { channel: 'sms'|'email', to: string, subject?: string, text: string, otp?: OtpDetails }) => Promise<void>} send
+ *
+ * `text` is a fully composed human-readable message, which is all a plain SMS or
+ * email transport needs. `otp` carries the same information structured, because
+ * WhatsApp business-initiated messages must go through a pre-approved template
+ * whose only variable is the code — that transport cannot parse it back out of
+ * the prose. Transports that do not need it ignore it.
  */
 
 /** @type {Transport} */
@@ -40,27 +53,109 @@ const nullTransport = {
   },
 };
 
-function resolveTransport() {
-  if (config.isTest) return nullTransport;
+/**
+ * Build the transport that delivers to PHONE destinations.
+ *
+ * Kept separate from the email transport because every real provider handles one
+ * or the other, never both. Routing an email address into a phone transport used
+ * to be possible and threw at send time — see resolveRegistry below.
+ */
+function resolvePhoneTransport() {
+  if (config.notifyTransport === 'whatsapp_bot') {
+    const { createWhatsappBridgeTransport } = require('./transports/whatsappBridge');
+    const bot = config.whatsappBot;
+
+    console.warn(
+      '[notify] transport=whatsapp_bot — UNOFFICIAL WhatsApp client.\n' +
+      '[notify] This violates WhatsApp\'s Terms of Service and the number may be banned.\n' +
+      `[notify] Requires \`npm run bot\` running and paired at ${bot.bridgeUrl}.`
+    );
+
+    return createWhatsappBridgeTransport({
+      bridgeUrl: bot.bridgeUrl,
+      bridgeToken: bot.bridgeToken,
+      timeoutMs: bot.bridgeTimeoutMs,
+    });
+  }
+
+  if (config.notifyTransport === 'whatsapp') {
+    // Required config is validated at boot in config/env.js, so reaching here
+    // with incomplete credentials is impossible.
+    const { createWhatsappTransport } = require('./transports/whatsapp');
+    const wa = config.whatsapp;
+
+    console.info(
+      `[notify] transport=whatsapp template=${wa.templateName} locale=${wa.templateLocale} api=${wa.apiVersion}`
+    );
+
+    return createWhatsappTransport({
+      phoneNumberId: wa.phoneNumberId,
+      accessToken: wa.accessToken,
+      apiVersion: wa.apiVersion,
+      templateName: wa.templateName,
+      templateLocale: wa.templateLocale,
+      includeOtpButton: wa.includeOtpButton,
+      buttonSubType: wa.buttonSubType,
+      defaultCountryCode: wa.defaultCountryCode,
+      timeoutMs: wa.timeoutMs,
+    });
+  }
+
   if (config.isProduction) {
-    // Deliberate hard failure. Shipping with the dev stub would mean OTP codes
-    // are written to server logs instead of being delivered to the user.
+    // Backstop only: config/env.js already refuses to boot production on the
+    // console stub, because that writes verification codes to server logs
+    // instead of delivering them.
     throw new Error(
-      'No production notification transport is configured. Implement an SMS/email transport in server/services/notify.js before deploying.'
+      'No production notification transport is configured. Set WHATSAPP_* credentials or implement another transport in server/services/notify.js before deploying.'
+    );
+  }
+
+  return consoleTransport;
+}
+
+/**
+ * Build the email transport.
+ *
+ * There is no real one yet. `config/env.js` refuses to boot production while an
+ * email destination is reachable and this is still the console stub, so the
+ * unimplemented case cannot silently print codes to a production log.
+ */
+function resolveEmailTransport() {
+  if (config.isProduction) {
+    throw new Error(
+      'No email transport is implemented. Set OTP_CHANNEL=phone so codes always go to the phone, or add an email transport in server/services/notify.js.'
     );
   }
   return consoleTransport;
 }
 
-let transport = null;
-function getTransport() {
-  if (!transport) transport = resolveTransport();
-  return transport;
+/**
+ * Transport per channel.
+ *
+ * WHY THIS IS KEYED BY CHANNEL
+ *
+ * routes/auth.js addresses a challenge to `user.email || user.phone`, so the
+ * destination can be either. A single global transport meant that configuring a
+ * phone provider (WhatsApp) broke sign-in for every user who had an email
+ * address: the phone transport correctly refused the email, and the refusal
+ * surfaced as a failed login. Resolution is per channel and lazy, so an
+ * unconfigured channel only fails if something actually addresses it.
+ */
+const registry = new Map();
+
+function transportFor(channel) {
+  if (config.isTest) return nullTransport;
+
+  if (!registry.has(channel)) {
+    registry.set(channel, channel === 'email' ? resolveEmailTransport() : resolvePhoneTransport());
+  }
+  return registry.get(channel);
 }
 
-/** Test seam: swap the transport (e.g. to capture messages in assertions). */
+/** Test seam: swap the transport for every channel. */
 function setTransport(next) {
-  transport = next;
+  registry.set('email', next);
+  registry.set('sms', next);
 }
 
 async function sendOtp({ channel, to, code, purpose, ttlSeconds }) {
@@ -72,13 +167,15 @@ async function sendOtp({ channel, to, code, purpose, ttlSeconds }) {
     password_reset: 'reset the password for',
   }[purpose] || 'verify';
 
-  await getTransport().send({
+  await transportFor(channel).send({
     channel,
     to,
     subject: 'Your VegBazzar verification code',
     text:
       `${code} is your VegBazzar verification code to ${purposeText} your account.\n` +
       `It expires in ${minutes} minute${minutes === 1 ? '' : 's'}. Do not share it with anyone.`,
+    // Structured form for template-based transports; see the Transport typedef.
+    otp: { code, purpose, ttlSeconds },
   });
 }
 

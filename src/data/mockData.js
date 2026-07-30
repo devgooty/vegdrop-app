@@ -232,15 +232,20 @@ export const initialOrders = [
   },
 ];
 
+/**
+ * Placeholder rows shown until the server's user list loads.
+ *
+ * Contact details are deliberately non-routable: example.com addresses and
+ * numbers from the 9000000xxx reserved block, matching server/utils/seed.js.
+ * Three real personal Gmail addresses and mobile numbers used to sit in this
+ * list — committed to the repository and inlined into the browser bundle.
+ */
 export const initialRegisteredUsers = [
-  { id: 1, identifier: 'shopkeeper@vegbazzar.com', phone: '9876543210', name: 'Ramesh Shopkeeper', role: 'shopkeeper' },
-  { id: 2, identifier: 'delivery@vegbazzar.com', phone: '9876543211', name: 'Suresh Delivery Agent', role: 'delivery' },
-  { id: 3, identifier: 'dev@vegbazzar.com', phone: '9876543212', name: 'Hemanth Developer', role: 'developer' },
-  { id: 4, identifier: 'owner@vegbazzar.com', phone: '9876543213', name: 'Vikram Market Owner', role: 'market_owner' },
-  { id: 5, identifier: 'customer@vegbazzar.com', phone: '9876543214', name: 'Aarav Customer', role: 'customer' },
-  { id: 6, identifier: 'samiletirevanthgopal2006@gmail.com', phone: '94441488911', name: 'Revanth Developer', role: 'developer' },
-  { id: 7, identifier: 'saibhargavsangu143@gmail.com', phone: '9014551801', name: 'Sai Bhargav Shopkeeper', role: 'shopkeeper' },
-  { id: 8, identifier: 'hemanthgandra84@gmail.com', phone: '9705541348', name: 'Hemanth Delivery Agent', role: 'delivery' },
+  { id: 1, identifier: 'shopkeeper@example.com', phone: '9000000002', name: 'Demo Shopkeeper', role: 'shopkeeper' },
+  { id: 2, identifier: 'delivery@example.com', phone: '9000000003', name: 'Demo Delivery Agent', role: 'delivery' },
+  { id: 3, identifier: 'developer@example.com', phone: '9000000005', name: 'Demo Developer', role: 'developer' },
+  { id: 4, identifier: 'owner@example.com', phone: '9000000004', name: 'Demo Market Owner', role: 'market_owner' },
+  { id: 5, identifier: 'customer@example.com', phone: '9000000001', name: 'Demo Customer', role: 'customer' },
 ];
 
 export const initialScheduledOrders = [
