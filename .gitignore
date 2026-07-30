@@ -56,3 +56,5 @@ server/bot/.auth*/
 *.njsproj
 *.sln
 *.sw?
+.vercel
+.env*
