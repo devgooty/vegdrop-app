@@ -160,24 +160,26 @@ function resolveEmailTransport() {
     return createFailoverTransport({ transports });
   }
 
-  if (mail.configured && mail.host) {
+  if (mail.configured && mail.smtp.host) {
     const { createEmailTransport } = require('./transports/email');
+    const smtp = mail.smtp;
 
-    console.info(`[notify] email transport=smtp host=${mail.host} port=${mail.port} secure=${mail.secure}`);
+    console.info(`[notify] email transport=smtp host=${smtp.host} port=${smtp.port} secure=${smtp.secure}`);
     // Railway blocks outbound SMTP on Hobby and Trial; this will fail there with
-    // ESOCKET before authenticating. Set RESEND_API_KEY instead on those plans.
-    if (!mail.secure && mail.port === 587) {
-      console.info('[notify] if this fails with ESOCKET, the host is blocking SMTP — use RESEND_API_KEY.');
+    // ESOCKET before authenticating. Use a provider API key on those plans.
+    if (!smtp.secure && smtp.port === 587) {
+      console.info('[notify] if this fails with ESOCKET, the host is blocking SMTP — set BREVO_API_KEY instead.');
     }
 
     return createEmailTransport({
-      host: mail.host,
-      port: mail.port,
-      secure: mail.secure,
-      user: mail.user,
-      pass: mail.pass,
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.secure,
+      user: smtp.user,
+      pass: smtp.pass,
+      // The shared sender, not smtp.from — one address, one place to set it.
       from: mail.from,
-      timeoutMs: mail.timeoutMs,
+      timeoutMs: smtp.timeoutMs,
     });
   }
 

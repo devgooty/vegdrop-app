@@ -312,15 +312,28 @@ const config = Object.freeze({
     providers: Object.freeze(emailProviders.map((p) => Object.freeze(p))),
     timeoutMs: int('EMAIL_TIMEOUT_MS', 10000),
 
-    host: smtpHost,
-    // 587 is STARTTLS (secure=false, upgraded after greeting); 465 is implicit
-    // TLS (secure=true). Mismatching the two is the usual cause of a hang.
-    port: int('SMTP_PORT', 587),
-    secure: optional('SMTP_SECURE', 'false') === 'true',
-    user: optional('SMTP_USER', ''),
-    pass: optional('SMTP_PASS', ''),
-    from: smtpFrom,
-    timeoutMs: int('SMTP_TIMEOUT_MS', 10000),
+    /**
+     * SMTP settings, nested rather than flattened alongside the fields above.
+     *
+     * They used to sit in this object directly, which put a second `from` and a
+     * second `timeoutMs` in the same literal — and a duplicate key in an object
+     * literal is not an error, it silently wins. `from` therefore resolved to
+     * SMTP_FROM no matter what EMAIL_FROM said, so deleting SMTP_FROM (correct,
+     * once SMTP was replaced) emptied the sender and every provider rejected the
+     * message with "sender email is missing". Nesting makes the collision
+     * impossible rather than merely fixed.
+     */
+    smtp: Object.freeze({
+      host: smtpHost,
+      // 587 is STARTTLS (secure=false, upgraded after greeting); 465 is implicit
+      // TLS (secure=true). Mismatching the two is the usual cause of a hang.
+      port: int('SMTP_PORT', 587),
+      secure: optional('SMTP_SECURE', 'false') === 'true',
+      user: optional('SMTP_USER', ''),
+      pass: optional('SMTP_PASS', ''),
+      from: smtpFrom,
+      timeoutMs: int('SMTP_TIMEOUT_MS', 10000),
+    }),
   }),
 
   razorpay: Object.freeze({

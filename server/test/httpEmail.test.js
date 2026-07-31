@@ -230,3 +230,20 @@ test('an address is masked for logs', () => {
 test('an unknown provider is refused at construction', () => {
   assert.throws(() => createHttpEmailTransport({ provider: 'nope', apiKey: 'k', from: 'a@b.com' }));
 });
+
+test('the configured sender is the one EMAIL_FROM sets', () => {
+  /**
+   * Guards a bug that cost an evening: `from` was declared twice in the
+   * config.email object literal — once from EMAIL_FROM, once from SMTP_FROM —
+   * and a duplicate key in a literal is not an error, it silently wins. The
+   * sender therefore always resolved to SMTP_FROM, so removing that variable
+   * (correct, once SMTP was replaced) emptied it, and every provider rejected
+   * the message with "sender email is missing" four layers away.
+   */
+  const config = require('../config/env');
+
+  assert.equal(config.email.from, process.env.EMAIL_FROM);
+  assert.ok(config.email.from.includes('@'), 'a sender must carry an address');
+  // SMTP settings live in their own object so the collision cannot come back.
+  assert.equal(typeof config.email.smtp, 'object');
+});
