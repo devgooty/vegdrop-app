@@ -105,27 +105,57 @@ const whatsappBotBridgeToken = optional('WHATSAPP_BOT_BRIDGE_TOKEN', '');
  */
 const smtpHost = optional('SMTP_HOST', '');
 const smtpFrom = optional('SMTP_FROM', '');
-const resendApiKey = optional('RESEND_API_KEY', '');
-// Falls back to SMTP_FROM so a host that already had one does not need a second.
-const emailFrom = optional('RESEND_FROM', '') || smtpFrom;
 
 /**
- * Which provider sends mail. Resend wins when both are present.
+ * HTTP email providers, tried in order until one delivers.
  *
- * Not a matter of taste: Railway blocks outbound SMTP on its Hobby and Trial
- * plans, so nodemailer fails there with ESOCKET before it ever reaches a
- * credential. Resend goes over HTTPS and works on any host. A deployment that
- * carries both is almost always one that tried SMTP first, failed, and added
- * Resend — so prefer the one that can actually deliver.
+ * Every one of these is reached over HTTPS rather than SMTP, which is what makes
+ * them usable here at all: Railway blocks outbound SMTP on its Hobby and Trial
+ * plans, so nodemailer fails with ESOCKET before reaching a credential.
+ *
+ * The default order puts the daily-resetting allowances first, so the pools that
+ * only refill monthly are held back for a day that actually needs them.
+ * EMAIL_PROVIDER_ORDER overrides it.
  */
-const emailProvider = resendApiKey ? 'resend' : smtpHost ? 'smtp' : null;
-const emailConfigured = Boolean(emailProvider && emailFrom);
+const EMAIL_PROVIDER_KEYS = Object.freeze({
+  brevo: 'BREVO_API_KEY',
+  sendgrid: 'SENDGRID_API_KEY',
+  mailersend: 'MAILERSEND_API_KEY',
+  mailtrap: 'MAILTRAP_API_TOKEN',
+  plunk: 'PLUNK_API_KEY',
+  resend: 'RESEND_API_KEY',
+});
 
-if (resendApiKey && !emailFrom) {
-  fatal.push('RESEND_API_KEY is set but RESEND_FROM is not. Resend requires a sender on a domain you have verified.');
+const DEFAULT_EMAIL_ORDER = ['brevo', 'sendgrid', 'mailersend', 'mailtrap', 'plunk', 'resend'];
+
+const emailOrder = list('EMAIL_PROVIDER_ORDER', DEFAULT_EMAIL_ORDER)
+  .map((name) => name.toLowerCase())
+  .filter((name) => {
+    if (EMAIL_PROVIDER_KEYS[name]) return true;
+    fatal.push(
+      `EMAIL_PROVIDER_ORDER contains unknown provider "${name}". Known: ${Object.keys(EMAIL_PROVIDER_KEYS).join(', ')}.`
+    );
+    return false;
+  });
+
+/** Only providers that actually carry a key, in the resolved order. */
+const emailProviders = emailOrder
+  .map((name) => ({ name, apiKey: optional(EMAIL_PROVIDER_KEYS[name], '') }))
+  .filter((p) => p.apiKey.length > 0);
+
+// Falls back through the older single-provider names so an existing deployment
+// does not need its sender re-entered.
+const emailFrom = optional('EMAIL_FROM', '') || optional('RESEND_FROM', '') || smtpFrom;
+
+const emailConfigured = Boolean(emailFrom && (emailProviders.length > 0 || smtpHost));
+
+if (emailProviders.length > 0 && !emailFrom) {
+  fatal.push(
+    'An email provider API key is set but EMAIL_FROM is not. Set EMAIL_FROM to a sender the provider has verified, e.g. "VegBazzar <no-reply@example.com>".'
+  );
 }
 
-if (smtpHost && !smtpFrom && !resendApiKey) {
+if (smtpHost && !smtpFrom && emailProviders.length === 0) {
   fatal.push('SMTP_HOST is set but SMTP_FROM is not. Most relays reject a message with no envelope sender.');
 }
 
@@ -266,13 +296,10 @@ const config = Object.freeze({
 
   email: Object.freeze({
     configured: emailConfigured,
-    provider: emailProvider,
     from: emailFrom,
-
-    resend: Object.freeze({
-      apiKey: resendApiKey,
-      timeoutMs: int('RESEND_TIMEOUT_MS', 10000),
-    }),
+    // In preference order; the chain walks it until one delivers.
+    providers: Object.freeze(emailProviders.map((p) => Object.freeze(p))),
+    timeoutMs: int('EMAIL_TIMEOUT_MS', 10000),
 
     host: smtpHost,
     // 587 is STARTTLS (secure=false, upgraded after greeting); 465 is implicit

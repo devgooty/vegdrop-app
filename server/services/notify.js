@@ -138,19 +138,29 @@ function resolvePhoneTransport() {
 function resolveEmailTransport() {
   const mail = config.email;
 
-  if (mail.configured && mail.provider === 'resend') {
-    const { createResendTransport } = require('./transports/resend');
+  if (mail.configured && mail.providers.length > 0) {
+    const { createHttpEmailTransport } = require('./transports/httpEmail');
+    const { createFailoverTransport } = require('./transports/failover');
 
-    console.info(`[notify] email transport=resend from=${mail.from}`);
+    const transports = mail.providers.map((p) =>
+      createHttpEmailTransport({
+        provider: p.name,
+        apiKey: p.apiKey,
+        from: mail.from,
+        timeoutMs: mail.timeoutMs,
+      })
+    );
 
-    return createResendTransport({
-      apiKey: mail.resend.apiKey,
-      from: mail.from,
-      timeoutMs: mail.resend.timeoutMs,
-    });
+    console.info(
+      `[notify] email providers=${mail.providers.map((p) => p.name).join(' -> ')} from=${mail.from}`
+    );
+
+    // A single provider needs no chain, but keeping one costs nothing and means
+    // adding a second key later changes no code path.
+    return createFailoverTransport({ transports });
   }
 
-  if (mail.configured && mail.provider === 'smtp') {
+  if (mail.configured && mail.host) {
     const { createEmailTransport } = require('./transports/email');
 
     console.info(`[notify] email transport=smtp host=${mail.host} port=${mail.port} secure=${mail.secure}`);
@@ -176,7 +186,7 @@ function resolveEmailTransport() {
     // Fan-out checks `configured` first, so this is a programming error, not a
     // deployment one — and it must not degrade to printing codes into a log.
     throw new Error(
-      'No email transport is configured. Set RESEND_API_KEY and RESEND_FROM (works on any host), or SMTP_HOST and SMTP_FROM.'
+      'No email transport is configured. Set EMAIL_FROM plus at least one provider key (BREVO_API_KEY, SENDGRID_API_KEY, MAILERSEND_API_KEY, MAILTRAP_API_TOKEN, PLUNK_API_KEY, RESEND_API_KEY), or SMTP_HOST and SMTP_FROM on a host that permits SMTP.'
     );
   }
 
