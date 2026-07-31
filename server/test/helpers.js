@@ -13,6 +13,13 @@ process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-that-is-long-enough-00000'
 process.env.OTP_PEPPER = 'test-otp-pepper-that-is-long-enough-0000000000';
 process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:3000';
 
+// Marks email delivery as configured so the fan-out path is exercised. Nothing
+// connects: transportFor answers with the null transport (or whatever a test
+// installs via setTransport) before resolveEmailTransport is ever reached, so
+// this host is never resolved.
+process.env.SMTP_HOST = 'smtp.invalid.test';
+process.env.SMTP_FROM = 'VegBazzar <no-reply@invalid.test>';
+
 // config/env.js skips dotenv under NODE_ENV=test, but clear these explicitly in
 // case they were exported into the shell: a test run must never be able to reach
 // a live payment provider with real credentials.
@@ -34,6 +41,20 @@ async function startTestServer() {
   replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
   await connect(replSet.getUri('vegbazzar_test'));
   app = createApp();
+
+  /**
+   * Wait for index builds before any test runs.
+   *
+   * Mongoose builds declared indexes in the background and nothing awaits them,
+   * so a suite that starts writing immediately races them. Uniqueness is not an
+   * assertion the application makes — it is enforced only by the index — which
+   * means a test for a constraint that has not finished building silently
+   * observes no constraint at all, and passes for the wrong reason.
+   * `resetDatabase` clears documents rather than dropping collections, so this
+   * is paid once per run.
+   */
+  await Promise.all(Object.values(mongoose.models).map((model) => model.createIndexes()));
+
   return app;
 }
 

@@ -18,7 +18,10 @@ const refreshTokenSchema = new mongoose.Schema(
     // Shared by every token descended from a single login.
     family: { type: String, required: true, index: true },
 
-    expiresAt: { type: Date, required: true, index: true },
+    // Indexed below as a TTL index. Declaring `index: true` here as well defines
+    // `expiresAt_1` twice with differing options, and MongoDB rejects the second
+    // — which is how the reaper came to be silently absent.
+    expiresAt: { type: Date, required: true },
     revokedAt: { type: Date, default: null },
     replacedByHash: { type: String, default: null },
 

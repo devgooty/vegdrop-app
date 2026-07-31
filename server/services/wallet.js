@@ -29,45 +29,98 @@ async function listTransactions(userId, { limit = 50, before = null } = {}) {
 }
 
 /**
+ * How many times to recompute against a moved tail before giving up. Reached only
+ * under sustained concurrent writes for one user, which a single person cannot
+ * produce; a low ceiling is preferable to spinning.
+ */
+const MAX_APPEND_ATTEMPTS = 5;
+
+/**
+ * Append one entry, deriving its balance and position from the current tail.
+ *
+ * WHY THIS IS A LOOP AND NOT A READ FOLLOWED BY AN INSERT
+ *
+ * Deriving the balance means read-then-insert, which is write skew: two
+ * concurrent debits both read the same tail, both pass their own sufficiency
+ * check, and both insert. A transaction does not prevent that on its own —
+ * snapshot isolation detects conflicts on a shared *document*, and here each
+ * writer inserts a different one. The unique {user, seq} index is what forces a
+ * collision; this loop is what turns the collision into a correct entry rather
+ * than a failed request.
+ *
+ * @param {(ctx: { currentPaise: number, seq: number }) => object} build
+ *   Produces the document to insert. Called once per attempt, so any balance
+ *   check inside it is made against the tail this attempt will actually extend.
+ */
+async function appendEntry({ userId, idempotencyKey, build, session }) {
+  const replayed = await findByIdempotencyKey(idempotencyKey, session);
+  if (replayed) {
+    return { transaction: replayed, balancePaise: replayed.balanceAfterPaise, replayed: true };
+  }
+
+  for (let attempt = 0; attempt < MAX_APPEND_ATTEMPTS; attempt += 1) {
+    const tail = await WalletTransaction.latestFor(userId, session);
+    const currentPaise = tail ? tail.balanceAfterPaise : 0;
+    const seq = (Number.isInteger(tail?.seq) ? tail.seq : 0) + 1;
+
+    const doc = build({ currentPaise, seq });
+
+    try {
+      const [created] = await WalletTransaction.create(
+        [{ ...doc, user: userId, seq, idempotencyKey }],
+        session ? { session } : {}
+      );
+      return { transaction: created.toObject(), balancePaise: doc.balanceAfterPaise, replayed: false };
+    } catch (err) {
+      if (err?.code !== 11000) throw err;
+
+      // The idempotency key collided: an identical entry was written concurrently.
+      // Report the winner rather than double-applying it.
+      const winner = await findByIdempotencyKey(idempotencyKey, session);
+      if (winner) {
+        return { transaction: winner, balancePaise: winner.balanceAfterPaise, replayed: true };
+      }
+
+      /**
+       * The {user, seq} index collided instead: a different entry landed between
+       * our read and our insert.
+       *
+       * Inside a transaction, retrying here is pointless — reads are served from
+       * a snapshot fixed when the transaction began, so the tail would come back
+       * unchanged and the loop would spin until it exhausted its attempts. Fail
+       * instead and let the caller's transaction be retried as a whole, which is
+       * what the driver already does for the more common WriteConflict form of
+       * this race.
+       */
+      if (session) {
+        throw new ApiError(409, 'Wallet was updated concurrently. Please try again.', 'WALLET_CONFLICT');
+      }
+    }
+  }
+
+  throw new ApiError(409, 'Wallet was updated concurrently. Please try again.', 'WALLET_CONFLICT');
+}
+
+/**
  * @returns {Promise<{ transaction: object, balancePaise: number, replayed: boolean }>}
  */
 async function credit({ userId, amountPaise, reason, idempotencyKey, razorpayOrderId = null, razorpayPaymentId = null, note = null, session = null }) {
   assertAmount(amountPaise);
 
-  const existing = await findByIdempotencyKey(idempotencyKey, session);
-  if (existing) {
-    return { transaction: existing, balancePaise: existing.balanceAfterPaise, replayed: true };
-  }
-
-  const current = await getBalancePaise(userId, session);
-  const next = current + amountPaise;
-
-  try {
-    const [created] = await WalletTransaction.create(
-      [{
-        user: userId,
-        type: 'credit',
-        amountPaise,
-        balanceAfterPaise: next,
-        reason,
-        idempotencyKey,
-        razorpayOrderId,
-        razorpayPaymentId,
-        note,
-      }],
-      session ? { session } : {}
-    );
-    return { transaction: created.toObject(), balancePaise: next, replayed: false };
-  } catch (err) {
-    // Lost the race against a concurrent identical credit: treat as a replay.
-    if (err?.code === 11000) {
-      const winner = await findByIdempotencyKey(idempotencyKey, session);
-      if (winner) {
-        return { transaction: winner, balancePaise: winner.balanceAfterPaise, replayed: true };
-      }
-    }
-    throw err;
-  }
+  return appendEntry({
+    userId,
+    idempotencyKey,
+    session,
+    build: ({ currentPaise }) => ({
+      type: 'credit',
+      amountPaise,
+      balanceAfterPaise: currentPaise + amountPaise,
+      reason,
+      razorpayOrderId,
+      razorpayPaymentId,
+      note,
+    }),
+  });
 }
 
 /**
@@ -76,37 +129,31 @@ async function credit({ userId, amountPaise, reason, idempotencyKey, razorpayOrd
 async function debit({ userId, amountPaise, reason, idempotencyKey, order = null, note = null, session = null }) {
   assertAmount(amountPaise);
 
-  const existing = await findByIdempotencyKey(idempotencyKey, session);
-  if (existing) {
-    return { transaction: existing, balancePaise: existing.balanceAfterPaise, replayed: true };
-  }
+  return appendEntry({
+    userId,
+    idempotencyKey,
+    session,
+    build: ({ currentPaise }) => {
+      // Re-checked on every attempt: a balance that was sufficient against the
+      // tail we first read may not be against the one that replaced it.
+      if (currentPaise < amountPaise) {
+        throw new ApiError(
+          402,
+          `Insufficient wallet balance. Available ₹${(currentPaise / 100).toFixed(2)}, required ₹${(amountPaise / 100).toFixed(2)}.`,
+          'INSUFFICIENT_FUNDS'
+        );
+      }
 
-  const current = await getBalancePaise(userId, session);
-  if (current < amountPaise) {
-    throw new ApiError(
-      402,
-      `Insufficient wallet balance. Available ₹${(current / 100).toFixed(2)}, required ₹${(amountPaise / 100).toFixed(2)}.`,
-      'INSUFFICIENT_FUNDS'
-    );
-  }
-
-  const next = current - amountPaise;
-
-  const [created] = await WalletTransaction.create(
-    [{
-      user: userId,
-      type: 'debit',
-      amountPaise,
-      balanceAfterPaise: next,
-      reason,
-      idempotencyKey,
-      order,
-      note,
-    }],
-    session ? { session } : {}
-  );
-
-  return { transaction: created.toObject(), balancePaise: next, replayed: false };
+      return {
+        type: 'debit',
+        amountPaise,
+        balanceAfterPaise: currentPaise - amountPaise,
+        reason,
+        order,
+        note,
+      };
+    },
+  });
 }
 
 async function findByIdempotencyKey(idempotencyKey, session = null) {
