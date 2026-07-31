@@ -82,6 +82,18 @@ const phone = z
   })
   .refine((value) => /^[6-9]\d{9}$/.test(value), 'Must be a valid 10-digit mobile number.');
 
+/**
+ * Whatever the user typed into the single sign-in box: a mobile number or an
+ * email address, normalised by whichever branch matches.
+ *
+ * Order matters. `email` is tried first because it fails fast on a digit string,
+ * whereas `phone` would strip separators from an address before rejecting it and
+ * report a confusing error.
+ */
+const identifier = z.union([email, phone], {
+  error: 'Enter a valid mobile number or email address.',
+});
+
 const otpCode = z
   .string()
   .trim()
@@ -93,5 +105,5 @@ const positiveInt = (max) =>
 module.exports = {
   validate,
   z,
-  fields: { nonEmptyString, objectId, email, phone, otpCode, positiveInt },
+  fields: { nonEmptyString, objectId, email, phone, identifier, otpCode, positiveInt },
 };

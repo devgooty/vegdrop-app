@@ -183,7 +183,9 @@ router.post(
             orderNumber,
             customer: req.user._id,
             customerName: req.user.name,
-            phone: req.user.phone,
+            // Falls back to an unverified number: a courier needs someone to
+            // ring, and an account may hold a claimed-but-unproven one.
+            phone: req.user.contactPhone(),
             address,
             items: lines,
             subtotalPaise,

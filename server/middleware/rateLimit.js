@@ -50,9 +50,17 @@ const otpRequestLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 5,
   keyGenerator: (req) => {
-    const dest = typeof req.body?.phone === 'string'
-      ? req.body.phone.replace(/\D/g, '').slice(-10)
-      : ipKeyGenerator(req.ip);
+    // Runs before validation, so read defensively. Either key may carry the
+    // destination: `identifier` is the single sign-in box, `phone` the original
+    // narrower form. An email is keyed whole; a number is reduced to its last
+    // ten digits so +91/0 prefixed spellings share one budget.
+    const raw = req.body?.identifier ?? req.body?.phone;
+    if (typeof raw !== 'string' || raw.length === 0) {
+      return `otp:${ipKeyGenerator(req.ip)}`;
+    }
+    const dest = raw.includes('@')
+      ? raw.trim().toLowerCase().slice(0, 254)
+      : raw.replace(/\D/g, '').slice(-10);
     return `otp:${dest}`;
   },
   handler: jsonLimitHandler(
@@ -90,6 +98,27 @@ const otpVerifyLimiter = rateLimit({
   handler: jsonLimitHandler('Too many verification attempts. Request a new code.', 'OTP_RATE_LIMITED'),
 });
 
+/**
+ * POST /auth/lookup answers whether an identifier has an account, which is an
+ * account-enumeration oracle by construction — the sign-in flow was built to
+ * avoid exactly this, and the UX now requires it.
+ *
+ * Since the leak cannot be closed, it is priced instead: this is the tightest
+ * budget in the app. 20/hour per source makes a targeted check of one person
+ * trivial and a sweep of a number range useless — walking Indian mobile prefixes
+ * at this rate would take millennia. Keyed on the caller, because the whole
+ * point is bounding how many DIFFERENT identifiers one source can test.
+ */
+const lookupLimiter = rateLimit({
+  ...base,
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  handler: jsonLimitHandler(
+    'Too many lookups from this network. Try again later.',
+    'LOOKUP_RATE_LIMITED'
+  ),
+});
+
 const paymentLimiter = rateLimit({
   ...base,
   windowMs: 15 * 60 * 1000,
@@ -102,5 +131,6 @@ module.exports = {
   otpRequestLimiter,
   otpStartIpLimiter,
   otpVerifyLimiter,
+  lookupLimiter,
   paymentLimiter,
 };

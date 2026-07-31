@@ -31,6 +31,64 @@ export async function startPhoneAuth({ phone, name }) {
 }
 
 /**
+ * Does this mobile number or email already have an account?
+ *
+ * Used to decide whether to show the sign-in code screen or the registration
+ * form. Note what this costs: unlike every other call here, the answer differs
+ * for a known and an unknown identifier, so it can be used to test whether
+ * someone is a customer. The server prices that with the tightest rate limit in
+ * the app — 20 per hour — so treat a `LOOKUP_RATE_LIMITED` error as expected
+ * rather than exceptional, and never call this on keystroke.
+ *
+ * @returns {Promise<{exists: boolean, type: 'phone'|'email'}>}
+ */
+export async function lookupIdentifier({ identifier }) {
+  return api.post('/auth/lookup', { identifier }, { auth: false });
+}
+
+/**
+ * Step 1 of signing in with either a mobile number or an email address.
+ *
+ * One code is issued and delivered to every verified contact the account has, so
+ * whichever the user typed, the same code arrives on WhatsApp and by email.
+ */
+export async function startIdentifierAuth({ identifier }) {
+  return api.post('/auth/otp/start', { identifier }, { auth: false });
+}
+
+/**
+ * Step 1 of registration. Both contacts are required, and each receives its OWN
+ * code — proving one must not prove the other.
+ *
+ * `phone.delivered === false` means WhatsApp could not be reached. That is not an
+ * error: registration continues on the email code alone, and the number is kept
+ * against the account unverified. Hide the WhatsApp code input in that case.
+ *
+ * @returns {Promise<{email: {challengeId: string, destination: string, delivered: boolean},
+ *                    phone: {challengeId: string|null, destination: string, delivered: boolean}}>}
+ */
+export async function startRegistration({ phone, email, name }) {
+  const payload = { phone, email };
+  if (name) payload.name = name;
+  return api.post('/auth/register/start', payload, { auth: false });
+}
+
+/**
+ * Step 2 of registration. Omit the phone pair when WhatsApp delivery failed.
+ * @returns {Promise<object>} the authenticated user
+ */
+export async function verifyRegistration({ emailChallengeId, emailCode, phoneChallengeId, phoneCode }) {
+  const payload = { emailChallengeId, emailCode };
+  if (phoneChallengeId && phoneCode) {
+    payload.phoneChallengeId = phoneChallengeId;
+    payload.phoneCode = phoneCode;
+  }
+  const result = await api.post('/auth/register/verify', payload, { auth: false });
+  setAccessToken(result.accessToken);
+  return result.user;
+}
+
+/**
  * Step 2. Exchanges the code for a session, creating the account if the number
  * is new.
  * @returns {Promise<object>} the authenticated user
@@ -98,6 +156,28 @@ export async function logoutEverywhere() {
  * server's `fields.phone` is the authoritative rule.
  * @returns {string|null} a problem description, or null when acceptable
  */
+/**
+ * Advisory check for the single sign-in box, which accepts either kind of
+ * contact. The server's `fields.identifier` is the authoritative rule.
+ * @returns {string|null} a problem description, or null when acceptable
+ */
+export function describeIdentifierProblem(identifier) {
+  const raw = String(identifier ?? '').trim();
+  if (raw.length === 0) return 'Enter your mobile number or email address.';
+  if (raw.includes('@')) return describeEmailProblem(raw);
+  return describePhoneProblem(raw);
+}
+
+/** @returns {string|null} a problem description, or null when acceptable */
+export function describeEmailProblem(email) {
+  const raw = String(email ?? '').trim();
+  if (raw.length === 0) return 'Enter your email address.';
+  // Deliberately loose: the server validates properly, and a strict client-side
+  // pattern rejects addresses that are actually valid.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) return 'Enter a valid email address.';
+  return null;
+}
+
 export function describePhoneProblem(phone) {
   let digits = String(phone ?? '').replace(/\D/g, '');
   // Strip a country/trunk prefix by length, never by pattern: 9111111111 is a

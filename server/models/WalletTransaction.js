@@ -37,6 +37,26 @@ const walletTransactionSchema = new mongoose.Schema(
       },
     },
 
+    /**
+     * Position in this user's ledger, starting at 1.
+     *
+     * This is what actually serialises writes. Deriving a balance means
+     * read-then-insert, and two concurrent debits can both read the same tail,
+     * both pass their own sufficiency check, and both insert — snapshot
+     * isolation does not catch it, because neither transaction modifies the row
+     * it read, so there is no write conflict to detect. The unique index below
+     * turns that second insert into a collision instead of an overdraft.
+     */
+    seq: {
+      type: Number,
+      required: true,
+      min: 1,
+      validate: {
+        validator: Number.isInteger,
+        message: 'seq must be an integer.',
+      },
+    },
+
     reason: {
       type: String,
       required: true,
@@ -61,10 +81,37 @@ const walletTransactionSchema = new mongoose.Schema(
 
 walletTransactionSchema.index({ user: 1, createdAt: -1 });
 
-walletTransactionSchema.statics.currentBalancePaise = async function currentBalancePaise(userId, session) {
-  const query = this.findOne({ user: userId }).sort({ createdAt: -1, _id: -1 }).select('balanceAfterPaise');
+/**
+ * Partial rather than plain unique: entries written before `seq` existed have no
+ * value for it, and several of those per user would collide with each other on a
+ * full unique index. Restricting the index to documents that actually carry a
+ * numeric seq lets it be added to a populated collection without a backfill.
+ */
+walletTransactionSchema.index(
+  { user: 1, seq: 1 },
+  { unique: true, partialFilterExpression: { seq: { $type: 'number' } } }
+);
+
+/**
+ * The tail of a user's ledger: the entry the next one must build on.
+ *
+ * Ordered by seq first. `createdAt` alone is not a reliable tiebreak — two
+ * entries can share a millisecond — and it is only consulted here for legacy
+ * entries that predate seq, which sort last under a descending sort because
+ * missing fields compare below numbers.
+ *
+ * @returns {Promise<{ balanceAfterPaise: number, seq?: number } | null>}
+ */
+walletTransactionSchema.statics.latestFor = async function latestFor(userId, session) {
+  const query = this.findOne({ user: userId })
+    .sort({ seq: -1, createdAt: -1, _id: -1 })
+    .select('balanceAfterPaise seq');
   if (session) query.session(session);
-  const latest = await query.lean();
+  return query.lean();
+};
+
+walletTransactionSchema.statics.currentBalancePaise = async function currentBalancePaise(userId, session) {
+  const latest = await this.latestFor(userId, session);
   return latest ? latest.balanceAfterPaise : 0;
 };
 
