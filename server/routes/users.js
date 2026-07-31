@@ -83,7 +83,16 @@ router.patch(
     body: z
       .object({
         name: fields.nonEmptyString(120).optional(),
-        email: fields.email.optional(),
+        // `email` is intentionally absent, exactly as `phone` is.
+        //
+        // It was accepted here while nothing was ever delivered to an email, so
+        // an unverified address was harmless. Login codes are now copied to a
+        // verified address, which makes any address a way in: a stolen session
+        // could point it at the attacker and receive every future code —
+        // permanent ownership, the same attack that removing `phone` closed.
+        // .strict() turns an attempt to set it into a 400. Adding or changing an
+        // address goes through POST /api/auth/email/start, which proves control
+        // of the new one first.
       })
       .strict()
       .refine((data) => Object.keys(data).length > 0, { message: 'No fields to update.' }),
@@ -96,20 +105,6 @@ router.patch(
     }
 
     const update = { ...req.valid.body };
-
-    // Changing the address invalidates its verified status. Email is not a
-    // credential here — nothing is ever delivered to it — so an unverified one
-    // is harmless; it is recorded as unverified rather than trusted.
-    if (update.email) update.emailVerifiedAt = null;
-
-    if (update.email) {
-      const conflict = await User.findOne({ _id: { $ne: targetId }, email: update.email })
-        .select('_id')
-        .lean();
-      if (conflict) {
-        throw new ApiError(409, 'That email is already in use.', 'DUPLICATE');
-      }
-    }
 
     const user = await User.findOneAndUpdate(
       { _id: targetId, status: { $ne: 'deleted' } },
@@ -215,8 +210,13 @@ router.delete(
     user.status = 'deleted';
     user.tokenVersion += 1;
     // Release the unique identifiers so the person can register again later.
+    // Both are sparse-unique now, so clearing them frees the values outright —
+    // no tombstone string needed, and no risk of one colliding.
     user.email = undefined;
-    user.phone = `deleted:${user._id.toHexString()}`;
+    user.phone = undefined;
+    user.pendingPhone = undefined;
+    user.emailVerifiedAt = null;
+    user.phoneVerifiedAt = null;
     await user.save();
     await revokeAllForUser(user._id);
 

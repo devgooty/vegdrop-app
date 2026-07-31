@@ -11,7 +11,20 @@ const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 120 },
 
-    // Sparse + unique: a user may register with phone only.
+    /**
+     * VERIFIED contacts. Both are sparse-unique, and a value only ever lands
+     * here once someone has proved they receive codes at it.
+     *
+     * That is the whole reason `phone` is no longer required. Registration has to
+     * survive WhatsApp being unavailable, and the alternative — writing an
+     * unproven number here — would reserve it: anyone could type a stranger's
+     * number, take it out of circulation, and stop its real owner from ever
+     * registering. An unproven number goes to `pendingPhone` below, which
+     * reserves nothing.
+     *
+     * An account must end up with at least one of these; `hasVerifiedContact()`
+     * is the check, and routes/auth.js refuses to create an account without one.
+     */
     email: {
       type: String,
       required: false,
@@ -22,10 +35,24 @@ const userSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
-      unique: true,
-      index: true,
+      index: { unique: true, sparse: true },
+      maxlength: 20,
+    },
+
+    /**
+     * A number the account claims but has not proved.
+     *
+     * Deliberately NOT unique and never a delivery destination: it is a delivery
+     * contact for couriers and a convenience so the field is pre-filled when the
+     * user retries verification. Two accounts may hold the same pendingPhone —
+     * whoever verifies it first gets it, and it becomes `phone`.
+     */
+    pendingPhone: {
+      type: String,
+      required: false,
+      trim: true,
       maxlength: 20,
     },
 
@@ -84,13 +111,39 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
     id: this._id.toHexString(),
     name: this.name,
     email: this.email || null,
-    phone: this.phone,
+    phone: this.phone || null,
+    // Surfaced so the client can prompt to finish verifying a number that was
+    // claimed while WhatsApp was unavailable.
+    pendingPhone: this.pendingPhone || null,
     role: this.role,
     status: this.status,
     emailVerified: Boolean(this.emailVerifiedAt),
     phoneVerified: Boolean(this.phoneVerifiedAt),
     createdAt: this.createdAt,
   };
+};
+
+/**
+ * Every destination a code may be delivered to, in preference order.
+ *
+ * Verified only, and that is load-bearing: a contact that receives codes is a way
+ * into the account, so an unproven one must never appear here. `pendingPhone` is
+ * deliberately absent.
+ */
+userSchema.methods.verifiedContacts = function verifiedContacts() {
+  const contacts = [];
+  if (this.phone && this.phoneVerifiedAt) contacts.push(this.phone);
+  if (this.email && this.emailVerifiedAt) contacts.push(this.email);
+  return contacts;
+};
+
+userSchema.methods.hasVerifiedContact = function hasVerifiedContact() {
+  return this.verifiedContacts().length > 0;
+};
+
+/** The number to reach this person on, proven or not — couriers need one. */
+userSchema.methods.contactPhone = function contactPhone() {
+  return this.phone || this.pendingPhone || null;
 };
 
 const User = mongoose.model('User', userSchema);

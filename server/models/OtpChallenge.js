@@ -18,7 +18,9 @@ const otpChallengeSchema = new mongoose.Schema(
      * `login` covers signing up too — they are one flow, so a challenge issued
      * for a number with no account is the same kind of challenge as one for an
      * existing account. `phone_change` proves control of a new number before it
-     * becomes the account's credential.
+     * becomes the account's credential. `email_change` does the same for an
+     * address before login codes are ever copied to it — an address nobody
+     * proved control of would be a way in, not a convenience.
      *
      * Deliberately only the purposes that actually exist: a `password_reset`
      * value here would describe a flow that cannot exist, since there are no
@@ -28,7 +30,7 @@ const otpChallengeSchema = new mongoose.Schema(
     purpose: {
       type: String,
       required: true,
-      enum: ['login', 'phone_change'],
+      enum: ['login', 'registration', 'phone_change', 'email_change'],
       index: true,
     },
 
@@ -49,7 +51,12 @@ const otpChallengeSchema = new mongoose.Schema(
     attempts: { type: Number, default: 0 },
     maxAttempts: { type: Number, required: true },
 
-    expiresAt: { type: Date, required: true, index: true },
+    // Indexed below as a TTL index, not here: declaring both produces two
+    // definitions of `expiresAt_1` that differ only by expireAfterSeconds, and
+    // MongoDB rejects the second. The rejection surfaced only as a background
+    // warning, so the reaper silently never applied and consumed challenges
+    // accumulated indefinitely.
+    expiresAt: { type: Date, required: true },
     consumedAt: { type: Date, default: null },
     lastSentAt: { type: Date, default: Date.now },
   },

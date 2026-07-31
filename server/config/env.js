@@ -92,6 +92,26 @@ const whatsappConfigured = Boolean(whatsappPhoneNumberId && whatsappAccessToken 
 const whatsappBotBridgeToken = optional('WHATSAPP_BOT_BRIDGE_TOKEN', '');
 
 /**
+ * SMTP, for copying a login code to a verified email address.
+ *
+ * Configured is the switch — there is no separate "enable fan-out" flag, matching
+ * NOTIFY_TRANSPORT below, which selects WhatsApp as soon as its credentials
+ * exist. A second flag is a second thing to forget.
+ *
+ * Note what this does NOT change: the phone stays the credential. Email only ever
+ * receives a copy of a code already addressed to a phone, and only when that
+ * address has been verified through /auth/email/verify — an address a stolen
+ * session could set would otherwise be a way to receive every future code.
+ */
+const smtpHost = optional('SMTP_HOST', '');
+const smtpFrom = optional('SMTP_FROM', '');
+const emailConfigured = Boolean(smtpHost && smtpFrom);
+
+if (smtpHost && !smtpFrom) {
+  fatal.push('SMTP_HOST is set but SMTP_FROM is not. Most relays reject a message with no envelope sender.');
+}
+
+/**
  * console      — dev stub, prints codes to stdout
  * whatsapp     — official WhatsApp Cloud API (approved template, paid per message)
  * whatsapp_bot — UNOFFICIAL WhatsApp Web client via server/bot (free, against
@@ -224,6 +244,19 @@ const config = Object.freeze({
     perRecipientCooldownMs: int('WHATSAPP_BOT_RECIPIENT_COOLDOWN_MS', 60000),
 
     verbose: optional('WHATSAPP_BOT_VERBOSE', 'false') === 'true',
+  }),
+
+  email: Object.freeze({
+    configured: emailConfigured,
+    host: smtpHost,
+    // 587 is STARTTLS (secure=false, upgraded after greeting); 465 is implicit
+    // TLS (secure=true). Mismatching the two is the usual cause of a hang.
+    port: int('SMTP_PORT', 587),
+    secure: optional('SMTP_SECURE', 'false') === 'true',
+    user: optional('SMTP_USER', ''),
+    pass: optional('SMTP_PASS', ''),
+    from: smtpFrom,
+    timeoutMs: int('SMTP_TIMEOUT_MS', 10000),
   }),
 
   razorpay: Object.freeze({

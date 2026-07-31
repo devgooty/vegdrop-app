@@ -42,7 +42,7 @@ function channelFor(destination) {
  *
  * @returns {Promise<{ challengeId: string, channel: string, destination: string, expiresAt: Date, devCode?: string }>}
  */
-async function issueChallenge({ purpose, destination, user = null, payload = null }) {
+async function issueChallenge({ purpose, destination, user = null, payload = null, copyTo = [] }) {
   const normalized = String(destination).trim().toLowerCase();
   const channel = channelFor(normalized);
 
@@ -62,17 +62,13 @@ async function issueChallenge({ purpose, destination, user = null, payload = nul
     );
   }
 
-  // Supersede any older live challenge so only one code is ever valid.
-  await OtpChallenge.updateMany(
-    { destination: normalized, purpose, consumedAt: null },
-    { $set: { consumedAt: new Date() } }
-  );
-
   const challengeId = crypto.randomUUID();
   const code = generateCode(config.otp.length);
   const expiresAt = new Date(Date.now() + config.otp.ttlSeconds * 1000);
 
-  await OtpChallenge.create({
+  // Persisted before dispatch so that `lastSentAt` arms the cooldown above and
+  // two near-simultaneous requests cannot each send a message.
+  const created = await OtpChallenge.create({
     challengeId,
     purpose,
     destination: normalized,
@@ -85,13 +81,63 @@ async function issueChallenge({ purpose, destination, user = null, payload = nul
     lastSentAt: new Date(),
   });
 
-  await notify.sendOtp({
-    channel,
-    to: normalized,
-    code,
-    purpose,
-    ttlSeconds: config.otp.ttlSeconds,
-  });
+  /**
+   * Deliver first, and only retire the previous code once delivery succeeded.
+   *
+   * Superseding up front meant a transport failure destroyed a code the user
+   * could still have used, and left `lastSentAt` set so the cooldown blocked
+   * them from requesting another — locked out of a passwordless system by an
+   * error on our side. Rolling the row back on failure restores both: the older
+   * challenge stays live, and nothing is counted as sent.
+   */
+  try {
+    await notify.sendOtp({
+      channel,
+      to: normalized,
+      code,
+      purpose,
+      ttlSeconds: config.otp.ttlSeconds,
+    });
+  } catch (err) {
+    await OtpChallenge.deleteOne({ _id: created._id }).catch(() => {});
+    throw err;
+  }
+
+  // Exactly one live code per destination and purpose, from here on.
+  await OtpChallenge.updateMany(
+    { destination: normalized, purpose, consumedAt: null, _id: { $ne: created._id } },
+    { $set: { consumedAt: new Date() } }
+  );
+
+  /**
+   * Additional copies of the same code.
+   *
+   * Best effort, and deliberately after the primary send has already succeeded.
+   * The challenge is bound to `destination` — the phone — and that is what
+   * verification issues a session for; a copy is a convenience, so a mail server
+   * being down must not fail a sign-in that has already been delivered. Failures
+   * are logged and swallowed.
+   *
+   * Callers decide what goes here, and only pass addresses that have been
+   * verified. Nothing derives a destination from unverified profile input.
+   */
+  for (const extra of copyTo) {
+    try {
+      await notify.sendOtp({
+        channel: channelFor(extra),
+        to: extra,
+        code,
+        purpose,
+        ttlSeconds: config.otp.ttlSeconds,
+      });
+    } catch (err) {
+      console.warn('[otp] secondary delivery failed', {
+        to: maskDestination(extra),
+        purpose,
+        message: err?.message,
+      });
+    }
+  }
 
   const result = { challengeId, channel, destination: maskDestination(normalized), expiresAt };
 

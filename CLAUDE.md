@@ -58,7 +58,14 @@ The role checks in these components are **UX gates only**. The API authorizes ev
 
 This is the part most likely to be misunderstood, because two earlier versions did it differently.
 
-**There are no passwords anywhere in this system.** No `passwordHash` field, no hashing service, no password policy, no change-password endpoint. Possession of the phone number is the entire credential, which is why a code is always addressed to the phone and never to an email — an email-addressed code would be a second, weaker way in.
+**There are no passwords anywhere in this system.** No `passwordHash` field, no hashing service, no password policy, no change-password endpoint. Possession of the phone number is the credential of record: a challenge is bound to a phone, and that is the number a session is issued for.
+
+**A login code is additionally copied to a verified email when SMTP is configured** (`SMTP_HOST` + `SMTP_FROM`). This was asked for deliberately, and the trade it makes should be stated plainly rather than discovered: once a code reaches a mailbox, whoever reads that mailbox can sign in, so account security becomes the **weaker** of the two channels. Two rules keep that from being a takeover path, and neither is optional:
+
+- **Only verified addresses receive copies.** `emailVerifiedAt` must be set, via `POST /api/auth/email/start` + `/verify`, which sends a code to the *new* address to prove control of it.
+- **`PATCH /api/users/:id` rejects `email`**, exactly as it rejects `phone`. It accepted `email` while nothing was delivered there. Now that codes arrive, an unverified address would let a briefly-stolen session redirect every future code to the attacker — the same attack that removing `phone` closed.
+
+Email delivery is **best effort**: `services/otp.js` sends the copy after the phone leg has already succeeded, and swallows failures. A dead mail server must not fail a sign-in whose code was already delivered. A phone failure is still fatal.
 
 **The client never decides anything about identity.** It does not derive roles or validate codes. Sign-in is two calls:
 
@@ -86,11 +93,17 @@ Stateless access tokens are revoked by incrementing `user.tokenVersion`; `middle
 ### OTP delivery
 
 `services/notify.js` resolves a transport **per channel**, lazily. `email` and
-`sms` are separate: every real provider handles one or the other, never both.
-Codes are only ever addressed to a phone now, so only the `sms` channel is
-actually reached — the split stays because a single global transport once meant
-that configuring WhatsApp broke sign-in for every user with an email address, and
-that failure mode should not be reintroducible by adding one email notification.
+`sms` are separate because every real provider handles one or the other, never
+both — and that split now carries real weight, since a login code reaches both
+channels. A single global transport once meant configuring WhatsApp broke sign-in
+for every user with an email address; keyed by channel, an unconfigured or broken
+channel only affects what is addressed to it.
+
+The `sms` channel is WhatsApp (or the console stub); the `email` channel is SMTP
+via nodemailer (`services/transports/email.js`), active only when `SMTP_HOST` and
+`SMTP_FROM` are set. Neither transport ever logs the code, and both mask the
+destination — only the console stub prints codes, and production refuses to boot
+on it.
 
 Phone transports, via `NOTIFY_TRANSPORT`:
 
