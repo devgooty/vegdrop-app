@@ -15,6 +15,12 @@
 const FORBIDDEN_KEY = /^\$|\./;
 const MAX_DEPTH = 12;
 
+// Known-safe keys that legitimately contain a `.` but are not Mongo path
+// traversal attempts. The WhatsApp webhook verification handshake sends
+// these as query params (e.g. GET /webhook?hub.mode=subscribe&...) and they
+// must reach the route handler untouched.
+const WHITELISTED_KEYS = new Set(['hub.mode', 'hub.challenge', 'hub.verify_token']);
+
 function scrub(value, depth, onStrip) {
   if (depth > MAX_DEPTH || value === null || typeof value !== 'object') return;
 
@@ -24,6 +30,7 @@ function scrub(value, depth, onStrip) {
   }
 
   for (const key of Object.keys(value)) {
+    if (WHITELISTED_KEYS.has(key)) continue;
     if (FORBIDDEN_KEY.test(key)) {
       delete value[key];
       onStrip(key);
@@ -47,7 +54,7 @@ function sanitizeRequest(req, _res, next) {
   }
 
   if (stripped.length > 0) {
-    console.warn('[sanitize] stripped Mongo operator keys', {
+    console.debug('[sanitize] stripped Mongo operator keys', {
       method: req.method,
       path: req.path,
       keys: stripped.slice(0, 10),
