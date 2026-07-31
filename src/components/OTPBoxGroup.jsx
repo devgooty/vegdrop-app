@@ -6,7 +6,12 @@ import React, { useRef } from 'react';
  * Presentation only — it collects digits and nothing else. Verification happens
  * on the server; there is deliberately no expected value anywhere in this file.
  */
-export default function OTPBoxGroup({ length = 6, value, onChange }) {
+/**
+ * @param {'default'|'board'} [tone] `board` is the sign-in screen's market-board
+ *   styling, where a filled box turns turmeric. Anything else keeps the original
+ *   look, so the profile screens that also use this are untouched.
+ */
+export default function OTPBoxGroup({ length = 6, value, onChange, tone = 'default' }) {
   const inputs = useRef([]);
 
   const handleChange = (e, index) => {
@@ -36,22 +41,31 @@ export default function OTPBoxGroup({ length = 6, value, onChange }) {
     }
   };
 
+  const boxClass = (filled) =>
+    tone === 'board'
+      ? `mb-otp w-full h-14 text-center text-xl font-medium rounded-lg${filled ? ' is-filled' : ''}`
+      : 'w-full h-12 text-center text-lg font-black text-gray-900 bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:outline-none focus:border-[#1B4D3E] focus:ring-2 focus:ring-[#1B4D3E]/30 transition-all shadow-sm';
+
   return (
     <div className="flex gap-2 justify-between">
-      {Array.from({ length }).map((_, index) => (
-        <input
-          key={index}
-          ref={(el) => (inputs.current[index] = el)}
-          type="text"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          maxLength={length}
-          value={value[index] === ' ' ? '' : value[index] || ''}
-          onChange={(e) => handleChange(e, index)}
-          onKeyDown={(e) => handleKeyDown(e, index)}
-          className="w-full h-12 text-center text-lg font-black text-gray-900 bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:outline-none focus:border-[#1B4D3E] focus:ring-2 focus:ring-[#1B4D3E]/30 transition-all shadow-sm"
-        />
-      ))}
+      {Array.from({ length }).map((_, index) => {
+        const digit = value[index] === ' ' ? '' : value[index] || '';
+        return (
+          <input
+            key={index}
+            ref={(el) => (inputs.current[index] = el)}
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={length}
+            aria-label={`Digit ${index + 1} of ${length}`}
+            value={digit}
+            onChange={(e) => handleChange(e, index)}
+            onKeyDown={(e) => handleKeyDown(e, index)}
+            className={boxClass(digit !== '')}
+          />
+        );
+      })}
     </div>
   );
 }

@@ -341,3 +341,117 @@
   box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08);
   border-bottom-color: rgba(220, 213, 198, 0.9);
 }
+
+/* ==========================================================================
+   Sign-in — the market board
+   --------------------------------------------------------------------------
+   The visual language here is a vegetable stall's painted rate board, not a
+   product login: fat slab lettering with a hard offset shadow, turmeric on
+   deep leaf green, wooden crate slats. Everything is prefixed `mb-` (market
+   board) and confined to the sign-in route, so nothing here can reach the
+   rest of the app.
+
+   The boldness is spent on the board; the form itself sits on a chalk panel
+   because a grocery customer reading it at 6am should never pay for the
+   styling.
+   ========================================================================== */
+
+.mb-scope {
+  --mb-leaf: #12402F;
+  --mb-leaf-lo: #0A2A1E;
+  --mb-chalk: #F6F1E2;
+  --mb-turmeric: #F2A414;
+  --mb-tomato: #D94F35;
+  --mb-jute: #A8977A;
+  --mb-ink: #10261D;
+}
+
+/* Wooden crate slats. Cheap, no image request, and the angle keeps it from
+   reading as a generic stripe pattern. */
+.mb-board {
+  background-color: var(--mb-leaf);
+  background-image:
+    repeating-linear-gradient(
+      177deg,
+      rgba(255, 255, 255, 0.035) 0px,
+      rgba(255, 255, 255, 0.035) 1px,
+      transparent 1px,
+      transparent 13px
+    ),
+    radial-gradient(120% 80% at 50% 0%, rgba(242, 164, 20, 0.13), transparent 62%);
+}
+
+/* The signature: a painted shop sign. The offset is hard-edged rather than a
+   blur, which is what sign painters actually produce and what separates this
+   from a drop-shadow. */
+.mb-wordmark {
+  font-family: 'Alfa Slab One', Georgia, serif;
+  color: var(--mb-chalk);
+  letter-spacing: 0.01em;
+  line-height: 0.92;
+  /* Layered offsets, not a blur — sign painters cut a hard edge, and a soft
+     drop-shadow here reads as a web default instead of paint.
+     Note there is no spread parameter in text-shadow: a fourth length makes the
+     whole declaration invalid and the browser silently drops it. */
+  text-shadow:
+    2px 2px 0 var(--mb-turmeric),
+    3px 3px 0 var(--mb-turmeric),
+    4px 4px 0 rgba(0, 0, 0, 0.22);
+}
+
+.mb-display {
+  font-family: 'Alfa Slab One', Georgia, serif;
+  letter-spacing: 0.005em;
+  line-height: 1.05;
+}
+
+.mb-mono {
+  font-family: 'DM Mono', ui-monospace, SFMono-Regular, monospace;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Hand-painted plaque behind the wordmark. */
+.mb-plaque {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.12));
+  border: 1px solid rgba(246, 241, 226, 0.22);
+  box-shadow: inset 0 1px 0 rgba(246, 241, 226, 0.16);
+}
+
+/* Code entry, chalk-outlined on the board and filling turmeric as it is typed.
+   This is the moment the whole flow exists for, so it is where the accent
+   earns its place. */
+.mb-otp {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  color: var(--mb-ink);
+  background: rgba(255, 255, 255, 0.6);
+  border: 1.5px solid rgba(16, 38, 29, 0.22);
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+.mb-otp:focus {
+  outline: none;
+  border-color: var(--mb-leaf);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(18, 64, 47, 0.16);
+}
+/* A class rather than a [data-filled] attribute selector: the attribute form
+   did not take effect against Tailwind v4's layered output, and a class is one
+   less thing to be clever about. */
+.mb-otp.is-filled {
+  background: var(--mb-turmeric);
+  border-color: #C9860A;
+  color: var(--mb-ink);
+}
+
+/* Step changes slide up rather than fade, so the flow reads as forward motion. */
+@keyframes mbStepIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.mb-step {
+  animation: mbStepIn 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mb-step { animation: none; }
+  .mb-otp { transition: none; }
+}
