@@ -105,9 +105,27 @@ const whatsappBotBridgeToken = optional('WHATSAPP_BOT_BRIDGE_TOKEN', '');
  */
 const smtpHost = optional('SMTP_HOST', '');
 const smtpFrom = optional('SMTP_FROM', '');
-const emailConfigured = Boolean(smtpHost && smtpFrom);
+const resendApiKey = optional('RESEND_API_KEY', '');
+// Falls back to SMTP_FROM so a host that already had one does not need a second.
+const emailFrom = optional('RESEND_FROM', '') || smtpFrom;
 
-if (smtpHost && !smtpFrom) {
+/**
+ * Which provider sends mail. Resend wins when both are present.
+ *
+ * Not a matter of taste: Railway blocks outbound SMTP on its Hobby and Trial
+ * plans, so nodemailer fails there with ESOCKET before it ever reaches a
+ * credential. Resend goes over HTTPS and works on any host. A deployment that
+ * carries both is almost always one that tried SMTP first, failed, and added
+ * Resend — so prefer the one that can actually deliver.
+ */
+const emailProvider = resendApiKey ? 'resend' : smtpHost ? 'smtp' : null;
+const emailConfigured = Boolean(emailProvider && emailFrom);
+
+if (resendApiKey && !emailFrom) {
+  fatal.push('RESEND_API_KEY is set but RESEND_FROM is not. Resend requires a sender on a domain you have verified.');
+}
+
+if (smtpHost && !smtpFrom && !resendApiKey) {
   fatal.push('SMTP_HOST is set but SMTP_FROM is not. Most relays reject a message with no envelope sender.');
 }
 
@@ -248,6 +266,14 @@ const config = Object.freeze({
 
   email: Object.freeze({
     configured: emailConfigured,
+    provider: emailProvider,
+    from: emailFrom,
+
+    resend: Object.freeze({
+      apiKey: resendApiKey,
+      timeoutMs: int('RESEND_TIMEOUT_MS', 10000),
+    }),
+
     host: smtpHost,
     // 587 is STARTTLS (secure=false, upgraded after greeting); 465 is implicit
     // TLS (secure=true). Mismatching the two is the usual cause of a hang.

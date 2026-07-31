@@ -136,11 +136,29 @@ function resolvePhoneTransport() {
  * every user who had an email address.
  */
 function resolveEmailTransport() {
-  if (config.email.configured) {
+  const mail = config.email;
+
+  if (mail.configured && mail.provider === 'resend') {
+    const { createResendTransport } = require('./transports/resend');
+
+    console.info(`[notify] email transport=resend from=${mail.from}`);
+
+    return createResendTransport({
+      apiKey: mail.resend.apiKey,
+      from: mail.from,
+      timeoutMs: mail.resend.timeoutMs,
+    });
+  }
+
+  if (mail.configured && mail.provider === 'smtp') {
     const { createEmailTransport } = require('./transports/email');
-    const mail = config.email;
 
     console.info(`[notify] email transport=smtp host=${mail.host} port=${mail.port} secure=${mail.secure}`);
+    // Railway blocks outbound SMTP on Hobby and Trial; this will fail there with
+    // ESOCKET before authenticating. Set RESEND_API_KEY instead on those plans.
+    if (!mail.secure && mail.port === 587) {
+      console.info('[notify] if this fails with ESOCKET, the host is blocking SMTP — use RESEND_API_KEY.');
+    }
 
     return createEmailTransport({
       host: mail.host,
@@ -158,7 +176,7 @@ function resolveEmailTransport() {
     // Fan-out checks `configured` first, so this is a programming error, not a
     // deployment one — and it must not degrade to printing codes into a log.
     throw new Error(
-      'No email transport is configured. Set SMTP_HOST and SMTP_FROM, or stop addressing notifications to an email.'
+      'No email transport is configured. Set RESEND_API_KEY and RESEND_FROM (works on any host), or SMTP_HOST and SMTP_FROM.'
     );
   }
 
