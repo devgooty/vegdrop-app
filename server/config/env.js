@@ -143,15 +143,26 @@ const emailProviders = emailOrder
   .map((name) => ({ name, apiKey: optional(EMAIL_PROVIDER_KEYS[name], '') }))
   .filter((p) => p.apiKey.length > 0);
 
-// Falls back through the older single-provider names so an existing deployment
-// does not need its sender re-entered.
-const emailFrom = optional('EMAIL_FROM', '') || optional('RESEND_FROM', '') || smtpFrom;
+/**
+ * Falls back through the older single-provider names so an existing deployment
+ * does not need its sender re-entered.
+ *
+ * Trimmed, and checked for an `@` rather than merely for being set. A value of
+ * whitespace is truthy, passes a presence check, and then arrives at the
+ * provider as an empty sender — which surfaces four layers away as a generic
+ * "could not deliver", with the actual cause only visible in a provider's own
+ * error text. Whitespace is exactly what a dashboard that mangles quotes around
+ * `Name <addr@host>` leaves behind, so it is worth naming here.
+ */
+const emailFrom = (optional('EMAIL_FROM', '') || optional('RESEND_FROM', '') || smtpFrom).trim();
 
 const emailConfigured = Boolean(emailFrom && (emailProviders.length > 0 || smtpHost));
 
-if (emailProviders.length > 0 && !emailFrom) {
+if (emailProviders.length > 0 && !emailFrom.includes('@')) {
   fatal.push(
-    'An email provider API key is set but EMAIL_FROM is not. Set EMAIL_FROM to a sender the provider has verified, e.g. "VegBazzar <no-reply@example.com>".'
+    emailFrom
+      ? `EMAIL_FROM does not contain an email address (got "${emailFrom}"). Use either "no-reply@example.com" or "VegBazzar <no-reply@example.com>".`
+      : 'An email provider API key is set but EMAIL_FROM is empty. Set it to a sender the provider has verified, e.g. "VegBazzar <no-reply@example.com>". A dashboard that strips quotes can leave this blank — check the stored value, not just that the variable exists.'
   );
 }
 
