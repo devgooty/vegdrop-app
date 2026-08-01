@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, ArrowLeft, Loader2, Check, Info, Sprout, IndianRupee } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Loader2, Check, Info } from 'lucide-react';
 import {
   lookupIdentifier,
   startIdentifierAuth,
@@ -109,12 +109,6 @@ const PRODUCE = [
 ];
 
 const produceSrc = (id) => `https://images.unsplash.com/${id}?w=160&h=160&auto=format&fit=crop&q=70`;
-
-/** Customer-facing only — a rider does not need to be sold on the shop. */
-const PROMISES = [
-  { Icon: Sprout, head: 'Picked', sub: 'this morning' },
-  { Icon: IndianRupee, head: 'Mandi', sub: 'rate, no markup' },
-];
 
 export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegbazzar_' }) {
   const [step, setStep] = useState(STEP.IDENTIFIER);
@@ -596,19 +590,6 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               </form>
             )}
           </section>
-
-          {/* Customer-only — a rider does not need to be sold the delivery time. */}
-          {appType === 'customer' && (
-            <ul className="mt-3 grid grid-cols-2 gap-2.5">
-              {PROMISES.map(({ Icon, head, sub: line }) => (
-                <li key={head} className="rounded-2xl border border-[#E4EAE6] bg-white px-2 py-2.5 text-center">
-                  <Icon className="mx-auto w-4 h-4 text-[#0B7A37]" />
-                  <p className="mt-1.5 text-[12.5px] font-extrabold leading-tight text-[#0F1F17]">{head}</p>
-                  <p className="text-[10.5px] leading-tight text-[#5B6B62]">{line}</p>
-                </li>
-              ))}
-            </ul>
-          )}
 
           <p className="mt-3.5 text-center text-[11.5px] text-[#5B6B62]">
             No password needed · One code and you&apos;re in

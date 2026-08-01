@@ -427,11 +427,9 @@
   animation: siMarquee 38s linear infinite;
 }
 
-/* Stops for anyone who wants to look at one. */
-.si-rail:hover .si-track,
-.si-rail:focus-within .si-track {
-  animation-play-state: paused;
-}
+/* Deliberately never pauses. A :hover pause reads fine with a mouse, but a
+   touch counts as hover and then sticks there, so tapping the row froze it
+   until you happened to tap somewhere else. */
 
 @keyframes siMarquee {
   from { transform: translateX(0); }
