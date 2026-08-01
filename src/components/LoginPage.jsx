@@ -347,7 +347,10 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     <div className="si-scope min-h-[100dvh] flex flex-col">
 
       {/* Header — the shop's name, and what is actually in it today. */}
-      <header className="px-5 pt-9 pb-6 sm:pt-12">
+      {/* Tight vertical rhythm on purpose: the whole screen has to clear a
+          phone viewport without scrolling, because the first thing a scroll
+          takes off the top is the shop's own name. */}
+      <header className="px-5 pt-6 pb-4 sm:pt-10">
         <div className="mx-auto w-full max-w-[26rem]">
 
           <div className="si-wordmark text-[2rem] sm:text-[2.35rem] leading-none">
@@ -361,7 +364,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               seam; the second copy is hidden from screen readers, which would
               otherwise announce ten vegetables twice. Decorative alt on the
               images because each name is already visible text below. */}
-          <div className="si-rail -mx-5 mt-7 pb-2">
+          <div className="si-rail -mx-5 mt-5 pb-2">
             <ul className="si-track">
               {[...PRODUCE, ...PRODUCE].map(({ name, id }, i) => (
                 <li
@@ -387,10 +390,10 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
         </div>
       </header>
 
-      <main className="flex-1 px-4 pb-7 sm:px-5">
+      <main className="flex-1 px-4 pb-5 sm:px-5">
         <div className="mx-auto w-full max-w-[26rem]">
 
-          <h1 className="mb-3 px-1 text-[1.6rem] sm:text-[1.75rem] font-extrabold text-[#0F1F17]">
+          <h1 className="mb-2 px-1 text-[1.6rem] sm:text-[1.75rem] font-extrabold text-[#0F1F17]">
             {PAGE_TITLE[step]}
           </h1>
 
@@ -398,14 +401,14 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
             {/* h2, not h1: the page heading above the card owns that level, and
                 skipping straight back to h1 here would break the outline. */}
-            <div className="si-underline mb-5">
+            <div className="si-underline mb-4">
               <h2 className="text-[1.25rem] font-extrabold text-[#0F1F17]">{title}</h2>
               <p className="mt-1 text-[13.5px] leading-relaxed text-[#5B6B62]">{sub}</p>
             </div>
 
             {/* STEP 1 — one box, number or email */}
             {step === STEP.IDENTIFIER && (
-              <form onSubmit={handleContinue} className="si-step space-y-5">
+              <form onSubmit={handleContinue} className="si-step space-y-4">
                 <div>
                   <label htmlFor="identifier" className={labelClass}>
                     Mobile number or email
@@ -451,7 +454,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
             {/* STEP 2A — sign in, one code across both channels */}
             {step === STEP.LOGIN_CODE && (
-              <form onSubmit={handleVerifyLogin} className="si-step space-y-5">
+              <form onSubmit={handleVerifyLogin} className="si-step space-y-4">
                 <div className="flex items-center justify-between gap-3 rounded-xl bg-[#F4F7F5] px-3.5 py-3">
                   <div className="min-w-0">
                     <span className="block text-[11px] font-bold text-[#5B6B62]">Sent to</span>
@@ -481,7 +484,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
             {/* STEP 2B — register, both contacts */}
             {step === STEP.REGISTER && (
-              <form onSubmit={handleStartRegistration} className="si-step space-y-5">
+              <form onSubmit={handleStartRegistration} className="si-step space-y-4">
                 <Notice tone="info">
                   Two ways to reach you means you can always get in, even when WhatsApp is down.
                 </Notice>
@@ -555,7 +558,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
             {/* STEP 3 — one code per contact */}
             {step === STEP.REGISTER_CODES && (
-              <form onSubmit={handleVerifyRegistration} className="si-step space-y-5">
+              <form onSubmit={handleVerifyRegistration} className="si-step space-y-4">
 
                 {/* Hidden entirely when WhatsApp could not deliver. The number is
                     still kept against the account, unverified, to confirm later. */}
@@ -596,9 +599,9 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
           {/* Customer-only — a rider does not need to be sold the delivery time. */}
           {appType === 'customer' && (
-            <ul className="mt-3.5 grid grid-cols-2 gap-2.5">
+            <ul className="mt-3 grid grid-cols-2 gap-2.5">
               {PROMISES.map(({ Icon, head, sub: line }) => (
-                <li key={head} className="rounded-2xl border border-[#E4EAE6] bg-white px-2 py-3 text-center">
+                <li key={head} className="rounded-2xl border border-[#E4EAE6] bg-white px-2 py-2.5 text-center">
                   <Icon className="mx-auto w-4 h-4 text-[#0B7A37]" />
                   <p className="mt-1.5 text-[12.5px] font-extrabold leading-tight text-[#0F1F17]">{head}</p>
                   <p className="text-[10.5px] leading-tight text-[#5B6B62]">{line}</p>
@@ -607,7 +610,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
             </ul>
           )}
 
-          <p className="mt-5 text-center text-[11.5px] text-[#5B6B62]">
+          <p className="mt-3.5 text-center text-[11.5px] text-[#5B6B62]">
             No password needed · One code and you&apos;re in
           </p>
         </div>
