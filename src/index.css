@@ -347,8 +347,8 @@
    --------------------------------------------------------------------------
    Quick-commerce grocery, the register that Blinkit/Zepto/Instamart established
    and that this app's customers already read as "app that brings me food":
-   a saturated green hero carrying the delivery promise and real produce, with
-   a white sheet lifted over it holding the form.
+   a white page, a green wordmark, and a self-scrolling row of real produce
+   above the form.
 
    Everything is prefixed `si-` and used only on the sign-in route. The prefix
    is deliberately not `mb-`: that collides with Tailwind's margin-bottom
@@ -368,23 +368,10 @@
   --si-ink: #0F1F17;
   --si-muted: #5B6B62;
   --si-line: #E4EAE6;
-  --si-bg: #F4F7F5;
+  --si-bg: #FFFFFF;
 
   background: var(--si-bg);
   font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
-}
-
-/* The hero. Layered so the top-left reads brighter than the bottom, which is
-   what keeps a flat brand green from looking like a filled rectangle.
-
-   The lightest colour in the stack is the radial's #16A34A, and white on that
-   is 3.3:1 — enough for the wordmark and headline, which are both large text
-   (>=18.66px bold), and the reason nothing small and white sits up in that
-   corner. A brighter highlight was tried first and put the wordmark under 3:1. */
-.si-hero {
-  background:
-    radial-gradient(85% 115% at 12% -10%, #16A34A 0%, transparent 58%),
-    linear-gradient(158deg, #0E8C40 0%, #07692F 52%, #044D22 100%);
 }
 
 /* Produce tiles, lit as spheres rather than printed as flat stickers: a cast
@@ -393,17 +380,14 @@
    sit in the same circle and an inset shadow on the container would be
    painted underneath the image and never seen.
 
-   The disc underneath is dark rather than white. Every photograph carries its
-   own backdrop and they disagree — some are shot on white, some on wood — so
-   a white ring made the row read as five mismatched cut-outs. Dark also means
-   a slow or failed image leaves a deliberate shape rather than a torn hole. */
+   The shadows are lighter than they were over the green band — the same
+   values that gave depth against dark now read as grime on white. */
 .si-tile {
   position: relative;
-  background-color: rgba(0, 0, 0, 0.22);
+  background-color: rgba(15, 31, 23, 0.06);
   box-shadow:
-    0 9px 18px -7px rgba(0, 0, 0, 0.55),
-    0 3px 6px -1px rgba(0, 0, 0, 0.3);
-  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 160ms ease;
+    0 6px 14px -6px rgba(15, 31, 23, 0.34),
+    0 2px 4px -1px rgba(15, 31, 23, 0.16);
 }
 .si-tile::after {
   content: '';
@@ -420,27 +404,45 @@
   pointer-events: none;
 }
 
-/* Horizontal produce rail. The scrollbar is hidden because the row is bled to
-   the screen edges and a half-visible tile is the affordance instead. */
+/* Self-scrolling produce marquee.
+
+   The list is rendered twice and the track travels exactly one copy's width,
+   so at the instant the animation loops the second copy is sitting where the
+   first began and the seam never lands on screen. That only holds if the two
+   copies measure identically, which is why the spacing is a margin on every
+   tile rather than a flex `gap`: a gap is dropped after the last item, making
+   one copy narrower than the translation and leaving a visible stutter.
+
+   Edges are masked rather than cut, so tiles fade out instead of being
+   guillotined at the screen edge. */
 .si-rail {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-  scroll-snap-type: x proximity;
-  /* Must match the rail's own inline padding. Without it a snap-start item
-     aligns to the scrollport edge, which drags the first tile out from behind
-     the padding and jams it against the screen edge. */
-  scroll-padding-inline: 1.25rem;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
 }
-.si-rail::-webkit-scrollbar {
-  display: none;
+
+.si-track {
+  display: flex;
+  width: max-content;
+  animation: siMarquee 38s linear infinite;
+}
+
+/* Stops for anyone who wants to look at one. */
+.si-rail:hover .si-track,
+.si-rail:focus-within .si-track {
+  animation-play-state: paused;
+}
+
+@keyframes siMarquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
 }
 
 .si-wordmark {
   font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
   font-weight: 800;
   letter-spacing: -0.035em;
+  color: var(--si-green-dark);
 }
 
 .si-num {
@@ -448,13 +450,13 @@
   font-feature-settings: 'tnum' 1;
 }
 
-/* The form sheet, lifted over the hero. */
+/* The form sheet. White on white now that the green band is gone, so a border
+   does the defining and the shadow only lifts it. */
 .si-sheet {
   background: #fff;
+  border: 1px solid var(--si-line);
   border-radius: 26px;
-  box-shadow:
-    0 1px 0 rgba(15, 31, 23, 0.04),
-    0 20px 44px -22px rgba(6, 66, 31, 0.42);
+  box-shadow: 0 14px 32px -20px rgba(15, 31, 23, 0.3);
 }
 
 /* Code entry — the moment the whole flow exists for, so it is the one control
@@ -492,9 +494,12 @@
   animation: siStepIn 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* With the marquee stopped, only the first copy is reachable — so hand the row
+   back to the user as something they can scroll themselves. */
 @media (prefers-reduced-motion: reduce) {
   .si-step { animation: none; }
   .si-otp { transition: none; }
-  .si-tile { transition: none; }
-  .si-rail { scroll-behavior: auto; }
+  .si-track { animation: none; }
+  .si-rail { overflow-x: auto; scrollbar-width: none; }
+  .si-rail::-webkit-scrollbar { display: none; }
 }

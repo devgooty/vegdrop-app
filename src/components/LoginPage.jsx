@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, ArrowLeft, Loader2, Check, Info, Zap, Sprout, IndianRupee } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Loader2, Check, Info, Sprout, IndianRupee } from 'lucide-react';
 import {
   lookupIdentifier,
   startIdentifierAuth,
@@ -74,8 +74,6 @@ const COPY = {
   },
 };
 
-const PILL = { customer: '15 min', shopkeeper: 'Store', delivery: 'Rider' };
-
 /**
  * The same catalogue photographs the shop itself uses, so the hero shows real
  * stock rather than stock photography. Requested at thumbnail width — these are
@@ -100,9 +98,8 @@ const PRODUCE = [
 
 const produceSrc = (id) => `https://images.unsplash.com/${id}?w=160&h=160&auto=format&fit=crop&q=70`;
 
-/** Customer-facing only — a rider does not need to be sold the delivery time. */
+/** Customer-facing only — a rider does not need to be sold on the shop. */
 const PROMISES = [
-  { Icon: Zap, head: '15 min', sub: 'average drop' },
   { Icon: Sprout, head: 'Picked', sub: 'this morning' },
   { Icon: IndianRupee, head: 'Mandi', sub: 'rate, no markup' },
 ];
@@ -314,8 +311,6 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
   const { title, sub } = COPY[step];
 
-  const pill = PILL[appType] || PILL.customer;
-
   const fieldClass =
     'w-full bg-[#F4F7F5] border border-[#E4EAE6] rounded-xl px-4 py-3.5 text-[15px] text-[#0F1F17] ' +
     'placeholder:text-[#5B6B62]/60 focus:outline-none focus:bg-white focus:border-[#16A34A] ' +
@@ -339,47 +334,48 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
   return (
     <div className="si-scope min-h-[100dvh] flex flex-col">
 
-      {/* Hero — the promise, and what is actually in the shop today. */}
-      <header className="si-hero px-5 pt-9 pb-16 sm:pt-12 sm:pb-20">
+      {/* Header — the shop's name, and what is actually in it today. */}
+      <header className="px-5 pt-9 pb-7 sm:pt-12">
         <div className="mx-auto w-full max-w-[26rem]">
 
-          <div className="flex items-center justify-between gap-3">
-            <div className="si-wordmark text-white text-[2rem] sm:text-[2.35rem] leading-none">
-              VegBazzar
-            </div>
-            <span className="shrink-0 flex items-center gap-1 rounded-full bg-[#FFC531] px-3 py-1.5 text-[12.5px] font-extrabold text-[#0F1F17]">
-              <Zap className="w-3.5 h-3.5 fill-current" />
-              {pill}
-            </span>
+          <div className="si-wordmark text-[2rem] sm:text-[2.35rem] leading-none">
+            VegBazzar
           </div>
 
-          {/* Bled past the column with -mx-5/px-5 so tiles scroll off the screen
-              edge rather than stopping at a margin.
+          {/* Bled past the column with -mx-5 so the row runs to both screen
+              edges and fades out against the mask.
 
-              Decorative alt: each name is already rendered as visible text
-              underneath, so alt text here would only double the announcement. */}
-          <ul className="si-rail -mx-5 mt-7 flex gap-3.5 overflow-x-auto px-5 pb-2">
-            {PRODUCE.map(({ name, id }) => (
-              <li key={id} className="w-[68px] shrink-0 snap-start text-center">
-                <div className="si-tile aspect-square w-full overflow-hidden rounded-full">
-                  <img
-                    src={produceSrc(id)}
-                    alt=""
-                    width="160"
-                    height="160"
-                    decoding="async"
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-                <span className="mt-2 block text-[11px] font-semibold text-white/85">{name}</span>
-              </li>
-            ))}
-          </ul>
+              The list is rendered twice so the marquee can loop without a
+              seam; the second copy is hidden from screen readers, which would
+              otherwise announce ten vegetables twice. Decorative alt on the
+              images because each name is already visible text below. */}
+          <div className="si-rail -mx-5 mt-7 pb-2">
+            <ul className="si-track">
+              {[...PRODUCE, ...PRODUCE].map(({ name, id }, i) => (
+                <li
+                  key={`${id}-${i}`}
+                  aria-hidden={i >= PRODUCE.length || undefined}
+                  className="mr-3.5 w-[68px] shrink-0 text-center"
+                >
+                  <div className="si-tile aspect-square w-full overflow-hidden rounded-full">
+                    <img
+                      src={produceSrc(id)}
+                      alt=""
+                      width="160"
+                      height="160"
+                      decoding="async"
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                  <span className="mt-2 block text-[11px] font-semibold text-[#0F1F17]">{name}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </header>
 
-      {/* Form sheet, lifted over the hero. */}
-      <main className="flex-1 -mt-9 px-4 pb-7 sm:px-5">
+      <main className="flex-1 px-4 pb-7 sm:px-5">
         <div className="mx-auto w-full max-w-[26rem]">
           <section className="si-sheet p-5 sm:p-6">
 
@@ -581,7 +577,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
           {/* Customer-only — a rider does not need to be sold the delivery time. */}
           {appType === 'customer' && (
-            <ul className="mt-3.5 grid grid-cols-3 gap-2.5">
+            <ul className="mt-3.5 grid grid-cols-2 gap-2.5">
               {PROMISES.map(({ Icon, head, sub: line }) => (
                 <li key={head} className="rounded-2xl border border-[#E4EAE6] bg-white px-2 py-3 text-center">
                   <Icon className="mx-auto w-4 h-4 text-[#0B7A37]" />
