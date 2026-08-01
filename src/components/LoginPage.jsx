@@ -55,6 +55,18 @@ const STEP = {
   REGISTER_CODES: 'register-codes',
 };
 
+/**
+ * The page's own heading, above the card. It tracks the flow rather than
+ * staying fixed — "Login" sitting over a card that reads "Create account"
+ * contradicts itself.
+ */
+const PAGE_TITLE = {
+  [STEP.IDENTIFIER]: 'Login',
+  [STEP.LOGIN_CODE]: 'Login',
+  [STEP.REGISTER]: 'Sign up',
+  [STEP.REGISTER_CODES]: 'Sign up',
+};
+
 const COPY = {
   [STEP.IDENTIFIER]: {
     title: 'Sign in',
@@ -312,9 +324,9 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
   const { title, sub } = COPY[step];
 
   const fieldClass =
-    'w-full bg-[#F4F7F5] border border-[#E4EAE6] rounded-xl px-4 py-3.5 text-[15px] text-[#0F1F17] ' +
+    'w-full bg-[#F1F7F3] border border-[#DCE9E1] rounded-xl px-4 py-3.5 text-[15px] text-[#0F1F17] ' +
     'placeholder:text-[#5B6B62]/60 focus:outline-none focus:bg-white focus:border-[#16A34A] ' +
-    'focus:ring-[3px] focus:ring-[#16A34A]/15 transition';
+    'focus:ring-[3px] focus:ring-[#16A34A]/18 transition';
 
   const labelClass = 'block text-[12.5px] font-bold text-[#0F1F17] mb-2';
 
@@ -328,14 +340,14 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     'disabled:opacity-55 disabled:cursor-not-allowed disabled:shadow-none disabled:translate-y-0';
 
   const quietButton =
-    'text-[12.5px] font-bold text-[#5B6B62] hover:text-[#0F1F17] underline underline-offset-4 ' +
+    'text-[12.5px] font-bold text-[#0B7A37] hover:text-[#08652C] underline underline-offset-4 ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#16A34A]/40 rounded';
 
   return (
     <div className="si-scope min-h-[100dvh] flex flex-col">
 
       {/* Header — the shop's name, and what is actually in it today. */}
-      <header className="px-5 pt-9 pb-7 sm:pt-12">
+      <header className="px-5 pt-9 pb-6 sm:pt-12">
         <div className="mx-auto w-full max-w-[26rem]">
 
           <div className="si-wordmark text-[2rem] sm:text-[2.35rem] leading-none">
@@ -377,10 +389,17 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
       <main className="flex-1 px-4 pb-7 sm:px-5">
         <div className="mx-auto w-full max-w-[26rem]">
+
+          <h1 className="mb-3 px-1 text-[1.6rem] sm:text-[1.75rem] font-extrabold text-[#0F1F17]">
+            {PAGE_TITLE[step]}
+          </h1>
+
           <section className="si-sheet p-5 sm:p-6">
 
-            <div className="mb-5">
-              <h1 className="text-[1.4rem] font-extrabold tracking-[-0.02em] text-[#0F1F17]">{title}</h1>
+            {/* h2, not h1: the page heading above the card owns that level, and
+                skipping straight back to h1 here would break the outline. */}
+            <div className="si-underline mb-5">
+              <h2 className="text-[1.25rem] font-extrabold text-[#0F1F17]">{title}</h2>
               <p className="mt-1 text-[13.5px] leading-relaxed text-[#5B6B62]">{sub}</p>
             </div>
 
@@ -411,7 +430,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 rounded border-[#C9D4CD] text-[#16A34A] focus:ring-[#16A34A]"
+                    className="w-4 h-4 rounded border-[#C9D4CD] accent-[#0B7A37] focus:ring-[#16A34A]"
                   />
                   <span className="text-[13px] text-[#5B6B62]">Remember me on this device</span>
                 </label>

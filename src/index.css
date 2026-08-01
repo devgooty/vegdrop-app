@@ -438,11 +438,33 @@
   to { transform: translateX(-50%); }
 }
 
+/* The app dresses every h1/h2/h3 in Fraunces for its vintage theme. Sign-in is
+   the one screen that is not vintage — it is the quick-commerce register — and
+   a lone serif heading in a card of sans was the result. */
+.si-scope h1,
+.si-scope h2,
+.si-scope h3 {
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.025em;
+}
+
 .si-wordmark {
   font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
   font-weight: 800;
   letter-spacing: -0.035em;
   color: var(--si-green-dark);
+}
+
+/* A short green rule under the heading — the card is white on white, and this
+   is the one mark that says which brand's form it is. */
+.si-underline::after {
+  content: '';
+  display: block;
+  width: 2.25rem;
+  height: 3px;
+  margin-top: 0.6rem;
+  border-radius: 999px;
+  background: var(--si-green);
 }
 
 .si-num {
