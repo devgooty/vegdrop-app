@@ -67,14 +67,19 @@ const PAGE_TITLE = {
   [STEP.REGISTER_CODES]: 'Sign up',
 };
 
+/**
+ * Subtitles are kept to a single line at phone width on purpose. Each one that
+ * wraps costs 18px, and the whole screen has to clear the viewport without
+ * scrolling — the field's own label already says what to type.
+ */
 const COPY = {
   [STEP.IDENTIFIER]: {
     title: 'Sign in',
-    sub: 'Use your mobile number or email. We send one code.',
+    sub: "We'll send you a one-time code.",
   },
   [STEP.LOGIN_CODE]: {
     title: 'Enter your code',
-    sub: 'Six digits. The same code goes to WhatsApp and email.',
+    sub: 'Six digits, sent to WhatsApp and email.',
   },
   [STEP.REGISTER]: {
     title: 'Create account',
@@ -87,28 +92,11 @@ const COPY = {
 };
 
 /**
- * The same catalogue photographs the shop itself uses, so the hero shows real
- * stock rather than stock photography. Requested at thumbnail width — these are
- * above the fold on the very first screen, and the full 300px catalogue crop
- * would be four times the bytes for no visible gain.
- *
- * Longer than fits on a phone on purpose: the row scrolls, and a tile cut off
- * by the screen edge is what tells you it does.
+ * Served from `public/`, so it is a same-origin file rather than a remote
+ * fetch — this is the first paint of the first screen, and it carries the
+ * wordmark, so it must not wait on a third party.
  */
-const PRODUCE = [
-  { name: 'Palak', id: 'photo-1576045057995-568f588f82fb' },
-  { name: 'Tamatar', id: 'photo-1592924357228-91a4daadcfea' },
-  { name: 'Pudina', id: 'photo-1628556270448-4d4e4148e1b1' },
-  { name: 'Capsicum', id: 'photo-1563565375-f3fdfdbefa83' },
-  { name: 'Apple', id: 'photo-1560806887-1e4cd0b6cbd6' },
-  { name: 'Kale', id: 'photo-1524179091875-bf99a9a6af57' },
-  { name: 'Lettuce', id: 'photo-1622206151226-18ca2c9ab4a1' },
-  { name: 'Avocado', id: 'photo-1523049673857-eb18f1d7b578' },
-  { name: 'Jamun', id: 'photo-1498557850523-fd3d118b962e' },
-  { name: 'Tulsi', id: 'photo-1608686207856-001b95cf60ca' },
-];
-
-const produceSrc = (id) => `https://images.unsplash.com/${id}?w=160&h=160&auto=format&fit=crop&q=70`;
+const HERO_SRC = '/hero.webp';
 
 export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegbazzar_' }) {
   const [step, setStep] = useState(STEP.IDENTIFIER);
@@ -337,54 +325,39 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     'text-[12.5px] font-bold text-[#0B7A37] hover:text-[#08652C] underline underline-offset-4 ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#16A34A]/40 rounded';
 
+  // A definite height, not a minimum: flex-shrink only engages when the
+  // container has a real size to overflow, and the shrinking hero is what makes
+  // this fit a screen of any height. overflow-y-auto is the safety net for the
+  // taller registration step.
   return (
-    <div className="si-scope min-h-[100dvh] flex flex-col">
+    <div className="si-scope flex h-[100dvh] flex-col overflow-y-auto">
 
-      {/* Header — the shop's name, and what is actually in it today. */}
-      {/* Tight vertical rhythm on purpose: the whole screen has to clear a
-          phone viewport without scrolling, because the first thing a scroll
-          takes off the top is the shop's own name. */}
-      <header className="px-5 pt-6 pb-4 sm:pt-10">
-        <div className="mx-auto w-full max-w-[26rem]">
+      {/* Full bleed to the screen edges — the artwork's own white margin is the
+          only padding it needs, and the page continues in the same white where
+          the crop ends.
 
-          <div className="si-wordmark text-[2rem] sm:text-[2.35rem] leading-none">
-            VegBazzar
-          </div>
+          alt names the shop rather than being empty: the wordmark is painted
+          into this artwork, so it is the only place the brand is stated. */}
+      {/* Shrinks below the image's natural height so the artwork is the only
+          thing that gives — the form below is shrink-0.
 
-          {/* Bled past the column with -mx-5 so the row runs to both screen
-              edges and fades out against the mask.
-
-              The list is rendered twice so the marquee can loop without a
-              seam; the second copy is hidden from screen readers, which would
-              otherwise announce ten vegetables twice. Decorative alt on the
-              images because each name is already visible text below. */}
-          <div className="si-rail -mx-5 mt-5 pb-2">
-            <ul className="si-track">
-              {[...PRODUCE, ...PRODUCE].map(({ name, id }, i) => (
-                <li
-                  key={`${id}-${i}`}
-                  aria-hidden={i >= PRODUCE.length || undefined}
-                  className="mr-3.5 w-[68px] shrink-0 text-center"
-                >
-                  <div className="si-tile aspect-square w-full overflow-hidden rounded-full">
-                    <img
-                      src={produceSrc(id)}
-                      alt=""
-                      width="160"
-                      height="160"
-                      decoding="async"
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                  <span className="mt-2 block text-[11px] font-semibold text-[#0F1F17]">{name}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+          The floor lives here rather than on the image: the image is bounded by
+          max-height:100% of this box, so a min-height on the image itself would
+          let it outgrow its parent and paint over the form. 15rem is where the
+          shrinking has to stop, because below roughly that the bottom fade
+          starts eating into the wordmark. */}
+      <header className="min-h-[15rem] shrink">
+        <img
+          src={HERO_SRC}
+          alt="VegBazzar"
+          width="768"
+          height="790"
+          fetchPriority="high"
+          className="si-hero-img"
+        />
       </header>
 
-      <main className="flex-1 px-4 pb-5 sm:px-5">
+      <main className="shrink-0 px-4 pt-1 pb-2 sm:px-5">
         <div className="mx-auto w-full max-w-[26rem]">
 
           <h1 className="mb-2 px-1 text-[1.6rem] sm:text-[1.75rem] font-extrabold text-[#0F1F17]">
@@ -414,7 +387,6 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                     autoComplete="username"
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder="9876543210"
                     maxLength={254}
                     className={fieldClass}
                     required
@@ -440,9 +412,6 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                   {!isSubmitting && <ArrowRight className="w-4 h-4" />}
                 </button>
 
-                <p className="text-center text-[12px] text-[#5B6B62]">
-                  New here? We set up your account next.
-                </p>
               </form>
             )}
 
@@ -495,7 +464,6 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                       inputMode="numeric"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                      placeholder="9876543210"
                       maxLength={10}
                       className={`${fieldClass} si-num pl-[3.4rem]`}
                       required
@@ -591,9 +559,6 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
             )}
           </section>
 
-          <p className="mt-3.5 text-center text-[11.5px] text-[#5B6B62]">
-            No password needed · One code and you&apos;re in
-          </p>
         </div>
       </main>
     </div>

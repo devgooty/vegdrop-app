@@ -374,66 +374,59 @@
   font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
 }
 
-/* Produce tiles, lit as spheres rather than printed as flat stickers: a cast
-   shadow below, a highlight running off the top-left, and a darkened lower
-   edge. The gloss is a pseudo-element over the photograph, because the two
-   sit in the same circle and an inset shadow on the container would be
-   painted underneath the image and never seen.
+/* The hero photograph, full bleed across the top.
 
-   The shadows are lighter than they were over the green band — the same
-   values that gave depth against dark now read as grime on white. */
-.si-tile {
-  position: relative;
-  background-color: rgba(15, 31, 23, 0.06);
-  box-shadow:
-    0 6px 14px -6px rgba(15, 31, 23, 0.34),
-    0 2px 4px -1px rgba(15, 31, 23, 0.16);
-}
-.si-tile::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  /* Two layers, not one broad wash: a tight specular spot up at the top-left
-     and a form shadow rolling off the bottom-right. A single linear highlight
-     strong enough to read as 3D also hazed the middle of every photograph,
-     and the produce is the thing worth seeing. */
-  background:
-    radial-gradient(50% 45% at 30% 22%, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0) 70%),
-    linear-gradient(160deg, rgba(255, 255, 255, 0.06) 0%, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.34) 100%);
-  pointer-events: none;
-}
+   The wordmark is painted into the artwork, so there is no text VegBazzar on
+   this screen any more — which is also why the img carries alt="VegBazzar"
+   rather than an empty alt: it is the only place the shop is named.
 
-/* Self-scrolling produce marquee.
+   The delivered artwork was 768x1376 with everything in the top 768 rows and
+   plain white beneath. That white was cropped out of the file rather than
+   hidden with CSS: it is bytes and decode time for pixels identical to the
+   page's own background, and the page simply carries on in the same white
+   where the crop ends.
 
-   The list is rendered twice and the track travels exactly one copy's width,
-   so at the instant the animation loops the second copy is sitting where the
-   first began and the seam never lands on screen. That only holds if the two
-   copies measure identically, which is why the spacing is a margin on every
-   tile rather than a flex `gap`: a gap is dropped after the last item, making
-   one copy narrower than the translation and leaving a visible stutter.
+   Capped at the content column's width: full bleed on a phone, but left
+   unbounded it renders over a thousand pixels tall on a desktop. */
+.si-hero-img {
+  display: block;
+  width: 100%;
+  max-width: 26rem;
+  margin-inline: auto;
+  /* aspect-ratio is the natural size on a roomy screen; max-height: 100% lets
+     the flex parent squeeze it on a short one, and cover crops the difference
+     off the bottom. Together they are what "fits any screen" means here. */
+  aspect-ratio: 768 / 790;
+  max-height: 100%;
+  object-fit: cover;
+  object-position: top center;
 
-   Edges are masked rather than cut, so tiles fade out instead of being
-   guillotined at the screen edge. */
-.si-rail {
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
-  mask-image: linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
-}
+  /* The bottom edge is dissolved rather than cut. Both whites are already
+     #FFFFFF, so the seam was never a colour mismatch — it was the crop landing
+     on the drop shadow, which is still grey at row 738 and does not reach white
+     until about row 770. A hard cut there leaves a grey band stopping dead
+     against the page.
 
-.si-track {
-  display: flex;
-  width: max-content;
-  animation: siMarquee 38s linear infinite;
-}
+     A fixed crop row cannot fix this, because the artwork shrinks to fit the
+     screen and the cut therefore lands somewhere different on every device. So
+     the last stretch fades out instead, and whatever it lands on melts into the
+     page.
 
-/* Deliberately never pauses. A :hover pause reads fine with a mouse, but a
-   touch counts as hover and then sticks there, so tapping the row froze it
-   until you happened to tap somewhere else. */
+     The fade is an ellipse rather than a straight line, which is what gives the
+     bottom its curve: anchored at the top and taller than the box, so the
+     corners sit further along the gradient than the middle does and therefore
+     clear first. The edge that survives bows downward. A border-radius would
+     not have shown here at all — the bottom is already fading to transparent,
+     so there is no hard edge for a radius to round.
 
-@keyframes siMarquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
+     The numbers are load bearing. The ellipse must reach zero alpha before the
+     bottom edge at EVERY x, or the leftover opacity is itself a hard line — a
+     first attempt at 130%/66-88% left alpha 0.503 across the middle, which is
+     the original seam again at half strength. At 105% tall with stops at
+     80-95%, the centre clears exactly at the bottom and the corners about 23px
+     earlier, which is the curve. */
+  -webkit-mask-image: radial-gradient(150% 105% at 50% 0%, #000 80%, transparent 95%);
+  mask-image: radial-gradient(150% 105% at 50% 0%, #000 80%, transparent 95%);
 }
 
 /* The app dresses every h1/h2/h3 in Fraunces for its vintage theme. Sign-in is
@@ -444,13 +437,6 @@
 .si-scope h3 {
   font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
   letter-spacing: -0.025em;
-}
-
-.si-wordmark {
-  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
-  font-weight: 800;
-  letter-spacing: -0.035em;
-  color: var(--si-green-dark);
 }
 
 /* A short green rule under the heading — the card is white on white, and this
@@ -514,12 +500,7 @@
   animation: siStepIn 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* With the marquee stopped, only the first copy is reachable — so hand the row
-   back to the user as something they can scroll themselves. */
 @media (prefers-reduced-motion: reduce) {
   .si-step { animation: none; }
   .si-otp { transition: none; }
-  .si-track { animation: none; }
-  .si-rail { overflow-x: auto; scrollbar-width: none; }
-  .si-rail::-webkit-scrollbar { display: none; }
 }
