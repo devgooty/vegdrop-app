@@ -74,17 +74,16 @@ const COPY = {
   },
 };
 
-const HERO = {
-  customer: { pill: '15 min', headline: 'Fresh sabzi, delivered to your door.' },
-  shopkeeper: { pill: 'Store', headline: "Your counter. Sign in to take today's orders." },
-  delivery: { pill: 'Rider', headline: "Sign in to pick up today's deliveries." },
-};
+const PILL = { customer: '15 min', shopkeeper: 'Store', delivery: 'Rider' };
 
 /**
  * The same catalogue photographs the shop itself uses, so the hero shows real
  * stock rather than stock photography. Requested at thumbnail width — these are
  * above the fold on the very first screen, and the full 300px catalogue crop
  * would be four times the bytes for no visible gain.
+ *
+ * Longer than fits on a phone on purpose: the row scrolls, and a tile cut off
+ * by the screen edge is what tells you it does.
  */
 const PRODUCE = [
   { name: 'Palak', id: 'photo-1576045057995-568f588f82fb' },
@@ -92,9 +91,14 @@ const PRODUCE = [
   { name: 'Pudina', id: 'photo-1628556270448-4d4e4148e1b1' },
   { name: 'Capsicum', id: 'photo-1563565375-f3fdfdbefa83' },
   { name: 'Apple', id: 'photo-1560806887-1e4cd0b6cbd6' },
+  { name: 'Kale', id: 'photo-1524179091875-bf99a9a6af57' },
+  { name: 'Lettuce', id: 'photo-1622206151226-18ca2c9ab4a1' },
+  { name: 'Avocado', id: 'photo-1523049673857-eb18f1d7b578' },
+  { name: 'Jamun', id: 'photo-1498557850523-fd3d118b962e' },
+  { name: 'Tulsi', id: 'photo-1608686207856-001b95cf60ca' },
 ];
 
-const produceSrc = (id) => `https://images.unsplash.com/${id}?w=128&h=128&auto=format&fit=crop&q=70`;
+const produceSrc = (id) => `https://images.unsplash.com/${id}?w=160&h=160&auto=format&fit=crop&q=70`;
 
 /** Customer-facing only — a rider does not need to be sold the delivery time. */
 const PROMISES = [
@@ -310,7 +314,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
   const { title, sub } = COPY[step];
 
-  const hero = HERO[appType] || HERO.customer;
+  const pill = PILL[appType] || PILL.customer;
 
   const fieldClass =
     'w-full bg-[#F4F7F5] border border-[#E4EAE6] rounded-xl px-4 py-3.5 text-[15px] text-[#0F1F17] ' +
@@ -345,30 +349,29 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
             </div>
             <span className="shrink-0 flex items-center gap-1 rounded-full bg-[#FFC531] px-3 py-1.5 text-[12.5px] font-extrabold text-[#0F1F17]">
               <Zap className="w-3.5 h-3.5 fill-current" />
-              {hero.pill}
+              {pill}
             </span>
           </div>
 
-          <h2 className="mt-5 text-[1.5rem] sm:text-[1.7rem] font-extrabold leading-[1.25] tracking-[-0.02em] text-white">
-            {hero.headline}
-          </h2>
+          {/* Bled past the column with -mx-5/px-5 so tiles scroll off the screen
+              edge rather than stopping at a margin.
 
-          {/* Decorative alt: each name is already rendered as visible text
+              Decorative alt: each name is already rendered as visible text
               underneath, so alt text here would only double the announcement. */}
-          <ul className="mt-6 grid grid-cols-5 gap-2 sm:gap-2.5">
+          <ul className="si-rail -mx-5 mt-7 flex gap-3.5 overflow-x-auto px-5 pb-2">
             {PRODUCE.map(({ name, id }) => (
-              <li key={id} className="text-center">
+              <li key={id} className="w-[68px] shrink-0 snap-start text-center">
                 <div className="si-tile aspect-square w-full overflow-hidden rounded-full">
                   <img
                     src={produceSrc(id)}
                     alt=""
-                    width="128"
-                    height="128"
+                    width="160"
+                    height="160"
                     decoding="async"
                     className="h-full w-full object-cover"
                   />
                 </div>
-                <span className="mt-1.5 block text-[10.5px] font-semibold text-white/85">{name}</span>
+                <span className="mt-2 block text-[11px] font-semibold text-white/85">{name}</span>
               </li>
             ))}
           </ul>

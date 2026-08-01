@@ -387,12 +387,54 @@
     linear-gradient(158deg, #0E8C40 0%, #07692F 52%, #044D22 100%);
 }
 
-/* Produce photographs are remote and above the fold, so every tile keeps a
-   green disc underneath: a slow or failed image leaves a deliberate shape
-   rather than a torn hole in the hero. */
+/* Produce tiles, lit as spheres rather than printed as flat stickers: a cast
+   shadow below, a highlight running off the top-left, and a darkened lower
+   edge. The gloss is a pseudo-element over the photograph, because the two
+   sit in the same circle and an inset shadow on the container would be
+   painted underneath the image and never seen.
+
+   The disc underneath is dark rather than white. Every photograph carries its
+   own backdrop and they disagree — some are shot on white, some on wood — so
+   a white ring made the row read as five mismatched cut-outs. Dark also means
+   a slow or failed image leaves a deliberate shape rather than a torn hole. */
 .si-tile {
-  background-color: rgba(255, 255, 255, 0.14);
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
+  position: relative;
+  background-color: rgba(0, 0, 0, 0.22);
+  box-shadow:
+    0 9px 18px -7px rgba(0, 0, 0, 0.55),
+    0 3px 6px -1px rgba(0, 0, 0, 0.3);
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 160ms ease;
+}
+.si-tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  /* Two layers, not one broad wash: a tight specular spot up at the top-left
+     and a form shadow rolling off the bottom-right. A single linear highlight
+     strong enough to read as 3D also hazed the middle of every photograph,
+     and the produce is the thing worth seeing. */
+  background:
+    radial-gradient(50% 45% at 30% 22%, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0) 70%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.06) 0%, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.34) 100%);
+  pointer-events: none;
+}
+
+/* Horizontal produce rail. The scrollbar is hidden because the row is bled to
+   the screen edges and a half-visible tile is the affordance instead. */
+.si-rail {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  /* Must match the rail's own inline padding. Without it a snap-start item
+     aligns to the scrollport edge, which drags the first tile out from behind
+     the padding and jams it against the screen edge. */
+  scroll-padding-inline: 1.25rem;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+.si-rail::-webkit-scrollbar {
+  display: none;
 }
 
 .si-wordmark {
@@ -453,4 +495,6 @@
 @media (prefers-reduced-motion: reduce) {
   .si-step { animation: none; }
   .si-otp { transition: none; }
+  .si-tile { transition: none; }
+  .si-rail { scroll-behavior: auto; }
 }
