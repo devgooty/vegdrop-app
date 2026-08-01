@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, ArrowLeft, Loader2, Check, Info } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Loader2, Check, Info, Zap, Sprout, IndianRupee } from 'lucide-react';
 import {
   lookupIdentifier,
   startIdentifierAuth,
@@ -34,14 +34,16 @@ import OTPBoxGroup from './OTPBoxGroup';
  *
  * DESIGN
  *
- * The surface is a vegetable stall's painted rate board, because that is the
- * visual language of the shops this app actually competes with — fat slab
- * lettering with a hard offset shadow, turmeric on leaf green, crate slats.
- * Tokens live in index.css under `.mb-scope`.
+ * Quick-commerce grocery — the register Blinkit, Zepto and Instamart set, which
+ * is what this app's customers already recognise as "the app that brings me
+ * food": a saturated green hero carrying the delivery promise and real produce,
+ * with a white sheet lifted over it holding the form. Tokens live in index.css
+ * under `.si-scope`.
  *
- * The board is the brand; the form sits on a chalk panel. Someone reading this
- * at six in the morning to order vegetables should never pay for the styling,
- * so contrast and touch targets win wherever they conflict with the concept.
+ * The screen is meant to read as stocked, not airy — an empty login for a
+ * grocery shop looks shut. Density comes from produce and proof, never from
+ * decorating the form, which stays plain and high-contrast because it is the
+ * part someone has to read at six in the morning.
  *
  * `onLogin` receives the user object the server returns. This component never
  * determines a role and never validates a code — both are server decisions.
@@ -72,11 +74,34 @@ const COPY = {
   },
 };
 
-const BOARD_LABEL = {
-  customer: 'Fresh every morning',
-  shopkeeper: 'Store counter',
-  delivery: 'Rider sign-in',
+const HERO = {
+  customer: { pill: '15 min', headline: 'Fresh sabzi, delivered to your door.' },
+  shopkeeper: { pill: 'Store', headline: "Your counter. Sign in to take today's orders." },
+  delivery: { pill: 'Rider', headline: "Sign in to pick up today's deliveries." },
 };
+
+/**
+ * The same catalogue photographs the shop itself uses, so the hero shows real
+ * stock rather than stock photography. Requested at thumbnail width — these are
+ * above the fold on the very first screen, and the full 300px catalogue crop
+ * would be four times the bytes for no visible gain.
+ */
+const PRODUCE = [
+  { name: 'Palak', id: 'photo-1576045057995-568f588f82fb' },
+  { name: 'Tamatar', id: 'photo-1592924357228-91a4daadcfea' },
+  { name: 'Pudina', id: 'photo-1628556270448-4d4e4148e1b1' },
+  { name: 'Capsicum', id: 'photo-1563565375-f3fdfdbefa83' },
+  { name: 'Apple', id: 'photo-1560806887-1e4cd0b6cbd6' },
+];
+
+const produceSrc = (id) => `https://images.unsplash.com/${id}?w=128&h=128&auto=format&fit=crop&q=70`;
+
+/** Customer-facing only — a rider does not need to be sold the delivery time. */
+const PROMISES = [
+  { Icon: Zap, head: '15 min', sub: 'average drop' },
+  { Icon: Sprout, head: 'Picked', sub: 'this morning' },
+  { Icon: IndianRupee, head: 'Mandi', sub: 'rate, no markup' },
+];
 
 export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegbazzar_' }) {
   const [step, setStep] = useState(STEP.IDENTIFIER);
@@ -285,249 +310,289 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
   const { title, sub } = COPY[step];
 
+  const hero = HERO[appType] || HERO.customer;
+
   const fieldClass =
-    'w-full bg-white/70 border border-[#10261D]/20 rounded-lg px-4 py-3.5 text-[15px] text-[#10261D] ' +
-    'placeholder:text-[#10261D]/35 focus:outline-none focus:bg-white focus:border-[#12402F] ' +
-    'focus:ring-[3px] focus:ring-[#12402F]/15 transition';
+    'w-full bg-[#F4F7F5] border border-[#E4EAE6] rounded-xl px-4 py-3.5 text-[15px] text-[#0F1F17] ' +
+    'placeholder:text-[#5B6B62]/60 focus:outline-none focus:bg-white focus:border-[#16A34A] ' +
+    'focus:ring-[3px] focus:ring-[#16A34A]/15 transition';
 
-  const labelClass =
-    'mb-mono block text-[11px] uppercase tracking-[0.14em] text-[#10261D]/55 mb-2';
+  const labelClass = 'block text-[12.5px] font-bold text-[#0F1F17] mb-2';
 
+  // #0B7A37 rather than the lighter brand green: white 15px bold needs 4.5:1,
+  // which #16A34A misses at 3.3. This clears it at 5.4.
   const primaryButton =
-    'w-full mb-display bg-[#F2A414] hover:bg-[#e09a10] text-[#10261D] text-[15px] py-4 rounded-lg ' +
-    'shadow-[0_3px_0_#C9860A] active:shadow-[0_1px_0_#C9860A] active:translate-y-[2px] ' +
-    'transition-all flex items-center justify-center gap-2 ' +
-    'focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#10261D]/30 ' +
-    'disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none disabled:translate-y-0';
+    'w-full bg-[#0B7A37] hover:bg-[#08652C] text-white text-[15px] font-bold py-4 rounded-xl ' +
+    'shadow-[0_8px_18px_-8px_rgba(11,122,55,0.75)] active:translate-y-[1px] transition-all ' +
+    'flex items-center justify-center gap-2 ' +
+    'focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#16A34A]/35 ' +
+    'disabled:opacity-55 disabled:cursor-not-allowed disabled:shadow-none disabled:translate-y-0';
 
   const quietButton =
-    'mb-mono text-[11px] uppercase tracking-[0.14em] text-[#10261D]/50 hover:text-[#10261D] ' +
-    'underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 ' +
-    'focus-visible:ring-[#12402F]/40 rounded';
+    'text-[12.5px] font-bold text-[#5B6B62] hover:text-[#0F1F17] underline underline-offset-4 ' +
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#16A34A]/40 rounded';
 
   return (
-    <div className="mb-scope mb-board min-h-[100dvh] flex flex-col items-center justify-center p-5 sm:p-8">
+    <div className="si-scope min-h-[100dvh] flex flex-col">
 
-      <main className="w-full max-w-[26rem]">
+      {/* Hero — the promise, and what is actually in the shop today. */}
+      <header className="si-hero px-5 pt-9 pb-16 sm:pt-12 sm:pb-20">
+        <div className="mx-auto w-full max-w-[26rem]">
 
-        {/* Painted shop sign — the one loud element on the page. */}
-        <header className="text-center mb-7">
-          {/* Sized with clamp, not a breakpoint: the offset shadow adds 4px to
-              the right of the glyphs, so a fixed size crowds the plaque edge on
-              a narrow phone. */}
-          <div className="mb-plaque inline-block rounded-xl px-5 py-3.5 sm:px-7 sm:py-4">
-            <div className="mb-wordmark text-[clamp(1.9rem,8.5vw,2.9rem)] pr-1">VegBazzar</div>
-          </div>
-          <p className="mb-mono mt-3.5 text-[11px] uppercase tracking-[0.28em] text-[#F2A414]">
-            {BOARD_LABEL[appType] || BOARD_LABEL.customer}
-          </p>
-        </header>
-
-        {/* Chalk panel. Deliberately high-contrast: the board is the brand, this
-            is where someone actually has to read and type. */}
-        <section className="bg-[#F6F1E2] rounded-2xl p-6 sm:p-7 shadow-[0_18px_40px_-12px_rgba(0,0,0,0.45)]">
-
-          <div className="mb-6">
-            <h1 className="mb-display text-[1.7rem] text-[#10261D]">{title}</h1>
-            <p className="mt-1.5 text-[13.5px] leading-relaxed text-[#10261D]/60">{sub}</p>
+          <div className="flex items-center justify-between gap-3">
+            <div className="si-wordmark text-white text-[2rem] sm:text-[2.35rem] leading-none">
+              VegBazzar
+            </div>
+            <span className="shrink-0 flex items-center gap-1 rounded-full bg-[#FFC531] px-3 py-1.5 text-[12.5px] font-extrabold text-[#0F1F17]">
+              <Zap className="w-3.5 h-3.5 fill-current" />
+              {hero.pill}
+            </span>
           </div>
 
-          {/* STEP 1 — one box, number or email */}
-          {step === STEP.IDENTIFIER && (
-            <form onSubmit={handleContinue} className="mb-step space-y-5">
-              <div>
-                <label htmlFor="identifier" className={labelClass}>
-                  Mobile number or email
-                </label>
-                <input
-                  id="identifier"
-                  type="text"
-                  inputMode="email"
-                  autoComplete="username"
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="9876543210"
-                  maxLength={254}
-                  className={fieldClass}
-                  required
-                  disabled={isSubmitting}
-                />
-              </div>
+          <h2 className="mt-5 text-[1.5rem] sm:text-[1.7rem] font-extrabold leading-[1.25] tracking-[-0.02em] text-white">
+            {hero.headline}
+          </h2>
 
-              <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded border-[#10261D]/30 text-[#12402F] focus:ring-[#12402F]"
-                />
-                <span className="text-[13px] text-[#10261D]/70">Remember me on this device</span>
-              </label>
-
-              {error && <Notice tone="error">{error}</Notice>}
-
-              <button type="submit" disabled={isSubmitting} className={primaryButton}>
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                <span>{isSubmitting ? 'Checking' : 'Next'}</span>
-                {!isSubmitting && <ArrowRight className="w-4 h-4" />}
-              </button>
-
-              <p className="text-center text-[12px] text-[#10261D]/45">
-                New here? We set up your account next.
-              </p>
-            </form>
-          )}
-
-          {/* STEP 2A — sign in, one code across both channels */}
-          {step === STEP.LOGIN_CODE && (
-            <form onSubmit={handleVerifyLogin} className="mb-step space-y-5">
-              <div className="flex items-center justify-between gap-3 rounded-lg bg-[#10261D]/[0.055] px-3.5 py-3">
-                <div className="min-w-0">
-                  <span className="mb-mono block text-[10px] uppercase tracking-[0.14em] text-[#10261D]/45">
-                    Sent to
-                  </span>
-                  <span className="mb-mono block truncate text-[13px] text-[#10261D]">
-                    {challenge?.destination || identifier}
-                  </span>
+          {/* Decorative alt: each name is already rendered as visible text
+              underneath, so alt text here would only double the announcement. */}
+          <ul className="mt-6 grid grid-cols-5 gap-2 sm:gap-2.5">
+            {PRODUCE.map(({ name, id }) => (
+              <li key={id} className="text-center">
+                <div className="si-tile aspect-square w-full overflow-hidden rounded-full">
+                  <img
+                    src={produceSrc(id)}
+                    alt=""
+                    width="128"
+                    height="128"
+                    decoding="async"
+                    className="h-full w-full object-cover"
+                  />
                 </div>
-                <button type="button" onClick={resetToStart} className={`${quietButton} shrink-0 flex items-center gap-1`}>
-                  <ArrowLeft className="w-3 h-3" />
-                  Change
-                </button>
-              </div>
+                <span className="mt-1.5 block text-[10.5px] font-semibold text-white/85">{name}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </header>
 
-              <div>
-                <label className={labelClass}>Six-digit code</label>
-                <OTPBoxGroup tone="board" value={code} onChange={setCode} />
-              </div>
+      {/* Form sheet, lifted over the hero. */}
+      <main className="flex-1 -mt-9 px-4 pb-7 sm:px-5">
+        <div className="mx-auto w-full max-w-[26rem]">
+          <section className="si-sheet p-5 sm:p-6">
 
-              {error && <Notice tone="error">{error}</Notice>}
+            <div className="mb-5">
+              <h1 className="text-[1.4rem] font-extrabold tracking-[-0.02em] text-[#0F1F17]">{title}</h1>
+              <p className="mt-1 text-[13.5px] leading-relaxed text-[#5B6B62]">{sub}</p>
+            </div>
 
-              <button type="submit" disabled={isSubmitting} className={primaryButton}>
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                <span>{isSubmitting ? 'Checking' : 'Verify and sign in'}</span>
-              </button>
-            </form>
-          )}
-
-          {/* STEP 2B — register, both contacts */}
-          {step === STEP.REGISTER && (
-            <form onSubmit={handleStartRegistration} className="mb-step space-y-5">
-              <Notice tone="info">
-                Two ways to reach you means you can always get in, even when WhatsApp is down.
-              </Notice>
-
-              <div>
-                <label htmlFor="phone" className={labelClass}>WhatsApp number</label>
-                <div className="relative flex items-center">
-                  <span className="mb-mono absolute left-4 text-[14px] text-[#10261D]/45 pointer-events-none">
-                    +91
-                  </span>
+            {/* STEP 1 — one box, number or email */}
+            {step === STEP.IDENTIFIER && (
+              <form onSubmit={handleContinue} className="si-step space-y-5">
+                <div>
+                  <label htmlFor="identifier" className={labelClass}>
+                    Mobile number or email
+                  </label>
                   <input
-                    id="phone"
-                    type="tel"
-                    inputMode="numeric"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    id="identifier"
+                    type="text"
+                    inputMode="email"
+                    autoComplete="username"
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
                     placeholder="9876543210"
-                    maxLength={10}
-                    className={`${fieldClass} mb-mono pl-[3.4rem]`}
+                    maxLength={254}
+                    className={fieldClass}
                     required
                     disabled={isSubmitting}
                   />
                 </div>
-              </div>
 
-              <div>
-                <label htmlFor="email" className={labelClass}>Email address</label>
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  maxLength={254}
-                  className={fieldClass}
-                  required
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="name" className={labelClass}>
-                  Your name <span className="normal-case tracking-normal text-[#10261D]/35">— optional</span>
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded border-[#C9D4CD] text-[#16A34A] focus:ring-[#16A34A]"
+                  />
+                  <span className="text-[13px] text-[#5B6B62]">Remember me on this device</span>
                 </label>
-                <input
-                  id="name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Ramesh Kumar"
-                  maxLength={120}
-                  className={fieldClass}
-                  disabled={isSubmitting}
-                />
-              </div>
 
-              {error && <Notice tone="error">{error}</Notice>}
+                {error && <Notice tone="error">{error}</Notice>}
 
-              <button type="submit" disabled={isSubmitting} className={primaryButton}>
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                <span>{isSubmitting ? 'Sending' : 'Send my codes'}</span>
-                {!isSubmitting && <ArrowRight className="w-4 h-4" />}
-              </button>
+                <button type="submit" disabled={isSubmitting} className={primaryButton}>
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  <span>{isSubmitting ? 'Checking' : 'Next'}</span>
+                  {!isSubmitting && <ArrowRight className="w-4 h-4" />}
+                </button>
 
-              <div className="text-center">
-                <button type="button" onClick={resetToStart} className={quietButton}>Back</button>
-              </div>
-            </form>
-          )}
+                <p className="text-center text-[12px] text-[#5B6B62]">
+                  New here? We set up your account next.
+                </p>
+              </form>
+            )}
 
-          {/* STEP 3 — one code per contact */}
-          {step === STEP.REGISTER_CODES && (
-            <form onSubmit={handleVerifyRegistration} className="mb-step space-y-5">
+            {/* STEP 2A — sign in, one code across both channels */}
+            {step === STEP.LOGIN_CODE && (
+              <form onSubmit={handleVerifyLogin} className="si-step space-y-5">
+                <div className="flex items-center justify-between gap-3 rounded-xl bg-[#F4F7F5] px-3.5 py-3">
+                  <div className="min-w-0">
+                    <span className="block text-[11px] font-bold text-[#5B6B62]">Sent to</span>
+                    <span className="si-num block truncate text-[13px] text-[#0F1F17]">
+                      {challenge?.destination || identifier}
+                    </span>
+                  </div>
+                  <button type="button" onClick={resetToStart} className={`${quietButton} shrink-0 flex items-center gap-1`}>
+                    <ArrowLeft className="w-3 h-3" />
+                    Change
+                  </button>
+                </div>
 
-              {/* Hidden entirely when WhatsApp could not deliver. The number is
-                  still kept against the account, unverified, to confirm later. */}
-              {registration?.phone?.delivered ? (
+                <div>
+                  <label className={labelClass}>Six-digit code</label>
+                  <OTPBoxGroup tone="brand" value={code} onChange={setCode} />
+                </div>
+
+                {error && <Notice tone="error">{error}</Notice>}
+
+                <button type="submit" disabled={isSubmitting} className={primaryButton}>
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  <span>{isSubmitting ? 'Checking' : 'Verify and sign in'}</span>
+                </button>
+              </form>
+            )}
+
+            {/* STEP 2B — register, both contacts */}
+            {step === STEP.REGISTER && (
+              <form onSubmit={handleStartRegistration} className="si-step space-y-5">
+                <Notice tone="info">
+                  Two ways to reach you means you can always get in, even when WhatsApp is down.
+                </Notice>
+
+                <div>
+                  <label htmlFor="phone" className={labelClass}>WhatsApp number</label>
+                  <div className="relative flex items-center">
+                    <span className="si-num absolute left-4 text-[14px] text-[#5B6B62] pointer-events-none">
+                      +91
+                    </span>
+                    <input
+                      id="phone"
+                      type="tel"
+                      inputMode="numeric"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      placeholder="9876543210"
+                      maxLength={10}
+                      className={`${fieldClass} si-num pl-[3.4rem]`}
+                      required
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="email" className={labelClass}>Email address</label>
+                  <input
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    maxLength={254}
+                    className={fieldClass}
+                    required
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="name" className={labelClass}>
+                    Your name <span className="font-medium text-[#5B6B62]">— optional</span>
+                  </label>
+                  <input
+                    id="name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Ramesh Kumar"
+                    maxLength={120}
+                    className={fieldClass}
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                {error && <Notice tone="error">{error}</Notice>}
+
+                <button type="submit" disabled={isSubmitting} className={primaryButton}>
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  <span>{isSubmitting ? 'Sending' : 'Send my codes'}</span>
+                  {!isSubmitting && <ArrowRight className="w-4 h-4" />}
+                </button>
+
+                <div className="text-center">
+                  <button type="button" onClick={resetToStart} className={quietButton}>Back</button>
+                </div>
+              </form>
+            )}
+
+            {/* STEP 3 — one code per contact */}
+            {step === STEP.REGISTER_CODES && (
+              <form onSubmit={handleVerifyRegistration} className="si-step space-y-5">
+
+                {/* Hidden entirely when WhatsApp could not deliver. The number is
+                    still kept against the account, unverified, to confirm later. */}
+                {registration?.phone?.delivered ? (
+                  <div>
+                    <label className={labelClass}>
+                      WhatsApp <span className="si-num font-medium text-[#5B6B62]">{registration.phone.destination}</span>
+                    </label>
+                    <OTPBoxGroup tone="brand" value={phoneCode} onChange={setPhoneCode} />
+                  </div>
+                ) : (
+                  <Notice tone="info">
+                    WhatsApp is unavailable right now, so we saved your number and skipped that code.
+                    Verify your email below to finish — you can confirm the number later.
+                  </Notice>
+                )}
+
                 <div>
                   <label className={labelClass}>
-                    WhatsApp <span className="mb-mono normal-case tracking-normal text-[#10261D]/40">{registration.phone.destination}</span>
+                    Email <span className="si-num font-medium text-[#5B6B62]">{registration?.email?.destination}</span>
                   </label>
-                  <OTPBoxGroup tone="board" value={phoneCode} onChange={setPhoneCode} />
+                  <OTPBoxGroup tone="brand" value={emailCode} onChange={setEmailCode} />
                 </div>
-              ) : (
-                <Notice tone="info">
-                  WhatsApp is unavailable right now, so we saved your number and skipped that code.
-                  Verify your email below to finish — you can confirm the number later.
-                </Notice>
-              )}
 
-              <div>
-                <label className={labelClass}>
-                  Email <span className="mb-mono normal-case tracking-normal text-[#10261D]/40">{registration?.email?.destination}</span>
-                </label>
-                <OTPBoxGroup tone="board" value={emailCode} onChange={setEmailCode} />
-              </div>
+                {error && <Notice tone="error">{error}</Notice>}
 
-              {error && <Notice tone="error">{error}</Notice>}
+                <button type="submit" disabled={isSubmitting} className={primaryButton}>
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  <span>{isSubmitting ? 'Checking' : 'Create account'}</span>
+                </button>
 
-              <button type="submit" disabled={isSubmitting} className={primaryButton}>
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                <span>{isSubmitting ? 'Checking' : 'Create account'}</span>
-              </button>
+                <div className="text-center">
+                  <button type="button" onClick={resetToStart} className={quietButton}>Start over</button>
+                </div>
+              </form>
+            )}
+          </section>
 
-              <div className="text-center">
-                <button type="button" onClick={resetToStart} className={quietButton}>Start over</button>
-              </div>
-            </form>
+          {/* Customer-only — a rider does not need to be sold the delivery time. */}
+          {appType === 'customer' && (
+            <ul className="mt-3.5 grid grid-cols-3 gap-2.5">
+              {PROMISES.map(({ Icon, head, sub: line }) => (
+                <li key={head} className="rounded-2xl border border-[#E4EAE6] bg-white px-2 py-3 text-center">
+                  <Icon className="mx-auto w-4 h-4 text-[#0B7A37]" />
+                  <p className="mt-1.5 text-[12.5px] font-extrabold leading-tight text-[#0F1F17]">{head}</p>
+                  <p className="text-[10.5px] leading-tight text-[#5B6B62]">{line}</p>
+                </li>
+              ))}
+            </ul>
           )}
-        </section>
 
-        <p className="mb-mono mt-6 text-center text-[10.5px] uppercase tracking-[0.22em] text-[#F6F1E2]/65">
-          No password · One code · That&apos;s it
-        </p>
+          <p className="mt-5 text-center text-[11.5px] text-[#5B6B62]">
+            No password needed · One code and you&apos;re in
+          </p>
+        </div>
       </main>
     </div>
   );
@@ -537,13 +602,13 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 function Notice({ tone = 'info', children }) {
   const styles =
     tone === 'error'
-      ? 'bg-[#D94F35]/10 border-[#D94F35]/35 text-[#8F2E1B]'
-      : 'bg-[#12402F]/[0.06] border-[#12402F]/15 text-[#10261D]/75';
+      ? 'bg-[#DC2626]/[0.07] border-[#DC2626]/30 text-[#9B1C1C]'
+      : 'bg-[#16A34A]/[0.07] border-[#16A34A]/20 text-[#0F1F17]/80';
 
   return (
     <p
       role={tone === 'error' ? 'alert' : undefined}
-      className={`flex gap-2 rounded-lg border px-3.5 py-3 text-[12.5px] leading-relaxed ${styles}`}
+      className={`flex gap-2 rounded-xl border px-3.5 py-3 text-[12.5px] leading-relaxed ${styles}`}
     >
       {tone === 'info' && <Info className="w-3.5 h-3.5 shrink-0 mt-[3px]" />}
       <span>{children}</span>

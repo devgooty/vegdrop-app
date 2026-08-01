@@ -343,115 +343,114 @@
 }
 
 /* ==========================================================================
-   Sign-in — the market board
+   Sign-in
    --------------------------------------------------------------------------
-   The visual language here is a vegetable stall's painted rate board, not a
-   product login: fat slab lettering with a hard offset shadow, turmeric on
-   deep leaf green, wooden crate slats. Everything is prefixed `mb-` (market
-   board) and confined to the sign-in route, so nothing here can reach the
-   rest of the app.
+   Quick-commerce grocery, the register that Blinkit/Zepto/Instamart established
+   and that this app's customers already read as "app that brings me food":
+   a saturated green hero carrying the delivery promise and real produce, with
+   a white sheet lifted over it holding the form.
 
-   The boldness is spent on the board; the form itself sits on a chalk panel
-   because a grocery customer reading it at 6am should never pay for the
-   styling.
+   Everything is prefixed `si-` and used only on the sign-in route. The prefix
+   is deliberately not `mb-`: that collides with Tailwind's margin-bottom
+   utilities, which makes these rules nearly ungreppable.
+
+   The screen is meant to feel stocked rather than airy — an empty login for a
+   grocery shop looks shut. Density comes from produce and proof, never from
+   decorating the form itself, which stays plain and high-contrast because it
+   is the part someone has to read at six in the morning.
    ========================================================================== */
 
-.mb-scope {
-  --mb-leaf: #12402F;
-  --mb-leaf-lo: #0A2A1E;
-  --mb-chalk: #F6F1E2;
-  --mb-turmeric: #F2A414;
-  --mb-tomato: #D94F35;
-  --mb-jute: #A8977A;
-  --mb-ink: #10261D;
+.si-scope {
+  --si-green: #16A34A;
+  --si-green-dark: #0B7A37;
+  --si-green-deep: #06421F;
+  --si-amber: #FFC531;
+  --si-ink: #0F1F17;
+  --si-muted: #5B6B62;
+  --si-line: #E4EAE6;
+  --si-bg: #F4F7F5;
+
+  background: var(--si-bg);
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
 }
 
-/* Wooden crate slats. Cheap, no image request, and the angle keeps it from
-   reading as a generic stripe pattern. */
-.mb-board {
-  background-color: var(--mb-leaf);
-  background-image:
-    repeating-linear-gradient(
-      177deg,
-      rgba(255, 255, 255, 0.035) 0px,
-      rgba(255, 255, 255, 0.035) 1px,
-      transparent 1px,
-      transparent 13px
-    ),
-    radial-gradient(120% 80% at 50% 0%, rgba(242, 164, 20, 0.13), transparent 62%);
+/* The hero. Layered so the top-left reads brighter than the bottom, which is
+   what keeps a flat brand green from looking like a filled rectangle.
+
+   The lightest colour in the stack is the radial's #16A34A, and white on that
+   is 3.3:1 — enough for the wordmark and headline, which are both large text
+   (>=18.66px bold), and the reason nothing small and white sits up in that
+   corner. A brighter highlight was tried first and put the wordmark under 3:1. */
+.si-hero {
+  background:
+    radial-gradient(85% 115% at 12% -10%, #16A34A 0%, transparent 58%),
+    linear-gradient(158deg, #0E8C40 0%, #07692F 52%, #044D22 100%);
 }
 
-/* The signature: a painted shop sign. The offset is hard-edged rather than a
-   blur, which is what sign painters actually produce and what separates this
-   from a drop-shadow. */
-.mb-wordmark {
-  font-family: 'Alfa Slab One', Georgia, serif;
-  color: var(--mb-chalk);
-  letter-spacing: 0.01em;
-  line-height: 0.92;
-  /* Layered offsets, not a blur — sign painters cut a hard edge, and a soft
-     drop-shadow here reads as a web default instead of paint.
-     Note there is no spread parameter in text-shadow: a fourth length makes the
-     whole declaration invalid and the browser silently drops it. */
-  text-shadow:
-    2px 2px 0 var(--mb-turmeric),
-    3px 3px 0 var(--mb-turmeric),
-    4px 4px 0 rgba(0, 0, 0, 0.22);
+/* Produce photographs are remote and above the fold, so every tile keeps a
+   green disc underneath: a slow or failed image leaves a deliberate shape
+   rather than a torn hole in the hero. */
+.si-tile {
+  background-color: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
 }
 
-.mb-display {
-  font-family: 'Alfa Slab One', Georgia, serif;
-  letter-spacing: 0.005em;
-  line-height: 1.05;
+.si-wordmark {
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.035em;
 }
 
-.mb-mono {
+.si-num {
   font-family: 'DM Mono', ui-monospace, SFMono-Regular, monospace;
   font-feature-settings: 'tnum' 1;
 }
 
-/* Hand-painted plaque behind the wordmark. */
-.mb-plaque {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.12));
-  border: 1px solid rgba(246, 241, 226, 0.22);
-  box-shadow: inset 0 1px 0 rgba(246, 241, 226, 0.16);
+/* The form sheet, lifted over the hero. */
+.si-sheet {
+  background: #fff;
+  border-radius: 26px;
+  box-shadow:
+    0 1px 0 rgba(15, 31, 23, 0.04),
+    0 20px 44px -22px rgba(6, 66, 31, 0.42);
 }
 
-/* Code entry, chalk-outlined on the board and filling turmeric as it is typed.
-   This is the moment the whole flow exists for, so it is where the accent
-   earns its place. */
-.mb-otp {
+/* Code entry — the moment the whole flow exists for, so it is the one control
+   that gets the brand colour. */
+.si-otp {
   font-family: 'DM Mono', ui-monospace, monospace;
-  color: var(--mb-ink);
-  background: rgba(255, 255, 255, 0.6);
-  border: 1.5px solid rgba(16, 38, 29, 0.22);
-  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+  color: var(--si-ink);
+  background: #F4F7F5;
+  border: 1.5px solid var(--si-line);
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
 }
-.mb-otp:focus {
+.si-otp:focus {
   outline: none;
-  border-color: var(--mb-leaf);
+  border-color: var(--si-green);
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(18, 64, 47, 0.16);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18);
 }
 /* A class rather than a [data-filled] attribute selector: the attribute form
    did not take effect against Tailwind v4's layered output, and a class is one
    less thing to be clever about. */
-.mb-otp.is-filled {
-  background: var(--mb-turmeric);
-  border-color: #C9860A;
-  color: var(--mb-ink);
+/* --si-green-dark, not --si-green: the digit is white, and 20px medium is not
+   "large text", so it needs 4.5:1. The lighter brand green only reaches 3.3. */
+.si-otp.is-filled {
+  background: var(--si-green-dark);
+  border-color: #08652C;
+  color: #fff;
 }
 
 /* Step changes slide up rather than fade, so the flow reads as forward motion. */
-@keyframes mbStepIn {
+@keyframes siStepIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.mb-step {
-  animation: mbStepIn 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+.si-step {
+  animation: siStepIn 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mb-step { animation: none; }
-  .mb-otp { transition: none; }
+  .si-step { animation: none; }
+  .si-otp { transition: none; }
 }

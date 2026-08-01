@@ -7,9 +7,9 @@ import React, { useRef } from 'react';
  * on the server; there is deliberately no expected value anywhere in this file.
  */
 /**
- * @param {'default'|'board'} [tone] `board` is the sign-in screen's market-board
- *   styling, where a filled box turns turmeric. Anything else keeps the original
- *   look, so the profile screens that also use this are untouched.
+ * @param {'default'|'brand'} [tone] `brand` is the sign-in screen's styling,
+ *   where a filled box fills green. Anything else keeps the original look, so
+ *   the profile screens that also use this are untouched.
  */
 export default function OTPBoxGroup({ length = 6, value, onChange, tone = 'default' }) {
   const inputs = useRef([]);
@@ -42,8 +42,8 @@ export default function OTPBoxGroup({ length = 6, value, onChange, tone = 'defau
   };
 
   const boxClass = (filled) =>
-    tone === 'board'
-      ? `mb-otp w-full h-14 text-center text-xl font-medium rounded-lg${filled ? ' is-filled' : ''}`
+    tone === 'brand'
+      ? `si-otp w-full h-[3.25rem] text-center text-xl font-medium rounded-xl${filled ? ' is-filled' : ''}`
       : 'w-full h-12 text-center text-lg font-black text-gray-900 bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:outline-none focus:border-[#1B4D3E] focus:ring-2 focus:ring-[#1B4D3E]/30 transition-all shadow-sm';
 
   return (
