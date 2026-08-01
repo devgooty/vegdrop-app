@@ -8,9 +8,21 @@
     
     <!-- 📱 Progressive Web App (PWA) Config -->
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#1B4D3E" />
+    <!--
+      White, so the status bar and the Android navigation bar match the page
+      instead of framing it in dark green. Android picks dark status-bar icons
+      off a light theme colour on its own, so the clock stays readable.
+
+      Must stay in step with `theme_color` in manifest.json: this tag governs a
+      browser tab, the manifest governs the installed app, and a disagreement
+      shows up as the bar changing colour once the app is installed.
+    -->
+    <meta name="theme-color" content="#FFFFFF" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- `default` is the light bar with dark text. `black-translucent` drew the
+         page under the clock, which is where the dark band at the top came
+         from on iOS. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="apple-touch-icon" href="/logo.png" />
 
     <!-- 🔍 Rich SEO Meta Tags -->
