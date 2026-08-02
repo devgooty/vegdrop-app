@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import Header from './components/Header';
 import HomeHeroBanner from './components/HomeHeroBanner';
 import Categories from './components/Categories';
@@ -7,6 +7,7 @@ import BottomNav from './components/BottomNav';
 import WalletModal from './components/WalletModal';
 import CartModal from './components/CartModal';
 import CategoryDetailView from './components/CategoryDetailView';
+import SearchResultsView from './components/SearchResultsView';
 import ProductDetailView from './components/ProductDetailView';
 import CustomerOrders from './components/CustomerOrders';
 import LoginPage from './components/LoginPage';
@@ -57,6 +58,15 @@ export default function App() {
   const [scheduledOrders, setScheduledOrders] = useState(initialScheduledOrders);
   const [registeredUsers, setRegisteredUsers] = useState(initialRegisteredUsers);
   const [searchVal, setSearchVal] = useState('');
+  /**
+   * The *submitted* search, which is a different thing from `searchVal`, the
+   * text currently in the box. Typing only opens suggestions; a search is not
+   * run until one is picked. Keeping them apart is what stopped the home
+   * carousels emptying out underneath the open suggestion panel — they used to
+   * be filtered live by every keystroke, so the page rearranged itself while
+   * the shopper was still deciding what to search for.
+   */
+  const [searchQuery, setSearchQuery] = useState('');
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   
@@ -539,12 +549,30 @@ export default function App() {
     setDeliveryNotifications((prev) => prev.filter((n) => n.id !== orderId));
   }, []);
 
-  // Filter products based on search
-  const filteredProducts = useMemo(() => {
-    return products.filter((p) =>
-      p.name.toLowerCase().includes(searchVal.toLowerCase())
-    );
-  }, [products, searchVal]);
+  /** Run a search: leave the box showing it and open the results screen. */
+  const handleSubmitSearch = useCallback((query) => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    setActiveProductDetail(null);
+    setActiveCategoryDetail(null);
+    setSearchQuery(trimmed);
+    window.scrollTo({ top: 0 });
+  }, []);
+
+  /** Leave the results screen, and take the query out of the box with it. */
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+    setSearchVal('');
+  }, []);
+
+  /** A suggestion naming a whole section opens that section instead. */
+  const handleOpenCategoryFromSearch = useCallback((category) => {
+    setSearchQuery('');
+    setSearchVal('');
+    setActiveProductDetail(null);
+    setActiveCategoryDetail(category);
+  }, []);
 
   const handleAddToCart = useCallback((product, event) => {
     if (product.stock === 0) {
@@ -755,6 +783,23 @@ export default function App() {
           onBack={() => setActiveCategoryDetail(null)}
           onSelectProduct={handleOpenProductDetail}
         />
+      ) : searchQuery ? (
+        /* Sits above the tab switch, so a search is reachable from any tab and
+           backing out of it returns to the tab that was open underneath. */
+        <SearchResultsView
+          query={searchVal}
+          onQueryChange={(value) => {
+            setSearchVal(value);
+            setSearchQuery(value);
+          }}
+          products={products}
+          categories={categories}
+          cartItems={activeCartItems}
+          onAddToCart={handleAddToCart}
+          onUpdateQuantity={handleUpdateQuantity}
+          onSelectProduct={handleOpenProductDetail}
+          onBack={handleClearSearch}
+        />
       ) : (
         <>
           {/* 1. TOP HEADER BAR */}
@@ -768,6 +813,10 @@ export default function App() {
               onOpenAccount={() => setActiveTab('account')}
               user={user}
               onOpenAuthModal={() => setActiveTab('login')}
+              products={products}
+              categories={categories}
+              onSubmitSearch={handleSubmitSearch}
+              onOpenCategory={handleOpenCategoryFromSearch}
             />
           )}
 
@@ -829,7 +878,7 @@ export default function App() {
                     {/* 4. HORIZONTAL PRODUCT CAROUSELS PER CATEGORY */}
                     <ProductList
                       categories={categories}
-                      products={filteredProducts}
+                      products={products}
                       cartItems={activeCartItems}
                       onAddToCart={handleAddToCart}
                       onUpdateQuantity={handleUpdateQuantity}
@@ -1212,6 +1261,7 @@ export default function App() {
           setActiveTab={(tab) => {
             setActiveProductDetail(null);
             setActiveCategoryDetail(null);
+            handleClearSearch();
             setActiveTab(tab);
           }}
           cartCount={totalCartCount}
