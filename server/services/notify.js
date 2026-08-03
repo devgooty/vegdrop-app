@@ -1,6 +1,7 @@
 'use strict';
 
 const config = require('../config/env');
+const { renderOtpEmail, PURPOSE_ACTION } = require('./templates/otpEmail');
 
 /**
  * Outbound message delivery.
@@ -20,10 +21,13 @@ const config = require('../config/env');
 /**
  * @typedef {object} Transport
  * @property {string} name
- * @property {(msg: { channel: 'sms'|'email', to: string, subject?: string, text: string, otp?: OtpDetails }) => Promise<void>} send
+ * @property {(msg: { channel: 'sms'|'email', to: string, subject?: string, text: string, html?: string, otp?: OtpDetails }) => Promise<void>} send
  *
  * `text` is a fully composed human-readable message, which is all a plain SMS or
- * email transport needs. `otp` carries the same information structured, because
+ * email transport needs. `html` is set for email only and is always accompanied
+ * by `text`, never a replacement for it: a transport that cannot send multipart
+ * (or a client that will not render markup) still has something to show. `otp`
+ * carries the same information structured, because
  * WhatsApp business-initiated messages must go through a pre-approved template
  * whose only variable is the code — that transport cannot parse it back out of
  * the prose. Transports that do not need it ignore it.
@@ -244,30 +248,50 @@ function reachesRecipient(channel) {
   return transportFor(channel).reachesRecipient !== false;
 }
 
-async function sendOtp({ channel, to, code, purpose, ttlSeconds, role }) {
+async function sendOtp({ channel, to, code, purpose, ttlSeconds, role, name }) {
   const minutes = Math.round(ttlSeconds / 60);
 
-  // A shopkeeper signing in is asking for their merchant dashboard, not "your
-  // account" — same code, same expiry, just named for the audience actually
-  // reading it. WhatsApp ignores this: its AUTHENTICATION-category template
-  // takes only the code (see resolvePhoneTransport), so this only reaches SMS
-  // console output and the email copy.
+  /**
+   * Email gets its own composition, including an HTML part.
+   *
+   * An inbox is not a notification shade: the message has to identify itself
+   * among everything else in the list, which is why it carries a greeting, an
+   * expiry and the "we will never ask for this" warning that the SMS line has no
+   * room for. The plain-text alternative is built alongside it, so a client that
+   * refuses HTML shows that same copy rather than an empty body.
+   */
+  if (channel === 'email') {
+    const { subject, text, html } = renderOtpEmail({ code, purpose, minutes, role, name });
+
+    await transportFor(channel).send({
+      channel,
+      to,
+      subject,
+      text,
+      html,
+      otp: { code, purpose, ttlSeconds },
+    });
+    return;
+  }
+
+  /**
+   * One line, because the whole message is a notification preview.
+   *
+   * A shopkeeper signing in is asking for their merchant dashboard, not "your
+   * account" — same code, same expiry, just named for the audience actually
+   * reading it. WhatsApp ignores the prose entirely: its AUTHENTICATION-category
+   * template takes only the code (see resolvePhoneTransport), so this text is
+   * what the SMS console stub prints.
+   *
+   * The purpose→verb map is shared with the email template rather than copied,
+   * so adding a purpose cannot leave one channel saying "verify".
+   */
   const text =
     purpose === 'login' && role === 'shopkeeper'
       ? `${code} is your VegBazzar merchant dashboard verification code. It expires in ${minutes} minute${minutes === 1 ? '' : 's'}.\n` +
         'Never share this code with anyone, including VegBazzar staff.'
-      : (() => {
-          const purposeText = {
-            login: 'sign in to',
-            registration: 'create',
-            phone_change: 'move',
-            email_change: 'add an email address to',
-          }[purpose] || 'verify';
-          return (
-            `${code} is your VegBazzar verification code to ${purposeText} your account.\n` +
-            `It expires in ${minutes} minute${minutes === 1 ? '' : 's'}. Do not share it with anyone.`
-          );
-        })();
+      : `${code} is your VegBazzar verification code to ${PURPOSE_ACTION[purpose] || 'verify'} your account.\n` +
+        `It expires in ${minutes} minute${minutes === 1 ? '' : 's'}. Do not share it with anyone.`;
 
   await transportFor(channel).send({
     channel,
