@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
 import Header from './components/Header';
 import HomeHeroBanner from './components/HomeHeroBanner';
 import Categories from './components/Categories';
