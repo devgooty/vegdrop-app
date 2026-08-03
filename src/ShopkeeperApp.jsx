@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import ShopkeeperPanel from './components/ShopkeeperPanel';
 import LoginPage from './components/LoginPage';
 import SplashScreen from './components/SplashScreen';
@@ -7,6 +7,13 @@ import { restoreSession, logout } from './services/auth';
 import { initialCategories, sampleProducts, initialOrders, initialRegisteredUsers } from './data/mockData';
 import { fetchProducts, updateStock } from './services/products';
 import { fetchOrders, updateOrderStatus } from './services/orders';
+import { fetchMyStall } from './services/stalls';
+
+/**
+ * Only shopkeepers who run a stall in a market load this, so it stays out of
+ * the bundle for everyone else.
+ */
+const StallPanel = lazy(() => import('./components/StallPanel'));
 
 export default function ShopkeeperApp() {
   const toast = useToast();
@@ -50,6 +57,38 @@ export default function ShopkeeperApp() {
 
   // Delivery Notifications
   const [deliveryNotifications, setDeliveryNotifications] = useState([]);
+
+  /**
+   * Does this shopkeeper run a stall in a market?
+   *
+   * If they do, they get the stall screen — offers, accept, pack. If they do
+   * not, they get the original panel unchanged. That is what makes markets
+   * additive: nobody's existing setup changes until a market owner gives them a
+   * stall.
+   *
+   * `undefined` means "still finding out", so the UI can avoid flashing the
+   * wrong screen while the answer is in flight.
+   */
+  const [stall, setStall] = useState(undefined);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    fetchMyStall()
+      .then((found) => {
+        if (!cancelled) setStall(found);
+      })
+      .catch(() => {
+        // 404 NO_STALL is the ordinary answer for a shopkeeper who has not been
+        // given one, not an error worth showing.
+        if (!cancelled) setStall(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   /** Load catalog and orders once a shopkeeper session exists. */
   useEffect(() => {
@@ -194,7 +233,32 @@ export default function ShopkeeperApp() {
     );
   }
 
-  // Main Shopkeeper Panel
+  // Hold until we know which panel this account should see, so a stall owner
+  // never watches the old panel paint and then swap.
+  if (stall === undefined) {
+    return (
+      <div className="min-h-screen bg-[#F6F8F6] flex items-center justify-center">
+        <div className="w-10 h-10 border-[3px] border-[#0B7A37] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // A stall in a market: offers, accept, pack.
+  if (stall) {
+    return (
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-[#F6F8F6] flex items-center justify-center">
+            <div className="w-10 h-10 border-[3px] border-[#0B7A37] border-t-transparent rounded-full animate-spin" />
+          </div>
+        }
+      >
+        <StallPanel user={user} stall={stall} onLogout={handleLogout} />
+      </Suspense>
+    );
+  }
+
+  // No stall: the original single-shop panel, untouched.
   return (
     <ShopkeeperPanel
       user={user}

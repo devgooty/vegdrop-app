@@ -108,6 +108,14 @@ export default function ProductGridCard({
           </div>
 
           <h3 className="font-semibold text-xs text-[#2D2A26] line-clamp-1 group-hover:text-[#1B4D3E] transition-colors">{item.name}</h3>
+          {/*
+            The market this price belongs to. Only present when browsing a
+            market — the platform catalog has no store behind it, and an empty
+            line there would just be a gap.
+          */}
+          {item.marketName && (
+            <p className="text-[10px] font-semibold text-[#1B4D3E] line-clamp-1">{item.marketName}</p>
+          )}
           <p className="text-[10px] text-[#7A7060] font-medium">{variantWeightStr}</p>
 
           {/* Weight Variants Selector */}

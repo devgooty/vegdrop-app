@@ -198,7 +198,18 @@ function ProductCard({
           <h4 className="font-vintage font-bold text-xs text-[#2D2A26] line-clamp-1 group-hover:text-[#1B4D3E] transition-colors">
             {item.name}
           </h4>
-          
+
+          {/*
+            Which market this price belongs to. Only present when browsing a
+            market — the platform catalog has no store behind it, and an empty
+            line there would just be a gap.
+          */}
+          {item.marketName && (
+            <p className="text-[10px] font-semibold text-[#1B4D3E] line-clamp-1 -mt-0.5 mb-0.5">
+              {item.marketName}
+            </p>
+          )}
+
           <div className="flex items-center justify-between mb-1">
             <p className="text-[11px] text-[#7A7060] font-semibold">{variantWeightStr}</p>
             {item.stock > 0 && item.stock <= 5 && (

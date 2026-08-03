@@ -7,6 +7,8 @@ const ROLES = Object.freeze(['customer', 'delivery', 'shopkeeper', 'market_owner
 /** Roles permitted to self-register. Everything else is provisioned by an admin. */
 const SELF_SERVICE_ROLES = Object.freeze(['customer']);
 
+const geoPointSchema = require('./geoPoint');
+
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 120 },
@@ -75,6 +77,29 @@ const userSchema = new mongoose.Schema(
     phoneVerifiedAt: { type: Date, default: null },
 
     /**
+     * Delivery-agent state. Only meaningful for `role: 'delivery'`.
+     *
+     * Dispatch picks the rider nearest the market, so a live position is not a
+     * nicety here — without it the engine has nobody to offer a pickup to. The
+     * delivery app already runs a `watchPosition` while the agent is online; it
+     * just never sent the result anywhere.
+     */
+    rider: {
+      dutyStatus: {
+        type: String,
+        enum: ['offline', 'online', 'busy'],
+        default: 'offline',
+      },
+      lastLocation: { type: geoPointSchema, default: undefined },
+      /**
+       * When that position was reported. Dispatch treats anything older than
+       * `marketplace.riderStaleLocationSeconds` as gone, whatever dutyStatus
+       * claims — an app killed by the OS never gets to say goodbye.
+       */
+      lastLocationAt: { type: Date, default: null },
+    },
+
+    /**
      * Bumped to invalidate every outstanding access token for this user
      * (forced logout, role change, suspension).
      */
@@ -98,6 +123,14 @@ function stripSensitive(_doc, ret) {
   return ret;
 }
 
+/**
+ * Required by the $geoNear stage that finds the rider nearest a market. Without
+ * it that aggregation throws rather than degrading to a slow scan.
+ */
+userSchema.index({ 'rider.lastLocation': '2dsphere' });
+/** Narrows the geo search to agents who are actually on duty. */
+userSchema.index({ role: 1, 'rider.dutyStatus': 1 });
+
 userSchema.virtual('id').get(function getId() {
   return this._id.toHexString();
 });
@@ -119,6 +152,9 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
     status: this.status,
     emailVerified: Boolean(this.emailVerifiedAt),
     phoneVerified: Boolean(this.phoneVerifiedAt),
+    // Duty status only — never the position. A rider's live coordinates are
+    // dispatch input, not something to hand back out on a profile read.
+    dutyStatus: this.role === 'delivery' ? this.rider?.dutyStatus || 'offline' : undefined,
     createdAt: this.createdAt,
   };
 };

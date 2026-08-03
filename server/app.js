@@ -19,6 +19,9 @@ const orderRoutes = require('./routes/orders');
 const userRoutes = require('./routes/users');
 const walletRoutes = require('./routes/wallet');
 const whatsappRoutes = require('./routes/whatsapp');
+const marketRoutes = require('./routes/markets');
+const stallRoutes = require('./routes/stalls');
+const riderRoutes = require('./routes/rider');
 
 const WHATSAPP_WEBHOOK_PATH = '/api/whatsapp';
 
@@ -68,7 +71,7 @@ function createApp() {
         return callback(new Error('CORS_ORIGIN_DENIED'));
       },
       credentials: true,
-      methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
       maxAge: 600,
     })
@@ -166,6 +169,11 @@ function createApp() {
   app.use('/api/orders', orderRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/wallet', walletRoutes);
+
+  // Markets, the stalls inside them, and the riders who empty them.
+  app.use('/api/markets', marketRoutes);
+  app.use('/api/stalls', stallRoutes);
+  app.use('/api/rider', riderRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

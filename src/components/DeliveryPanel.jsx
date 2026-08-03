@@ -3,6 +3,8 @@ import {
   Truck, CheckCircle2, Clock, MapPin, Phone, Navigation, DollarSign,
   LogOut, User, Zap, Home, Map as MapIcon, Wallet, ArrowLeft, Check, Camera, MessageSquare, PackageCheck, Bell, X
 } from 'lucide-react';
+import MarketPickups from './MarketPickups';
+import { startLocationReporting, setDutyStatus } from '../services/rider';
 
 export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLogout, notifications = [], onClearNotification }) {
   // Navigation & State
@@ -58,6 +60,29 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
     }
     return () => {
       if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
+    };
+  }, [isOnline]);
+
+  /**
+   * Tell the server where this rider is, and whether they are working.
+   *
+   * The watcher above has been running since the panel was written, but the
+   * position never left the browser. Market dispatch picks whoever is nearest
+   * the market, so without this the rider is invisible to it — no offers, ever,
+   * however close they are standing.
+   */
+  useEffect(() => {
+    let stopReporting = null;
+
+    setDutyStatus(isOnline ? 'online' : 'offline').catch(() => {
+      // Refusing to go offline mid-delivery is a legitimate answer from the
+      // server, and the panel's own toggle already reflects the rider's intent.
+    });
+
+    if (isOnline) stopReporting = startLocationReporting();
+
+    return () => {
+      if (stopReporting) stopReporting();
     };
   }, [isOnline]);
 
@@ -286,6 +311,16 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
         >
           <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-transform duration-300 ease-in-out ${isOnline ? 'translate-x-7' : 'translate-x-1'}`} />
         </button>
+      </div>
+
+      {/*
+        Market pickups sit above everything else on this screen.
+        An offer is live for a few seconds before it moves to the next rider, so
+        it has to be the first thing on the page — not something to scroll to.
+        Renders nothing at all when there is neither an offer nor a job in hand.
+      */}
+      <div className="-mx-5">
+        <MarketPickups isOnline={isOnline} />
       </div>
 
       {!isOnline && (

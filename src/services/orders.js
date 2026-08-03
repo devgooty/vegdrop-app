@@ -25,6 +25,25 @@ export function toUiOrder(order) {
     status: order.status,
     paymentMethod: order.paymentMethod,
     paymentStatus: order.paymentStatus,
+
+    /**
+     * Market fulfillment, when the order has it.
+     *
+     * `status` above stays the coarse label every existing screen renders.
+     * These carry the detail a customer actually wants while they wait: which
+     * market, whether stalls are still deciding, and — the one that changes
+     * what the UI offers them — whether it is too late to cancel.
+     */
+    marketName: order.marketName || null,
+    fulfillmentStatus: order.fulfillment?.status || null,
+    sourcingDeadline: order.fulfillment?.sourcingDeadline || null,
+    // The moment the stalls committed. Past this the cancel button should go.
+    lockedAt: order.fulfillment?.lockedAt || null,
+    canCancel: order.market
+      ? order.fulfillment?.status === 'sourcing'
+      : order.status === 'Pending',
+    // How many markets have been tried, so "still looking" can say so honestly.
+    sourcingAttempt: order.fulfillment?.attempt || 0,
     totalAmount: (order.totalAmountPaise ?? 0) / 100,
     subtotal: (order.subtotalPaise ?? 0) / 100,
     deliveryFee: (order.deliveryFeePaise ?? 0) / 100,
@@ -65,13 +84,45 @@ export async function fetchOrders(filters = {}) {
 /**
  * Place an order.
  *
+ * `marketId` is optional and decides which of two worlds the order lives in.
+ * Without it, nothing changes: one flat catalog, one implicit shop, exactly as
+ * before. With it, the order is priced from that market's own sheet and offered
+ * to every stall in it — and `lat`/`lng` let the server find the next nearest
+ * market if the first one cannot fill it.
+ *
  * @param {{items: Array<{productId: string, quantity: number}>, address: string,
- *          paymentMethod: 'wallet'|'cod'}} payload
+ *          paymentMethod: 'wallet'|'cod', marketId?: string,
+ *          lat?: number, lng?: number}} payload
  * @returns {Promise<object>} the created order, priced by the server
- * @throws {ApiRequestError} 402 INSUFFICIENT_FUNDS, 409 INSUFFICIENT_STOCK
+ * @throws {ApiRequestError} 402 INSUFFICIENT_FUNDS, 409 INSUFFICIENT_STOCK,
+ *   409 MARKET_CANNOT_FILL, 400 MARKET_UNAVAILABLE
  */
-export async function createOrder({ items, address, paymentMethod }) {
-  const result = await api.post('/orders', { items, address, paymentMethod });
+export async function createOrder({ items, address, paymentMethod, marketId, lat, lng }) {
+  const body = { items, address, paymentMethod };
+  if (marketId) {
+    body.marketId = marketId;
+    // Only sent alongside a market — the server has no use for them otherwise.
+    if (typeof lat === 'number' && typeof lng === 'number') {
+      body.lat = lat;
+      body.lng = lng;
+    }
+  }
+
+  const result = await api.post('/orders', body);
+  return toUiOrder(result.data);
+}
+
+/**
+ * Cancel an order.
+ *
+ * Only possible while stalls are still deciding. Once one has accepted, the
+ * produce is set aside and the order locks — the server answers `ORDER_LOCKED`
+ * and the button should disappear rather than fail.
+ *
+ * @throws {ApiRequestError} 409 ORDER_LOCKED
+ */
+export async function cancelOrder(orderId) {
+  const result = await api.patch(`/orders/${orderId}/status`, { status: 'Cancelled' });
   return toUiOrder(result.data);
 }
 
