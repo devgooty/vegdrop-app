@@ -68,11 +68,12 @@ const PROVIDERS = Object.freeze({
     free: '300/day',
     endpoint: 'https://api.brevo.com/v3/smtp/email',
     headers: (key) => ({ 'api-key': key }),
-    body: ({ sender, to, subject, text }) => ({
+    body: ({ sender, to, subject, text, html }) => ({
       sender: { email: sender.email, ...(sender.name ? { name: sender.name } : {}) },
       to: [{ email: to }],
       subject,
       textContent: text,
+      ...(html ? { htmlContent: html } : {}),
     }),
   },
 
@@ -81,11 +82,16 @@ const PROVIDERS = Object.freeze({
     free: '100/day',
     endpoint: 'https://api.sendgrid.com/v3/mail/send',
     headers: (key) => ({ Authorization: `Bearer ${key}` }),
-    body: ({ sender, to, subject, text }) => ({
+    body: ({ sender, to, subject, text, html }) => ({
       personalizations: [{ to: [{ email: to }] }],
       from: { email: sender.email, ...(sender.name ? { name: sender.name } : {}) },
       subject,
-      content: [{ type: 'text/plain', value: text }],
+      // SendGrid requires the parts in ascending order of preference and
+      // rejects the request outright if HTML precedes plain text.
+      content: [
+        { type: 'text/plain', value: text },
+        ...(html ? [{ type: 'text/html', value: html }] : []),
+      ],
     }),
   },
 
@@ -94,11 +100,12 @@ const PROVIDERS = Object.freeze({
     free: '3000/month',
     endpoint: 'https://api.mailersend.com/v1/email',
     headers: (key) => ({ Authorization: `Bearer ${key}` }),
-    body: ({ sender, to, subject, text }) => ({
+    body: ({ sender, to, subject, text, html }) => ({
       from: { email: sender.email, ...(sender.name ? { name: sender.name } : {}) },
       to: [{ email: to }],
       subject,
       text,
+      ...(html ? { html } : {}),
     }),
   },
 
@@ -107,11 +114,12 @@ const PROVIDERS = Object.freeze({
     free: '1000/month',
     endpoint: 'https://send.api.mailtrap.io/api/send',
     headers: (key) => ({ 'Api-Token': key }),
-    body: ({ sender, to, subject, text }) => ({
+    body: ({ sender, to, subject, text, html }) => ({
       from: { email: sender.email, ...(sender.name ? { name: sender.name } : {}) },
       to: [{ email: to }],
       subject,
       text,
+      ...(html ? { html } : {}),
     }),
   },
 
@@ -120,13 +128,14 @@ const PROVIDERS = Object.freeze({
     free: '1000/month',
     endpoint: 'https://api.useplunk.com/v1/send',
     headers: (key) => ({ Authorization: `Bearer ${key}` }),
-    body: ({ sender, to, subject, text }) => ({
+    body: ({ sender, to, subject, text, html }) => ({
       to,
       subject,
-      body: text,
-      // Plunk sends HTML by default; a verification code has no markup and
-      // should not acquire any.
-      type: 'text',
+      // Plunk takes one body and is told which it is, rather than accepting both
+      // parts like the others. HTML when there is any, plain text otherwise —
+      // declaring `html` without markup would render the escaped source.
+      body: html || text,
+      type: html ? 'html' : 'text',
       ...(sender.name ? { name: sender.name } : {}),
       from: sender.email,
     }),
@@ -137,7 +146,13 @@ const PROVIDERS = Object.freeze({
     free: '3000/month',
     endpoint: 'https://api.resend.com/emails',
     headers: (key) => ({ Authorization: `Bearer ${key}` }),
-    body: ({ from, to, subject, text }) => ({ from, to: [to], subject, text }),
+    body: ({ from, to, subject, text, html }) => ({
+      from,
+      to: [to],
+      subject,
+      text,
+      ...(html ? { html } : {}),
+    }),
   },
 });
 
@@ -223,8 +238,8 @@ function createHttpEmailTransport({ provider, apiKey, from, timeoutMs = 10000, f
     name: `email:${provider}`,
     provider,
 
-    async send({ to, subject, text }) {
-      const payload = spec.body({ sender, from, to, subject, text });
+    async send({ to, subject, text, html }) {
+      const payload = spec.body({ sender, from, to, subject, text, html });
       let last = null;
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
