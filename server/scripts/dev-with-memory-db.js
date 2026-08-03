@@ -24,11 +24,30 @@ async function main() {
   // Must be set before config/env.js is loaded, since it freezes at require time.
   process.env.MONGODB_URI = replSet.getUri('vegbazzar');
 
+  /**
+   * Registration needs BOTH contacts proved, so /register/start and
+   * /vendor/register/start refuse outright when email delivery is
+   * unconfigured (config.email.configured) rather than silently only proving
+   * a phone. Real deployments set EMAIL_FROM plus a provider key; this demo
+   * has neither, so it fakes just enough config to pass that check and then
+   * overrides the transport below so nothing actually dials out to
+   * `smtp.demo.invalid`.
+   */
+  process.env.EMAIL_FROM = process.env.EMAIL_FROM || 'VegBazzar Demo <demo@vegbazzar.local>';
+  process.env.SMTP_HOST = process.env.SMTP_HOST || 'smtp.demo.invalid';
+  process.env.SMTP_FROM = process.env.SMTP_FROM || process.env.EMAIL_FROM;
+
   const config = require('../config/env');
+  const notify = require('../services/notify');
   const { connect, disconnect, ensureIndexes } = require('../db/connect');
   const { createApp } = require('../app');
   const { seedIfEmpty } = require('../utils/seed');
   const sweeper = require('../services/sweeper');
+
+  // See the EMAIL_FROM/SMTP_HOST comment above: config now believes email is
+  // configured, so route past resolveEmailTransport's real SMTP attempt and
+  // print codes to this console instead, exactly like the phone transport.
+  notify.setTransport(notify.consoleTransport);
 
   await connect();
   console.info('[dev] connected to in-memory MongoDB (transactions available)');
