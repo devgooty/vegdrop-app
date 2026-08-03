@@ -104,7 +104,7 @@ async function appendEntry({ userId, idempotencyKey, build, session }) {
 /**
  * @returns {Promise<{ transaction: object, balancePaise: number, replayed: boolean }>}
  */
-async function credit({ userId, amountPaise, reason, idempotencyKey, razorpayOrderId = null, razorpayPaymentId = null, note = null, session = null }) {
+async function credit({ userId, amountPaise, reason, idempotencyKey, razorpayOrderId = null, razorpayPaymentId = null, order = null, note = null, session = null }) {
   assertAmount(amountPaise);
 
   return appendEntry({
@@ -118,6 +118,9 @@ async function credit({ userId, amountPaise, reason, idempotencyKey, razorpayOrd
       reason,
       razorpayOrderId,
       razorpayPaymentId,
+      // Refunds and stall settlements both point back at the order they came
+      // from, so a statement line can be traced without a join through notes.
+      order,
       note,
     }),
   });

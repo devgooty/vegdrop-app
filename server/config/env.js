@@ -390,6 +390,85 @@ const config = Object.freeze({
     allowMock: !isProduction && !payoutConfigured,
   }),
 
+  /**
+   * Market sourcing and rider dispatch.
+   *
+   * An order placed against a market is offered to every open stall in it, and
+   * only becomes real once every line has a taker. These knobs govern how long
+   * that takes and how far it is allowed to travel looking for one.
+   */
+  marketplace: Object.freeze({
+    // How long stalls have to accept before the order moves on. Stalls with
+    // auto-accept answer in milliseconds; this window is for the humans.
+    sourcingWindowSeconds: int('MARKET_SOURCING_WINDOW_SECONDS', 90),
+    // Total markets an order may be offered to, including the first. Each hop
+    // costs the customer another full window, so this is deliberately small.
+    maxSourcingAttempts: int('MARKET_MAX_SOURCING_ATTEMPTS', 3),
+    // How far from the customer we will look for a market to hop to.
+    searchRadiusMeters: int('MARKET_SEARCH_RADIUS_METERS', 15000),
+    /**
+     * Ceiling on what a hop may cost us, in basis points of the locked subtotal.
+     *
+     * The customer's total is fixed at checkout, so a more expensive second
+     * market comes out of margin. 10000 bps = 100% = "same price or cheaper
+     * only", which is the safe default. Raise it to let an order travel to a
+     * dearer market at a known, bounded loss.
+     */
+    hopPriceToleranceBps: int('MARKET_HOP_PRICE_TOLERANCE_BPS', 10000),
+
+    // How often the background job expires sourcing windows and rider offers.
+    sweeperIntervalSeconds: int('MARKET_SWEEPER_INTERVAL_SECONDS', 5),
+
+    /**
+     * When the rider is called.
+     *
+     * `packing` sends them while the stalls are still bagging, so they arrive as
+     * the last bag is tied. `ready` waits until everything is packed — slower,
+     * but it never has a rider standing around.
+     */
+    riderDispatchOn: optional('RIDER_DISPATCH_ON', 'packing') === 'ready' ? 'ready' : 'packing',
+    // How long one rider has to answer before the offer moves to the next nearest.
+    riderOfferTimeoutSeconds: int('RIDER_OFFER_TIMEOUT_SECONDS', 25),
+    // After this many refused or expired offers the order goes to an open pool
+    // any rider can claim, rather than cascading for ever.
+    riderMaxOffers: int('RIDER_MAX_OFFERS', 4),
+    riderSearchRadiusMeters: int('RIDER_SEARCH_RADIUS_METERS', 8000),
+    // A rider whose last ping is older than this is treated as gone, whatever
+    // their duty status says — a killed app never gets to say goodbye.
+    riderStaleLocationSeconds: int('RIDER_STALE_LOCATION_SECONDS', 120),
+  }),
+
+  /**
+   * Paying the stalls.
+   *
+   * Nothing reaches a shopkeeper until the customer has the goods. What they
+   * are owed is recorded at delivery and held, then released into their wallet
+   * automatically. The hold is the window in which a delivery can still go
+   * wrong — a complaint, a refund, a chargeback — and money already paid out is
+   * far harder to claw back than money not yet released.
+   */
+  settlement: Object.freeze({
+    holdHours: int('STALL_SETTLEMENT_HOLD_HOURS', 24),
+
+    /**
+     * The floor for taking the money early, before the hold expires.
+     *
+     * Each payout is a ledger write and, eventually, a bank transfer that costs
+     * something to make. A floor stops a stall draining ₹20 at a time all day.
+     * Default ₹200.
+     */
+    minEarlyPayoutPaise: int('STALL_MIN_EARLY_PAYOUT_PAISE', 20000),
+
+    /**
+     * Platform commission, in basis points of the stall's gross.
+     *
+     * Zero by default: the customer pays the market price and the stall is owed
+     * the market price, so introducing a cut is a business decision, not
+     * something that should arrive silently with a deploy. 250 = 2.5%.
+     */
+    commissionBps: int('STALL_COMMISSION_BPS', 0),
+  }),
+
   cookies: Object.freeze({
     refreshName: 'vb_rt',
     secure: isProduction,

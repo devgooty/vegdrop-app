@@ -17,6 +17,8 @@ import PriceHistory from './components/PriceHistory';
 import AccountHistory from './components/AccountHistory';
 import PageTransition from './components/PageTransition';
 import OTPBoxGroup from './components/OTPBoxGroup';
+import MarketPicker from './components/MarketPicker';
+import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
 import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon } from 'lucide-react';
@@ -24,7 +26,7 @@ import { restoreSession, logout, startPhoneChange, verifyPhoneChange } from './s
 import useLocalStorage from './hooks/useLocalStorage';
 import { initialCategories, sampleProducts, initialOrders, initialRegisteredUsers, initialScheduledOrders } from './data/mockData';
 import { fetchProducts, updateStock } from './services/products';
-import { fetchOrders, createOrder, updateOrderStatus } from './services/orders';
+import { fetchOrders, createOrder, updateOrderStatus, cancelOrder } from './services/orders';
 import { fetchWallet } from './services/wallet';
 import { fetchUsers, updateUser, deleteUser } from './services/users';
 import { ApiRequestError, NetworkError } from './services/apiClient';
@@ -123,6 +125,16 @@ export default function App() {
   // Navigation states
   const [activeCategoryDetail, setActiveCategoryDetail] = useState(null);
   const [activeProductDetail, setActiveProductDetail] = useState(null);
+
+  /**
+   * The market being shopped from, and its catalog.
+   *
+   * Held here rather than inside MarketPicker because three other things need
+   * it: what the browse screens list, what the cards say underneath each
+   * product name, and which market the order is sent to at checkout.
+   */
+  const [selectedMarket, setSelectedMarket] = useState(null);
+  const [marketProducts, setMarketProducts] = useState([]);
 
   // Profile editing, plus the verified phone-change flow
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -574,6 +586,67 @@ export default function App() {
     setActiveCategoryDetail(category);
   }, []);
 
+  /**
+   * Load the chosen market's catalog.
+   *
+   * A cart built at one market cannot be carried to another: the prices differ,
+   * and a market that does not stock one of the lines would refuse the whole
+   * order at checkout. Clearing it on switch is blunt but honest — far better
+   * than a confusing rejection three taps later.
+   */
+  useEffect(() => {
+    if (!selectedMarket) return;
+    let cancelled = false;
+
+    fetchMarketCatalog(selectedMarket.id)
+      .then((items) => {
+        if (!cancelled) setMarketProducts(items);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setMarketProducts([]);
+          console.warn('market catalog unavailable:', err.message);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMarket]);
+
+  const handleSelectMarket = useCallback(
+    (market) => {
+      setSelectedMarket((previous) => {
+        if (previous && previous.id !== market.id && cartItems.length > 0) {
+          setCartItems([]);
+          toast.info(`Switched to ${market.name}. Your cart was cleared — prices differ by market.`);
+        }
+        return market;
+      });
+    },
+    [cartItems.length, setCartItems, toast]
+  );
+
+  /**
+   * What the customer is actually browsing.
+   *
+   * When a market is chosen, its own price sheet replaces the platform catalog
+   * — that is what "one price per market" means, and the same tomato can cost
+   * differently two streets apart. The shapes are identical, so every browse
+   * component below works unchanged either way.
+   *
+   * With no market (none nearby, or the list is still loading) this falls back
+   * to the platform catalog, so the app is never empty.
+   */
+  const browseProducts = selectedMarket && marketProducts.length > 0 ? marketProducts : products;
+
+  // Filter products based on search
+  const filteredProducts = useMemo(() => {
+    return browseProducts.filter((p) =>
+      p.name.toLowerCase().includes(searchVal.toLowerCase())
+    );
+  }, [browseProducts, searchVal]);
+
   const handleAddToCart = useCallback((product, event) => {
     if (product.stock === 0) {
       toast.warning(`"${product.name}" is sold out!`);
@@ -694,8 +767,20 @@ export default function App() {
 
     const items = [...quantities.entries()].map(([productId, quantity]) => ({ productId, quantity }));
 
+    // Coordinates let the server hop to the next nearest market if this one's
+    // stalls cannot fill the order. Without them it falls back to searching
+    // outward from the market itself, which still works.
+    const coords = savedCustomerCoords();
+
     try {
-      const order = await createOrder({ items, address, paymentMethod });
+      const order = await createOrder({
+        items,
+        address,
+        paymentMethod,
+        marketId: selectedMarket?.id,
+        lat: coords?.lat,
+        lng: coords?.lng,
+      });
 
       setOrders((prev) => [order, ...prev]);
       setCartItems([]);
@@ -714,7 +799,18 @@ export default function App() {
           .catch(() => {});
       }
 
-      toast.success(`Order ${order.id} placed! Estimated delivery: 10 mins 🚀`);
+      /**
+       * A market order that comes back already locked was taken by stalls with
+       * auto-accept the moment it was placed — worth saying, because it is the
+       * difference between "someone is on it" and "we are still asking around".
+       */
+      if (order.fulfillmentStatus === 'sourcing') {
+        toast.success(`Order ${order.id} placed! Finding a stall at ${order.marketName} 🧺`);
+      } else if (order.fulfillmentStatus) {
+        toast.success(`Order ${order.id} accepted and being packed 🚀`);
+      } else {
+        toast.success(`Order ${order.id} placed! Estimated delivery: 10 mins 🚀`);
+      }
       return true;
     } catch (err) {
       if (err instanceof NetworkError) {
@@ -726,13 +822,46 @@ export default function App() {
         fetchProducts({ limit: 200 })
           .then((items2) => items2.length > 0 && setProducts(items2))
           .catch(() => {});
+      } else if (err instanceof ApiRequestError && err.code === 'MARKET_CANNOT_FILL') {
+        toast.error(`${selectedMarket?.name || 'This market'} is not selling one of these today. Try another market.`);
+      } else if (err instanceof ApiRequestError && err.code === 'MARKET_UNAVAILABLE') {
+        toast.error(`${selectedMarket?.name || 'That market'} has closed. Pick another one.`);
       } else {
         toast.error(err.message || 'Could not place your order. Please try again.');
       }
       return false;
     }
-  }, [cartItems, user, setCartItems, toast]);
+  }, [cartItems, user, setCartItems, toast, selectedMarket]);
 
+
+  /**
+   * Cancel an order that is still looking for a stall.
+   *
+   * The button is only shown while that is true, but a stall can accept in the
+   * gap between the screen painting and the tap landing. The server answers
+   * ORDER_LOCKED in that case, which is not a failure to apologise for — it is
+   * the good news that someone took the order.
+   */
+  const handleCancelOrder = useCallback(async (order) => {
+    try {
+      const updated = await cancelOrder(order.serverId || order.id);
+      setOrders((prev) => prev.map((o) => (o.serverId === updated.serverId ? updated : o)));
+      toast.success('Order cancelled. Any payment has been refunded to your wallet.');
+      fetchWallet()
+        .then((w) => {
+          setWalletBalance(w.balance);
+          setWalletTransactions(w.transactions);
+        })
+        .catch(() => {});
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.code === 'ORDER_LOCKED') {
+        toast.info('A stall just accepted your order — it is being packed now.');
+        fetchOrders({ limit: 100 }).then(setOrders).catch(() => {});
+      } else {
+        toast.error(err.message || 'Could not cancel that order.');
+      }
+    }
+  }, [toast]);
 
   const handleOpenProductDetail = useCallback((product, cat) => {
     const parentCategory = cat || categories.find((c) => c.id === product.categoryId);
@@ -776,7 +905,9 @@ export default function App() {
       ) : activeCategoryDetail ? (
         <CategoryDetailView
           category={activeCategoryDetail}
-          products={products}
+          // The chosen market's sheet, so drilling into a category shows the
+          // same prices the home carousels just showed.
+          products={browseProducts}
           cartItems={activeCartItems}
           onAddToCart={handleAddToCart}
           onUpdateQuantity={handleUpdateQuantity}
@@ -792,7 +923,10 @@ export default function App() {
             setSearchVal(value);
             setSearchQuery(value);
           }}
-          products={products}
+          // The chosen market's sheet, not the platform catalog: otherwise a
+          // search would quote one price and the home screen another for the
+          // same tomato, and could offer something this market does not sell.
+          products={browseProducts}
           categories={categories}
           cartItems={activeCartItems}
           onAddToCart={handleAddToCart}
@@ -813,7 +947,9 @@ export default function App() {
               onOpenAccount={() => setActiveTab('account')}
               user={user}
               onOpenAuthModal={() => setActiveTab('login')}
-              products={products}
+              // Suggestions come from what this market actually sells, for the
+              // same reason as the results screen above.
+              products={browseProducts}
               categories={categories}
               onSubmitSearch={handleSubmitSearch}
               onOpenCategory={handleOpenCategoryFromSearch}
@@ -869,6 +1005,15 @@ export default function App() {
                       onExplore={() => setActiveCategoryDetail(categories[0])}
                     />
 
+                    {/*
+                      Which market am I buying from — above the categories,
+                      because it decides what every price below it says.
+                    */}
+                    <MarketPicker
+                      selectedMarket={selectedMarket}
+                      onSelectMarket={handleSelectMarket}
+                    />
+
                     {/* 3. DYNAMIC 2-COLUMN CATEGORIES SECTION */}
                     <Categories
                       categories={categories}
@@ -906,6 +1051,7 @@ export default function App() {
                     setActiveTab('home');
                   }}
                   onGoHome={() => setActiveTab('home')}
+                  onCancelOrder={handleCancelOrder}
                 />
               ) : activeTab === 'developer' && user?.role === 'developer' ? (
                 <Suspense fallback={<HomeSkeleton />}>

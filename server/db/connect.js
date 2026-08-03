@@ -41,6 +41,46 @@ async function connect(uri = config.mongoUri) {
   return mongoose.connection;
 }
 
+/**
+ * Build every model's declared indexes, and wait for them.
+ *
+ * Mongoose normally does this itself when a model is compiled, but this app
+ * sets `bufferCommands: false` above and compiles its models (via the route
+ * imports in app.js) BEFORE the connection exists — so those automatic builds
+ * fire against a dead connection and are swallowed. The result is a database
+ * with no indexes at all, which mostly just runs slowly and hides.
+ *
+ * It stops hiding at `$geoNear`, which does not degrade to a scan: without a
+ * 2dsphere index it fails the request outright. "Markets near me" and "nearest
+ * rider" are both that query, so this is load-bearing rather than an
+ * optimisation.
+ *
+ * `createIndexes` is idempotent, so a restart against an already-indexed
+ * database is a cheap no-op. Deliberately NOT `syncIndexes`, which drops
+ * indexes it does not recognise — that would make a rollback to an older
+ * release delete the indexes the newer one added.
+ */
+async function ensureIndexes() {
+  const models = Object.values(mongoose.models);
+  const started = Date.now();
+
+  const results = await Promise.allSettled(models.map((model) => model.createIndexes()));
+
+  const failed = results
+    .map((result, i) => ({ result, name: models[i].modelName }))
+    .filter(({ result }) => result.status === 'rejected');
+
+  for (const { name, result } of failed) {
+    console.error(`[db] index build failed for ${name}: ${result.reason?.message}`);
+  }
+
+  if (failed.length === 0) {
+    console.info(`[db] indexes ready (${models.length} models, ${Date.now() - started}ms)`);
+  }
+
+  return { total: models.length, failed: failed.length };
+}
+
 async function disconnect() {
   await mongoose.disconnect();
 }
@@ -78,4 +118,4 @@ async function withTransaction(fn) {
   }
 }
 
-module.exports = { connect, disconnect, isConnected, withTransaction, mongoose };
+module.exports = { connect, disconnect, isConnected, withTransaction, ensureIndexes, mongoose };
