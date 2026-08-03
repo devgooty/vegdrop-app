@@ -1,11 +1,47 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Store, Package, ShoppingBag, CheckCircle2, Clock, Truck, 
+  Store, Package, ShoppingBag, CheckCircle2, Clock, Truck,
   MapPin, LogOut, User, LayoutDashboard, Plus, Edit, Trash2,
-  AlertTriangle, Navigation, Check, Camera, MessageSquare, TrendingUp, BarChart3, Star, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock
+  AlertTriangle, Navigation, Check, Camera, MessageSquare, TrendingUp, BarChart3, Star, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert
 } from 'lucide-react';
 
-export default function ShopkeeperPanel({ user, orders, products, setProducts, onUpdateOrderStatus, onOrderAccepted, onLogout, onSyncOrders }) {
+/**
+ * Prompt shown while the vendor's settlement account is unverified.
+ *
+ * The server refuses catalog writes in this state regardless of what the UI
+ * shows (middleware/vendorVerified.js), so this exists to explain why the
+ * controls are inert and to offer the action that fixes it — not as a check.
+ */
+function KycGateBanner({ kyc, onOpenKyc }) {
+  if (!kyc || kyc.canUpdateStock) return null;
+
+  const isPending = kyc.status === 'penny_sent';
+
+  return (
+    <button
+      type="button"
+      onClick={onOpenKyc}
+      className="w-full text-left bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 active:scale-98 transition-transform mb-4"
+    >
+      <ShieldAlert className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+      <div className="flex-1">
+        <p className="font-black text-sm text-amber-900">
+          {isPending ? 'Confirm your verification amount' : 'Verify your account to update stock'}
+        </p>
+        <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+          {isPending
+            ? 'We sent a small amount to your UPI ID. Enter the exact figure to unlock stock updates.'
+            : 'Add your PAN and bank details, then confirm a ₹1 UPI transfer, before listing or updating stock.'}
+        </p>
+      </div>
+    </button>
+  );
+}
+
+export default function ShopkeeperPanel({ user, orders, products, setProducts, onUpdateOrderStatus, onOrderAccepted, onLogout, onSyncOrders, kyc = null, onOpenKyc }) {
+  // UX gate only. Every catalog write is authorized again by the API.
+  const canUpdateStock = kyc ? kyc.canUpdateStock : true;
+
   // Navigation & State
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isStoreOnline, setIsStoreOnline] = useState(true);
@@ -257,6 +293,9 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
             <button onClick={() => { setActiveScreen('list'); setProductForm(initialProductState); }} className="p-2 rounded-full bg-gray-100"><ArrowLeft className="w-5 h-5" /></button>
             <h2 className="font-black text-xl text-gray-900">{activeScreen === 'add-product' ? 'Add New Product' : 'Edit Product'}</h2>
           </div>
+
+          <KycGateBanner kyc={kyc} onOpenKyc={onOpenKyc} />
+
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 space-y-4">
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">Product Name</label>
@@ -291,9 +330,10 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
                 <input type="number" value={productForm.stock} onChange={e => setProductForm({...productForm, stock: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold" placeholder="e.g. 100" />
               </div>
             </div>
-            <button 
+            <button
               onClick={activeScreen === 'add-product' ? handleAddProduct : handleEditProduct}
-              className="w-full py-4 bg-green-600 text-white rounded-xl font-black shadow-lg active:scale-95 transition-transform mt-4"
+              disabled={!canUpdateStock}
+              className="w-full py-4 bg-green-600 text-white rounded-xl font-black shadow-lg active:scale-95 transition-transform mt-4 disabled:bg-gray-300 disabled:active:scale-100 disabled:shadow-none"
             >
               {activeScreen === 'add-product' ? 'Save Product' : 'Update Product'}
             </button>
@@ -304,6 +344,8 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
 
     return (
       <div className="space-y-4 pb-24 animate-fade-in">
+        <KycGateBanner kyc={kyc} onOpenKyc={onOpenKyc} />
+
         {products?.map(product => (
           <div key={product.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex gap-4 items-center">
             <img src={product.image} alt={product.name} className="w-20 h-20 object-cover rounded-xl border border-gray-200" />

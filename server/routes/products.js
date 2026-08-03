@@ -5,6 +5,7 @@ const Product = require('../models/Product');
 const { ApiError } = require('../middleware/errors');
 const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
+const { requireVerifiedVendor } = require('../middleware/vendorVerified');
 
 const router = express.Router();
 
@@ -72,6 +73,9 @@ router.patch(
   '/:id/stock',
   requireAuth,
   requireRole(CATALOG_MANAGERS),
+  // A shopkeeper must have a verified settlement account before listing or
+  // repricing anything. No-op for market_owner/developer, who do not sell.
+  requireVerifiedVendor,
   validate({
     params: z.object({ id: fields.objectId }).strict(),
     body: z.object({ stock: z.number().int().min(0).max(1_000_000) }).strict(),
@@ -91,6 +95,9 @@ router.post(
   '/',
   requireAuth,
   requireRole(CATALOG_MANAGERS),
+  // A shopkeeper must have a verified settlement account before listing or
+  // repricing anything. No-op for market_owner/developer, who do not sell.
+  requireVerifiedVendor,
   validate({
     body: z
       .object({
@@ -121,6 +128,9 @@ router.patch(
   '/:id',
   requireAuth,
   requireRole(CATALOG_MANAGERS),
+  // A shopkeeper must have a verified settlement account before listing or
+  // repricing anything. No-op for market_owner/developer, who do not sell.
+  requireVerifiedVendor,
   validate({
     params: z.object({ id: fields.objectId }).strict(),
     body: z
