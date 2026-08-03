@@ -35,7 +35,7 @@
     <meta property="og:title" content="VegBazzar - Artisanal Fresh Basket" />
     <meta property="og:description" content="Savor 100% organic, handpicked fresh vegetables and fruits delivered to your doorstep." />
     <meta property="og:image" content="/logo.png" />
-    <meta property="og:url" content="http://localhost:3000/" />
+    <meta property="og:url" content="https://vegbazzar-api-production.up.railway.app/" />
 
     <!-- Twitter Cards -->
     <meta name="twitter:card" content="summary_large_image" />
@@ -47,19 +47,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!--
-      Fonts load without blocking first paint: the browser fetches the sheet at
-      low priority and applies it on load. display=swap means text renders
-      immediately in a fallback face rather than staying invisible.
+      display=swap means text renders immediately in a fallback face rather than
+      staying invisible while the webfont downloads.
+
+      This was previously loaded with the `media="print" onload="this.media='all'"`
+      trick to keep it off the critical path. That is an inline event handler,
+      which the Content-Security-Policy the server now sends for the client
+      (see server/app.js) does not allow — and buying it back would mean
+      permitting inline script across the whole app, which is a far worse trade
+      than one render-blocking stylesheet.
     -->
     <link
       href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=DM+Mono:wght@400;500&display=swap"
       rel="stylesheet"
-      media="print"
-      onload="this.media='all'"
     />
-    <noscript>
-      <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    </noscript>
 
     <!--
       Leaflet is NOT loaded from a CDN here. MapLocationPicker.jsx imports both
