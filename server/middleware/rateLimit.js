@@ -126,6 +126,18 @@ const paymentLimiter = rateLimit({
   handler: jsonLimitHandler('Too many payment requests. Please wait a moment.', 'RATE_LIMITED'),
 });
 
+/** KYC submission and penny-drop initiation both cost real money downstream. */
+const kycLimiter = rateLimit({
+  ...base,
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) => `kyc:${req.user?._id || ipKeyGenerator(req.ip)}`,
+  handler: jsonLimitHandler(
+    'Too many verification attempts. Please wait before trying again.',
+    'KYC_RATE_LIMITED'
+  ),
+});
+
 module.exports = {
   globalLimiter,
   otpRequestLimiter,
@@ -133,4 +145,5 @@ module.exports = {
   otpVerifyLimiter,
   lookupLimiter,
   paymentLimiter,
+  kycLimiter,
 };

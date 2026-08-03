@@ -220,6 +220,33 @@ if (isProduction && (!razorpayConfigured || !/^rzp_(live|test)_/.test(razorpayKe
   fatal.push('RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET must be real credentials in production. Payments cannot run in mock mode.');
 }
 
+/**
+ * Vendor KYC.
+ *
+ * PAN and bank account numbers are encrypted at rest. The key is separate from
+ * the JWT secrets on purpose: rotating a signing secret should not force a
+ * re-encrypt of every KYC record, and a leaked token secret must not also
+ * decrypt PANs.
+ */
+const kycEncryptionKey = secret('KYC_ENCRYPTION_KEY');
+
+/**
+ * Payouts (RazorpayX) are a DIFFERENT product from Razorpay Payments above and
+ * carry their own credentials. Payments-only credentials cannot move money out,
+ * so the vendor penny drop needs these before it can run for real.
+ */
+const payoutKeyId = process.env.RAZORPAYX_KEY_ID || '';
+const payoutKeySecret = process.env.RAZORPAYX_KEY_SECRET || '';
+const payoutAccountNumber = process.env.RAZORPAYX_ACCOUNT_NUMBER || '';
+const payoutConfigured = Boolean(payoutKeyId && payoutKeySecret && payoutAccountNumber);
+
+if (isProduction && !payoutConfigured) {
+  fatal.push(
+    'RAZORPAYX_KEY_ID / RAZORPAYX_KEY_SECRET / RAZORPAYX_ACCOUNT_NUMBER are required in production. ' +
+      'Vendor KYC penny-drop verification cannot run in mock mode against real vendors.'
+  );
+}
+
 const config = Object.freeze({
   NODE_ENV,
   isProduction,
@@ -342,6 +369,25 @@ const config = Object.freeze({
     configured: razorpayConfigured,
     // Mock order creation is a development affordance only; prod is blocked above.
     allowMock: !isProduction && !razorpayConfigured,
+  }),
+
+  kyc: Object.freeze({
+    encryptionKey: kycEncryptionKey,
+    // Penny drop lands a random sub-rupee amount so the vendor must read their
+    // own statement to pass. A fixed ₹1 would let anyone click "yes I got it".
+    minPennyPaise: int('KYC_PENNY_MIN_PAISE', 1),
+    maxPennyPaise: int('KYC_PENNY_MAX_PAISE', 100),
+    pennyMaxAttempts: int('KYC_PENNY_MAX_ATTEMPTS', 5),
+    pennyTtlSeconds: int('KYC_PENNY_TTL_SECONDS', 7 * 24 * 60 * 60),
+  }),
+
+  payouts: Object.freeze({
+    keyId: payoutKeyId,
+    keySecret: payoutKeySecret,
+    accountNumber: payoutAccountNumber,
+    configured: payoutConfigured,
+    // Simulated transfers are a development affordance only; prod is blocked above.
+    allowMock: !isProduction && !payoutConfigured,
   }),
 
   cookies: Object.freeze({

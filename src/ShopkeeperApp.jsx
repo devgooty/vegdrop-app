@@ -1,12 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import ShopkeeperPanel from './components/ShopkeeperPanel';
 import LoginPage from './components/LoginPage';
 import SplashScreen from './components/SplashScreen';
 import { useToast } from './components/Toast';
 import { restoreSession, logout } from './services/auth';
+import { fetchKycStatus } from './services/kyc';
 import { initialCategories, sampleProducts, initialOrders, initialRegisteredUsers } from './data/mockData';
 import { fetchProducts, updateStock } from './services/products';
 import { fetchOrders, updateOrderStatus } from './services/orders';
+
+// Only ever opened by an unverified vendor, so it stays out of the main bundle.
+const VendorKycModal = lazy(() => import('./components/VendorKycModal'));
 
 export default function ShopkeeperApp() {
   const toast = useToast();
@@ -50,6 +54,43 @@ export default function ShopkeeperApp() {
 
   // Delivery Notifications
   const [deliveryNotifications, setDeliveryNotifications] = useState([]);
+
+  /**
+   * Settlement-account verification.
+   *
+   * A shopkeeper account can now be created by self-registration (see
+   * routes/auth.js's /vendor/register/*), so holding the role no longer implies
+   * anyone vetted the person behind it. Catalog writes are gated on this
+   * server-side (middleware/vendorVerified.js); showing the modal here is only
+   * so the vendor sees *why* those controls would fail, and gets the action
+   * that fixes it.
+   */
+  const [kyc, setKyc] = useState(null);
+  const [isKycModalOpen, setIsKycModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    fetchKycStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setKyc(status);
+        // Open unprompted for a vendor who has not finished: the dashboard is
+        // useless to them until they do.
+        if (!status.canUpdateStock) setIsKycModalOpen(true);
+      })
+      .catch((err) => console.warn('kyc status unavailable:', err.message));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const handleKycVerified = useCallback((updated) => {
+    setKyc(updated);
+    toast.success('Account verified! You can now update stock. ✅');
+  }, [toast]);
 
   /** Load catalog and orders once a shopkeeper session exists. */
   useEffect(() => {
@@ -196,15 +237,28 @@ export default function ShopkeeperApp() {
 
   // Main Shopkeeper Panel
   return (
-    <ShopkeeperPanel
-      user={user}
-      orders={orders}
-      products={products}
-      setProducts={setProducts}
-      onUpdateOrderStatus={handleUpdateOrderStatus}
-      onOrderAccepted={handleOrderAccepted}
-      onLogout={handleLogout}
-      onSyncOrders={handleSyncOrders}
-    />
+    <>
+      <ShopkeeperPanel
+        user={user}
+        orders={orders}
+        products={products}
+        setProducts={setProducts}
+        onUpdateOrderStatus={handleUpdateOrderStatus}
+        onOrderAccepted={handleOrderAccepted}
+        onLogout={handleLogout}
+        onSyncOrders={handleSyncOrders}
+        kyc={kyc}
+        onOpenKyc={() => setIsKycModalOpen(true)}
+      />
+
+      {isKycModalOpen && (
+        <Suspense fallback={null}>
+          <VendorKycModal
+            onVerified={handleKycVerified}
+            onClose={() => setIsKycModalOpen(false)}
+          />
+        </Suspense>
+      )}
+    </>
   );
 }

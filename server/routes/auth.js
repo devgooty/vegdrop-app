@@ -323,6 +323,129 @@ router.post(
  * it is proved. Reserving it would let anyone type a stranger's number and lock
  * its real owner out of registering.
  */
+/**
+ * Shared implementation behind /register/* and /vendor/register/*.
+ *
+ * Both flows prove two independent contacts before creating an account. They
+ * differ only in the role the account gets and the OTP `purpose` guarding it —
+ * kept as distinct enum values (see models/OtpChallenge.js) rather than one
+ * purpose plus a payload flag, so a code issued for a customer sign-up can
+ * never be redeemed to mint a `shopkeeper` account.
+ */
+async function startRegistrationChallenge({ phone, email, name, purpose }) {
+  /**
+   * Taken means *verified* by someone else. A number sitting in another
+   * account's `pendingPhone` is unproven and therefore still available —
+   * whoever verifies it first gets it.
+   */
+  const [phoneTaken, emailTaken] = await Promise.all([
+    User.findOne({ phone, status: { $ne: 'deleted' } }).select('_id').lean(),
+    User.findOne({ email, status: { $ne: 'deleted' } }).select('_id').lean(),
+  ]);
+
+  if (phoneTaken || emailTaken) {
+    throw new ApiError(
+      409,
+      'An account already exists for those details. Try signing in instead.',
+      'ALREADY_REGISTERED'
+    );
+  }
+
+  const payload = { name: name || null, phone, email };
+
+  // The email leg first: it is the one registration cannot complete without,
+  // so a failure here is fatal and nothing else has happened yet.
+  const emailChallenge = await otp.issueChallenge({ purpose, destination: email, payload });
+
+  let phoneChallenge = null;
+
+  /**
+   * Skipped outright when the phone transport cannot reach the user.
+   *
+   * The dev stub prints codes to stdout and reports success, so issuing a
+   * challenge against it would tell the client a code was sent and put a code
+   * input in front of someone who never received one. A deployment still on
+   * NOTIFY_TRANSPORT=console is exactly the "WhatsApp is unavailable" case
+   * this flow already handles — treat it as such rather than as a send.
+   */
+  if (notify.reachesRecipient('sms')) {
+    try {
+      phoneChallenge = await otp.issueChallenge({ purpose, destination: phone, payload });
+    } catch (err) {
+      // Exactly the case this flow exists to tolerate.
+      console.warn('[auth] registration phone code undeliverable', {
+        to: otp.maskDestination(phone),
+        message: err?.message,
+      });
+    }
+  } else {
+    console.warn('[auth] registration phone code skipped: transport cannot reach the recipient');
+  }
+
+  return {
+    email: { challengeId: emailChallenge.challengeId, destination: emailChallenge.destination, delivered: true },
+    phone: phoneChallenge
+      ? { challengeId: phoneChallenge.challengeId, destination: phoneChallenge.destination, delivered: true }
+      : { challengeId: null, destination: otp.maskDestination(phone), delivered: false },
+    expiresAt: emailChallenge.expiresAt,
+    next: 'verify',
+    // Test-only, mirroring issueChallenge; never populated outside NODE_ENV=test.
+    ...(config.isTest
+      ? { devCodes: { email: emailChallenge.devCode, phone: phoneChallenge?.devCode ?? null } }
+      : {}),
+  };
+}
+
+/**
+ * The email code is required; the phone code is optional and its absence is
+ * what "WhatsApp was down" looks like on the wire. A phone proved here becomes
+ * the account's `phone`; one that was not becomes `pendingPhone`.
+ *
+ * @param {string} role hardcoded by the caller, never derived from the request.
+ */
+async function completeRegistration({ emailChallengeId, emailCode, phoneChallengeId, phoneCode, purpose, role }) {
+  const emailChallenge = await otp.verifyChallenge({ challengeId: emailChallengeId, code: emailCode, purpose });
+
+  const email = emailChallenge.destination;
+  const { name, phone } = emailChallenge.payload || {};
+
+  if (!phone) throw new ApiError(400, 'This registration is no longer valid.', 'OTP_INVALID');
+
+  let phoneVerified = false;
+  if (phoneChallengeId) {
+    const phoneChallenge = await otp.verifyChallenge({ challengeId: phoneChallengeId, code: phoneCode, purpose });
+
+    // Both codes must belong to the same registration, or one person's phone
+    // code could be paired with another's email code.
+    if (phoneChallenge.payload?.email !== email || phoneChallenge.destination !== phone) {
+      throw new ApiError(400, 'These codes are from different registrations.', 'OTP_INVALID');
+    }
+    phoneVerified = true;
+  }
+
+  const now = new Date();
+
+  try {
+    return await User.create({
+      name: name || placeholderName(phone),
+      email,
+      emailVerifiedAt: now,
+      // Only a proved number is written to `phone`, where it is reserved.
+      ...(phoneVerified ? { phone, phoneVerifiedAt: now } : { pendingPhone: phone, phoneVerifiedAt: null }),
+      role,
+      lastLoginAt: now,
+    });
+  } catch (err) {
+    // Someone claimed one of these between start and verify.
+    if (err?.code !== 11000) throw err;
+    throw new ApiError(
+      409,
+      'An account already exists for those details. Try signing in instead.',
+      'ALREADY_REGISTERED'
+    );
+  }
+}
+
 router.post(
   '/register/start',
   otpRequestLimiter,
@@ -337,81 +460,12 @@ router.post(
       .strict(),
   }),
   async (req, res) => {
-    const { phone, email, name } = req.valid.body;
-
     if (!config.email.configured) {
       throw new ApiError(503, 'Registration is temporarily unavailable.', 'EMAIL_NOT_CONFIGURED');
     }
 
-    /**
-     * Taken means *verified* by someone else. A number sitting in another
-     * account's `pendingPhone` is unproven and therefore still available —
-     * whoever verifies it first gets it.
-     */
-    const [phoneTaken, emailTaken] = await Promise.all([
-      User.findOne({ phone, status: { $ne: 'deleted' } }).select('_id').lean(),
-      User.findOne({ email, status: { $ne: 'deleted' } }).select('_id').lean(),
-    ]);
-
-    if (phoneTaken || emailTaken) {
-      throw new ApiError(
-        409,
-        'An account already exists for those details. Try signing in instead.',
-        'ALREADY_REGISTERED'
-      );
-    }
-
-    const payload = { name: name || null, phone, email };
-
-    // The email leg first: it is the one registration cannot complete without,
-    // so a failure here is fatal and nothing else has happened yet.
-    const emailChallenge = await otp.issueChallenge({
-      purpose: 'registration',
-      destination: email,
-      payload,
-    });
-
-    let phoneChallenge = null;
-
-    /**
-     * Skipped outright when the phone transport cannot reach the user.
-     *
-     * The dev stub prints codes to stdout and reports success, so issuing a
-     * challenge against it would tell the client a code was sent and put a code
-     * input in front of someone who never received one. A deployment still on
-     * NOTIFY_TRANSPORT=console is exactly the "WhatsApp is unavailable" case
-     * this flow already handles — treat it as such rather than as a send.
-     */
-    if (notify.reachesRecipient('sms')) {
-      try {
-        phoneChallenge = await otp.issueChallenge({
-          purpose: 'registration',
-          destination: phone,
-          payload,
-        });
-      } catch (err) {
-        // Exactly the case this flow exists to tolerate.
-        console.warn('[auth] registration phone code undeliverable', {
-          to: otp.maskDestination(phone),
-          message: err?.message,
-        });
-      }
-    } else {
-      console.warn('[auth] registration phone code skipped: transport cannot reach the recipient');
-    }
-
-    return res.status(202).json({
-      email: { challengeId: emailChallenge.challengeId, destination: emailChallenge.destination, delivered: true },
-      phone: phoneChallenge
-        ? { challengeId: phoneChallenge.challengeId, destination: phoneChallenge.destination, delivered: true }
-        : { challengeId: null, destination: otp.maskDestination(phone), delivered: false },
-      expiresAt: emailChallenge.expiresAt,
-      next: 'verify',
-      // Test-only, mirroring issueChallenge; never populated outside NODE_ENV=test.
-      ...(config.isTest
-        ? { devCodes: { email: emailChallenge.devCode, phone: phoneChallenge?.devCode ?? null } }
-        : {}),
-    });
+    const result = await startRegistrationChallenge({ ...req.valid.body, purpose: 'registration' });
+    return res.status(202).json(result);
   }
 );
 
@@ -440,62 +494,73 @@ router.post(
       }),
   }),
   async (req, res) => {
-    const { emailChallengeId, emailCode, phoneChallengeId, phoneCode } = req.valid.body;
-
-    const emailChallenge = await otp.verifyChallenge({
-      challengeId: emailChallengeId,
-      code: emailCode,
-      purpose: 'registration',
-    });
-
-    const email = emailChallenge.destination;
-    const { name, phone } = emailChallenge.payload || {};
-
-    if (!phone) throw new ApiError(400, 'This registration is no longer valid.', 'OTP_INVALID');
-
-    let phoneVerified = false;
-    if (phoneChallengeId) {
-      const phoneChallenge = await otp.verifyChallenge({
-        challengeId: phoneChallengeId,
-        code: phoneCode,
-        purpose: 'registration',
-      });
-
-      // Both codes must belong to the same registration, or one person's phone
-      // code could be paired with another's email code.
-      if (phoneChallenge.payload?.email !== email || phoneChallenge.destination !== phone) {
-        throw new ApiError(400, 'These codes are from different registrations.', 'OTP_INVALID');
-      }
-      phoneVerified = true;
-    }
-
-    const now = new Date();
-
-    let user;
-    try {
-      user = await User.create({
-        name: name || placeholderName(phone),
-        email,
-        emailVerifiedAt: now,
-        // Only a proved number is written to `phone`, where it is reserved.
-        ...(phoneVerified
-          ? { phone, phoneVerifiedAt: now }
-          : { pendingPhone: phone, phoneVerifiedAt: null }),
-        // Hardcoded. Self sign-up cannot yield a privileged account.
-        role: SELF_SERVICE_ROLES[0],
-        lastLoginAt: now,
-      });
-    } catch (err) {
-      // Someone claimed one of these between start and verify.
-      if (err?.code !== 11000) throw err;
-      throw new ApiError(
-        409,
-        'An account already exists for those details. Try signing in instead.',
-        'ALREADY_REGISTERED'
-      );
-    }
-
+    // Hardcoded. Self sign-up cannot yield a privileged account.
+    const user = await completeRegistration({ ...req.valid.body, purpose: 'registration', role: SELF_SERVICE_ROLES[0] });
     return res.status(201).json(await establishSession(user, req, res));
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Vendor registration — same dual-OTP flow, a different role and OTP purpose
+// ---------------------------------------------------------------------------
+
+/**
+ * A vendor account created here is inert: it has no stall's worth of products
+ * (nothing distinguishes it from any other shopkeeper yet, since this catalog
+ * has no per-vendor ownership) and, more importantly, no KYC record — so
+ * middleware/vendorVerified.js refuses every catalog write until the PAN and
+ * bank account are verified. The role alone grants access to the panel, not
+ * the ability to sell anything.
+ */
+router.post(
+  '/vendor/register/start',
+  otpRequestLimiter,
+  otpStartIpLimiter,
+  validate({
+    body: z
+      .object({
+        phone: fields.phone,
+        email: fields.email,
+        name: fields.nonEmptyString(120).optional(),
+      })
+      .strict(),
+  }),
+  async (req, res) => {
+    if (!config.email.configured) {
+      throw new ApiError(503, 'Registration is temporarily unavailable.', 'EMAIL_NOT_CONFIGURED');
+    }
+
+    const result = await startRegistrationChallenge({ ...req.valid.body, purpose: 'vendor_registration' });
+    return res.status(202).json(result);
+  }
+);
+
+router.post(
+  '/vendor/register/verify',
+  otpVerifyLimiter,
+  validate({
+    body: z
+      .object({
+        emailChallengeId: fields.nonEmptyString(80),
+        emailCode: fields.otpCode,
+        phoneChallengeId: fields.nonEmptyString(80).optional(),
+        phoneCode: fields.otpCode.optional(),
+      })
+      .strict()
+      .refine((data) => !data.phoneChallengeId === !data.phoneCode, {
+        message: 'A phone challenge id and code must be supplied together.',
+        path: ['phoneCode'],
+      }),
+  }),
+  async (req, res) => {
+    // Hardcoded, not derived from input — the route path is what selects this
+    // role, never a request body field.
+    const user = await completeRegistration({ ...req.valid.body, purpose: 'vendor_registration', role: 'shopkeeper' });
+    return res.status(201).json({
+      ...(await establishSession(user, req, res)),
+      // Tells the client to open the KYC form rather than the (empty) dashboard.
+      nextStep: 'kyc',
+    });
   }
 );
 

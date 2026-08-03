@@ -88,6 +88,43 @@ export async function verifyRegistration({ emailChallengeId, emailCode, phoneCha
   return result.user;
 }
 
+// --- Vendor registration -----------------------------------------------------
+//
+// Same dual-OTP shape as customer registration above — this app has no
+// passwords, so there is no separate "set a password" step. The only
+// difference is the endpoint, which is what selects the `shopkeeper` role on
+// the server; nothing here or in the request body chooses it.
+
+/**
+ * Step 1 of vendor registration. Both contacts are required, each proved with
+ * its own code.
+ * @returns {Promise<{email: {challengeId: string, destination: string, delivered: boolean},
+ *                    phone: {challengeId: string|null, destination: string, delivered: boolean}}>}
+ */
+export async function startVendorRegistration({ phone, email, name }) {
+  const payload = { phone, email };
+  if (name) payload.name = name;
+  return api.post('/auth/vendor/register/start', payload, { auth: false });
+}
+
+/**
+ * Step 2 of vendor registration. Creates a `shopkeeper` account and
+ * establishes the session — `nextStep: 'kyc'` tells the caller to open the KYC
+ * form rather than the (empty) dashboard, since the new account can list
+ * nothing until it verifies a settlement account.
+ * @returns {Promise<{user: object, nextStep: string}>}
+ */
+export async function verifyVendorRegistration({ emailChallengeId, emailCode, phoneChallengeId, phoneCode }) {
+  const payload = { emailChallengeId, emailCode };
+  if (phoneChallengeId && phoneCode) {
+    payload.phoneChallengeId = phoneChallengeId;
+    payload.phoneCode = phoneCode;
+  }
+  const result = await api.post('/auth/vendor/register/verify', payload, { auth: false });
+  setAccessToken(result.accessToken);
+  return { user: result.user, nextStep: result.nextStep };
+}
+
 /**
  * Step 2. Exchanges the code for a session, creating the account if the number
  * is new.

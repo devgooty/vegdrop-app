@@ -14,6 +14,7 @@ const { errorHandler, notFoundHandler, ApiError } = require('./middleware/errors
 const { globalLimiter } = require('./middleware/rateLimit');
 
 const authRoutes = require('./routes/auth');
+const kycRoutes = require('./routes/kyc');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
 const userRoutes = require('./routes/users');
@@ -162,6 +163,7 @@ function createApp() {
 
   // --- Routes --------------------------------------------------------------
   app.use('/api/auth', authRoutes);
+  app.use('/api/kyc', kycRoutes);
   app.use('/api/products', productRoutes);
   app.use('/api/orders', orderRoutes);
   app.use('/api/users', userRoutes);

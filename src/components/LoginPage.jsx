@@ -6,6 +6,8 @@ import {
   verifyPhoneAuth,
   startRegistration,
   verifyRegistration,
+  startVendorRegistration,
+  verifyVendorRegistration,
   describeIdentifierProblem,
   describePhoneProblem,
   describeEmailProblem,
@@ -99,6 +101,13 @@ const COPY = {
 const HERO_SRC = '/hero.webp';
 
 export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegbazzar_' }) {
+  // Shopkeepers register through the SAME dual-OTP flow as customers — this app
+  // has no passwords, so there is no extra step to insert — but the account
+  // that comes out the other end holds the `shopkeeper` role. That is a server
+  // decision made by which endpoint is called (routes/auth.js), never by
+  // anything chosen here.
+  const isVendor = appType === 'shopkeeper';
+
   const [step, setStep] = useState(STEP.IDENTIFIER);
 
   const [identifier, setIdentifier] = useState(() => {
@@ -247,7 +256,8 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     setIsSubmitting(true);
 
     try {
-      const issued = await startRegistration({
+      const startFn = isVendor ? startVendorRegistration : startRegistration;
+      const issued = await startFn({
         phone: phone.trim(),
         email: email.trim(),
         name: name.trim() || undefined,
@@ -283,14 +293,19 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     setIsSubmitting(true);
 
     try {
-      const user = await verifyRegistration({
+      const payload = {
         emailChallengeId: registration.email.challengeId,
         emailCode: emailCode.trim(),
         // Omitted entirely when WhatsApp could not be reached; the server then
         // keeps the number unverified rather than treating it as proved.
         phoneChallengeId: phoneWasDelivered ? registration.phone.challengeId : undefined,
         phoneCode: phoneWasDelivered ? phoneCode.trim() : undefined,
-      });
+      };
+      // verifyVendorRegistration also returns `nextStep: 'kyc'`, but the
+      // shopkeeper app already checks KYC status on mount for every sign-in
+      // (not just a fresh signup), so there is nothing extra to thread through
+      // here — `user` is all onLogin needs.
+      const user = isVendor ? (await verifyVendorRegistration(payload)).user : await verifyRegistration(payload);
       onLogin(user);
     } catch (err) {
       setError(describeError(err, 'That did not work. Check the codes and try again.'));
@@ -303,7 +318,13 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     }
   };
 
-  const { title, sub } = COPY[step];
+  let { title, sub } = COPY[step];
+  if (isVendor && step === STEP.REGISTER) {
+    title = 'Register your stall';
+    sub = "You're new here. We need both contacts, then a quick account check.";
+  } else if (isVendor && step === STEP.REGISTER_CODES) {
+    sub = "Type the code from each one below. You'll verify your bank account next.";
+  }
 
   const fieldClass =
     'w-full bg-[#F1F7F3] border border-[#DCE9E1] rounded-xl px-4 py-3.5 text-[15px] text-[#0F1F17] ' +
