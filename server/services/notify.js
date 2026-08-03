@@ -244,22 +244,36 @@ function reachesRecipient(channel) {
   return transportFor(channel).reachesRecipient !== false;
 }
 
-async function sendOtp({ channel, to, code, purpose, ttlSeconds }) {
+async function sendOtp({ channel, to, code, purpose, ttlSeconds, role }) {
   const minutes = Math.round(ttlSeconds / 60);
-  const purposeText = {
-    login: 'sign in to',
-    registration: 'create',
-    phone_change: 'move',
-    email_change: 'add an email address to',
-  }[purpose] || 'verify';
+
+  // A shopkeeper signing in is asking for their merchant dashboard, not "your
+  // account" — same code, same expiry, just named for the audience actually
+  // reading it. WhatsApp ignores this: its AUTHENTICATION-category template
+  // takes only the code (see resolvePhoneTransport), so this only reaches SMS
+  // console output and the email copy.
+  const text =
+    purpose === 'login' && role === 'shopkeeper'
+      ? `${code} is your VegBazzar merchant dashboard verification code. It expires in ${minutes} minute${minutes === 1 ? '' : 's'}.\n` +
+        'Never share this code with anyone, including VegBazzar staff.'
+      : (() => {
+          const purposeText = {
+            login: 'sign in to',
+            registration: 'create',
+            phone_change: 'move',
+            email_change: 'add an email address to',
+          }[purpose] || 'verify';
+          return (
+            `${code} is your VegBazzar verification code to ${purposeText} your account.\n` +
+            `It expires in ${minutes} minute${minutes === 1 ? '' : 's'}. Do not share it with anyone.`
+          );
+        })();
 
   await transportFor(channel).send({
     channel,
     to,
     subject: 'Your VegBazzar verification code',
-    text:
-      `${code} is your VegBazzar verification code to ${purposeText} your account.\n` +
-      `It expires in ${minutes} minute${minutes === 1 ? '' : 's'}. Do not share it with anyone.`,
+    text,
     // Structured form for template-based transports; see the Transport typedef.
     otp: { code, purpose, ttlSeconds },
   });

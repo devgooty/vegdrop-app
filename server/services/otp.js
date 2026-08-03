@@ -97,6 +97,7 @@ async function issueChallenge({ purpose, destination, user = null, payload = nul
       code,
       purpose,
       ttlSeconds: config.otp.ttlSeconds,
+      role: user?.role,
     });
   } catch (err) {
     await OtpChallenge.deleteOne({ _id: created._id }).catch(() => {});
@@ -129,6 +130,7 @@ async function issueChallenge({ purpose, destination, user = null, payload = nul
         code,
         purpose,
         ttlSeconds: config.otp.ttlSeconds,
+        role: user?.role,
       });
     } catch (err) {
       console.warn('[otp] secondary delivery failed', {
