@@ -97,8 +97,25 @@ const COPY = {
  * Served from `public/`, so it is a same-origin file rather than a remote
  * fetch — this is the first paint of the first screen, and it carries the
  * wordmark, so it must not wait on a third party.
+ *
+ * One image per audience. A shopkeeper opening this screen is deciding whether
+ * to run their business through this app, not whether to order dinner — the
+ * customer app's produce-droplet photo answers the wrong question here. The
+ * shopkeeper version is a vendor's own hands at a stall.
+ *
+ * The two are cropped differently for the same reason `.si-hero-img`'s bottom
+ * fade was removed for the customer photo (see index.css): that mask exists
+ * only to dissolve an image into the page's white where the artwork itself
+ * ends in white. hero.webp does; this one does not — it is a full documentary
+ * photograph with produce and counter running to every edge, so it is cropped
+ * like an ordinary photo instead, with a plain rectangular bottom edge. That
+ * reads as intentional framing precisely because there is no hard colour
+ * discontinuity for a fade to be hiding.
  */
-const HERO_SRC = '/hero.webp';
+const HERO_SRC = {
+  customer: '/hero.webp',
+  shopkeeper: '/hero-shopkeeper.webp',
+};
 
 export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegdrop_' }) {
   // Shopkeepers register through the SAME dual-OTP flow as customers — this app
@@ -353,23 +370,24 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
   return (
     <div className="si-scope flex h-[100dvh] flex-col overflow-y-auto">
 
-      {/* Full bleed to the screen edges — the artwork's own white margin is the
-          only padding it needs, and the page continues in the same white where
-          the crop ends.
+      {/* Full bleed to the screen edges. The customer photo's own white margin
+          is its only padding, and the page continues in the same white where
+          the crop ends; the shopkeeper photo has no such margin and is simply
+          cropped like a normal photograph (see the comment on HERO_SRC above).
 
           alt names the shop rather than being empty: the wordmark is painted
-          into this artwork, so it is the only place the brand is stated. */}
+          into both photos, so this is the only place the brand is stated. */}
       {/* Shrinks below the image's natural height so the artwork is the only
           thing that gives — the form below is shrink-0.
 
           The floor lives here rather than on the image: the image is bounded by
           max-height:100% of this box, so a min-height on the image itself would
           let it outgrow its parent and paint over the form. 15rem is where the
-          shrinking has to stop, because below roughly that the bottom fade
-          starts eating into the wordmark. */}
+          shrinking has to stop before the wordmark itself starts getting
+          clipped by the box. */}
       <header className="min-h-[15rem] shrink">
         <img
-          src={HERO_SRC}
+          src={HERO_SRC[appType] || HERO_SRC.customer}
           alt="VegDrop"
           width="768"
           height="790"
