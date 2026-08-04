@@ -315,7 +315,7 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
                 </div>
                 <p className="text-[11px] text-blue-800 leading-relaxed font-semibold">
                   We sent a small amount to <span className="font-mono">{kyc?.upiVpa}</span>. Open your
-                  banking or UPI app, find the credit from VegBazzar, and enter the exact amount below.
+                  banking or UPI app, find the credit from VegDrop, and enter the exact amount below.
                 </p>
               </div>
 

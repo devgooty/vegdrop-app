@@ -1,5 +1,5 @@
 /**
- * HTTP client for the VegBazzar API.
+ * HTTP client for the VegDrop API.
  *
  * Design notes that matter for security:
  *

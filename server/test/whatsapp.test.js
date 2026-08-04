@@ -42,7 +42,7 @@ function transport(overrides = {}, responses = [{ status: 200, body: { messages:
     phoneNumberId: '111222333',
     accessToken: 'test-token',
     apiVersion: 'v21.0',
-    templateName: 'vegbazzar_otp',
+    templateName: 'vegdrop_otp',
     templateLocale: 'en',
     defaultCountryCode: '91',
     fetchImpl: impl,
@@ -79,7 +79,7 @@ test('the payload is an authentication template, never free-form text', () => {
   const payload = buildTemplatePayload({
     to: '919876543210',
     code: '123456',
-    templateName: 'vegbazzar_otp',
+    templateName: 'vegdrop_otp',
     templateLocale: 'en',
     includeOtpButton: true,
     buttonSubType: 'url',
@@ -87,7 +87,7 @@ test('the payload is an authentication template, never free-form text', () => {
 
   assert.equal(payload.type, 'template');
   assert.equal(payload.messaging_product, 'whatsapp');
-  assert.equal(payload.template.name, 'vegbazzar_otp');
+  assert.equal(payload.template.name, 'vegdrop_otp');
   assert.equal(payload.template.language.code, 'en');
   // No `text` key: a business-initiated free-form message would not deliver.
   assert.equal(payload.text, undefined);
@@ -97,7 +97,7 @@ test('the code is supplied to both the body and the OTP button', () => {
   const payload = buildTemplatePayload({
     to: '919876543210',
     code: '654321',
-    templateName: 'vegbazzar_otp',
+    templateName: 'vegdrop_otp',
     templateLocale: 'en',
     includeOtpButton: true,
     buttonSubType: 'url',
@@ -115,7 +115,7 @@ test('the button component is omitted for templates without one', () => {
   const payload = buildTemplatePayload({
     to: '919876543210',
     code: '654321',
-    templateName: 'vegbazzar_otp',
+    templateName: 'vegdrop_otp',
     templateLocale: 'en',
     includeOtpButton: false,
     buttonSubType: 'url',

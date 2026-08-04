@@ -1,4 +1,4 @@
-# VegBazzar — Caddy config for a single always-on VM.
+# VegDrop — Caddy config for a single always-on VM.
 #
 # Serves the built frontend and reverse-proxies /api/* to the local Express
 # process, so the browser and the API share one origin. That matters here:
@@ -19,7 +19,7 @@
 # ─────────────────────────────────────────────────────────────────────────
 your-domain.com {
 	# Static frontend build.
-	root * /var/www/vegbazzar/dist
+	root * /var/www/vegdrop/dist
 	encode gzip
 
 	# API traffic goes to Express on the same box. Never proxy /api/whatsapp
@@ -50,7 +50,7 @@ your-domain.com {
 # not optional for anything handling logins and payments.
 # ─────────────────────────────────────────────────────────────────────────
 # :80 {
-# 	root * /var/www/vegbazzar/dist
+# 	root * /var/www/vegdrop/dist
 # 	encode gzip
 # 	handle /api/* {
 # 		reverse_proxy 127.0.0.1:5000

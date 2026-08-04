@@ -1,4 +1,4 @@
-# Deploying VegBazzar to a free always-on VM
+# Deploying VegDrop to a free always-on VM
 
 One VM (Oracle Cloud "Always Free", or Google Cloud `e2-micro` if your Oracle
 region has no ARM capacity) runs the API and the WhatsApp bot. MongoDB Atlas
@@ -53,11 +53,11 @@ connection string for `MONGODB_URI` below.
 ## 3. Get the code onto the VM and build it
 
 ```bash
-sudo mkdir -p /var/www/vegbazzar /var/log/vegbazzar
-sudo chown -R $USER:$USER /var/www/vegbazzar /var/log/vegbazzar
+sudo mkdir -p /var/www/vegdrop /var/log/vegdrop
+sudo chown -R $USER:$USER /var/www/vegdrop /var/log/vegdrop
 
-git clone <your-repo-url> /var/www/vegbazzar
-cd /var/www/vegbazzar
+git clone <your-repo-url> /var/www/vegdrop
+cd /var/www/vegdrop
 npm install
 npm run build          # writes dist/ — this is what Caddy serves
 ```
@@ -102,7 +102,7 @@ log the first time — scan it once from the phone that owns the number
 (WhatsApp → Settings → Linked devices → Link a device):
 
 ```bash
-pm2 logs vegbazzar-bot
+pm2 logs vegdrop-bot
 ```
 
 Once paired, credentials persist in `server/bot/.auth/` — gitignored,
@@ -136,12 +136,12 @@ Then open `https://your-domain.com` in a browser and confirm login end to end
 ## Redeploying after a change
 
 ```bash
-cd /var/www/vegbazzar
+cd /var/www/vegdrop
 git pull
 npm install               # only needed if dependencies changed
 npm run build              # only needed if frontend code changed
-pm2 restart vegbazzar-api  # only needed if server code changed
-pm2 restart vegbazzar-bot  # only needed if server/bot code changed
+pm2 restart vegdrop-api  # only needed if server code changed
+pm2 restart vegdrop-bot  # only needed if server/bot code changed
 ```
 
 Caddy needs no restart for a frontend-only change — it serves `dist/` fresh
@@ -151,7 +151,7 @@ off disk on every request.
 
 - Don't expose port 5055 (the bot bridge) or 5000 (raw Express) to the
   internet. Caddy on 80/443 is the only public surface.
-- Don't run more than one PM2 instance of `vegbazzar-api` — rate limiting and
+- Don't run more than one PM2 instance of `vegdrop-api` — rate limiting and
   the refresh-token flow assume a single process (see `ecosystem.config.js`).
 - Don't copy `server/bot/.auth/` anywhere insecure. It **is** the WhatsApp
   session; anyone with it can send messages as your number.

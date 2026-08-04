@@ -288,15 +288,15 @@ async function sendOtp({ channel, to, code, purpose, ttlSeconds, role, name }) {
    */
   const text =
     purpose === 'login' && role === 'shopkeeper'
-      ? `${code} is your VegBazzar merchant dashboard verification code. It expires in ${minutes} minute${minutes === 1 ? '' : 's'}.\n` +
-        'Never share this code with anyone, including VegBazzar staff.'
-      : `${code} is your VegBazzar verification code to ${PURPOSE_ACTION[purpose] || 'verify'} your account.\n` +
+      ? `${code} is your VegDrop merchant dashboard verification code. It expires in ${minutes} minute${minutes === 1 ? '' : 's'}.\n` +
+        'Never share this code with anyone, including VegDrop staff.'
+      : `${code} is your VegDrop verification code to ${PURPOSE_ACTION[purpose] || 'verify'} your account.\n` +
         `It expires in ${minutes} minute${minutes === 1 ? '' : 's'}. Do not share it with anyone.`;
 
   await transportFor(channel).send({
     channel,
     to,
-    subject: 'Your VegBazzar verification code',
+    subject: 'Your VegDrop verification code',
     text,
     // Structured form for template-based transports; see the Transport typedef.
     otp: { code, purpose, ttlSeconds },

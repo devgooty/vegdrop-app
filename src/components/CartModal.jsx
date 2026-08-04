@@ -25,7 +25,7 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
   const total = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const deliveryFee = total > 0 && total < FREE_DELIVERY_THRESHOLD ? DELIVERY_FEE : 0;
   const grandTotal = total + deliveryFee;
-  const savedAddress = localStorage.getItem('vegbazzar_customer_location') || 'Koramangala, Bengaluru, Karnataka - 560034';
+  const savedAddress = localStorage.getItem('vegdrop_customer_location') || 'Koramangala, Bengaluru, Karnataka - 560034';
 
   const handlePlaceOrder = async () => {
     if (cartItems.length === 0) return;

@@ -100,7 +100,7 @@ const COPY = {
  */
 const HERO_SRC = '/hero.webp';
 
-export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegbazzar_' }) {
+export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegdrop_' }) {
   // Shopkeepers register through the SAME dual-OTP flow as customers — this app
   // has no passwords, so there is no extra step to insert — but the account
   // that comes out the other end holds the `shopkeeper` role. That is a server
@@ -370,7 +370,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
       <header className="min-h-[15rem] shrink">
         <img
           src={HERO_SRC}
-          alt="VegBazzar"
+          alt="VegDrop"
           width="768"
           height="790"
           fetchPriority="high"

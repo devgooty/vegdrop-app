@@ -71,7 +71,7 @@ function int(name, fallback) {
 
 const mongoUri = isProduction
   ? process.env.MONGODB_URI
-  : optional('MONGODB_URI', 'mongodb://127.0.0.1:27017/vegbazzar');
+  : optional('MONGODB_URI', 'mongodb://127.0.0.1:27017/vegdrop');
 
 if (isProduction && !mongoUri) {
   fatal.push('MONGODB_URI is required in production but is not set.');
@@ -161,8 +161,8 @@ const emailConfigured = Boolean(emailFrom && (emailProviders.length > 0 || smtpH
 if (emailProviders.length > 0 && !emailFrom.includes('@')) {
   fatal.push(
     emailFrom
-      ? `EMAIL_FROM does not contain an email address (got "${emailFrom}"). Use either "no-reply@example.com" or "VegBazzar <no-reply@example.com>".`
-      : 'An email provider API key is set but EMAIL_FROM is empty. Set it to a sender the provider has verified, e.g. "VegBazzar <no-reply@example.com>". A dashboard that strips quotes can leave this blank — check the stored value, not just that the variable exists.'
+      ? `EMAIL_FROM does not contain an email address (got "${emailFrom}"). Use either "no-reply@example.com" or "VegDrop <no-reply@example.com>".`
+      : 'An email provider API key is set but EMAIL_FROM is empty. Set it to a sender the provider has verified, e.g. "VegDrop <no-reply@example.com>". A dashboard that strips quotes can leave this blank — check the stored value, not just that the variable exists.'
   );
 }
 
@@ -265,8 +265,8 @@ const config = Object.freeze({
     refreshSecret: secret('JWT_REFRESH_SECRET'),
     accessTtlSeconds: int('JWT_ACCESS_TTL_SECONDS', 15 * 60), // 15 minutes
     refreshTtlSeconds: int('JWT_REFRESH_TTL_SECONDS', 30 * 24 * 60 * 60), // 30 days
-    issuer: optional('JWT_ISSUER', 'vegbazzar'),
-    audience: optional('JWT_AUDIENCE', 'vegbazzar-app'),
+    issuer: optional('JWT_ISSUER', 'vegdrop'),
+    audience: optional('JWT_AUDIENCE', 'vegdrop-app'),
   }),
 
   // Pepper is mixed into OTP hashes so a database leak alone does not reveal codes.

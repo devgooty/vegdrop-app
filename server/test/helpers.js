@@ -18,11 +18,11 @@ process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:3000';
 // installs via setTransport) before resolveEmailTransport is ever reached, so
 // this host is never resolved.
 process.env.SMTP_HOST = 'smtp.invalid.test';
-process.env.SMTP_FROM = 'VegBazzar <smtp-should-not-win@invalid.test>';
+process.env.SMTP_FROM = 'VegDrop <smtp-should-not-win@invalid.test>';
 // Deliberately different from SMTP_FROM: the two used to collide in the config
 // object and SMTP_FROM silently won, so a test asserting the sender is only
 // meaningful when the two values can be told apart.
-process.env.EMAIL_FROM = 'VegBazzar <no-reply@invalid.test>';
+process.env.EMAIL_FROM = 'VegDrop <no-reply@invalid.test>';
 
 // config/env.js skips dotenv under NODE_ENV=test, but clear these explicitly in
 // case they were exported into the shell: a test run must never be able to reach
@@ -52,7 +52,7 @@ let app = null;
 /** A single-node replica set, so multi-document transactions actually execute. */
 async function startTestServer() {
   replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
-  await connect(replSet.getUri('vegbazzar_test'));
+  await connect(replSet.getUri('vegdrop_test'));
   app = createApp();
 
   /**

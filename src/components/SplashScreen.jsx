@@ -62,7 +62,7 @@ export default function SplashScreen({ onComplete }) {
             🌿
           </div>
           <h1 className="font-vintage text-4xl font-black text-white tracking-tight drop-shadow-xl">
-            VegBazzar
+            VegDrop
           </h1>
           <p className="mt-1.5 text-[10px] font-bold text-emerald-300 uppercase tracking-widest drop-shadow-lg flex items-center gap-2">
             <span className="w-1 h-1 rounded-full bg-emerald-400"></span>

@@ -31,7 +31,7 @@ async function main() {
   }
 
   const server = app.listen(config.port, () => {
-    console.info(`[http] VegBazzar API listening on port ${config.port} (${config.NODE_ENV})`);
+    console.info(`[http] VegDrop API listening on port ${config.port} (${config.NODE_ENV})`);
   });
 
   // Slowloris mitigation: cap how long a client may hold a connection open
