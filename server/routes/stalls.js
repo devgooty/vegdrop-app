@@ -25,14 +25,36 @@ const router = express.Router();
  * deliberately narrow rather than `order.toJSON()`.
  */
 
-/** Resolve the caller's stall once, for every route below. */
+/**
+ * Resolve the caller's stall once, for every route below.
+ *
+ * The three ways this fails are told apart on purpose. A shopkeeper waiting on a
+ * market owner and a shopkeeper who was turned down are in very different
+ * situations, and answering both with "you do not have a stall yet" invites the
+ * first to apply again — creating a duplicate request — and leaves the second
+ * waiting for a decision that has already been made. The status is looked up
+ * without the `isActive` filter precisely so those cases can be reported.
+ */
 async function loadStall(req, _res, next) {
-  const stall = await Stall.findOne({ owner: req.user._id, isActive: true });
-  if (!stall) {
+  const stall = await Stall.findOne({ owner: req.user._id, status: { $in: ['pending', 'approved'] } });
+
+  if (stall && stall.status === 'pending') {
     return next(
-      new ApiError(404, 'You do not have a stall yet. Ask the market owner to set one up.', 'NO_STALL')
+      new ApiError(
+        403,
+        'Your request to join this market is waiting for the market owner to approve it.',
+        'STALL_PENDING',
+        { marketId: String(stall.market), requestedAt: stall.requestedAt }
+      )
     );
   }
+
+  if (!stall || !stall.isActive) {
+    return next(
+      new ApiError(404, 'You do not have a stall yet. Ask to join a market to get one.', 'NO_STALL')
+    );
+  }
+
   req.stall = stall;
   return next();
 }

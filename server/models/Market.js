@@ -15,6 +15,20 @@ const marketSchema = new mongoose.Schema(
     address: { type: String, required: true, trim: true, maxlength: 500 },
 
     /**
+     * The market_owner who runs this market.
+     *
+     * Until this existed, `market_owner` was a global administrator: routes/orders.js
+     * handed the role an empty filter, so every market owner could read every
+     * market's orders, and "my market" had no meaning. Ownership is what scopes
+     * the role down to the one market a person actually runs.
+     *
+     * Optional rather than required because markets predate this field and a
+     * required one would fail to load them. An unowned market is administered by
+     * `developer` alone, which is the pre-existing behaviour, not a new hole.
+     */
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+
+    /**
      * GeoJSON Point, [longitude, latitude] — that order, not lat/lng. Reversing
      * it puts an Indian market in the Indian Ocean and every distance query
      * quietly returns nothing.

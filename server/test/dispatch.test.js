@@ -48,6 +48,7 @@ async function seedStall(market, stallNumber) {
     stallNumber,
     name: `Stall ${stallNumber}`,
     owner: owner._id,
+    status: 'approved',
   });
 }
 

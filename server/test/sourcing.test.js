@@ -58,6 +58,7 @@ async function seedStall(market, { stallNumber = 'A-1', autoAccept = false, acti
     owner: owner._id,
     autoAccept,
     activeLoad,
+    status: 'approved',
   });
 }
 

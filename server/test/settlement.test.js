@@ -54,6 +54,7 @@ async function seedStallWithOwner(market, stallNumber = 'A-1') {
     stallNumber,
     name: `Stall ${stallNumber}`,
     owner: session.user._id,
+    status: 'approved',
   });
   return { ...session, stall };
 }

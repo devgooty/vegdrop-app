@@ -303,4 +303,40 @@ async function sendOtp({ channel, to, code, purpose, ttlSeconds, role, name }) {
   });
 }
 
-module.exports = { sendOtp, reachesRecipient, setTransport, consoleTransport, nullTransport };
+/**
+ * Send an ordinary message — not a one-time code.
+ *
+ * `sendOtp` above is deliberately not reusable for this: it composes from a
+ * code, a purpose and a TTL, and its WhatsApp path routes through an
+ * AUTHENTICATION-category template whose only variable is the code. A "someone
+ * asked to join your market" notice has none of those things.
+ *
+ * NEVER THROWS. Every caller so far is telling somebody about a state change
+ * that has already been committed, so a mail provider having a bad minute must
+ * not turn a successful request into a failed one. The failure is logged and
+ * swallowed; the underlying record is the source of truth and the recipient
+ * will see it next time they open the app. Callers that genuinely need delivery
+ * confirmed should not use this.
+ */
+async function sendNotice({ channel = 'email', to, subject, text, html = undefined }) {
+  if (!to) return { sent: false, reason: 'no-destination' };
+
+  try {
+    await transportFor(channel).send({ channel, to, subject, text, html });
+    return { sent: true };
+  } catch (err) {
+    // The destination is not logged in full: these go to real people, and a log
+    // line is a wider audience than the inbox was.
+    console.error(`[notify] notice delivery failed: ${err?.message}`);
+    return { sent: false, reason: 'delivery-failed' };
+  }
+}
+
+module.exports = {
+  sendOtp,
+  sendNotice,
+  reachesRecipient,
+  setTransport,
+  consoleTransport,
+  nullTransport,
+};

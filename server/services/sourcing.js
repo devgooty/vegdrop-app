@@ -339,7 +339,18 @@ async function runAutoAccept(orderId, actorId = null) {
       },
     },
     { $unwind: '$stallDoc' },
-    { $match: { 'stallDoc.autoAccept': true, 'stallDoc.isOpen': true, 'stallDoc.isActive': true } },
+    // `status` is checked alongside `isActive` rather than trusting it alone: a
+    // stall awaiting its market owner's approval is held inactive, but nothing
+    // stops an owner toggling `isActive` on a row they have not yet accepted,
+    // and auto-accept would then commit produce from an unapproved stall.
+    {
+      $match: {
+        'stallDoc.autoAccept': true,
+        'stallDoc.isOpen': true,
+        'stallDoc.isActive': true,
+        'stallDoc.status': 'approved',
+      },
+    },
     {
       $project: {
         _id: 0,
