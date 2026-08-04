@@ -46,7 +46,26 @@ const MATCH_NOTHING = { _id: null };
  * a lookup. Every caller must await it.
  */
 async function visibilityFilter(user) {
-  if (user.role === 'market_owner' || user.role === 'developer') return {};
+  if (user.role === 'developer') return {};
+
+  /**
+   * A market owner sees their own markets and nothing else.
+   *
+   * This used to return `{}` — every order in the system, with the customer's
+   * name, phone and address on all of them. That was defensible only while
+   * `market_owner` meant "administrator"; now that Market carries an `owner` and
+   * anyone running a market holds the role, it is the same competitor-to-
+   * competitor leak the shopkeeper branch below was scoped to close.
+   *
+   * Owning no market means seeing no orders. Deliberately not falling back to
+   * the marketless legacy filter used below: an operator with nothing to run has
+   * no claim on orders that merely happen to predate markets.
+   */
+  if (user.role === 'market_owner') {
+    const owned = await Market.find({ owner: user._id }).select('_id').lean();
+    if (owned.length === 0) return { _id: null };
+    return { market: { $in: owned.map((m) => m._id) } };
+  }
 
   /**
    * A shopkeeper used to fall into a blanket staff bucket that returned `{}` —
@@ -59,7 +78,9 @@ async function visibilityFilter(user) {
    * orders that the current single-shop flow depends on.
    */
   if (user.role === 'shopkeeper') {
-    const stall = await Stall.findOne({ owner: user._id, isActive: true }).select('_id market').lean();
+    const stall = await Stall.findOne({ owner: user._id, isActive: true, status: 'approved' })
+      .select('_id market')
+      .lean();
     if (!stall) return { market: null };
     return {
       $or: [

@@ -40,6 +40,7 @@ async function main() {
   const config = require('../config/env');
   const notify = require('../services/notify');
   const { connect, disconnect, ensureIndexes } = require('../db/connect');
+  const { runMigrations } = require('../db/migrations');
   const { createApp } = require('../app');
   const { seedIfEmpty } = require('../utils/seed');
   const sweeper = require('../services/sweeper');
@@ -55,6 +56,13 @@ async function main() {
   // `createApp` compiles every model through its route imports, so it has to
   // run before the indexes are built.
   const app = createApp();
+
+  /**
+   * A fresh in-memory database has nothing to migrate, but this runs anyway so
+   * the demo exercises the same boot sequence as production. A migration that
+   * only ever runs against real data is one nobody has watched work.
+   */
+  await runMigrations();
 
   /**
    * Not optional, even in a demo: `$geoNear` fails outright without a 2dsphere

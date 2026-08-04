@@ -2,6 +2,7 @@
 
 const config = require('./config/env');
 const { connect, disconnect, ensureIndexes } = require('./db/connect');
+const { runMigrations } = require('./db/migrations');
 const { createApp } = require('./app');
 const { seedIfEmpty } = require('./utils/seed');
 const sweeper = require('./services/sweeper');
@@ -16,6 +17,9 @@ async function main() {
   try {
     await connect();
     console.info('[db] connected');
+    // Before indexes: a migration may need to drop an index whose options
+    // changed, and ensureIndexes cannot rebuild it while the old one stands.
+    await runMigrations();
     // Before seeding: the seed writes documents whose uniqueness constraints
     // only exist once the indexes do.
     await ensureIndexes();

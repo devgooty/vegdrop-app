@@ -31,12 +31,16 @@ async function seedProduct(name = 'Tomato', pricePaise = 9900) {
   return Product.create({ sku: `SKU-${uniq()}`, categoryId: 1, name, pricePaise, stock: 500 });
 }
 
-async function seedMarket({ name = 'Rythu Bazaar', lng = 78.4867, lat = 17.385 } = {}) {
+async function seedMarket({ name = 'Rythu Bazaar', lng = 78.4867, lat = 17.385, owner = null } = {}) {
   return Market.create({
     name,
     slug: `mkt-${uniq()}`,
     address: 'Hyderabad',
     location: { type: 'Point', coordinates: [lng, lat] },
+    // A market_owner only sees orders in markets they own, so any test acting as
+    // one has to say which market is theirs. Left null for the majority of tests,
+    // which act as a customer, a shopkeeper or a rider and do not care.
+    owner,
   });
 }
 
@@ -49,6 +53,7 @@ async function seedStallWithOwner(market, { stallNumber = 'A-1', autoAccept = fa
     name: `Stall ${stallNumber}`,
     owner: session.user._id,
     autoAccept,
+    status: 'approved',
   });
   return { ...session, stall };
 }
@@ -336,7 +341,7 @@ test('a shopkeeper cannot claim into a market they do not trade in', async () =>
 test('staff cannot push a market order straight to Preparing', async () => {
   const customer = await authenticatedUser('customer');
   const owner = await authenticatedUser('market_owner');
-  const market = await seedMarket();
+  const market = await seedMarket({ owner: owner.user._id });
   const tomato = await seedProduct();
   await MarketPrice.create({ market: market._id, product: tomato._id, pricePaise: 4000 });
 
@@ -444,7 +449,7 @@ test('a customer can cancel while stalls are still deciding, but not after', asy
 test('a market owner can still call off an order that is already packing', async () => {
   const customer = await authenticatedUser('customer');
   const owner = await authenticatedUser('market_owner');
-  const market = await seedMarket();
+  const market = await seedMarket({ owner: owner.user._id });
   const tomato = await seedProduct();
   await MarketPrice.create({ market: market._id, product: tomato._id, pricePaise: 4000 });
   const shop = await seedStallWithOwner(market);

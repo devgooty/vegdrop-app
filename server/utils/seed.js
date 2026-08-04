@@ -122,7 +122,19 @@ async function seedAccounts() {
 async function seedMarkets() {
   if ((await Market.estimatedDocumentCount()) > 0) return null;
 
-  const markets = await Market.insertMany(SEED_MARKETS);
+  /**
+   * Both demo markets belong to the demo market owner.
+   *
+   * Not cosmetic: a market owner's orders, stall list and analytics are all
+   * scoped to the markets they own, so an unowned seed market would leave the
+   * owner panel correctly but confusingly empty — looking like a broken build
+   * rather than the access rule working.
+   */
+  const owner = await User.findOne({ role: 'market_owner' }).select('_id').lean();
+
+  const markets = await Market.insertMany(
+    SEED_MARKETS.map((market) => ({ ...market, owner: owner?._id ?? null }))
+  );
   const products = await Product.find({ isActive: true }).select('_id pricePaise').lean();
   if (products.length === 0) return { markets, stalls: [] };
 
@@ -161,6 +173,10 @@ async function seedMarkets() {
       name: spec.name,
       owner,
       autoAccept: spec.autoAccept,
+      // Seeded stalls skip the join request: the point of the seed is a market
+      // that already trades. Left at the `pending` default they would be held
+      // inactive and no demo order could ever be sourced.
+      status: 'approved',
     });
     stalls.push(stall);
 
