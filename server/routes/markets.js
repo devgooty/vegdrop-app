@@ -441,7 +441,7 @@ router.get(
     // rather than "who is trading" — and are served by /stall-requests, so a
     // trader list cannot be misread as including people nobody has accepted.
     const stalls = await Stall.find({ market: req.valid.params.id, status: 'approved' })
-      .populate('owner', 'name phone')
+      .populate('owner', 'name phone pendingPhone')
       .sort({ stallNumber: 1 })
       .lean();
 
@@ -545,8 +545,24 @@ function asRequest(stall) {
     requestedAt: stall.requestedAt,
     reviewedAt: stall.reviewedAt,
     rejectionReason: stall.rejectionReason || null,
+    /**
+     * `unverifiedPhone` is reported separately, never merged into `phone`.
+     *
+     * Registration parks a number it could not deliver a code to in
+     * `pendingPhone` rather than `phone` (see completeRegistration), so an
+     * applicant who signed up while the phone channel was unavailable has no
+     * verified number at all. A market owner still needs a way to reach them —
+     * vetting a stranger is the entire point of this step — but presenting an
+     * unproven number as a confirmed one would misrepresent what the platform
+     * actually knows.
+     */
     applicant: stall.owner
-      ? { id: String(stall.owner._id), name: stall.owner.name, phone: stall.owner.phone }
+      ? {
+          id: String(stall.owner._id),
+          name: stall.owner.name,
+          phone: stall.owner.phone || null,
+          unverifiedPhone: stall.owner.phone ? null : stall.owner.pendingPhone || null,
+        }
       : null,
   };
 }
@@ -711,7 +727,7 @@ router.get(
       market: req.valid.params.id,
       status: req.valid.query.status || 'pending',
     })
-      .populate('owner', 'name phone')
+      .populate('owner', 'name phone pendingPhone')
       .sort({ requestedAt: -1 })
       .lean();
 

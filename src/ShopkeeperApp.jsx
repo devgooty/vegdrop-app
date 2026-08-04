@@ -9,12 +9,16 @@ import { initialCategories, sampleProducts, initialOrders, initialRegisteredUser
 import { fetchProducts, updateStock } from './services/products';
 import { fetchOrders, updateOrderStatus } from './services/orders';
 import { fetchMyStall } from './services/stalls';
+import { fetchMyJoinRequest } from './services/markets';
 
 /**
  * Only shopkeepers who run a stall in a market load this, so it stays out of
  * the bundle for everyone else.
  */
 const StallPanel = lazy(() => import('./components/StallPanel'));
+
+// Onboarding only: seen once, before a shopkeeper has a stall, and never again.
+const JoinMarket = lazy(() => import('./components/JoinMarket'));
 
 // Only ever opened by an unverified vendor, so it stays out of the main bundle.
 const VendorKycModal = lazy(() => import('./components/VendorKycModal'));
@@ -76,6 +80,17 @@ export default function ShopkeeperApp() {
   const [stall, setStall] = useState(undefined);
 
   /**
+   * Where this shopkeeper's application to a market stands.
+   *
+   * Separate from `stall` because the interesting states are the ones where
+   * there is no stall yet: waiting on a decision, and having been turned down.
+   * `null` means they have never applied. `undefined` means still loading, so
+   * the join screen does not flash before the answer arrives.
+   */
+  const [joinRequest, setJoinRequest] = useState(undefined);
+  const [showJoin, setShowJoin] = useState(false);
+
+  /**
    * Settlement-account verification.
    *
    * A shopkeeper account can now be created by self-registration (see
@@ -98,9 +113,43 @@ export default function ShopkeeperApp() {
       })
       .catch(() => {
         // 404 NO_STALL is the ordinary answer for a shopkeeper who has not been
-        // given one, not an error worth showing.
+        // given one, and 403 STALL_PENDING for one still waiting on a market
+        // owner. Neither is an error worth showing — the join screen below
+        // reads the request itself and says which of the two it is.
         if (!cancelled) setStall(null);
       });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  /** Reloaded after applying or withdrawing, so the screen follows the change. */
+  const refreshJoinRequest = useCallback(async () => {
+    try {
+      const found = await fetchMyJoinRequest();
+      setJoinRequest(found);
+      setShowJoin(false);
+      // An accepted request means there is now a stall to load.
+      if (found?.status === 'approved') {
+        await fetchMyStall()
+          .then(setStall)
+          .catch(() => {});
+      }
+      return found;
+    } catch {
+      setJoinRequest(null);
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    fetchMyJoinRequest()
+      .then((found) => !cancelled && setJoinRequest(found))
+      .catch(() => !cancelled && setJoinRequest(null));
 
     return () => {
       cancelled = true;
@@ -274,8 +323,10 @@ export default function ShopkeeperApp() {
   }
 
   // Hold until we know which panel this account should see, so a stall owner
-  // never watches the old panel paint and then swap.
-  if (stall === undefined) {
+  // never watches the old panel paint and then swap. The join request is part
+  // of that answer: a shopkeeper waiting on a market owner gets the waiting
+  // screen, not a flash of the panel they cannot use yet.
+  if (stall === undefined || joinRequest === undefined) {
     return (
       <div className="min-h-screen bg-[#F6F8F6] flex items-center justify-center">
         <div className="w-10 h-10 border-[3px] border-[#0B7A37] border-t-transparent rounded-full animate-spin" />
@@ -298,9 +349,50 @@ export default function ShopkeeperApp() {
     );
   }
 
-  // No stall: the original single-shop panel, untouched.
+  /**
+   * No stall, but an application in flight or refused.
+   *
+   * Shown ahead of the single-shop panel because it is what this account is
+   * actually in the middle of. A pending applicant who lands on the ordinary
+   * panel has no way to discover their request exists, and the natural thing to
+   * do — apply again — is exactly what the server refuses.
+   */
+  const midOnboarding = joinRequest?.status === 'pending' || joinRequest?.status === 'rejected';
+
+  if (!stall && (midOnboarding || showJoin)) {
+    return (
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-[#F6F8F6] flex items-center justify-center">
+            <div className="w-10 h-10 border-[3px] border-[#0B7A37] border-t-transparent rounded-full animate-spin" />
+          </div>
+        }
+      >
+        <JoinMarket
+          request={joinRequest}
+          onChanged={refreshJoinRequest}
+          // Only offered when they chose to come here; there is nothing to go
+          // back to mid-application.
+          onBack={showJoin && !midOnboarding ? () => setShowJoin(false) : undefined}
+        />
+      </Suspense>
+    );
+  }
+
+  // No stall and no application: the original single-shop panel, plus a way in.
   return (
     <>
+      <div className="bg-[#0B7A37] text-white px-4 py-3 flex items-center justify-between gap-3">
+        <p className="text-xs font-medium leading-snug">
+          Trading at a vegetable market? Join it to receive orders from customers nearby.
+        </p>
+        <button
+          onClick={() => setShowJoin(true)}
+          className="shrink-0 bg-white text-[#0B7A37] text-xs font-bold px-3 py-1.5 rounded-lg"
+        >
+          Join a market
+        </button>
+      </div>
       <ShopkeeperPanel
         user={user}
         orders={orders}

@@ -1066,11 +1066,11 @@ export default function App() {
                 </Suspense>
               ) : activeTab === 'market_owner' && (user?.role === 'market_owner' || user?.role === 'developer') ? (
                 <Suspense fallback={<HomeSkeleton />}>
-                  <MarketOwnerPanel
-                    products={products}
-                    orders={orders}
-                    categories={categories}
-                  />
+                  {/* Reads its own data now, scoped to the markets this account
+                      owns. The products/orders/categories it used to take were
+                      the whole customer-side state, which is a different market
+                      entirely once there is more than one. */}
+                  <MarketOwnerPanel />
                 </Suspense>
               ) : (
                 /* ACCOUNT & ROLE SWITCHER TAB */
