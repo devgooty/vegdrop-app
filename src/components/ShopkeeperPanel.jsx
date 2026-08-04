@@ -4,6 +4,9 @@ import {
   MapPin, LogOut, User, LayoutDashboard, Plus, Edit, Trash2,
   AlertTriangle, Navigation, Check, Camera, MessageSquare, TrendingUp, BarChart3, Star, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert
 } from 'lucide-react';
+import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../services/auth';
+import { ApiRequestError } from '../services/apiClient';
+import OTPBoxGroup from './OTPBoxGroup';
 
 /**
  * Prompt shown while the vendor's settlement account is unverified.
@@ -38,7 +41,7 @@ function KycGateBanner({ kyc, onOpenKyc }) {
   );
 }
 
-export default function ShopkeeperPanel({ user, orders, products, setProducts, onUpdateOrderStatus, onOrderAccepted, onLogout, onSyncOrders, kyc = null, onOpenKyc }) {
+export default function ShopkeeperPanel({ user, orders, products, setProducts, onUpdateOrderStatus, onOrderAccepted, onLogout, onSyncOrders, kyc = null, onOpenKyc, onUserUpdated }) {
   // UX gate only. Every catalog write is authorized again by the API.
   const canUpdateStock = kyc ? kyc.canUpdateStock : true;
 
@@ -138,6 +141,72 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
       setIsEditProfileOpen(true);
     }
   }, []);
+
+  /**
+   * Changing the phone number, unlike the rest of this modal, is not a plain
+   * local edit. The number is the sign-in credential (see routes/auth.js's
+   * comment on POST /phone/start), so it goes through the same OTP-verified
+   * flow the login screen uses for a NEW account: prove control of the number
+   * before the server will accept it, never a free-text field trusted at face
+   * value the way Shop Name or Address are.
+   *
+   * 'idle' -> 'enter' (typing the new number) -> 'code' (typed, code sent) -> 'idle'.
+   */
+  const [phoneChangeStep, setPhoneChangeStep] = useState('idle');
+  const [newPhone, setNewPhone] = useState('');
+  const [phoneChallengeId, setPhoneChallengeId] = useState(null);
+  const [phoneCode, setPhoneCode] = useState('');
+  const [phoneChangeError, setPhoneChangeError] = useState('');
+  const [phoneChangeBusy, setPhoneChangeBusy] = useState(false);
+
+  function resetPhoneChange() {
+    setPhoneChangeStep('idle');
+    setNewPhone('');
+    setPhoneChallengeId(null);
+    setPhoneCode('');
+    setPhoneChangeError('');
+    setPhoneChangeBusy(false);
+  }
+
+  async function handleSendPhoneCode(e) {
+    e.preventDefault();
+    const problem = describePhoneProblem(newPhone);
+    if (problem) {
+      setPhoneChangeError(problem);
+      return;
+    }
+
+    setPhoneChangeBusy(true);
+    setPhoneChangeError('');
+    try {
+      const result = await startPhoneChange({ phone: newPhone });
+      setPhoneChallengeId(result.challengeId);
+      setPhoneChangeStep('code');
+    } catch (err) {
+      setPhoneChangeError(err instanceof ApiRequestError ? err.message : 'Could not send a code. Try again.');
+    } finally {
+      setPhoneChangeBusy(false);
+    }
+  }
+
+  async function handleVerifyPhoneCode(e) {
+    e.preventDefault();
+    if (phoneCode.length !== 6) return;
+
+    setPhoneChangeBusy(true);
+    setPhoneChangeError('');
+    try {
+      const updatedUser = await verifyPhoneChange({ challengeId: phoneChallengeId, code: phoneCode });
+      // The server is the source of truth for what the number actually became
+      // — never the value typed into the form, in case it was normalised.
+      setProfileData((prev) => ({ ...prev, phone: updatedUser.phone }));
+      onUserUpdated?.(updatedUser);
+      resetPhoneChange();
+    } catch (err) {
+      setPhoneChangeError(err instanceof ApiRequestError ? err.message : 'That code did not work. Try again.');
+      setPhoneChangeBusy(false);
+    }
+  }
 
   // Form State
   const initialProductState = {
@@ -1130,25 +1199,110 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
                 </p>
               </div>
 
-              {/* Phone Number (Locked) */}
+              {/* Phone Number — locked to editing here, but changeable through
+                  its own OTP-verified flow rather than as a plain text field. */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="font-bold text-gray-800">Phone Number</label>
-                  <span className="text-[10px] text-amber-700 font-black flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                    <Lock className="w-3 h-3" /> Locked
-                  </span>
+                  {phoneChangeStep === 'idle' && (
+                    <span className="text-[10px] text-amber-700 font-black flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                      <Lock className="w-3 h-3" /> Locked
+                    </span>
+                  )}
                 </div>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={profileData.phone}
-                    disabled={true}
-                    readOnly={true}
-                    className="w-full bg-gray-100 border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold text-gray-500 cursor-not-allowed pr-9 font-mono"
-                  />
-                  <Lock className="w-4 h-4 text-gray-400 absolute right-3 top-2.5 pointer-events-none" />
-                </div>
-                <p className="text-[10px] text-gray-400 mt-1">🔒 Phone number is verified and cannot be edited.</p>
+
+                {phoneChangeStep === 'idle' && (
+                  <>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={profileData.phone}
+                        disabled={true}
+                        readOnly={true}
+                        className="w-full bg-gray-100 border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold text-gray-500 cursor-not-allowed pr-9 font-mono"
+                      />
+                      <Lock className="w-4 h-4 text-gray-400 absolute right-3 top-2.5 pointer-events-none" />
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-[10px] text-gray-400">🔒 Verified. Changing it needs a new code.</p>
+                      <button
+                        type="button"
+                        onClick={() => setPhoneChangeStep('enter')}
+                        className="text-[10px] font-bold text-emerald-700 underline underline-offset-2 shrink-0 ml-2"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {phoneChangeStep === 'enter' && (
+                  <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3 space-y-2">
+                    <div className="relative flex items-center">
+                      <span className="absolute left-3 text-xs font-semibold text-gray-500 pointer-events-none">+91</span>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        autoFocus
+                        value={newPhone}
+                        onChange={(e) => setNewPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        maxLength={10}
+                        placeholder="New 10-digit number"
+                        className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-3 py-2 text-xs font-semibold text-gray-900 font-mono focus:outline-none focus:border-emerald-600"
+                      />
+                    </div>
+                    {phoneChangeError && <p className="text-[10px] text-red-600 font-semibold">{phoneChangeError}</p>}
+                    <p className="text-[10px] text-gray-500">
+                      We'll text a code to this number. Every other device you're signed in on will be signed out once it's confirmed.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSendPhoneCode}
+                        disabled={phoneChangeBusy}
+                        className="flex-1 bg-emerald-600 text-white font-bold py-2 rounded-lg text-[11px] disabled:opacity-50"
+                      >
+                        {phoneChangeBusy ? 'Sending…' : 'Send code'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetPhoneChange}
+                        disabled={phoneChangeBusy}
+                        className="px-3 bg-white border border-gray-300 text-gray-600 font-bold py-2 rounded-lg text-[11px]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {phoneChangeStep === 'code' && (
+                  <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3 space-y-2">
+                    <p className="text-[10px] text-gray-600 font-semibold">
+                      Code sent to +91 {newPhone}
+                    </p>
+                    <OTPBoxGroup value={phoneCode} onChange={setPhoneCode} />
+                    {phoneChangeError && <p className="text-[10px] text-red-600 font-semibold">{phoneChangeError}</p>}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleVerifyPhoneCode}
+                        disabled={phoneChangeBusy || phoneCode.length !== 6}
+                        className="flex-1 bg-emerald-600 text-white font-bold py-2 rounded-lg text-[11px] disabled:opacity-50"
+                      >
+                        {phoneChangeBusy ? 'Verifying…' : 'Verify and update'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetPhoneChange}
+                        disabled={phoneChangeBusy}
+                        className="px-3 bg-white border border-gray-300 text-gray-600 font-bold py-2 rounded-lg text-[11px]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>

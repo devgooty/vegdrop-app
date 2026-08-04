@@ -404,6 +404,11 @@ export default function ShopkeeperApp() {
         onSyncOrders={handleSyncOrders}
         kyc={kyc}
         onOpenKyc={() => setIsKycModalOpen(true)}
+        // The server, not this component, decides what the phone number
+        // becomes — see the comment on the phone-change flow in
+        // ShopkeeperPanel. This is how that server response reaches the
+        // session state everything else on screen reads from.
+        onUserUpdated={setUser}
       />
 
       {isKycModalOpen && (
