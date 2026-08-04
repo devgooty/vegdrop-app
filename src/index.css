@@ -401,32 +401,22 @@
   object-fit: cover;
   object-position: top center;
 
-  /* The bottom edge is dissolved rather than cut. Both whites are already
-     #FFFFFF, so the seam was never a colour mismatch — it was the crop landing
-     on the drop shadow, which is still grey at row 738 and does not reach white
-     until about row 770. A hard cut there leaves a grey band stopping dead
-     against the page.
+  /* There was a radial-gradient mask here that dissolved the bottom edge. It
+     existed for one reason: the original artwork carried a drop shadow that was
+     still grey where the crop landed and did not reach white until roughly row
+     770, so a hard cut left a grey band stopping dead against the page. The
+     fade hid that band, and had to be an ellipse reaching zero alpha at every x
+     or the leftover opacity became a seam of its own.
 
-     A fixed crop row cannot fix this, because the artwork shrinks to fit the
-     screen and the cut therefore lands somewhere different on every device. So
-     the last stretch fades out instead, and whatever it lands on melts into the
-     page.
+     None of that applies to the current artwork. It is padded out to the full
+     768x790 in pure white and its own backdrop is white too, so the bottom rows
+     are already the same #FFFFFF as the page — the cut is invisible without any
+     help. What the mask did instead was fade the produce itself out, taking the
+     cabbage and squash at the base of the droplet with it.
 
-     The fade is an ellipse rather than a straight line, which is what gives the
-     bottom its curve: anchored at the top and taller than the box, so the
-     corners sit further along the gradient than the middle does and therefore
-     clear first. The edge that survives bows downward. A border-radius would
-     not have shown here at all — the bottom is already fading to transparent,
-     so there is no hard edge for a radius to round.
-
-     The numbers are load bearing. The ellipse must reach zero alpha before the
-     bottom edge at EVERY x, or the leftover opacity is itself a hard line — a
-     first attempt at 130%/66-88% left alpha 0.503 across the middle, which is
-     the original seam again at half strength. At 105% tall with stops at
-     80-95%, the centre clears exactly at the bottom and the corners about 23px
-     earlier, which is the curve. */
-  -webkit-mask-image: radial-gradient(150% 105% at 50% 0%, #000 80%, transparent 95%);
-  mask-image: radial-gradient(150% 105% at 50% 0%, #000 80%, transparent 95%);
+     Removing a fade is only safe while the artwork ends in white. Artwork with
+     a shadow, a coloured ground, or content running to the bottom edge brings
+     the seam straight back, and the mask above is the fix to restore. */
 }
 
 /* The app dresses every h1/h2/h3 in Fraunces for its vintage theme. Sign-in is
