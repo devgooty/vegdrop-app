@@ -15,19 +15,21 @@ import FlyToCartOverlay from './components/FlyToCartOverlay';
 import SplashScreen from './components/SplashScreen';
 import PriceHistory from './components/PriceHistory';
 import AccountHistory from './components/AccountHistory';
+import AccountRewards from './components/AccountRewards';
 import PageTransition from './components/PageTransition';
 import OTPBoxGroup from './components/OTPBoxGroup';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
-import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon } from 'lucide-react';
+import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon } from 'lucide-react';
 import { restoreSession, logout, startPhoneChange, verifyPhoneChange } from './services/auth';
 import useLocalStorage from './hooks/useLocalStorage';
 import { initialCategories, sampleProducts, initialOrders, initialRegisteredUsers, initialScheduledOrders } from './data/mockData';
 import { fetchProducts, updateStock } from './services/products';
 import { fetchOrders, createOrder, updateOrderStatus } from './services/orders';
 import { fetchWallet } from './services/wallet';
-import { fetchUsers, updateUser, deleteUser } from './services/users';
+import { fetchUsers, updateUser, updateUserRole, deleteUser } from './services/users';
 import { ApiRequestError, NetworkError } from './services/apiClient';
+import { RUPEES_PER_BATCH, TOKENS_PER_BATCH } from './services/rewards';
 
 /**
  * Admin panels are code-split: only `developer` and `market_owner` sessions ever
@@ -276,9 +278,48 @@ export default function App() {
     }
   }, [toast]);
 
-  // Accounts are created through the verified registration flow, so there is no
-  // client-side user registration path any more.
-  const handleRegisterUser = useCallback(() => {}, []);
+  /**
+   * Grant an EXISTING account a role. There is no client-side account
+   * creation any more — accounts only come from the verified sign-up flow —
+   * so this looks the person up by the phone or email they already signed up
+   * with, rather than minting a new record the way the old stub's name/UI
+   * implied.
+   *
+   * `registeredUsers` is the admin-only user list already fetched into this
+   * component; searching it locally avoids a lookup endpoint that would let
+   * an admin panel enumerate accounts by guessing phone numbers.
+   */
+  const handleRegisterUser = useCallback(async ({ identifier, role }) => {
+    const needle = identifier.trim().toLowerCase();
+    const digits = needle.replace(/\D/g, '');
+
+    const target = registeredUsers.find((u) => {
+      if (u.email && u.email.toLowerCase() === needle) return true;
+      if (digits.length >= 10 && u.phone && u.phone.replace(/\D/g, '').endsWith(digits.slice(-10))) return true;
+      return false;
+    });
+
+    if (!target) {
+      toast.error('No account found with that phone or email. They need to sign up in the app first.');
+      return false;
+    }
+
+    try {
+      const updated = await updateUserRole(target.id, role);
+      setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      toast.success(`${updated.name} is now ${role.replace('_', ' ')}. They must sign in again.`);
+      return true;
+    } catch (err) {
+      const message =
+        err instanceof NetworkError
+          ? 'Could not reach the server. Check your connection and try again.'
+          : err instanceof ApiRequestError
+          ? err.message
+          : 'Could not update that role. Please try again.';
+      toast.error(message);
+      return false;
+    }
+  }, [registeredUsers, toast]);
 
   const handleScheduleCart = useCallback(() => {
     if (selectedDates.length === 0) {
@@ -737,6 +778,10 @@ export default function App() {
   const handleOpenProductDetail = useCallback((product, cat) => {
     const parentCategory = cat || categories.find((c) => c.id === product.categoryId);
     setActiveProductDetail({ product, category: parentCategory });
+    // Related items sit at the bottom of the page, so opening one from there
+    // would otherwise drop the shopper straight into the *next* product's
+    // related rail, having never seen the item they just tapped.
+    window.scrollTo({ top: 0 });
   }, [categories]);
 
   const totalCartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -766,12 +811,21 @@ export default function App() {
       {/* VIEW ROUTING DECISION */}
       {activeProductDetail ? (
         <ProductDetailView
+          /* Remount on a different product. Tapping a related item swaps the
+             prop without unmounting, and the weight variant and liked flag are
+             component state — without this they carry over from the product
+             that was just left. */
+          key={activeProductDetail.product.originalId ?? activeProductDetail.product.id}
           product={activeProductDetail.product}
           category={activeProductDetail.category}
           cartItems={activeCartItems}
           onAddToCart={handleAddToCart}
           onUpdateQuantity={handleUpdateQuantity}
           onBack={() => setActiveProductDetail(null)}
+          products={products}
+          categories={categories}
+          onSelectProduct={handleOpenProductDetail}
+          onOpenCategory={handleOpenCategoryFromSearch}
         />
       ) : activeCategoryDetail ? (
         <CategoryDetailView
@@ -942,7 +996,11 @@ export default function App() {
                             <ArrowLeft className="w-5 h-5" />
                           </button>
                           <h2 className="flex-1 text-center font-black text-lg text-[#1B4D3E] mr-9 drop-shadow-sm">
-                            {activeAccountView === 'profile' ? 'Profile Details' : 'Purchase History'}
+                            {activeAccountView === 'profile'
+                              ? 'Profile Details'
+                              : activeAccountView === 'rewards'
+                                ? 'Rewards'
+                                : 'Purchase History'}
                           </h2>
                         </div>
                       )}
@@ -980,9 +1038,29 @@ export default function App() {
                               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
                             </div>
                           </button>
+
+                          <button
+                            onClick={() => setActiveAccountView('rewards')}
+                            className="p-4 bg-white/90 backdrop-blur-sm rounded-2xl flex items-center gap-4 shadow-sm border border-white/50 active:scale-95 transition-all cursor-pointer group"
+                          >
+                            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(217,119,6,0.12)]">
+                              <CoinsIcon className="w-5 h-5 drop-shadow-sm" />
+                            </div>
+                            <div className="flex-1">
+                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">Rewards</h3>
+                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                                Earn {TOKENS_PER_BATCH} tokens for every ₹{RUPEES_PER_BATCH} you spend
+                              </p>
+                            </div>
+                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
+                              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
+                            </div>
+                          </button>
                         </div>
                       ) : activeAccountView === 'history' ? (
                         <AccountHistory user={user} orders={orders} />
+                      ) : activeAccountView === 'rewards' ? (
+                        <AccountRewards user={user} orders={orders} />
                       ) : (
                         <>
                           {!isEditingProfile && (

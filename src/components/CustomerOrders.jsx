@@ -174,7 +174,7 @@ export default function CustomerOrders({
 
   const filterButtons = [
     { key: 'All', label: 'All', icon: CalendarRange, color: 'text-[#1B4D3E]' },
-    { key: 'Daily', label: 'Day by Day', icon: CalendarDays, color: 'text-blue-600' },
+    { key: 'Daily', label: 'Daily', icon: CalendarDays, color: 'text-blue-600' },
     { key: 'Weekly', label: 'Weekly', icon: CalendarClock, color: 'text-purple-600' },
     { key: 'Monthly', label: 'Monthly', icon: CalendarIcon, color: 'text-amber-600' },
   ];

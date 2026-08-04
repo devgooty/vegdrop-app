@@ -29,11 +29,12 @@ export default function DeveloperPanel({
   const [activeSubTab, setActiveSubTab] = useState('roles'); // 'roles' | 'payloads' | 'flags' | 'wallet'
   const [copied, setCopied] = useState(false);
 
-  // New role registration form state
+  // Role-assignment form state. This grants a role to an account that already
+  // exists — signing up happens through the app's own OTP flow, so there is
+  // nothing here to create.
   const [regIdentifier, setRegIdentifier] = useState('');
-  const [regPhone, setRegPhone] = useState('');
-  const [regName, setRegName] = useState('');
   const [regRole, setRegRole] = useState('shopkeeper');
+  const [isAssigningRole, setIsAssigningRole] = useState(false);
 
   const [featureFlags, setFeatureFlags] = useState({
     passwordlessOtp: true,
@@ -53,21 +54,19 @@ export default function DeveloperPanel({
     setFeatureFlags((prev) => ({ ...prev, [flagKey]: !prev[flagKey] }));
   };
 
-  const handleAddRoleSubmit = (e) => {
+  const handleAddRoleSubmit = async (e) => {
     e.preventDefault();
-    if (!regIdentifier) return;
+    if (!regIdentifier.trim() || isAssigningRole) return;
 
-    onRegisterUser({
-      id: Date.now(),
-      identifier: regIdentifier.trim(),
-      phone: regPhone.trim() || '9876543210',
-      name: regName.trim() || 'Registered User',
-      role: regRole,
-    });
-
-    setRegIdentifier('');
-    setRegPhone('');
-    setRegName('');
+    setIsAssigningRole(true);
+    try {
+      // Cleared only on success, so a mistyped number stays on screen to
+      // correct rather than vanishing and leaving nothing to retry from.
+      const assigned = await onRegisterUser({ identifier: regIdentifier, role: regRole });
+      if (assigned) setRegIdentifier('');
+    } finally {
+      setIsAssigningRole(false);
+    }
   };
 
   return (
@@ -173,44 +172,27 @@ export default function DeveloperPanel({
             <div className="flex items-center gap-2">
               <UserPlus className="w-4 h-4 text-cyan-400" />
               <h4 className="font-mono text-xs font-bold text-cyan-400 uppercase tracking-wider">
-                Register New Email / Phone for Auto-Role Detection
+                Assign a Role to an Existing Account
               </h4>
             </div>
 
+            <p className="text-[11px] text-slate-400 font-mono leading-relaxed">
+              The person signs up in the app first (they start as a customer), then you
+              grant the role here. Every device they are signed in on is signed out, so
+              the new role takes effect on their next sign-in.
+            </p>
+
             <div className="grid grid-cols-2 gap-2 text-xs font-mono">
               <div>
-                <label className="block text-slate-400 mb-1 text-[11px]">Email ID / Identifier</label>
+                <label className="block text-slate-400 mb-1 text-[11px]">Their Phone or Email</label>
                 <input
                   type="text"
                   value={regIdentifier}
                   onChange={(e) => setRegIdentifier(e.target.value)}
-                  placeholder="e.g. manager@vegbazzar.com"
+                  placeholder="9876543210 or name@gmail.com"
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-cyan-300 focus:outline-none focus:border-cyan-400"
                   required
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-400 mb-1 text-[11px]">Mobile Number (Optional)</label>
-                <input
-                  type="text"
-                  value={regPhone}
-                  onChange={(e) => setRegPhone(e.target.value)}
-                  placeholder="e.g. 9876543210"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-cyan-300 focus:outline-none focus:border-cyan-400"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-              <div>
-                <label className="block text-slate-400 mb-1 text-[11px]">User Name</label>
-                <input
-                  type="text"
-                  value={regName}
-                  onChange={(e) => setRegName(e.target.value)}
-                  placeholder="e.g. Ramesh Manager"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-cyan-300 focus:outline-none focus:border-cyan-400"
+                  disabled={isAssigningRole}
                 />
               </div>
 
@@ -219,6 +201,7 @@ export default function DeveloperPanel({
                 <select
                   value={regRole}
                   onChange={(e) => setRegRole(e.target.value)}
+                  disabled={isAssigningRole}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-cyan-400 font-bold focus:outline-none focus:border-cyan-400"
                 >
                   <option value="shopkeeper">🏪 Shopkeeper Panel</option>
@@ -232,10 +215,11 @@ export default function DeveloperPanel({
 
             <button
               type="submit"
-              className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-mono font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer mt-1"
+              disabled={isAssigningRole}
+              className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-mono font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer mt-1"
             >
               <Plus className="w-4 h-4" />
-              <span>Register Credentials to Auto-Role System</span>
+              <span>{isAssigningRole ? 'Assigning…' : 'Assign Role'}</span>
             </button>
           </form>
 
@@ -251,10 +235,14 @@ export default function DeveloperPanel({
                   key={u.id}
                   className="p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 flex items-center justify-between gap-2"
                 >
-                  <div>
-                    <div className="font-bold text-cyan-300 text-xs">{u.identifier}</div>
-                    <div className="text-[10px] text-slate-400">
-                      {u.name} • Phone: {u.phone}
+                  <div className="min-w-0">
+                    {/* Server accounts have no `identifier`; whichever contact
+                        they signed up with is the one to type into the form. */}
+                    <div className="font-bold text-cyan-300 text-xs truncate">
+                      {u.email || u.phone || u.name}
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">
+                      {u.name}{u.email && u.phone ? ` • ${u.phone}` : ''}
                     </div>
                   </div>
 

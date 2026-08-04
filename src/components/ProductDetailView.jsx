@@ -1,7 +1,19 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Star, ShieldCheck, Truck, Sparkles, Plus, Minus, Check, Heart, Share2 } from 'lucide-react';
+import RelatedProducts from './RelatedProducts';
 
-export default function ProductDetailView({ product, category, cartItems, onAddToCart, onUpdateQuantity, onBack }) {
+export default function ProductDetailView({
+  product,
+  category,
+  cartItems,
+  onAddToCart,
+  onUpdateQuantity,
+  onBack,
+  products = [],
+  categories = [],
+  onSelectProduct,
+  onOpenCategory,
+}) {
   const [isLiked, setIsLiked] = useState(false);
 
   // Weight Variants Logic
@@ -196,9 +208,22 @@ export default function ProductDetailView({ product, category, cartItems, onAddT
             Freshly harvested from organic partner farms in Ooty and Nilgiri hills. Grown using sustainable composting without chemical pesticides. Rich in essential vitamins, minerals, and natural antioxidants.
           </p>
         </div>
+
+        {/* 6. The shop carries on below the fold */}
+        <RelatedProducts
+          product={product}
+          category={category}
+          products={products}
+          categories={categories}
+          cartItems={cartItems}
+          onAddToCart={onAddToCart}
+          onUpdateQuantity={onUpdateQuantity}
+          onSelectProduct={onSelectProduct}
+          onOpenCategory={onOpenCategory}
+        />
       </div>
 
-      {/* 6. Sticky Bottom Action Bar */}
+      {/* 7. Sticky Bottom Action Bar */}
       <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-[#FAF7F2] border-t border-[#DCD5C6] p-3.5 px-4 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] z-30 flex items-center justify-between gap-4">
         <div>
           <span className="text-[10px] text-[#7A7060] font-bold uppercase tracking-wider block">Total Amount</span>
