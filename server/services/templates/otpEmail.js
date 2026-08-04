@@ -70,8 +70,8 @@ function renderOtpEmail({ code, purpose, minutes, role = null, name = null }) {
   const isMerchantLogin = purpose === 'login' && role === 'shopkeeper';
 
   const intro = isMerchantLogin
-    ? 'Use this code to sign in to your VegBazzar merchant dashboard:'
-    : `Use this code to ${PURPOSE_ACTION[purpose] || 'verify'} your VegBazzar account:`;
+    ? 'Use this code to sign in to your VegDrop merchant dashboard:'
+    : `Use this code to ${PURPOSE_ACTION[purpose] || 'verify'} your VegDrop account:`;
 
   // First name only: a full legal name in a greeting reads like a form letter.
   const firstName = String(name ?? '').trim().split(/\s+/)[0] || '';
@@ -79,7 +79,7 @@ function renderOtpEmail({ code, purpose, minutes, role = null, name = null }) {
 
   // The code leads the subject so it is readable from a notification preview
   // without opening the message.
-  const subject = `${code} is your VegBazzar verification code`;
+  const subject = `${code} is your VegDrop verification code`;
 
   const text = [
     greeting,
@@ -90,11 +90,11 @@ function renderOtpEmail({ code, purpose, minutes, role = null, name = null }) {
     '',
     `This code expires in ${plural(minutes)} and can only be used once.`,
     '',
-    'VegBazzar support will never ask you for this code. If you did not request',
+    'VegDrop support will never ask you for this code. If you did not request',
     'it, you can ignore this email — your account stays secure as long as you',
     'do not share the code.',
     '',
-    '— The VegBazzar Team',
+    '— The VegDrop Team',
   ].join('\n');
 
   const html = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F8F6;padding:32px 16px;">
@@ -108,7 +108,7 @@ function renderOtpEmail({ code, purpose, minutes, role = null, name = null }) {
             <p style="margin:0 0 24px;font-size:34px;font-weight:700;letter-spacing:9px;text-align:center;color:#0B7A37;background:#F1F7F2;border-radius:8px;padding:18px 0;">${escapeHtml(code)}</p>
             <p style="margin:0 0 24px;color:#5C6660;font-size:14px;">Expires in ${escapeHtml(plural(minutes))}. Can only be used once.</p>
             <p style="margin:0;padding-top:20px;border-top:1px solid #E6EAE7;font-size:14px;line-height:22px;color:#5C6660;">
-              <strong style="color:#2D2A26;">VegBazzar support will never ask you for this code.</strong>
+              <strong style="color:#2D2A26;">VegDrop support will never ask you for this code.</strong>
               If you did not request it, you can ignore this email &mdash; your account stays secure as long as you do not share the code.
             </p>
           </td>

@@ -99,7 +99,7 @@ export async function startSocket({ authDir, onMessage, verbose = false }) {
       },
       logger,
       // Identifies the linked device in the phone's "Linked devices" list.
-      browser: Browsers.appropriate('VegBazzar Bot'),
+      browser: Browsers.appropriate('VegDrop Bot'),
       // We are not a chat client: skipping presence and history sync keeps the
       // socket quiet and avoids appearing "online" around the clock.
       markOnlineOnConnect: false,

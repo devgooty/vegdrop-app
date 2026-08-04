@@ -184,7 +184,7 @@ export default function DeveloperPanel({
                   type="text"
                   value={regIdentifier}
                   onChange={(e) => setRegIdentifier(e.target.value)}
-                  placeholder="e.g. manager@vegbazzar.com"
+                  placeholder="e.g. manager@vegdrop.com"
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-cyan-300 focus:outline-none focus:border-cyan-400"
                   required
                 />

@@ -42,7 +42,7 @@ const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 const EXHAUSTED_STATUS = new Set([402, 429]);
 
 /**
- * Split "VegBazzar <no-reply@example.com>" into its parts.
+ * Split "VegDrop <no-reply@example.com>" into its parts.
  *
  * Providers disagree about the shape of a sender — some take the whole string,
  * others require name and address separately — so it is parsed once here rather

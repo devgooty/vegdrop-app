@@ -17,6 +17,18 @@ const config = require('../config/env');
  * Two derived keys, both from KYC_ENCRYPTION_KEY via HKDF with distinct `info`
  * labels. Reusing one key for both encryption and fingerprinting would let the
  * deterministic fingerprint leak information about the encryption key's domain.
+ *
+ * THE `vegbazzar:` PREFIX BELOW IS NOT BRANDING — DO NOT RENAME IT.
+ *
+ * These are HKDF `info` parameters, so they are part of the key derivation.
+ * Editing a single character derives different keys from the same
+ * KYC_ENCRYPTION_KEY, which is indistinguishable from rotating that key: every
+ * PAN and bank account already stored becomes permanently undecryptable, and
+ * every fingerprint changes so the uniqueness index silently stops matching
+ * existing records. The app was renamed to VegDrop and these deliberately kept
+ * the old string for exactly that reason. The `:v1` suffix is the intended way
+ * to change them — bump it only alongside a migration that re-encrypts every
+ * existing row.
  */
 
 const ENC_KEY = crypto.hkdfSync('sha256', Buffer.from(config.kyc.encryptionKey), Buffer.alloc(0), 'vegbazzar:kyc:aead:v1', 32);

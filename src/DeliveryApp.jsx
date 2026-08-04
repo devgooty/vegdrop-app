@@ -150,7 +150,7 @@ export default function DeliveryApp() {
       <LoginPage
         onLogin={handleLogin}
         appType="delivery"
-        storagePrefix="vegbazzar_delivery_"
+        storagePrefix="vegdrop_delivery_"
       />
     );
   }

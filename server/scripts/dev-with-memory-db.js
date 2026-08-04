@@ -22,7 +22,7 @@ async function main() {
   });
 
   // Must be set before config/env.js is loaded, since it freezes at require time.
-  process.env.MONGODB_URI = replSet.getUri('vegbazzar');
+  process.env.MONGODB_URI = replSet.getUri('vegdrop');
 
   /**
    * Registration needs BOTH contacts proved, so /register/start and
@@ -33,7 +33,7 @@ async function main() {
    * overrides the transport below so nothing actually dials out to
    * `smtp.demo.invalid`.
    */
-  process.env.EMAIL_FROM = process.env.EMAIL_FROM || 'VegBazzar Demo <demo@vegbazzar.local>';
+  process.env.EMAIL_FROM = process.env.EMAIL_FROM || 'VegDrop Demo <demo@vegdrop.local>';
   process.env.SMTP_HOST = process.env.SMTP_HOST || 'smtp.demo.invalid';
   process.env.SMTP_FROM = process.env.SMTP_FROM || process.env.EMAIL_FROM;
 

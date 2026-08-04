@@ -48,7 +48,7 @@ function transport(responses = [{ status: 200, body: { messageId: 'BOT1' } }], o
 }
 
 const otp = { code: '123456', purpose: 'login', ttlSeconds: 300 };
-const text = '123456 is your VegBazzar verification code.';
+const text = '123456 is your VegDrop verification code.';
 
 test('a send posts the composed text to the loopback bridge', async () => {
   const { t, calls } = transport();
@@ -209,7 +209,7 @@ test('"help" returns the menu without touching the database', async () => {
   await handle(from('help'));
 
   assert.equal(lookups.length, 0);
-  assert.match(replies[0].text, /VegBazzar/);
+  assert.match(replies[0].text, /VegDrop/);
   assert.match(replies[0].text, /orders/);
 });
 

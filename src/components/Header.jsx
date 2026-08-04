@@ -162,7 +162,7 @@ export default function Header({
           <div className="w-full h-full bg-[#FFFDF9] rounded-[14px] p-0.5 overflow-hidden flex items-center justify-center shadow-inner">
             <img
               src="/logo.png"
-              alt="VegBazzar Artisanal Basket"
+              alt="VegDrop Artisanal Basket"
               className="w-full h-full object-cover rounded-xl"
               onError={(e) => {
                 e.target.style.display = 'none';

@@ -55,7 +55,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
   // Business Hours & Bank Details State
   const [businessHours, setBusinessHours] = useState(() => {
     try {
-      const saved = localStorage.getItem('vegbazzar_shopkeeper_hours');
+      const saved = localStorage.getItem('vegdrop_shopkeeper_hours');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return {
@@ -85,7 +85,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
 
   const [bankDetails, setBankDetails] = useState(() => {
     try {
-      const saved = localStorage.getItem('vegbazzar_shopkeeper_bank');
+      const saved = localStorage.getItem('vegdrop_shopkeeper_bank');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return {
@@ -95,7 +95,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
       confirmAccountNumber: '38291048592',
       accountType: 'Current',
       ifscCode: 'SBIN0021482',
-      upiId: 'vegbazzar.vendor@okicici',
+      upiId: 'vegdrop.vendor@okicici',
       panNumber: '',
       gstin: '',
       settlementCycle: 'Weekly (Every Monday)',
@@ -113,8 +113,8 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
   const validatePAN = (pan) => pan === '' || /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan);
   const [profileData, setProfileData] = useState(() => {
     try {
-      const savedKey = `vegbazzar_shopkeeper_profile_${user?.phone || 'default'}`;
-      const saved = localStorage.getItem(savedKey) || localStorage.getItem('vegbazzar_shopkeeper_profile');
+      const savedKey = `vegdrop_shopkeeper_profile_${user?.phone || 'default'}`;
+      const saved = localStorage.getItem(savedKey) || localStorage.getItem('vegdrop_shopkeeper_profile');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed) return parsed;
@@ -729,7 +729,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
         <button
           onClick={() => {
             try {
-              localStorage.setItem('vegbazzar_shopkeeper_hours', JSON.stringify(businessHours));
+              localStorage.setItem('vegdrop_shopkeeper_hours', JSON.stringify(businessHours));
             } catch (e) {}
             setActiveScreen('list');
           }}
@@ -816,7 +816,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
             const updated = { ...bankDetails, verificationStatus: 'pending', isVerified: false };
             setBankDetails(updated);
             setShowSecurityHold(true);
-            try { localStorage.setItem('vegbazzar_shopkeeper_bank', JSON.stringify(updated)); } catch (err) {}
+            try { localStorage.setItem('vegdrop_shopkeeper_bank', JSON.stringify(updated)); } catch (err) {}
             setActiveScreen('list');
           }}
           className="space-y-3 text-xs"
@@ -1076,9 +1076,9 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
                 };
                 setProfileData(updated);
                 try {
-                  const savedKey = `vegbazzar_shopkeeper_profile_${profileData.phone || user?.phone || 'default'}`;
+                  const savedKey = `vegdrop_shopkeeper_profile_${profileData.phone || user?.phone || 'default'}`;
                   localStorage.setItem(savedKey, JSON.stringify(updated));
-                  localStorage.setItem('vegbazzar_shopkeeper_profile', JSON.stringify(updated));
+                  localStorage.setItem('vegdrop_shopkeeper_profile', JSON.stringify(updated));
                 } catch(err) {}
                 setIsEditProfileOpen(false);
               }}

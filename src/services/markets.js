@@ -85,7 +85,7 @@ export function currentPosition({ timeout = 8000 } = {}) {
  */
 export function savedCustomerCoords() {
   try {
-    const raw = localStorage.getItem('vegbazzar_customer_coords');
+    const raw = localStorage.getItem('vegdrop_customer_coords');
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (typeof parsed?.lat !== 'number' || typeof parsed?.lng !== 'number') return null;

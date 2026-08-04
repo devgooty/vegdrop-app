@@ -40,7 +40,7 @@ function transport(provider, responses = [{ status: 200, body: { id: 'ok' } }]) 
   const t = createHttpEmailTransport({
     provider,
     apiKey: 'test-key',
-    from: 'VegBazzar <no-reply@example.com>',
+    from: 'VegDrop <no-reply@example.com>',
     fetchImpl: impl,
   });
   return { t, calls };
@@ -49,8 +49,8 @@ function transport(provider, responses = [{ status: 200, body: { id: 'ok' } }]) 
 const message = {
   channel: 'email',
   to: 'customer@example.com',
-  subject: 'Your VegBazzar verification code',
-  text: '123456 is your VegBazzar verification code to sign in to your account.',
+  subject: 'Your VegDrop verification code',
+  text: '123456 is your VegDrop verification code to sign in to your account.',
 };
 
 // ---------------------------------------------------------------------------
@@ -215,8 +215,8 @@ test('a chain with no transports is refused at construction', () => {
 // ---------------------------------------------------------------------------
 
 test('a sender is split into name and address', () => {
-  assert.deepEqual(parseSender('VegBazzar <no-reply@example.com>'), {
-    name: 'VegBazzar',
+  assert.deepEqual(parseSender('VegDrop <no-reply@example.com>'), {
+    name: 'VegDrop',
     email: 'no-reply@example.com',
   });
   assert.deepEqual(parseSender('plain@example.com'), { name: undefined, email: 'plain@example.com' });

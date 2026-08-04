@@ -90,10 +90,10 @@ test('a shopkeeper signing in is told it is the merchant dashboard', () => {
 });
 
 test('each purpose reads as a sentence, and an unknown one still does', () => {
-  assert.match(renderOtpEmail({ code: '1', purpose: 'registration', minutes: 5 }).text, /to create your VegBazzar account/);
-  assert.match(renderOtpEmail({ code: '1', purpose: 'phone_change', minutes: 5 }).text, /to move your VegBazzar account/);
+  assert.match(renderOtpEmail({ code: '1', purpose: 'registration', minutes: 5 }).text, /to create your VegDrop account/);
+  assert.match(renderOtpEmail({ code: '1', purpose: 'phone_change', minutes: 5 }).text, /to move your VegDrop account/);
   // Never "to undefined your account".
-  assert.match(renderOtpEmail({ code: '1', purpose: 'not_a_purpose', minutes: 5 }).text, /to verify your VegBazzar account/);
+  assert.match(renderOtpEmail({ code: '1', purpose: 'not_a_purpose', minutes: 5 }).text, /to verify your VegDrop account/);
 });
 
 // ---------------------------------------------------------------------------

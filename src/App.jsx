@@ -80,7 +80,7 @@ export default function App() {
    */
   const [user, setUser] = useState(null);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
-  const [activeTab, setActiveTab] = useLocalStorage('vegbazzar_tab', 'login');
+  const [activeTab, setActiveTab] = useLocalStorage('vegdrop_tab', 'login');
 
   useEffect(() => {
     let cancelled = false;
@@ -103,7 +103,7 @@ export default function App() {
    * server validates every productId as a 24-character ObjectId and rejected the
    * whole order with a 400.
    */
-  const [cartItems, setCartItems, clearCart] = useLocalStorage('vegbazzar_cart', []);
+  const [cartItems, setCartItems, clearCart] = useLocalStorage('vegdrop_cart', []);
   /**
    * Wallet is a read-through cache of the server ledger, never a source of
    * truth. It was previously persisted to localStorage, which meant the balance
@@ -755,7 +755,7 @@ export default function App() {
 
     const paymentMethod = selectedPaymentMethod === 'VegWallet' ? 'wallet' : 'cod';
     const address =
-      localStorage.getItem('vegbazzar_customer_location') ||
+      localStorage.getItem('vegdrop_customer_location') ||
       'Koramangala, Bengaluru, Karnataka - 560034';
 
     // Collapse variants back onto their catalog product before ordering.

@@ -139,7 +139,7 @@ const razorpayx = {
         purpose: 'payout',
         queue_if_low_balance: false,
         reference_id: referenceId,
-        narration: 'VegBazzar vendor verification',
+        narration: 'VegDrop vendor verification',
       },
     });
 

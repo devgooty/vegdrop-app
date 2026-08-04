@@ -268,7 +268,7 @@ export default function ShopkeeperApp() {
       <LoginPage
         onLogin={handleLogin}
         appType="shopkeeper"
-        storagePrefix="vegbazzar_shopkeeper_"
+        storagePrefix="vegdrop_shopkeeper_"
       />
     );
   }

@@ -258,7 +258,7 @@ export default function CustomerOrders({
                   <ShoppingBag className="w-10 h-10 text-emerald-300" />
                 </div>
                 <h3 className="font-bold text-lg text-gray-800 mb-2">No Orders Yet!</h3>
-                <p className="text-sm text-gray-500 mb-6">You haven't placed any orders with VegBazzar yet. Start exploring fresh produce!</p>
+                <p className="text-sm text-gray-500 mb-6">You haven't placed any orders with VegDrop yet. Start exploring fresh produce!</p>
                 <button
                   onClick={onGoHome}
                   className="bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-bold py-3 px-6 rounded-2xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 mx-auto w-full"

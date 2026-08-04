@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-VegBazzar — a React PWA for a hyperlocal grocery delivery service, with an Express + MongoDB backend and Razorpay payments.
+VegDrop — a React PWA for a hyperlocal grocery delivery service, with an Express + MongoDB backend and Razorpay payments.
 
 ## Commands
 
@@ -52,7 +52,7 @@ Copy `.env.example` to `.env`. Notes that are easy to get wrong:
 
 All three are lazily loaded by `AppRouter`, so a customer never downloads the shopkeeper or delivery bundles (or Leaflet, which only the map routes pull in).
 
-Each polls `GET /api/orders` every 5s and pauses while the tab is hidden. The previous localStorage `vegbazzar_orders` + `BroadcastChannel` mirror is **deliberately gone**: the server scopes orders by role, but a shared browser-storage key is readable by every app on the origin, so mirroring leaked one role's order list into another's. Don't reintroduce cross-app state sharing through web storage.
+Each polls `GET /api/orders` every 5s and pauses while the tab is hidden. The previous localStorage `vegdrop_orders` + `BroadcastChannel` mirror is **deliberately gone**: the server scopes orders by role, but a shared browser-storage key is readable by every app on the origin, so mirroring leaked one role's order list into another's. Don't reintroduce cross-app state sharing through web storage.
 
 The role checks in these components are **UX gates only**. The API authorizes every request independently, so bypassing one in the browser grants nothing.
 
