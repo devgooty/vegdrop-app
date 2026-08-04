@@ -117,3 +117,83 @@ export async function createStall(marketId, stall) {
   const result = await api.post(`/markets/${marketId}/stalls`, stall);
   return result.data;
 }
+
+/**
+ * The markets this account runs.
+ *
+ * Each carries `pendingRequests`, so the dashboard can badge the queue without
+ * a second request per market.
+ */
+export async function fetchMyMarkets() {
+  const result = await api.get('/markets/mine');
+  return result.data;
+}
+
+/** Shopkeepers waiting on a decision. Pass a status to see decided ones. */
+export async function fetchStallRequests(marketId, { status } = {}) {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  const result = await api.get(`/markets/${marketId}/stall-requests${query}`);
+  return result.data;
+}
+
+/**
+ * Let a shopkeeper in.
+ *
+ * `stallNumber` is required and is the market owner's decision, not the
+ * applicant's: the number they proposed is a guess, and only the owner knows
+ * which pitches are actually free.
+ */
+export async function approveStallRequest(marketId, requestId, { stallNumber, autoAccept } = {}) {
+  const result = await api.post(`/markets/${marketId}/stall-requests/${requestId}/approve`, {
+    stallNumber,
+    ...(autoAccept === undefined ? {} : { autoAccept }),
+  });
+  return result.data;
+}
+
+export async function rejectStallRequest(marketId, requestId, { reason } = {}) {
+  const result = await api.post(`/markets/${marketId}/stall-requests/${requestId}/reject`, {
+    ...(reason ? { reason } : {}),
+  });
+  return result.data;
+}
+
+/**
+ * What happened in this market lately.
+ *
+ * Money is in paise, as everywhere on the server. Divide at the point of
+ * display, never before — rounding the per-stall figures early stops them
+ * adding up to the total.
+ */
+export async function fetchMarketAnalytics(marketId, { days } = {}) {
+  const query = days ? `?days=${days}` : '';
+  const result = await api.get(`/markets/${marketId}/analytics${query}`);
+  return result.data;
+}
+
+// --- The shopkeeper's side of joining ---------------------------------------
+
+/** Every market a shopkeeper could apply to. */
+export async function fetchJoinableMarkets() {
+  const result = await api.get('/markets');
+  return result.data;
+}
+
+export async function requestToJoinMarket(marketId, { name, stallNumber, contactPhone } = {}) {
+  const result = await api.post(`/markets/${marketId}/join`, {
+    ...(name ? { name } : {}),
+    ...(stallNumber ? { stallNumber } : {}),
+    ...(contactPhone ? { contactPhone } : {}),
+  });
+  return result.data;
+}
+
+/** Where the caller's own application stands, or null if they never applied. */
+export async function fetchMyJoinRequest() {
+  const result = await api.get('/markets/me/join');
+  return result.data;
+}
+
+export async function withdrawJoinRequest() {
+  await api.delete('/markets/me/join');
+}
