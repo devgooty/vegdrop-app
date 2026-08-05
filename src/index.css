@@ -10,7 +10,7 @@
   }
 
   h1, h2, h3, .font-vintage {
-    font-family: 'Fraunces', serif;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     letter-spacing: -0.02em;
   }
 
@@ -417,16 +417,6 @@
      Removing a fade is only safe while the artwork ends in white. Artwork with
      a shadow, a coloured ground, or content running to the bottom edge brings
      the seam straight back, and the mask above is the fix to restore. */
-}
-
-/* The app dresses every h1/h2/h3 in Fraunces for its vintage theme. Sign-in is
-   the one screen that is not vintage — it is the quick-commerce register — and
-   a lone serif heading in a card of sans was the result. */
-.si-scope h1,
-.si-scope h2,
-.si-scope h3 {
-  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
-  letter-spacing: -0.025em;
 }
 
 /* A short green rule under the heading — the card is white on white, and this
