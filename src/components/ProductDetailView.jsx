@@ -75,7 +75,7 @@ export default function ProductDetailView({
   };
 
   return (
-    <div className="min-h-screen bg-[#F6F3EC] flex flex-col pb-24 animate-fade-in">
+    <div className="min-h-screen bg-[#F6F3EC] flex flex-col pb-6 animate-fade-in">
       {/* 1. Header Bar with Back Button */}
       <header className="bg-[#FAF7F2] p-3.5 shadow-xs sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[#DCD5C6]">
         <button
@@ -145,7 +145,40 @@ export default function ProductDetailView({
               )}
             </div>
           </div>
-          
+
+          {/* Add to Cart control for this item, right where its price is */}
+          <div className="flex justify-end">
+            {inCart ? (
+              <div className="skeuo-btn-emerald flex items-center rounded-xl p-1 shadow-sm">
+                <button
+                  onClick={(e) => onUpdateQuantity(variantId, -1)}
+                  className="p-1.5 hover:bg-[#143B2B] rounded-lg transition-colors cursor-pointer active:scale-90"
+                  title="Decrease"
+                >
+                  <Minus className="w-4 h-4 stroke-[3]" />
+                </button>
+                <span className="text-sm font-black px-3 min-w-8 text-center text-white">
+                  {inCart.quantity}
+                </span>
+                <button
+                  onClick={(e) => onUpdateQuantity(variantId, 1, e, product)}
+                  className="p-1.5 hover:bg-[#143B2B] rounded-lg transition-colors cursor-pointer active:scale-90"
+                  title="Increase"
+                >
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleAdd}
+                className="skeuo-btn-emerald font-extrabold px-4 py-2 rounded-xl text-sm flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add</span>
+              </button>
+            )}
+          </div>
+
           {/* Detailed Weight Variants Selector */}
           {isWeightBased && (
             <div className="pt-2 border-t border-[#EFEBE0]">
@@ -221,44 +254,6 @@ export default function ProductDetailView({
           onSelectProduct={onSelectProduct}
           onOpenCategory={onOpenCategory}
         />
-      </div>
-
-      {/* 7. Sticky Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-[#FAF7F2] border-t border-[#DCD5C6] p-3.5 px-4 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] z-30 flex items-center justify-between gap-4">
-        <div>
-          <span className="text-[10px] text-[#7A7060] font-bold uppercase tracking-wider block">Total Amount</span>
-          <span className="font-vintage font-black text-xl text-[#1B4D3E]">₹{(displayPrice * (inCart ? inCart.quantity : 1)).toFixed(0)}</span>
-        </div>
-
-        {inCart ? (
-          <div className="skeuo-btn-emerald flex items-center rounded-xl p-1 shadow-md px-2">
-            <button
-              onClick={(e) => onUpdateQuantity(variantId, -1)}
-              className="p-1.5 hover:bg-[#143B2B] rounded-lg transition-colors cursor-pointer active:scale-90"
-              title="Decrease"
-            >
-              <Minus className="w-4 h-4 stroke-[3]" />
-            </button>
-            <span className="text-sm font-black px-3 min-w-8 text-center text-white">
-              {inCart.quantity} in Cart
-            </span>
-            <button
-              onClick={(e) => onUpdateQuantity(variantId, 1, e, product)}
-              className="p-1.5 hover:bg-[#143B2B] rounded-lg transition-colors cursor-pointer active:scale-90"
-              title="Increase"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={handleAdd}
-            className="skeuo-btn-emerald flex-1 font-extrabold py-3 rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer active:scale-95 shadow-md"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add to Cart</span>
-          </button>
-        )}
       </div>
     </div>
   );
