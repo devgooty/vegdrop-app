@@ -615,6 +615,7 @@ export default function App() {
     setActiveCategoryDetail(category);
   }, []);
 
+
   const handleAddToCart = useCallback((product, event) => {
     if (product.stock === 0) {
       toast.warning(`"${product.name}" is sold out!`);
@@ -784,6 +785,23 @@ export default function App() {
     window.scrollTo({ top: 0 });
   }, [categories]);
 
+  /**
+   * A suggestion naming one specific item opens that item's page directly.
+   * The search is cleared rather than left behind, so backing out of the
+   * product returns to where the shopper was, not to a results screen they
+   * never asked for.
+   *
+   * Declared after handleOpenProductDetail on purpose — these are const
+   * bindings, so calling it from above its declaration is a dead-zone error at
+   * render, not a hoisted function.
+   */
+  const handleOpenProductFromSearch = useCallback((product) => {
+    setSearchQuery('');
+    setSearchVal('');
+    setActiveCategoryDetail(null);
+    handleOpenProductDetail(product);
+  }, [handleOpenProductDetail]);
+
   const totalCartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const pendingOrdersCount = orders.filter((o) => o.status === 'Pending').length;
 
@@ -871,6 +889,7 @@ export default function App() {
               categories={categories}
               onSubmitSearch={handleSubmitSearch}
               onOpenCategory={handleOpenCategoryFromSearch}
+              onSelectProduct={handleOpenProductFromSearch}
             />
           )}
 
@@ -1231,6 +1250,29 @@ export default function App() {
                         </div>
                       )}
                       
+                      {/* Deleting the account lives here and nowhere else.
+                          Hidden while the edit form is open: that form's own
+                          Save/Cancel pair is what the eye is on, and a
+                          destructive button directly beneath it is the one
+                          most likely to be hit by mistake. */}
+                      {!isEditingProfile && (
+                        <div className="mt-4 sm:mt-6 pt-4 border-t border-rose-200/60 text-left relative z-10">
+                          <h4 className="font-black text-rose-700 text-[11px] uppercase tracking-wider mb-1.5">
+                            Danger Zone
+                          </h4>
+                          <p className="text-[10px] font-bold text-slate-400 mb-2.5 leading-relaxed">
+                            Deleting your account is permanent. Your orders, wallet balance and
+                            reward tokens go with it.
+                          </p>
+                          <button
+                            onClick={handleDeleteAccount}
+                            className="w-full bg-gradient-to-br from-rose-50 to-rose-100 hover:from-rose-100 hover:to-rose-200 text-rose-600 text-xs sm:text-sm font-black px-4 py-2.5 rounded-2xl transition-all border border-rose-200/50 cursor-pointer active:scale-95 shadow-[inset_1px_1px_2px_rgba(255,255,255,0.9),4px_4px_8px_rgba(225,29,72,0.15),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(225,29,72,0.2),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
+                          >
+                            Delete Account
+                          </button>
+                        </div>
+                      )}
+
                       {/* End of Profile View */}
                       </>
                     )}
@@ -1292,18 +1334,17 @@ export default function App() {
                         </div>
                       )}
 
-                        <div className="pt-2 sm:pt-3 flex flex-row sm:flex-col gap-2 relative z-10 max-w-sm mx-auto">
+                        {/* Log Out stays on every account view — it is the one
+                            control someone may want from wherever they are.
+                            Deleting the account does NOT: it lives inside
+                            Profile Details, one deliberate step away, because
+                            it is irreversible and sat one mis-tap from the menu. */}
+                        <div className="pt-2 sm:pt-3 flex relative z-10 max-w-sm mx-auto">
                           <button
                             onClick={handleLogout}
                             className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] sm:text-sm font-extrabold px-2 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all cursor-pointer shadow-[inset_1px_1px_2px_rgba(255,255,255,0.8),4px_4px_8px_rgba(166,180,200,0.3),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(166,180,200,0.4),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
                           >
                             Log Out
-                          </button>
-                          <button
-                            onClick={handleDeleteAccount}
-                            className="flex-1 bg-gradient-to-br from-rose-50 to-rose-100 hover:from-rose-100 hover:to-rose-200 text-rose-600 text-[10px] sm:text-sm font-black px-2 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all border border-rose-200/50 cursor-pointer shadow-[inset_1px_1px_2px_rgba(255,255,255,0.9),4px_4px_8px_rgba(225,29,72,0.15),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(225,29,72,0.2),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
-                          >
-                            Delete Account
                           </button>
                         </div>
                       </div>

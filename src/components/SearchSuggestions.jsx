@@ -77,7 +77,15 @@ function describe(option) {
     return `Section · ${option.count} ${option.count === 1 ? 'item' : 'items'}`;
   }
   if (option.kind === 'term') {
-    return `${option.count} ${option.count === 1 ? 'option' : 'options'}`;
+    // One match opens that item's page, so the row says what it costs rather
+    // than counting to one — "1 option" told the shopper nothing they wanted.
+    if (option.count === 1) {
+      const [product] = option.products;
+      return [product.weight, product.price != null ? `₹${product.price}` : null]
+        .filter(Boolean)
+        .join(' · ');
+    }
+    return `${option.count} options`;
   }
   return 'See all matches';
 }

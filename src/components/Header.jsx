@@ -16,6 +16,7 @@ export default function Header({
   categories = [],
   onSubmitSearch,
   onOpenCategory,
+  onSelectProduct,
 }) {
   const [isScrolled, setIsScrolled] = useState(false);
 
@@ -94,9 +95,20 @@ export default function Header({
       return;
     }
 
-    // Both a term and the raw query open the same results screen. A term puts
-    // its own label in the box rather than what was typed, so the screen and
-    // the search box agree on what is being shown.
+    // A suggestion that names exactly one item goes straight to that item's
+    // page, because that is the thing the shopper pointed at and it is the only
+    // screen they can actually buy from. Routing it through the results grid
+    // put a single card between the tap and the product for no reason.
+    if (option.kind === 'term' && option.products?.length === 1) {
+      setSearchVal('');
+      onSelectProduct?.(option.products[0]);
+      return;
+    }
+
+    // A term matching several items, and the raw query, both open the results
+    // screen — there is a genuine choice to make. A term puts its own label in
+    // the box rather than what was typed, so the screen and the search box
+    // agree on what is being shown.
     setSearchVal(option.label);
     onSubmitSearch?.(option.label);
   };
