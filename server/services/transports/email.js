@@ -104,12 +104,16 @@ function createEmailTransport({
   return {
     name: 'email',
 
-    async send({ to, subject, text }) {
+    async send({ to, subject, text, html }) {
+      // Both parts when there is markup: nodemailer builds a multipart/alternative
+      // so a client that refuses HTML falls back to the text rather than to an
+      // empty body.
       const message = {
         from,
         to,
         subject,
         text,
+        ...(html ? { html } : {}),
       };
 
       let lastError = null;

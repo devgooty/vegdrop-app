@@ -1,6 +1,7 @@
 'use strict';
 
 const config = require('../config/env');
+const { renderOtpEmail, PURPOSE_ACTION } = require('./templates/otpEmail');
 
 /**
  * Outbound message delivery.
@@ -20,10 +21,13 @@ const config = require('../config/env');
 /**
  * @typedef {object} Transport
  * @property {string} name
- * @property {(msg: { channel: 'sms'|'email', to: string, subject?: string, text: string, otp?: OtpDetails }) => Promise<void>} send
+ * @property {(msg: { channel: 'sms'|'email', to: string, subject?: string, text: string, html?: string, otp?: OtpDetails }) => Promise<void>} send
  *
  * `text` is a fully composed human-readable message, which is all a plain SMS or
- * email transport needs. `otp` carries the same information structured, because
+ * email transport needs. `html` is set for email only and is always accompanied
+ * by `text`, never a replacement for it: a transport that cannot send multipart
+ * (or a client that will not render markup) still has something to show. `otp`
+ * carries the same information structured, because
  * WhatsApp business-initiated messages must go through a pre-approved template
  * whose only variable is the code — that transport cannot parse it back out of
  * the prose. Transports that do not need it ignore it.
@@ -244,25 +248,95 @@ function reachesRecipient(channel) {
   return transportFor(channel).reachesRecipient !== false;
 }
 
-async function sendOtp({ channel, to, code, purpose, ttlSeconds }) {
+async function sendOtp({ channel, to, code, purpose, ttlSeconds, role, name }) {
   const minutes = Math.round(ttlSeconds / 60);
-  const purposeText = {
-    login: 'sign in to',
-    registration: 'create',
-    phone_change: 'move',
-    email_change: 'add an email address to',
-  }[purpose] || 'verify';
+
+  /**
+   * Email gets its own composition, including an HTML part.
+   *
+   * An inbox is not a notification shade: the message has to identify itself
+   * among everything else in the list, which is why it carries a greeting, an
+   * expiry and the "we will never ask for this" warning that the SMS line has no
+   * room for. The plain-text alternative is built alongside it, so a client that
+   * refuses HTML shows that same copy rather than an empty body.
+   */
+  if (channel === 'email') {
+    const { subject, text, html } = renderOtpEmail({ code, purpose, minutes, role, name });
+
+    await transportFor(channel).send({
+      channel,
+      to,
+      subject,
+      text,
+      html,
+      otp: { code, purpose, ttlSeconds },
+    });
+    return;
+  }
+
+  /**
+   * One line, because the whole message is a notification preview.
+   *
+   * A shopkeeper signing in is asking for their merchant dashboard, not "your
+   * account" — same code, same expiry, just named for the audience actually
+   * reading it. WhatsApp ignores the prose entirely: its AUTHENTICATION-category
+   * template takes only the code (see resolvePhoneTransport), so this text is
+   * what the SMS console stub prints.
+   *
+   * The purpose→verb map is shared with the email template rather than copied,
+   * so adding a purpose cannot leave one channel saying "verify".
+   */
+  const text =
+    purpose === 'login' && role === 'shopkeeper'
+      ? `${code} is your VegDrop merchant dashboard verification code. It expires in ${minutes} minute${minutes === 1 ? '' : 's'}.\n` +
+        'Never share this code with anyone, including VegDrop staff.'
+      : `${code} is your VegDrop verification code to ${PURPOSE_ACTION[purpose] || 'verify'} your account.\n` +
+        `It expires in ${minutes} minute${minutes === 1 ? '' : 's'}. Do not share it with anyone.`;
 
   await transportFor(channel).send({
     channel,
     to,
-    subject: 'Your VegBazzar verification code',
-    text:
-      `${code} is your VegBazzar verification code to ${purposeText} your account.\n` +
-      `It expires in ${minutes} minute${minutes === 1 ? '' : 's'}. Do not share it with anyone.`,
+    subject: 'Your VegDrop verification code',
+    text,
     // Structured form for template-based transports; see the Transport typedef.
     otp: { code, purpose, ttlSeconds },
   });
 }
 
-module.exports = { sendOtp, reachesRecipient, setTransport, consoleTransport, nullTransport };
+/**
+ * Send an ordinary message — not a one-time code.
+ *
+ * `sendOtp` above is deliberately not reusable for this: it composes from a
+ * code, a purpose and a TTL, and its WhatsApp path routes through an
+ * AUTHENTICATION-category template whose only variable is the code. A "someone
+ * asked to join your market" notice has none of those things.
+ *
+ * NEVER THROWS. Every caller so far is telling somebody about a state change
+ * that has already been committed, so a mail provider having a bad minute must
+ * not turn a successful request into a failed one. The failure is logged and
+ * swallowed; the underlying record is the source of truth and the recipient
+ * will see it next time they open the app. Callers that genuinely need delivery
+ * confirmed should not use this.
+ */
+async function sendNotice({ channel = 'email', to, subject, text, html = undefined }) {
+  if (!to) return { sent: false, reason: 'no-destination' };
+
+  try {
+    await transportFor(channel).send({ channel, to, subject, text, html });
+    return { sent: true };
+  } catch (err) {
+    // The destination is not logged in full: these go to real people, and a log
+    // line is a wider audience than the inbox was.
+    console.error(`[notify] notice delivery failed: ${err?.message}`);
+    return { sent: false, reason: 'delivery-failed' };
+  }
+}
+
+module.exports = {
+  sendOtp,
+  sendNotice,
+  reachesRecipient,
+  setTransport,
+  consoleTransport,
+  nullTransport,
+};

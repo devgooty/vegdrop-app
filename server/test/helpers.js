@@ -18,11 +18,11 @@ process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:3000';
 // installs via setTransport) before resolveEmailTransport is ever reached, so
 // this host is never resolved.
 process.env.SMTP_HOST = 'smtp.invalid.test';
-process.env.SMTP_FROM = 'VegBazzar <smtp-should-not-win@invalid.test>';
+process.env.SMTP_FROM = 'VegDrop <smtp-should-not-win@invalid.test>';
 // Deliberately different from SMTP_FROM: the two used to collide in the config
 // object and SMTP_FROM silently won, so a test asserting the sender is only
 // meaningful when the two values can be told apart.
-process.env.EMAIL_FROM = 'VegBazzar <no-reply@invalid.test>';
+process.env.EMAIL_FROM = 'VegDrop <no-reply@invalid.test>';
 
 // config/env.js skips dotenv under NODE_ENV=test, but clear these explicitly in
 // case they were exported into the shell: a test run must never be able to reach
@@ -30,12 +30,21 @@ process.env.EMAIL_FROM = 'VegBazzar <no-reply@invalid.test>';
 delete process.env.RAZORPAY_KEY_ID;
 delete process.env.RAZORPAY_KEY_SECRET;
 
+// Same reasoning for payouts, and more urgently: these credentials can move
+// money OUT. A test run must never be able to dispatch a real transfer.
+delete process.env.RAZORPAYX_KEY_ID;
+delete process.env.RAZORPAYX_KEY_SECRET;
+delete process.env.RAZORPAYX_ACCOUNT_NUMBER;
+
+process.env.KYC_ENCRYPTION_KEY = 'test-kyc-encryption-key-long-enough-000000000';
+
 const { MongoMemoryReplSet } = require('mongodb-memory-server');
 const request = require('supertest');
 
 const { connect, disconnect, mongoose } = require('../db/connect');
 const { createApp } = require('../app');
 const User = require('../models/User');
+const VendorKyc = require('../models/VendorKyc');
 
 let replSet = null;
 let app = null;
@@ -43,7 +52,7 @@ let app = null;
 /** A single-node replica set, so multi-document transactions actually execute. */
 async function startTestServer() {
   replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
-  await connect(replSet.getUri('vegbazzar_test'));
+  await connect(replSet.getUri('vegdrop_test'));
   app = createApp();
 
   /**
@@ -135,6 +144,27 @@ function auth(token) {
   return { Authorization: `Bearer ${token}` };
 }
 
+/**
+ * Mark a shopkeeper's settlement account as verified, straight in the database.
+ *
+ * Catalog writes are gated on this (middleware/vendorVerified.js), so any test
+ * about product ownership or pricing needs it as background state. Written
+ * directly rather than driven through the penny-drop endpoints because those
+ * tests are not about KYC — kyc.test.js exercises the real flow.
+ */
+async function verifyVendor(user) {
+  const pan = `ABCDE${String(Math.floor(Math.random() * 9000) + 1000)}F`;
+  return VendorKyc.create({
+    user: user._id,
+    legalName: user.name,
+    ifsc: 'HDFC0001234',
+    upiVpa: `vendor${Math.floor(Math.random() * 900000)}@okhdfcbank`,
+    ...VendorKyc.buildSecrets({ pan, bankAccount: '123456789012' }),
+    status: 'verified',
+    verifiedAt: new Date(),
+  });
+}
+
 module.exports = {
   startTestServer,
   stopTestServer,
@@ -143,5 +173,6 @@ module.exports = {
   createUser,
   signIn,
   authenticatedUser,
+  verifyVendor,
   auth,
 };

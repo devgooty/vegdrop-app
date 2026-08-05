@@ -93,7 +93,7 @@ export async function topUpWallet(amountRupees, user = {}) {
       amount: intent.amountPaise,
       currency: intent.currency,
       order_id: intent.razorpayOrderId,
-      name: 'VegBazzar',
+      name: 'VegDrop',
       description: 'Wallet top-up',
       prefill: { name: user.name || '', email: user.email || '', contact: user.phone || '' },
       theme: { color: '#1B4D3E' },

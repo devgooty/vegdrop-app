@@ -1,19 +1,39 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Package, Clock, IndianRupee, MapPin, ArrowRight, ShoppingBag, CalendarRange, RotateCw, PauseCircle, PlayCircle, Trash2, CalendarDays, CalendarClock, Calendar as CalendarIcon, ChevronRight, Navigation, X } from 'lucide-react';
 
-export default function CustomerOrders({ 
-  orders, 
-  scheduledOrders, 
-  setScheduledOrders, 
-  cartItems, 
-  setCartItems, 
+/**
+ * Plain-language labels for the market fulfillment stages.
+ *
+ * The coarse status underneath says "Pending" for everything from "just placed"
+ * to "stalls are deciding", which tells a waiting customer nothing. These say
+ * what is actually happening to their vegetables.
+ */
+const MARKET_STAGE = {
+  sourcing: 'Finding a stall',
+  packing: 'Being packed',
+  awaiting_rider: 'Ready for pickup',
+  collecting: 'Rider collecting',
+  dispatched: 'On the way',
+  delivered: 'Delivered',
+  failed: 'Could not fill',
+  cancelled: 'Cancelled',
+};
+
+export default function CustomerOrders({
+  orders,
+  scheduledOrders,
+  setScheduledOrders,
+  cartItems,
+  setCartItems,
   selectedDates,
   setSelectedDates,
   scheduleFilter,
   setScheduleFilter,
   handleScheduleCart,
-  onStartScheduledShopping, 
-  onGoHome 
+  onStartScheduledShopping,
+  onGoHome,
+  /** Only offered while stalls are still deciding — see the card below. */
+  onCancelOrder,
 }) {
   const [activeTab, setActiveTab] = useState('recent');
   const [trackingModalOrder, setTrackingModalOrder] = useState(null);
@@ -238,7 +258,7 @@ export default function CustomerOrders({
                   <ShoppingBag className="w-10 h-10 text-emerald-300" />
                 </div>
                 <h3 className="font-bold text-lg text-gray-800 mb-2">No Orders Yet!</h3>
-                <p className="text-sm text-gray-500 mb-6">You haven't placed any orders with VegBazzar yet. Start exploring fresh produce!</p>
+                <p className="text-sm text-gray-500 mb-6">You haven't placed any orders with VegDrop yet. Start exploring fresh produce!</p>
                 <button
                   onClick={onGoHome}
                   className="bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-bold py-3 px-6 rounded-2xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 mx-auto w-full"
@@ -258,9 +278,12 @@ export default function CustomerOrders({
                           #{String(order.id).slice(-6)}
                         </span>
                         <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${getStatusColor(order.status)}`}>
-                          {order.status}
+                          {MARKET_STAGE[order.fulfillmentStatus] || order.status}
                         </span>
                       </div>
+                      {order.marketName && (
+                        <p className="text-[10px] font-bold text-[#1B4D3E] mb-1">{order.marketName}</p>
+                      )}
                       <div className="flex items-center gap-1 text-[10px] text-gray-500 font-semibold">
                         <Clock className="w-3 h-3" />
                         <span>{new Date(order.timestamp).toLocaleString()}</span>
@@ -293,6 +316,69 @@ export default function CustomerOrders({
                     <MapPin className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                     <p className="line-clamp-2 leading-tight">{order.deliveryAddress || order.address}</p>
                   </div>
+
+                  {/*
+                    Market orders: say what is actually happening, and offer
+                    cancel only while it is genuinely still possible.
+
+                    Once a stall accepts, the produce is set aside and the order
+                    locks. The button DISAPPEARS at that point rather than
+                    failing when tapped — a button that exists but always errors
+                    is worse than no button.
+                  */}
+                  {order.fulfillmentStatus === 'sourcing' && (
+                    <div className="mt-3 space-y-2">
+                      <div className="flex items-start gap-2 text-[11px] font-semibold text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                        <Clock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <p className="leading-snug">
+                          {order.sourcingAttempt > 1
+                            ? `Checking another market nearby (try ${order.sourcingAttempt}).`
+                            : 'Finding a stall to fill your order. This usually takes under a minute.'}
+                        </p>
+                      </div>
+                      {onCancelOrder && (
+                        <button
+                          onClick={() => onCancelOrder(order)}
+                          className="w-full py-2.5 border border-rose-200 text-rose-700 font-black text-xs rounded-xl active:scale-95 transition-transform"
+                        >
+                          Cancel order
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {order.fulfillmentStatus === 'packing' && (
+                    <div className="mt-3 flex items-start gap-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
+                      <Package className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <p className="leading-snug">
+                        Accepted — your order is being packed and can no longer be cancelled.
+                      </p>
+                    </div>
+                  )}
+
+                  {order.fulfillmentStatus === 'awaiting_rider' && (
+                    <div className="mt-3 flex items-start gap-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
+                      <Package className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <p className="leading-snug">Packed and waiting for a rider.</p>
+                    </div>
+                  )}
+
+                  {order.fulfillmentStatus === 'collecting' && (
+                    <div className="mt-3 flex items-start gap-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
+                      <Navigation className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <p className="leading-snug">Your rider is collecting from the stalls.</p>
+                    </div>
+                  )}
+
+                  {order.fulfillmentStatus === 'failed' && (
+                    <div className="mt-3 flex items-start gap-2 text-[11px] font-semibold text-rose-800 bg-rose-50 p-2.5 rounded-xl border border-rose-200">
+                      <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <p className="leading-snug">
+                        No stall nearby could fill this one, so it was cancelled and your money
+                        refunded. Try a different market.
+                      </p>
+                    </div>
+                  )}
 
                   {/* Track Your Order button for Out for Delivery */}
                   {order.status === 'Out for Delivery' && (

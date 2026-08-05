@@ -1,12 +1,27 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import ShopkeeperPanel from './components/ShopkeeperPanel';
 import LoginPage from './components/LoginPage';
 import SplashScreen from './components/SplashScreen';
 import { useToast } from './components/Toast';
 import { restoreSession, logout } from './services/auth';
+import { fetchKycStatus } from './services/kyc';
 import { initialCategories, sampleProducts, initialOrders, initialRegisteredUsers } from './data/mockData';
 import { fetchProducts, updateStock } from './services/products';
 import { fetchOrders, updateOrderStatus } from './services/orders';
+import { fetchMyStall } from './services/stalls';
+import { fetchMyJoinRequest } from './services/markets';
+
+/**
+ * Only shopkeepers who run a stall in a market load this, so it stays out of
+ * the bundle for everyone else.
+ */
+const StallPanel = lazy(() => import('./components/StallPanel'));
+
+// Onboarding only: seen once, before a shopkeeper has a stall, and never again.
+const JoinMarket = lazy(() => import('./components/JoinMarket'));
+
+// Only ever opened by an unverified vendor, so it stays out of the main bundle.
+const VendorKycModal = lazy(() => import('./components/VendorKycModal'));
 
 export default function ShopkeeperApp() {
   const toast = useToast();
@@ -51,6 +66,119 @@ export default function ShopkeeperApp() {
   // Delivery Notifications
   const [deliveryNotifications, setDeliveryNotifications] = useState([]);
 
+  /**
+   * Does this shopkeeper run a stall in a market?
+   *
+   * If they do, they get the stall screen — offers, accept, pack. If they do
+   * not, they get the original panel unchanged. That is what makes markets
+   * additive: nobody's existing setup changes until a market owner gives them a
+   * stall.
+   *
+   * `undefined` means "still finding out", so the UI can avoid flashing the
+   * wrong screen while the answer is in flight.
+   */
+  const [stall, setStall] = useState(undefined);
+
+  /**
+   * Where this shopkeeper's application to a market stands.
+   *
+   * Separate from `stall` because the interesting states are the ones where
+   * there is no stall yet: waiting on a decision, and having been turned down.
+   * `null` means they have never applied. `undefined` means still loading, so
+   * the join screen does not flash before the answer arrives.
+   */
+  const [joinRequest, setJoinRequest] = useState(undefined);
+  const [showJoin, setShowJoin] = useState(false);
+
+  /**
+   * Settlement-account verification.
+   *
+   * A shopkeeper account can now be created by self-registration (see
+   * routes/auth.js's /vendor/register/*), so holding the role no longer implies
+   * anyone vetted the person behind it. Catalog writes are gated on this
+   * server-side (middleware/vendorVerified.js); showing the modal here is only
+   * so the vendor sees *why* those controls would fail, and gets the action
+   * that fixes it.
+   */
+  const [kyc, setKyc] = useState(null);
+  const [isKycModalOpen, setIsKycModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    fetchMyStall()
+      .then((found) => {
+        if (!cancelled) setStall(found);
+      })
+      .catch(() => {
+        // 404 NO_STALL is the ordinary answer for a shopkeeper who has not been
+        // given one, and 403 STALL_PENDING for one still waiting on a market
+        // owner. Neither is an error worth showing — the join screen below
+        // reads the request itself and says which of the two it is.
+        if (!cancelled) setStall(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  /** Reloaded after applying or withdrawing, so the screen follows the change. */
+  const refreshJoinRequest = useCallback(async () => {
+    try {
+      const found = await fetchMyJoinRequest();
+      setJoinRequest(found);
+      setShowJoin(false);
+      // An accepted request means there is now a stall to load.
+      if (found?.status === 'approved') {
+        await fetchMyStall()
+          .then(setStall)
+          .catch(() => {});
+      }
+      return found;
+    } catch {
+      setJoinRequest(null);
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    fetchMyJoinRequest()
+      .then((found) => !cancelled && setJoinRequest(found))
+      .catch(() => !cancelled && setJoinRequest(null));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    fetchKycStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setKyc(status);
+        // Open unprompted for a vendor who has not finished: the dashboard is
+        // useless to them until they do.
+        if (!status.canUpdateStock) setIsKycModalOpen(true);
+      })
+      .catch((err) => console.warn('kyc status unavailable:', err.message));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const handleKycVerified = useCallback((updated) => {
+    setKyc(updated);
+    toast.success('Account verified! You can now update stock. ✅');
+  }, [toast]);
   /** Load catalog and orders once a shopkeeper session exists. */
   useEffect(() => {
     if (!user) return;
@@ -189,22 +317,108 @@ export default function ShopkeeperApp() {
       <LoginPage
         onLogin={handleLogin}
         appType="shopkeeper"
-        storagePrefix="vegbazzar_shopkeeper_"
+        storagePrefix="vegdrop_shopkeeper_"
       />
     );
   }
 
-  // Main Shopkeeper Panel
+  // Hold until we know which panel this account should see, so a stall owner
+  // never watches the old panel paint and then swap. The join request is part
+  // of that answer: a shopkeeper waiting on a market owner gets the waiting
+  // screen, not a flash of the panel they cannot use yet.
+  if (stall === undefined || joinRequest === undefined) {
+    return (
+      <div className="min-h-screen bg-[#F6F8F6] flex items-center justify-center">
+        <div className="w-10 h-10 border-[3px] border-[#0B7A37] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // A stall in a market: offers, accept, pack.
+  if (stall) {
+    return (
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-[#F6F8F6] flex items-center justify-center">
+            <div className="w-10 h-10 border-[3px] border-[#0B7A37] border-t-transparent rounded-full animate-spin" />
+          </div>
+        }
+      >
+        <StallPanel user={user} stall={stall} onLogout={handleLogout} />
+      </Suspense>
+    );
+  }
+
+  /**
+   * No stall, but an application in flight or refused.
+   *
+   * Shown ahead of the single-shop panel because it is what this account is
+   * actually in the middle of. A pending applicant who lands on the ordinary
+   * panel has no way to discover their request exists, and the natural thing to
+   * do — apply again — is exactly what the server refuses.
+   */
+  const midOnboarding = joinRequest?.status === 'pending' || joinRequest?.status === 'rejected';
+
+  if (!stall && (midOnboarding || showJoin)) {
+    return (
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-[#F6F8F6] flex items-center justify-center">
+            <div className="w-10 h-10 border-[3px] border-[#0B7A37] border-t-transparent rounded-full animate-spin" />
+          </div>
+        }
+      >
+        <JoinMarket
+          request={joinRequest}
+          onChanged={refreshJoinRequest}
+          // Only offered when they chose to come here; there is nothing to go
+          // back to mid-application.
+          onBack={showJoin && !midOnboarding ? () => setShowJoin(false) : undefined}
+        />
+      </Suspense>
+    );
+  }
+
+  // No stall and no application: the original single-shop panel, plus a way in.
   return (
-    <ShopkeeperPanel
-      user={user}
-      orders={orders}
-      products={products}
-      setProducts={setProducts}
-      onUpdateOrderStatus={handleUpdateOrderStatus}
-      onOrderAccepted={handleOrderAccepted}
-      onLogout={handleLogout}
-      onSyncOrders={handleSyncOrders}
-    />
+    <>
+      <div className="bg-[#0B7A37] text-white px-4 py-3 flex items-center justify-between gap-3">
+        <p className="text-xs font-medium leading-snug">
+          Trading at a vegetable market? Join it to receive orders from customers nearby.
+        </p>
+        <button
+          onClick={() => setShowJoin(true)}
+          className="shrink-0 bg-white text-[#0B7A37] text-xs font-bold px-3 py-1.5 rounded-lg"
+        >
+          Join a market
+        </button>
+      </div>
+      <ShopkeeperPanel
+        user={user}
+        orders={orders}
+        products={products}
+        setProducts={setProducts}
+        onUpdateOrderStatus={handleUpdateOrderStatus}
+        onOrderAccepted={handleOrderAccepted}
+        onLogout={handleLogout}
+        onSyncOrders={handleSyncOrders}
+        kyc={kyc}
+        onOpenKyc={() => setIsKycModalOpen(true)}
+        // The server, not this component, decides what the phone number
+        // becomes — see the comment on the phone-change flow in
+        // ShopkeeperPanel. This is how that server response reaches the
+        // session state everything else on screen reads from.
+        onUserUpdated={setUser}
+      />
+
+      {isKycModalOpen && (
+        <Suspense fallback={null}>
+          <VendorKycModal
+            onVerified={handleKycVerified}
+            onClose={() => setIsKycModalOpen(false)}
+          />
+        </Suspense>
+      )}
+    </>
   );
 }

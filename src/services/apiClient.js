@@ -1,5 +1,5 @@
 /**
- * HTTP client for the VegBazzar API.
+ * HTTP client for the VegDrop API.
  *
  * Design notes that matter for security:
  *
@@ -183,5 +183,8 @@ export const api = {
   get: (path, options) => apiFetch(path, { ...options, method: 'GET' }),
   post: (path, body, options) => apiFetch(path, { ...options, method: 'POST', body }),
   patch: (path, body, options) => apiFetch(path, { ...options, method: 'PATCH', body }),
+  // Used where a call replaces a whole collection rather than editing fields —
+  // a market's price sheet, a stall's declared stock.
+  put: (path, body, options) => apiFetch(path, { ...options, method: 'PUT', body }),
   delete: (path, options) => apiFetch(path, { ...options, method: 'DELETE' }),
 };

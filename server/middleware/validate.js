@@ -102,8 +102,52 @@ const otpCode = z
 const positiveInt = (max) =>
   z.number().int().positive().max(max);
 
+// --- KYC identifiers -------------------------------------------------------
+// Format checks only. They reject typos and obvious garbage before anything is
+// encrypted or sent to the payout provider; they do NOT prove the document
+// exists or belongs to the caller. Only the penny drop establishes control.
+
+/** Indian PAN: five letters, four digits, one letter. */
+const pan = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z]{5}\d{4}[A-Z]$/, 'Must be a valid 10-character PAN (e.g. ABCDE1234F).');
+
+/** IFSC: four letters, a literal 0, then six alphanumerics. */
+const ifsc = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Must be a valid 11-character IFSC code.');
+
+/** Indian bank account numbers vary by bank; 9–18 digits covers every scheme. */
+const bankAccount = z
+  .string()
+  .trim()
+  .regex(/^\d{9,18}$/, 'Must be a bank account number of 9 to 18 digits.');
+
+/** UPI VPA, e.g. name@bank. */
+const upiVpa = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[\w.\-]{2,60}@[a-zA-Z]{2,30}$/, 'Must be a valid UPI ID (e.g. name@bank).');
+
 module.exports = {
   validate,
   z,
-  fields: { nonEmptyString, objectId, email, phone, identifier, otpCode, positiveInt },
+  fields: {
+    nonEmptyString,
+    objectId,
+    email,
+    phone,
+    identifier,
+    otpCode,
+    positiveInt,
+    pan,
+    ifsc,
+    bankAccount,
+    upiVpa,
+  },
 };

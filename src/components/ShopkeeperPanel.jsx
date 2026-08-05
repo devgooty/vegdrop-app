@@ -1,11 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Store, Package, ShoppingBag, CheckCircle2, Clock, Truck, 
+  Store, Package, ShoppingBag, CheckCircle2, Clock, Truck,
   MapPin, LogOut, User, LayoutDashboard, Plus, Edit, Trash2,
-  AlertTriangle, Navigation, Check, Camera, MessageSquare, TrendingUp, BarChart3, Star, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock
+  AlertTriangle, Navigation, Check, Camera, MessageSquare, TrendingUp, BarChart3, Star, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert
 } from 'lucide-react';
+import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../services/auth';
+import { ApiRequestError } from '../services/apiClient';
+import OTPBoxGroup from './OTPBoxGroup';
 
-export default function ShopkeeperPanel({ user, orders, products, setProducts, onUpdateOrderStatus, onOrderAccepted, onLogout, onSyncOrders }) {
+/**
+ * Prompt shown while the vendor's settlement account is unverified.
+ *
+ * The server refuses catalog writes in this state regardless of what the UI
+ * shows (middleware/vendorVerified.js), so this exists to explain why the
+ * controls are inert and to offer the action that fixes it — not as a check.
+ */
+function KycGateBanner({ kyc, onOpenKyc }) {
+  if (!kyc || kyc.canUpdateStock) return null;
+
+  const isPending = kyc.status === 'penny_sent';
+
+  return (
+    <button
+      type="button"
+      onClick={onOpenKyc}
+      className="w-full text-left bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 active:scale-98 transition-transform mb-4"
+    >
+      <ShieldAlert className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+      <div className="flex-1">
+        <p className="font-black text-sm text-amber-900">
+          {isPending ? 'Confirm your verification amount' : 'Verify your account to update stock'}
+        </p>
+        <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+          {isPending
+            ? 'We sent a small amount to your UPI ID. Enter the exact figure to unlock stock updates.'
+            : 'Add your PAN and bank details, then confirm a ₹1 UPI transfer, before listing or updating stock.'}
+        </p>
+      </div>
+    </button>
+  );
+}
+
+export default function ShopkeeperPanel({ user, orders, products, setProducts, onUpdateOrderStatus, onOrderAccepted, onLogout, onSyncOrders, kyc = null, onOpenKyc, onUserUpdated }) {
+  // UX gate only. Every catalog write is authorized again by the API.
+  const canUpdateStock = kyc ? kyc.canUpdateStock : true;
+
   // Navigation & State
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isStoreOnline, setIsStoreOnline] = useState(true);
@@ -19,7 +58,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
   // Business Hours & Bank Details State
   const [businessHours, setBusinessHours] = useState(() => {
     try {
-      const saved = localStorage.getItem('vegbazzar_shopkeeper_hours');
+      const saved = localStorage.getItem('vegdrop_shopkeeper_hours');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return {
@@ -49,7 +88,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
 
   const [bankDetails, setBankDetails] = useState(() => {
     try {
-      const saved = localStorage.getItem('vegbazzar_shopkeeper_bank');
+      const saved = localStorage.getItem('vegdrop_shopkeeper_bank');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return {
@@ -59,7 +98,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
       confirmAccountNumber: '38291048592',
       accountType: 'Current',
       ifscCode: 'SBIN0021482',
-      upiId: 'vegbazzar.vendor@okicici',
+      upiId: 'vegdrop.vendor@okicici',
       panNumber: '',
       gstin: '',
       settlementCycle: 'Weekly (Every Monday)',
@@ -77,8 +116,8 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
   const validatePAN = (pan) => pan === '' || /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan);
   const [profileData, setProfileData] = useState(() => {
     try {
-      const savedKey = `vegbazzar_shopkeeper_profile_${user?.phone || 'default'}`;
-      const saved = localStorage.getItem(savedKey) || localStorage.getItem('vegbazzar_shopkeeper_profile');
+      const savedKey = `vegdrop_shopkeeper_profile_${user?.phone || 'default'}`;
+      const saved = localStorage.getItem(savedKey) || localStorage.getItem('vegdrop_shopkeeper_profile');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed) return parsed;
@@ -102,6 +141,72 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
       setIsEditProfileOpen(true);
     }
   }, []);
+
+  /**
+   * Changing the phone number, unlike the rest of this modal, is not a plain
+   * local edit. The number is the sign-in credential (see routes/auth.js's
+   * comment on POST /phone/start), so it goes through the same OTP-verified
+   * flow the login screen uses for a NEW account: prove control of the number
+   * before the server will accept it, never a free-text field trusted at face
+   * value the way Shop Name or Address are.
+   *
+   * 'idle' -> 'enter' (typing the new number) -> 'code' (typed, code sent) -> 'idle'.
+   */
+  const [phoneChangeStep, setPhoneChangeStep] = useState('idle');
+  const [newPhone, setNewPhone] = useState('');
+  const [phoneChallengeId, setPhoneChallengeId] = useState(null);
+  const [phoneCode, setPhoneCode] = useState('');
+  const [phoneChangeError, setPhoneChangeError] = useState('');
+  const [phoneChangeBusy, setPhoneChangeBusy] = useState(false);
+
+  function resetPhoneChange() {
+    setPhoneChangeStep('idle');
+    setNewPhone('');
+    setPhoneChallengeId(null);
+    setPhoneCode('');
+    setPhoneChangeError('');
+    setPhoneChangeBusy(false);
+  }
+
+  async function handleSendPhoneCode(e) {
+    e.preventDefault();
+    const problem = describePhoneProblem(newPhone);
+    if (problem) {
+      setPhoneChangeError(problem);
+      return;
+    }
+
+    setPhoneChangeBusy(true);
+    setPhoneChangeError('');
+    try {
+      const result = await startPhoneChange({ phone: newPhone });
+      setPhoneChallengeId(result.challengeId);
+      setPhoneChangeStep('code');
+    } catch (err) {
+      setPhoneChangeError(err instanceof ApiRequestError ? err.message : 'Could not send a code. Try again.');
+    } finally {
+      setPhoneChangeBusy(false);
+    }
+  }
+
+  async function handleVerifyPhoneCode(e) {
+    e.preventDefault();
+    if (phoneCode.length !== 6) return;
+
+    setPhoneChangeBusy(true);
+    setPhoneChangeError('');
+    try {
+      const updatedUser = await verifyPhoneChange({ challengeId: phoneChallengeId, code: phoneCode });
+      // The server is the source of truth for what the number actually became
+      // — never the value typed into the form, in case it was normalised.
+      setProfileData((prev) => ({ ...prev, phone: updatedUser.phone }));
+      onUserUpdated?.(updatedUser);
+      resetPhoneChange();
+    } catch (err) {
+      setPhoneChangeError(err instanceof ApiRequestError ? err.message : 'That code did not work. Try again.');
+      setPhoneChangeBusy(false);
+    }
+  }
 
   // Form State
   const initialProductState = {
@@ -257,6 +362,9 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
             <button onClick={() => { setActiveScreen('list'); setProductForm(initialProductState); }} className="p-2 rounded-full bg-gray-100"><ArrowLeft className="w-5 h-5" /></button>
             <h2 className="font-black text-xl text-gray-900">{activeScreen === 'add-product' ? 'Add New Product' : 'Edit Product'}</h2>
           </div>
+
+          <KycGateBanner kyc={kyc} onOpenKyc={onOpenKyc} />
+
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 space-y-4">
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">Product Name</label>
@@ -291,9 +399,10 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
                 <input type="number" value={productForm.stock} onChange={e => setProductForm({...productForm, stock: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold" placeholder="e.g. 100" />
               </div>
             </div>
-            <button 
+            <button
               onClick={activeScreen === 'add-product' ? handleAddProduct : handleEditProduct}
-              className="w-full py-4 bg-green-600 text-white rounded-xl font-black shadow-lg active:scale-95 transition-transform mt-4"
+              disabled={!canUpdateStock}
+              className="w-full py-4 bg-green-600 text-white rounded-xl font-black shadow-lg active:scale-95 transition-transform mt-4 disabled:bg-gray-300 disabled:active:scale-100 disabled:shadow-none"
             >
               {activeScreen === 'add-product' ? 'Save Product' : 'Update Product'}
             </button>
@@ -304,6 +413,8 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
 
     return (
       <div className="space-y-4 pb-24 animate-fade-in">
+        <KycGateBanner kyc={kyc} onOpenKyc={onOpenKyc} />
+
         {products?.map(product => (
           <div key={product.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex gap-4 items-center">
             <img src={product.image} alt={product.name} className="w-20 h-20 object-cover rounded-xl border border-gray-200" />
@@ -687,7 +798,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
         <button
           onClick={() => {
             try {
-              localStorage.setItem('vegbazzar_shopkeeper_hours', JSON.stringify(businessHours));
+              localStorage.setItem('vegdrop_shopkeeper_hours', JSON.stringify(businessHours));
             } catch (e) {}
             setActiveScreen('list');
           }}
@@ -774,7 +885,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
             const updated = { ...bankDetails, verificationStatus: 'pending', isVerified: false };
             setBankDetails(updated);
             setShowSecurityHold(true);
-            try { localStorage.setItem('vegbazzar_shopkeeper_bank', JSON.stringify(updated)); } catch (err) {}
+            try { localStorage.setItem('vegdrop_shopkeeper_bank', JSON.stringify(updated)); } catch (err) {}
             setActiveScreen('list');
           }}
           className="space-y-3 text-xs"
@@ -1034,9 +1145,9 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
                 };
                 setProfileData(updated);
                 try {
-                  const savedKey = `vegbazzar_shopkeeper_profile_${profileData.phone || user?.phone || 'default'}`;
+                  const savedKey = `vegdrop_shopkeeper_profile_${profileData.phone || user?.phone || 'default'}`;
                   localStorage.setItem(savedKey, JSON.stringify(updated));
-                  localStorage.setItem('vegbazzar_shopkeeper_profile', JSON.stringify(updated));
+                  localStorage.setItem('vegdrop_shopkeeper_profile', JSON.stringify(updated));
                 } catch(err) {}
                 setIsEditProfileOpen(false);
               }}
@@ -1088,25 +1199,110 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
                 </p>
               </div>
 
-              {/* Phone Number (Locked) */}
+              {/* Phone Number — locked to editing here, but changeable through
+                  its own OTP-verified flow rather than as a plain text field. */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="font-bold text-gray-800">Phone Number</label>
-                  <span className="text-[10px] text-amber-700 font-black flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                    <Lock className="w-3 h-3" /> Locked
-                  </span>
+                  {phoneChangeStep === 'idle' && (
+                    <span className="text-[10px] text-amber-700 font-black flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                      <Lock className="w-3 h-3" /> Locked
+                    </span>
+                  )}
                 </div>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={profileData.phone}
-                    disabled={true}
-                    readOnly={true}
-                    className="w-full bg-gray-100 border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold text-gray-500 cursor-not-allowed pr-9 font-mono"
-                  />
-                  <Lock className="w-4 h-4 text-gray-400 absolute right-3 top-2.5 pointer-events-none" />
-                </div>
-                <p className="text-[10px] text-gray-400 mt-1">🔒 Phone number is verified and cannot be edited.</p>
+
+                {phoneChangeStep === 'idle' && (
+                  <>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={profileData.phone}
+                        disabled={true}
+                        readOnly={true}
+                        className="w-full bg-gray-100 border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold text-gray-500 cursor-not-allowed pr-9 font-mono"
+                      />
+                      <Lock className="w-4 h-4 text-gray-400 absolute right-3 top-2.5 pointer-events-none" />
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-[10px] text-gray-400">🔒 Verified. Changing it needs a new code.</p>
+                      <button
+                        type="button"
+                        onClick={() => setPhoneChangeStep('enter')}
+                        className="text-[10px] font-bold text-emerald-700 underline underline-offset-2 shrink-0 ml-2"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {phoneChangeStep === 'enter' && (
+                  <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3 space-y-2">
+                    <div className="relative flex items-center">
+                      <span className="absolute left-3 text-xs font-semibold text-gray-500 pointer-events-none">+91</span>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        autoFocus
+                        value={newPhone}
+                        onChange={(e) => setNewPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        maxLength={10}
+                        placeholder="New 10-digit number"
+                        className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-3 py-2 text-xs font-semibold text-gray-900 font-mono focus:outline-none focus:border-emerald-600"
+                      />
+                    </div>
+                    {phoneChangeError && <p className="text-[10px] text-red-600 font-semibold">{phoneChangeError}</p>}
+                    <p className="text-[10px] text-gray-500">
+                      We'll text a code to this number. Every other device you're signed in on will be signed out once it's confirmed.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSendPhoneCode}
+                        disabled={phoneChangeBusy}
+                        className="flex-1 bg-emerald-600 text-white font-bold py-2 rounded-lg text-[11px] disabled:opacity-50"
+                      >
+                        {phoneChangeBusy ? 'Sending…' : 'Send code'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetPhoneChange}
+                        disabled={phoneChangeBusy}
+                        className="px-3 bg-white border border-gray-300 text-gray-600 font-bold py-2 rounded-lg text-[11px]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {phoneChangeStep === 'code' && (
+                  <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3 space-y-2">
+                    <p className="text-[10px] text-gray-600 font-semibold">
+                      Code sent to +91 {newPhone}
+                    </p>
+                    <OTPBoxGroup value={phoneCode} onChange={setPhoneCode} />
+                    {phoneChangeError && <p className="text-[10px] text-red-600 font-semibold">{phoneChangeError}</p>}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleVerifyPhoneCode}
+                        disabled={phoneChangeBusy || phoneCode.length !== 6}
+                        className="flex-1 bg-emerald-600 text-white font-bold py-2 rounded-lg text-[11px] disabled:opacity-50"
+                      >
+                        {phoneChangeBusy ? 'Verifying…' : 'Verify and update'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetPhoneChange}
+                        disabled={phoneChangeBusy}
+                        className="px-3 bg-white border border-gray-300 text-gray-600 font-bold py-2 rounded-lg text-[11px]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>

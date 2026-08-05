@@ -2,22 +2,29 @@
 
 const express = require('express');
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const Market = require('../models/Market');
+const Stall = require('../models/Stall');
 const { ApiError } = require('../middleware/errors');
 const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { withTransaction } = require('../db/connect');
 const wallet = require('../services/wallet');
+const sourcing = require('../services/sourcing');
+const { CANCELLABLE_BY_CUSTOMER, CANCELLABLE_BY_STAFF, transitionTo } = require('../utils/orderStatus');
 
 const router = express.Router();
-
-const STAFF_ROLES = ['shopkeeper', 'market_owner', 'developer'];
 
 /**
  * Which roles may drive which status transition. Enforced in addition to the
  * transition graph on the model, so a delivery agent cannot mark an order
  * Preparing and a customer cannot mark their own order Delivered.
+ *
+ * This governs LEGACY (marketless) orders only. A market order's status is
+ * derived from its fulfillment state and is never pushed by hand — see the
+ * guard in PATCH /:id/status.
  */
 const TRANSITION_PERMISSIONS = {
   Preparing: ['shopkeeper', 'market_owner', 'developer'],
@@ -29,25 +36,88 @@ const TRANSITION_PERMISSIONS = {
 const DELIVERY_FEE_PAISE = 2500; // ₹25
 const FREE_DELIVERY_THRESHOLD_PAISE = 30000; // ₹300
 
-/** Restrict the query to what this caller is allowed to see. */
-function visibilityFilter(user) {
-  if (STAFF_ROLES.includes(user.role)) return {};
+/** Matches no document. Used when a caller has no scope at all. */
+const MATCH_NOTHING = { _id: null };
+
+/**
+ * Restrict the query to what this caller is allowed to see.
+ *
+ * Async because a shopkeeper's scope depends on which stall they run, which is
+ * a lookup. Every caller must await it.
+ */
+async function visibilityFilter(user) {
+  if (user.role === 'developer') return {};
+
+  /**
+   * A market owner sees their own markets and nothing else.
+   *
+   * This used to return `{}` — every order in the system, with the customer's
+   * name, phone and address on all of them. That was defensible only while
+   * `market_owner` meant "administrator"; now that Market carries an `owner` and
+   * anyone running a market holds the role, it is the same competitor-to-
+   * competitor leak the shopkeeper branch below was scoped to close.
+   *
+   * Owning no market means seeing no orders. Deliberately not falling back to
+   * the marketless legacy filter used below: an operator with nothing to run has
+   * no claim on orders that merely happen to predate markets.
+   */
+  if (user.role === 'market_owner') {
+    const owned = await Market.find({ owner: user._id }).select('_id').lean();
+    if (owned.length === 0) return { _id: null };
+    return { market: { $in: owned.map((m) => m._id) } };
+  }
+
+  /**
+   * A shopkeeper used to fall into a blanket staff bucket that returned `{}` —
+   * every order in the system, including the name, phone and address on orders
+   * belonging to a market they have nothing to do with. Once there is more than
+   * one market that is a straightforward data leak between competitors.
+   *
+   * Scoped now to three things: live offers in their own market that they could
+   * still accept, anything they hold a line on, and the legacy marketless
+   * orders that the current single-shop flow depends on.
+   */
+  if (user.role === 'shopkeeper') {
+    const stall = await Stall.findOne({ owner: user._id, isActive: true, status: 'approved' })
+      .select('_id market')
+      .lean();
+    if (!stall) return { market: null };
+    return {
+      $or: [
+        { market: stall.market, 'fulfillment.status': 'sourcing' },
+        { 'items.claim.stall': stall._id },
+        { market: null },
+      ],
+    };
+  }
+
   if (user.role === 'delivery') {
     /**
-     * An agent sees their own assignments plus the unclaimed pool they may take.
+     * An agent sees their own assignments plus what they may still take.
      *
      * The previous filter matched every order in Preparing/Out for Delivery
      * regardless of assignment, which exposed the customer name, phone and
      * address on another agent's active delivery — and, because the status
      * handler never checked `assignedTo`, let any agent mark it Delivered.
+     *
+     * The two market branches matter: during a rider offer `assignedTo` is
+     * still null, so without them the rider we just picked could never actually
+     * see the order we are offering them.
      */
     return {
       $or: [
         { assignedTo: user._id },
-        { assignedTo: null, status: { $in: ['Preparing', 'Out for Delivery'] } },
+        {
+          'fulfillment.riderOffer.rider': user._id,
+          'fulfillment.riderOffer.expiresAt': { $gt: new Date() },
+        },
+        { assignedTo: null, 'fulfillment.riderOffer.openPool': true },
+        // Legacy marketless orders keep the original unclaimed-pool behaviour.
+        { assignedTo: null, market: null, status: { $in: ['Preparing', 'Out for Delivery'] } },
       ],
     };
   }
+
   return { customer: user._id };
 }
 
@@ -65,7 +135,7 @@ router.get(
   async (req, res) => {
     const { status, limit } = req.valid.query;
 
-    const filter = visibilityFilter(req.user);
+    const filter = await visibilityFilter(req.user);
     if (status) filter.status = status;
 
     const orders = await Order.find(filter).sort({ createdAt: -1 }).limit(limit);
@@ -78,7 +148,7 @@ router.get(
   requireAuth,
   validate({ params: z.object({ id: fields.objectId }).strict() }),
   async (req, res) => {
-    const order = await Order.findOne({ _id: req.valid.params.id, ...visibilityFilter(req.user) });
+    const order = await Order.findOne({ _id: req.valid.params.id, ...(await visibilityFilter(req.user)) });
     // 404 rather than 403 so order ids are not probeable.
     if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
     return res.json({ data: order.toJSON() });
@@ -110,11 +180,24 @@ router.post(
         paymentMethod: z.enum(['wallet', 'cod']),
         // razorpay is not accepted here: those orders are created only after a
         // verified payment, via the wallet top-up flow.
+
+        /**
+         * Which market to buy from. Optional, and that is what makes this whole
+         * feature additive: omit it and the order behaves exactly as it always
+         * has — one flat catalog, one implicit shop, Pending until a shopkeeper
+         * accepts. Supply it and the order is offered to that market's stalls.
+         */
+        marketId: fields.objectId.optional(),
+        // Where it is going. Used to find the next nearest market if the first
+        // one cannot fill the order. The customer app has had these in local
+        // storage all along and simply never sent them.
+        lat: z.number().min(-90).max(90).optional(),
+        lng: z.number().min(-180).max(180).optional(),
       })
       .strict(),
   }),
   async (req, res) => {
-    const { items, address, paymentMethod } = req.valid.body;
+    const { items, address, paymentMethod, marketId, lat, lng } = req.valid.body;
 
     // Collapse duplicate lines so quantity limits cannot be bypassed by repetition.
     const quantities = new Map();
@@ -135,6 +218,39 @@ router.post(
     if (products.length !== productIds.length) {
       throw new ApiError(400, 'One or more products are unavailable.', 'PRODUCT_UNAVAILABLE');
     }
+
+    /**
+     * Resolve the market and its price sheet up front.
+     *
+     * A market order is priced from the market's own sheet, not the platform
+     * catalog — that is what "one price per market" means. The catalog price is
+     * only the fallback for a marketless order.
+     */
+    let market = null;
+    let marketPrices = null;
+    if (marketId) {
+      market = await Market.findOne({ _id: marketId, isActive: true, isOpen: true });
+      if (!market) {
+        throw new ApiError(400, 'That market is not open right now.', 'MARKET_UNAVAILABLE');
+      }
+
+      const priced = await sourcing.priceLinesAtMarket(
+        market._id,
+        products.map((p) => ({ product: p._id, quantity: quantities.get(p._id.toHexString()), lineId: p._id }))
+      );
+      if (!priced) {
+        throw new ApiError(
+          409,
+          'This market is not selling one or more of these items today.',
+          'MARKET_CANNOT_FILL'
+        );
+      }
+      marketPrices = new Map(priced.priced.map((line) => [String(line.lineId), line.sourcePricePaise]));
+    }
+
+    /** The market's price when buying from a market; the catalog price otherwise. */
+    const unitPriceFor = (product) =>
+      marketPrices ? marketPrices.get(String(product._id)) : product.pricePaise;
 
     const order = await withTransaction(async (session) => {
       const lines = [];
@@ -162,14 +278,26 @@ router.post(
           }
           decremented.push({ id: product._id, quantity });
 
-          const lineTotalPaise = product.pricePaise * quantity;
+          const unitPricePaise = unitPriceFor(product);
+          const lineTotalPaise = unitPricePaise * quantity;
           subtotalPaise += lineTotalPaise;
           lines.push({
             product: product._id,
             name: product.name,
-            unitPricePaise: product.pricePaise,
+            unitPricePaise,
             quantity,
             lineTotalPaise,
+            // Market orders get a stable per-line handle so a stall can claim
+            // "these two" without depending on array position, plus an
+            // explicitly-empty claim so `claim.stall: null` unambiguously means
+            // unclaimed. Legacy orders leave both null and nothing reads them.
+            ...(market
+              ? {
+                  lineId: new mongoose.Types.ObjectId(),
+                  sourcePricePaise: unitPricePaise,
+                  claim: sourcing.emptyClaim(),
+                }
+              : {}),
           });
         }
 
@@ -195,6 +323,25 @@ router.post(
             paymentStatus: paymentMethod === 'cod' ? 'pending' : 'pending',
             status: 'Pending',
             statusHistory: [{ status: 'Pending', at: new Date(), by: req.user._id }],
+
+            ...(market
+              ? {
+                  market: market._id,
+                  marketName: market.name,
+                  ...(lat !== undefined && lng !== undefined
+                    ? { deliveryLocation: { type: 'Point', coordinates: [lng, lat] } }
+                    : {}),
+                  /**
+                   * Built here rather than in a follow-up update so the order is
+                   * never briefly visible in `sourcing` with no deadline — the
+                   * sweeper would find it and have no idea what to do with it.
+                   */
+                  fulfillment: {
+                    ...sourcing.initialFulfillment(market._id),
+                    sourceSubtotalPaise: subtotalPaise,
+                  },
+                }
+              : {}),
           }],
           session ? { session } : {}
         );
@@ -232,9 +379,103 @@ router.post(
       }
     });
 
+    /**
+     * Let the stalls that answer automatically answer now.
+     *
+     * Deliberately AFTER the transaction commits: a stall must never be shown,
+     * or be able to claim, an order that could still be rolled back. Awaited so
+     * the customer's own response already reflects any instant acceptance — a
+     * fully auto-accepted order comes back locked, with nothing to wait for.
+     */
+    if (order.market) {
+      await sourcing.runAutoAccept(order._id, req.user._id).catch((err) => {
+        // A failure here costs nothing: the order simply waits for a human, and
+        // the sweeper still owns the deadline. Never fail a paid checkout for it.
+        console.warn(`[orders] auto-accept failed for ${order.orderNumber}: ${err.message}`);
+      });
+      const settled = await Order.findById(order._id);
+      return res.status(201).json({ data: settled.toJSON() });
+    }
+
     return res.status(201).json({ data: order.toJSON() });
   }
 );
+
+/**
+ * Cancel a market order.
+ *
+ * Split out because it cannot be a read-modify-`save()` like the legacy path.
+ * The sweeper and the stall claim route are both writing to this document
+ * concurrently, and `save()` would write back whatever `fulfillment.status` was
+ * read before those landed — silently resurrecting an order the sweeper had
+ * just failed, or unlocking one a stall had just locked.
+ *
+ * So the state change is one conditional update, and the states it will accept
+ * are the guard. A customer past the lock matches nothing and gets a clean 409.
+ */
+async function cancelMarketOrder({ req, res, order }) {
+  const isCustomer = req.user.role === 'customer';
+
+  if (isCustomer && order.customer.toString() !== req.user._id.toHexString()) {
+    throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+  }
+
+  const allowedStates = isCustomer ? CANCELLABLE_BY_CUSTOMER : CANCELLABLE_BY_STAFF;
+
+  /**
+   * Refund BEFORE the state change, on the same idempotency key the sweeper
+   * uses. If this succeeds and the update below then loses its race, the ledger
+   * entry is simply replayed by whoever did win — the customer is credited
+   * exactly once either way.
+   */
+  if (order.paymentMethod === 'wallet' && order.paymentStatus === 'paid') {
+    await wallet.credit({
+      userId: order.customer,
+      amountPaise: order.totalAmountPaise,
+      reason: 'order_refund',
+      idempotencyKey: `refund:${order._id.toHexString()}`,
+      note: `Refund for ${order.orderNumber}`,
+      session: null,
+    });
+  }
+
+  const now = new Date();
+  const paymentStatus =
+    order.paymentMethod === 'wallet' && order.paymentStatus === 'paid' ? 'refunded' : order.paymentStatus;
+
+  const cancelled = await Order.findOneAndUpdate(
+    { _id: order._id, 'fulfillment.status': { $in: allowedStates } },
+    {
+      $set: transitionTo('cancelled', { paymentStatus }),
+      $push: {
+        statusHistory: { status: 'Cancelled', at: now, by: req.user._id },
+        'fulfillment.events': {
+          $each: [{ at: now, type: 'cancelled', note: isCustomer ? 'by customer' : 'by staff' }],
+          $slice: -50,
+        },
+      },
+    },
+    { new: true }
+  );
+
+  if (!cancelled) {
+    throw new ApiError(
+      409,
+      'This order is already being packed and can no longer be cancelled.',
+      'ORDER_LOCKED'
+    );
+  }
+
+  // Hand the produce back: stall queues shrink, and the catalog is restocked.
+  await sourcing.releaseClaims(cancelled);
+  await Promise.all(
+    cancelled.items.map((item) =>
+      Product.updateOne({ _id: item.product }, { $inc: { stock: item.quantity } }).catch(() => {})
+    )
+  );
+
+  return res.json({ data: cancelled.toJSON() });
+}
 
 router.patch(
   '/:id/status',
@@ -252,8 +493,33 @@ router.patch(
       throw new ApiError(403, `Your role cannot move an order to ${status}.`, 'FORBIDDEN');
     }
 
-    const order = await Order.findOne({ _id: id, ...visibilityFilter(req.user) });
+    const order = await Order.findOne({ _id: id, ...(await visibilityFilter(req.user)) });
     if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+
+    /**
+     * A market order's coarse status is DERIVED, never pushed.
+     *
+     * Left open, this endpoint was a way to corrupt the sourcing engine: a
+     * shopkeeper could move an order to `Preparing` while stalls were still
+     * racing to claim it. The customer would see "Preparing", lose the ability
+     * to cancel, and no stall would have committed to anything — the coarse
+     * status simply lied.
+     *
+     * Cancelling is the one thing that still belongs here, because it is a
+     * decision about the order rather than a step in fulfilling it. Everything
+     * else on a market order happens through the stall and rider routes.
+     */
+    if (order.market && status !== 'Cancelled') {
+      throw new ApiError(
+        409,
+        'This order is fulfilled by a market. Its status follows the stalls and the rider, and cannot be set by hand.',
+        'MARKET_ORDER_IMMUTABLE'
+      );
+    }
+
+    if (order.market && status === 'Cancelled') {
+      return cancelMarketOrder({ req, res, order });
+    }
 
     /**
      * A delivery agent may only complete an order that is theirs.
@@ -331,10 +597,23 @@ router.post(
   requireRole('delivery'),
   validate({ params: z.object({ id: fields.objectId }).strict() }),
   async (req, res) => {
-    // Conditional update: only an unassigned order can be claimed, so two agents
-    // racing for the same order cannot both win.
+    /**
+     * Conditional update: only an unassigned order can be claimed, so two agents
+     * racing for the same order cannot both win.
+     *
+     * Scoped to `market: null` — legacy orders only. A market order is offered
+     * to one rider at a time, nearest first, and letting anyone grab it here
+     * would undercut that cascade and hand the job to a rider who happened to
+     * be watching the list rather than the one standing closest to the market.
+     * Riders take those through POST /api/rider/orders/:id/accept.
+     */
     const order = await Order.findOneAndUpdate(
-      { _id: req.valid.params.id, assignedTo: null, status: { $in: ['Preparing', 'Out for Delivery'] } },
+      {
+        _id: req.valid.params.id,
+        assignedTo: null,
+        market: null,
+        status: { $in: ['Preparing', 'Out for Delivery'] },
+      },
       { $set: { assignedTo: req.user._id } },
       { new: true }
     );

@@ -50,7 +50,7 @@ function toLocalNumber(digits, countryCode) {
 }
 
 const MENU =
-  'VegBazzar 🥬\n\n' +
+  'VegDrop 🥬\n\n' +
   'Reply with:\n' +
   '*orders* — your recent orders\n' +
   '*help* — this menu\n\n' +

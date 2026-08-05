@@ -97,6 +97,10 @@ async function issueChallenge({ purpose, destination, user = null, payload = nul
       code,
       purpose,
       ttlSeconds: config.otp.ttlSeconds,
+      role: user?.role,
+      // Absent during registration, where no account exists yet — the email
+      // template falls back to an unnamed greeting rather than inventing one.
+      name: user?.name,
     });
   } catch (err) {
     await OtpChallenge.deleteOne({ _id: created._id }).catch(() => {});
@@ -129,6 +133,7 @@ async function issueChallenge({ purpose, destination, user = null, payload = nul
         code,
         purpose,
         ttlSeconds: config.otp.ttlSeconds,
+        role: user?.role,
       });
     } catch (err) {
       console.warn('[otp] secondary delivery failed', {

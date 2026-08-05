@@ -6,6 +6,8 @@ import {
   verifyPhoneAuth,
   startRegistration,
   verifyRegistration,
+  startVendorRegistration,
+  verifyVendorRegistration,
   describeIdentifierProblem,
   describePhoneProblem,
   describeEmailProblem,
@@ -95,10 +97,22 @@ const COPY = {
  * Served from `public/`, so it is a same-origin file rather than a remote
  * fetch — this is the first paint of the first screen, and it carries the
  * wordmark, so it must not wait on a third party.
+ *
+ * Shared by every app. A separate shopkeeper photo was tried and reverted —
+ * the brand is one photo, and the shopkeeper screen tells itself apart through
+ * its heading instead (see the `isVendor` check on the h1 below), not through
+ * a second asset to keep in sync with the first.
  */
 const HERO_SRC = '/hero.webp';
 
-export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegbazzar_' }) {
+export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegdrop_' }) {
+  // Shopkeepers register through the SAME dual-OTP flow as customers — this app
+  // has no passwords, so there is no extra step to insert — but the account
+  // that comes out the other end holds the `shopkeeper` role. That is a server
+  // decision made by which endpoint is called (routes/auth.js), never by
+  // anything chosen here.
+  const isVendor = appType === 'shopkeeper';
+
   const [step, setStep] = useState(STEP.IDENTIFIER);
 
   const [identifier, setIdentifier] = useState(() => {
@@ -247,7 +261,8 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     setIsSubmitting(true);
 
     try {
-      const issued = await startRegistration({
+      const startFn = isVendor ? startVendorRegistration : startRegistration;
+      const issued = await startFn({
         phone: phone.trim(),
         email: email.trim(),
         name: name.trim() || undefined,
@@ -283,14 +298,19 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     setIsSubmitting(true);
 
     try {
-      const user = await verifyRegistration({
+      const payload = {
         emailChallengeId: registration.email.challengeId,
         emailCode: emailCode.trim(),
         // Omitted entirely when WhatsApp could not be reached; the server then
         // keeps the number unverified rather than treating it as proved.
         phoneChallengeId: phoneWasDelivered ? registration.phone.challengeId : undefined,
         phoneCode: phoneWasDelivered ? phoneCode.trim() : undefined,
-      });
+      };
+      // verifyVendorRegistration also returns `nextStep: 'kyc'`, but the
+      // shopkeeper app already checks KYC status on mount for every sign-in
+      // (not just a fresh signup), so there is nothing extra to thread through
+      // here — `user` is all onLogin needs.
+      const user = isVendor ? (await verifyVendorRegistration(payload)).user : await verifyRegistration(payload);
       onLogin(user);
     } catch (err) {
       setError(describeError(err, 'That did not work. Check the codes and try again.'));
@@ -303,7 +323,13 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     }
   };
 
-  const { title, sub } = COPY[step];
+  let { title, sub } = COPY[step];
+  if (isVendor && step === STEP.REGISTER) {
+    title = 'Register your stall';
+    sub = "You're new here. We need both contacts, then a quick account check.";
+  } else if (isVendor && step === STEP.REGISTER_CODES) {
+    sub = "Type the code from each one below. You'll verify your bank account next.";
+  }
 
   const fieldClass =
     'w-full bg-[#F1F7F3] border border-[#DCE9E1] rounded-xl px-4 py-3.5 text-[15px] text-[#0F1F17] ' +
@@ -344,12 +370,12 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
           The floor lives here rather than on the image: the image is bounded by
           max-height:100% of this box, so a min-height on the image itself would
           let it outgrow its parent and paint over the form. 15rem is where the
-          shrinking has to stop, because below roughly that the bottom fade
-          starts eating into the wordmark. */}
+          shrinking has to stop before the wordmark itself starts getting
+          clipped by the box. */}
       <header className="min-h-[15rem] shrink">
         <img
           src={HERO_SRC}
-          alt="VegBazzar"
+          alt="VegDrop"
           width="768"
           height="790"
           fetchPriority="high"
@@ -360,8 +386,12 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
       <main className="shrink-0 px-4 pt-1 pb-2 sm:px-5">
         <div className="mx-auto w-full max-w-[26rem]">
 
+          {/* The photo is shared with the customer app, so this heading is the
+              one place a shopkeeper is told this screen is theirs. Prefixed
+              rather than swapped outright, so "Login" and "Sign up" still say
+              what step this is — "Shopkeeper" alone would not. */}
           <h1 className="mb-2 px-1 text-[1.6rem] sm:text-[1.75rem] font-extrabold text-[#0F1F17]">
-            {PAGE_TITLE[step]}
+            {isVendor ? `Shopkeeper ${PAGE_TITLE[step]}` : PAGE_TITLE[step]}
           </h1>
 
           <section className="si-sheet p-5 sm:p-6">

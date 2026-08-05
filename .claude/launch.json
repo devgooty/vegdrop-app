@@ -2,13 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "vegbazzar-web",
+      "name": "vegdrop-web",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
     },
     {
-      "name": "vegbazzar-api",
+      "name": "vegdrop-api",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "server:demo"],
       "port": 5000

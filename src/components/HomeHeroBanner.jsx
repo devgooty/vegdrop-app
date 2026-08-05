@@ -5,10 +5,10 @@ import MapLocationPicker from './MapLocationPicker';
 export default function HomeHeroBanner({ onExplore }) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [location, setLocation] = useState(() => {
-    let saved = localStorage.getItem('vegbazzar_customer_location') || 'Koramangala, Bengaluru, Karnataka - 560034';
+    let saved = localStorage.getItem('vegdrop_customer_location') || 'Koramangala, Bengaluru, Karnataka - 560034';
     if (saved.includes('516439') || saved.includes('516227')) {
       saved = saved.replace(/516439|516227/g, '521230');
-      localStorage.setItem('vegbazzar_customer_location', saved);
+      localStorage.setItem('vegdrop_customer_location', saved);
     }
     return saved;
   });
@@ -72,7 +72,7 @@ export default function HomeHeroBanner({ onExplore }) {
 
   // Attempt automatic high precision GPS detection on mount if not saved
   useEffect(() => {
-    const saved = localStorage.getItem('vegbazzar_customer_location');
+    const saved = localStorage.getItem('vegdrop_customer_location');
     if ((!saved || saved.includes('516439')) && navigator.geolocation) {
       handleDetectLocationSilent();
     }
@@ -81,9 +81,9 @@ export default function HomeHeroBanner({ onExplore }) {
   const saveLocation = (newLoc, details = null, coords = null) => {
     setLocation(newLoc);
     if (details) setLocationDetails(details);
-    localStorage.setItem('vegbazzar_customer_location', newLoc);
+    localStorage.setItem('vegdrop_customer_location', newLoc);
     if (coords) {
-      localStorage.setItem('vegbazzar_customer_coords', JSON.stringify(coords));
+      localStorage.setItem('vegdrop_customer_coords', JSON.stringify(coords));
     }
     setLocationSuccess(true);
     setTimeout(() => setLocationSuccess(false), 3000);

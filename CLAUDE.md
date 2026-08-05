@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-VegBazzar — a React PWA for a hyperlocal grocery delivery service, with an Express + MongoDB backend and Razorpay payments.
+VegDrop — a React PWA for a hyperlocal grocery delivery service, with an Express + MongoDB backend and Razorpay payments.
 
 ## Commands
 
@@ -35,8 +35,10 @@ Tests spin up an in-memory MongoDB **replica set** (required — the wallet ledg
 Copy `.env.example` to `.env`. Notes that are easy to get wrong:
 
 - **Never prefix a secret with `VITE_`.** Vite inlines those into the browser bundle. This codebase previously shipped role passwords that way; they were readable in `dist/`.
-- `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `OTP_PEPPER` are **required in production** — the process aborts at boot without them. In development a random ephemeral secret is generated per run, so sessions reset on restart.
-- Production additionally requires `CORS_ALLOWED_ORIGINS`, real Razorpay credentials, and a MongoDB deployment that supports transactions. Each is a boot-time hard failure, not a warning.
+- `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `OTP_PEPPER`, `KYC_ENCRYPTION_KEY` are **required in production** — the process aborts at boot without them. In development a random ephemeral secret is generated per run, so sessions reset on restart.
+- **`KYC_ENCRYPTION_KEY` is effectively permanent.** It encrypts PAN and bank account numbers at rest; rotating it makes every existing vendor KYC record undecryptable.
+- Production additionally requires `CORS_ALLOWED_ORIGINS`, real Razorpay credentials, `RAZORPAYX_*` payout credentials, and a MongoDB deployment that supports transactions. Each is a boot-time hard failure, not a warning.
+- `RAZORPAYX_*` is a **separate product** from `RAZORPAY_*`. Payments credentials collect money and cannot send it, so the KYC penny drop needs its own set.
 
 ## Architecture
 
@@ -50,7 +52,7 @@ Copy `.env.example` to `.env`. Notes that are easy to get wrong:
 
 All three are lazily loaded by `AppRouter`, so a customer never downloads the shopkeeper or delivery bundles (or Leaflet, which only the map routes pull in).
 
-Each polls `GET /api/orders` every 5s and pauses while the tab is hidden. The previous localStorage `vegbazzar_orders` + `BroadcastChannel` mirror is **deliberately gone**: the server scopes orders by role, but a shared browser-storage key is readable by every app on the origin, so mirroring leaked one role's order list into another's. Don't reintroduce cross-app state sharing through web storage.
+Each polls `GET /api/orders` every 5s and pauses while the tab is hidden. The previous localStorage `vegdrop_orders` + `BroadcastChannel` mirror is **deliberately gone**: the server scopes orders by role, but a shared browser-storage key is readable by every app on the origin, so mirroring leaked one role's order list into another's. Don't reintroduce cross-app state sharing through web storage.
 
 The role checks in these components are **UX gates only**. The API authorizes every request independently, so bypassing one in the browser grants nothing.
 
@@ -74,7 +76,11 @@ Email delivery is **best effort**: `services/otp.js` sends the copy after the ph
 
 **Sign-in and sign-up are the same two calls, deliberately.** A number with no account gets one created at step 2; an existing one is signed in. Splitting them would make "no account for this number" an observable difference, so `start` answers identically either way and `verify`'s response does not reveal which happened. `name` is used only when creating, and is ignored for an existing account — it cannot rename someone else's.
 
-A self-created account is always a `customer`. Privileged roles are assigned only via `PATCH /api/users/:id/role` by an admin, and signing in through the public flow never changes an existing role.
+A self-created account is always a `customer`. Privileged roles are assigned only via `PATCH /api/users/:id/role` by an admin, and signing in through the public flow never changes an existing role — with one deliberate exception, below.
+
+**Vendor self-registration** (`/auth/vendor/register/start` → `/vendor/register/verify`) is the *same* dual-OTP flow as customer registration — both contacts required, each proved by its own code, phone-unreachable tolerated the same way — sharing an implementation (`startRegistrationChallenge`/`completeRegistration` in `routes/auth.js`). It differs only in which role the account gets and which OTP `purpose` guards it: `vendor_registration` is a distinct enum value on `OtpChallenge`, not `registration` plus a payload flag, so a code issued for a customer sign-up can never be redeemed to mint a `shopkeeper` account. The role is hardcoded in the route, never read from a body.
+
+A vendor account created this way is inert: the catalog here has no per-vendor ownership, so nothing distinguishes it from any other shopkeeper — but it has no KYC record, and `middleware/vendorVerified.js` refuses every catalog write in `routes/products.js` until the PAN and bank account are verified (see Vendor KYC, below).
 
 The phone a session is issued for comes from the **stored challenge**, never from the verify request body — otherwise holding a challenge id would let you point it at a number you don't control.
 
@@ -146,6 +152,23 @@ Things that are easy to get wrong here:
   `X-Hub-Signature-256` HMAC. That HMAC covers the exact bytes sent, which is why
   `app.js` retains `req.rawBody` for that one path — re-serialising the parsed
   body does not reproduce them.
+
+### Vendor KYC
+
+Holding the `shopkeeper` role no longer implies a human vetted the account, so catalog writes are gated separately. `middleware/vendorVerified.js` guards every write in `routes/products.js` and refuses unless the caller's `VendorKyc.status` is `verified`. `market_owner` and `developer` bypass it; neither sells anything.
+
+The status is read from the database on every request, never cached in the JWT — a de-verified vendor must stop trading immediately, the same reasoning behind re-reading `role` in `middleware/auth.js`.
+
+Two things are proven independently:
+
+- **Identity** — a PAN, which is also the uniqueness key, so one person cannot run several vendor accounts.
+- **Control of the settlement account** — a penny drop. Format validation shows a UPI ID is well-formed; only receiving money proves the vendor can see that account.
+
+**The penny-drop amount is randomised (1–100 paise) and must be reported exactly.** A fixed ₹1 with a "did you receive it?" button would verify nothing — anyone could click yes. Only its HMAC is stored, exactly like an OTP code, so a database read does not hand over the answer. Attempts are counted atomically before comparison and the record is rejected at the cap.
+
+PAN and bank account are encrypted with AES-256-GCM (`services/fieldCrypto.js`) and only ever returned masked to the last four digits. Because the ciphertext is randomised, uniqueness is enforced on a keyed HMAC fingerprint — a unique index over the ciphertext would never fire.
+
+`services/payouts.js` is a provider interface: RazorpayX when `RAZORPAYX_*` is configured, a console-logging mock otherwise. Production boot refuses the mock. Provider failures surface as **502, never the upstream status** — RazorpayX rejecting our request is our integration fault, and reporting it as a 400 would tell the vendor they typed something wrong when they did not.
 
 ### Money
 

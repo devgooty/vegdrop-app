@@ -71,7 +71,7 @@ function int(name, fallback) {
 
 const mongoUri = isProduction
   ? process.env.MONGODB_URI
-  : optional('MONGODB_URI', 'mongodb://127.0.0.1:27017/vegbazzar');
+  : optional('MONGODB_URI', 'mongodb://127.0.0.1:27017/vegdrop');
 
 if (isProduction && !mongoUri) {
   fatal.push('MONGODB_URI is required in production but is not set.');
@@ -161,8 +161,8 @@ const emailConfigured = Boolean(emailFrom && (emailProviders.length > 0 || smtpH
 if (emailProviders.length > 0 && !emailFrom.includes('@')) {
   fatal.push(
     emailFrom
-      ? `EMAIL_FROM does not contain an email address (got "${emailFrom}"). Use either "no-reply@example.com" or "VegBazzar <no-reply@example.com>".`
-      : 'An email provider API key is set but EMAIL_FROM is empty. Set it to a sender the provider has verified, e.g. "VegBazzar <no-reply@example.com>". A dashboard that strips quotes can leave this blank — check the stored value, not just that the variable exists.'
+      ? `EMAIL_FROM does not contain an email address (got "${emailFrom}"). Use either "no-reply@example.com" or "VegDrop <no-reply@example.com>".`
+      : 'An email provider API key is set but EMAIL_FROM is empty. Set it to a sender the provider has verified, e.g. "VegDrop <no-reply@example.com>". A dashboard that strips quotes can leave this blank — check the stored value, not just that the variable exists.'
   );
 }
 
@@ -220,6 +220,33 @@ if (isProduction && (!razorpayConfigured || !/^rzp_(live|test)_/.test(razorpayKe
   fatal.push('RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET must be real credentials in production. Payments cannot run in mock mode.');
 }
 
+/**
+ * Vendor KYC.
+ *
+ * PAN and bank account numbers are encrypted at rest. The key is separate from
+ * the JWT secrets on purpose: rotating a signing secret should not force a
+ * re-encrypt of every KYC record, and a leaked token secret must not also
+ * decrypt PANs.
+ */
+const kycEncryptionKey = secret('KYC_ENCRYPTION_KEY');
+
+/**
+ * Payouts (RazorpayX) are a DIFFERENT product from Razorpay Payments above and
+ * carry their own credentials. Payments-only credentials cannot move money out,
+ * so the vendor penny drop needs these before it can run for real.
+ */
+const payoutKeyId = process.env.RAZORPAYX_KEY_ID || '';
+const payoutKeySecret = process.env.RAZORPAYX_KEY_SECRET || '';
+const payoutAccountNumber = process.env.RAZORPAYX_ACCOUNT_NUMBER || '';
+const payoutConfigured = Boolean(payoutKeyId && payoutKeySecret && payoutAccountNumber);
+
+if (isProduction && !payoutConfigured) {
+  fatal.push(
+    'RAZORPAYX_KEY_ID / RAZORPAYX_KEY_SECRET / RAZORPAYX_ACCOUNT_NUMBER are required in production. ' +
+      'Vendor KYC penny-drop verification cannot run in mock mode against real vendors.'
+  );
+}
+
 const config = Object.freeze({
   NODE_ENV,
   isProduction,
@@ -238,8 +265,8 @@ const config = Object.freeze({
     refreshSecret: secret('JWT_REFRESH_SECRET'),
     accessTtlSeconds: int('JWT_ACCESS_TTL_SECONDS', 15 * 60), // 15 minutes
     refreshTtlSeconds: int('JWT_REFRESH_TTL_SECONDS', 30 * 24 * 60 * 60), // 30 days
-    issuer: optional('JWT_ISSUER', 'vegbazzar'),
-    audience: optional('JWT_AUDIENCE', 'vegbazzar-app'),
+    issuer: optional('JWT_ISSUER', 'vegdrop'),
+    audience: optional('JWT_AUDIENCE', 'vegdrop-app'),
   }),
 
   // Pepper is mixed into OTP hashes so a database leak alone does not reveal codes.
@@ -342,6 +369,104 @@ const config = Object.freeze({
     configured: razorpayConfigured,
     // Mock order creation is a development affordance only; prod is blocked above.
     allowMock: !isProduction && !razorpayConfigured,
+  }),
+
+  kyc: Object.freeze({
+    encryptionKey: kycEncryptionKey,
+    // Penny drop lands a random sub-rupee amount so the vendor must read their
+    // own statement to pass. A fixed ₹1 would let anyone click "yes I got it".
+    minPennyPaise: int('KYC_PENNY_MIN_PAISE', 1),
+    maxPennyPaise: int('KYC_PENNY_MAX_PAISE', 100),
+    pennyMaxAttempts: int('KYC_PENNY_MAX_ATTEMPTS', 5),
+    pennyTtlSeconds: int('KYC_PENNY_TTL_SECONDS', 7 * 24 * 60 * 60),
+  }),
+
+  payouts: Object.freeze({
+    keyId: payoutKeyId,
+    keySecret: payoutKeySecret,
+    accountNumber: payoutAccountNumber,
+    configured: payoutConfigured,
+    // Simulated transfers are a development affordance only; prod is blocked above.
+    allowMock: !isProduction && !payoutConfigured,
+  }),
+
+  /**
+   * Market sourcing and rider dispatch.
+   *
+   * An order placed against a market is offered to every open stall in it, and
+   * only becomes real once every line has a taker. These knobs govern how long
+   * that takes and how far it is allowed to travel looking for one.
+   */
+  marketplace: Object.freeze({
+    // How long stalls have to accept before the order moves on. Stalls with
+    // auto-accept answer in milliseconds; this window is for the humans.
+    sourcingWindowSeconds: int('MARKET_SOURCING_WINDOW_SECONDS', 90),
+    // Total markets an order may be offered to, including the first. Each hop
+    // costs the customer another full window, so this is deliberately small.
+    maxSourcingAttempts: int('MARKET_MAX_SOURCING_ATTEMPTS', 3),
+    // How far from the customer we will look for a market to hop to.
+    searchRadiusMeters: int('MARKET_SEARCH_RADIUS_METERS', 15000),
+    /**
+     * Ceiling on what a hop may cost us, in basis points of the locked subtotal.
+     *
+     * The customer's total is fixed at checkout, so a more expensive second
+     * market comes out of margin. 10000 bps = 100% = "same price or cheaper
+     * only", which is the safe default. Raise it to let an order travel to a
+     * dearer market at a known, bounded loss.
+     */
+    hopPriceToleranceBps: int('MARKET_HOP_PRICE_TOLERANCE_BPS', 10000),
+
+    // How often the background job expires sourcing windows and rider offers.
+    sweeperIntervalSeconds: int('MARKET_SWEEPER_INTERVAL_SECONDS', 5),
+
+    /**
+     * When the rider is called.
+     *
+     * `packing` sends them while the stalls are still bagging, so they arrive as
+     * the last bag is tied. `ready` waits until everything is packed — slower,
+     * but it never has a rider standing around.
+     */
+    riderDispatchOn: optional('RIDER_DISPATCH_ON', 'packing') === 'ready' ? 'ready' : 'packing',
+    // How long one rider has to answer before the offer moves to the next nearest.
+    riderOfferTimeoutSeconds: int('RIDER_OFFER_TIMEOUT_SECONDS', 25),
+    // After this many refused or expired offers the order goes to an open pool
+    // any rider can claim, rather than cascading for ever.
+    riderMaxOffers: int('RIDER_MAX_OFFERS', 4),
+    riderSearchRadiusMeters: int('RIDER_SEARCH_RADIUS_METERS', 8000),
+    // A rider whose last ping is older than this is treated as gone, whatever
+    // their duty status says — a killed app never gets to say goodbye.
+    riderStaleLocationSeconds: int('RIDER_STALE_LOCATION_SECONDS', 120),
+  }),
+
+  /**
+   * Paying the stalls.
+   *
+   * Nothing reaches a shopkeeper until the customer has the goods. What they
+   * are owed is recorded at delivery and held, then released into their wallet
+   * automatically. The hold is the window in which a delivery can still go
+   * wrong — a complaint, a refund, a chargeback — and money already paid out is
+   * far harder to claw back than money not yet released.
+   */
+  settlement: Object.freeze({
+    holdHours: int('STALL_SETTLEMENT_HOLD_HOURS', 24),
+
+    /**
+     * The floor for taking the money early, before the hold expires.
+     *
+     * Each payout is a ledger write and, eventually, a bank transfer that costs
+     * something to make. A floor stops a stall draining ₹20 at a time all day.
+     * Default ₹200.
+     */
+    minEarlyPayoutPaise: int('STALL_MIN_EARLY_PAYOUT_PAISE', 20000),
+
+    /**
+     * Platform commission, in basis points of the stall's gross.
+     *
+     * Zero by default: the customer pays the market price and the stall is owed
+     * the market price, so introducing a cut is a business decision, not
+     * something that should arrive silently with a deploy. 250 = 2.5%.
+     */
+    commissionBps: int('STALL_COMMISSION_BPS', 0),
   }),
 
   cookies: Object.freeze({

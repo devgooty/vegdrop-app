@@ -10,6 +10,7 @@ const {
   api,
   createUser,
   authenticatedUser,
+  verifyVendor,
   auth,
 } = require('./helpers');
 
@@ -93,7 +94,9 @@ test('a customer cannot change product stock', async () => {
 
 test('a shopkeeper can change product stock', async () => {
   const product = await seedProduct();
-  const { accessToken } = await authenticatedUser('shopkeeper');
+  const { accessToken, user } = await authenticatedUser('shopkeeper');
+  // Catalog writes are gated on a verified settlement account.
+  await verifyVendor(user);
 
   const res = await api()
     .patch(`/api/products/${product._id}/stock`)

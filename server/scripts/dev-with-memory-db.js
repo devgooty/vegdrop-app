@@ -22,19 +22,62 @@ async function main() {
   });
 
   // Must be set before config/env.js is loaded, since it freezes at require time.
-  process.env.MONGODB_URI = replSet.getUri('vegbazzar');
+  process.env.MONGODB_URI = replSet.getUri('vegdrop');
+
+  /**
+   * Registration needs BOTH contacts proved, so /register/start and
+   * /vendor/register/start refuse outright when email delivery is
+   * unconfigured (config.email.configured) rather than silently only proving
+   * a phone. Real deployments set EMAIL_FROM plus a provider key; this demo
+   * has neither, so it fakes just enough config to pass that check and then
+   * overrides the transport below so nothing actually dials out to
+   * `smtp.demo.invalid`.
+   */
+  process.env.EMAIL_FROM = process.env.EMAIL_FROM || 'VegDrop Demo <demo@vegdrop.local>';
+  process.env.SMTP_HOST = process.env.SMTP_HOST || 'smtp.demo.invalid';
+  process.env.SMTP_FROM = process.env.SMTP_FROM || process.env.EMAIL_FROM;
 
   const config = require('../config/env');
-  const { connect, disconnect } = require('../db/connect');
+  const notify = require('../services/notify');
+  const { connect, disconnect, ensureIndexes } = require('../db/connect');
+  const { runMigrations } = require('../db/migrations');
   const { createApp } = require('../app');
   const { seedIfEmpty } = require('../utils/seed');
+  const sweeper = require('../services/sweeper');
+
+  // See the EMAIL_FROM/SMTP_HOST comment above: config now believes email is
+  // configured, so route past resolveEmailTransport's real SMTP attempt and
+  // print codes to this console instead, exactly like the phone transport.
+  notify.setTransport(notify.consoleTransport);
 
   await connect();
   console.info('[dev] connected to in-memory MongoDB (transactions available)');
 
+  // `createApp` compiles every model through its route imports, so it has to
+  // run before the indexes are built.
+  const app = createApp();
+
+  /**
+   * A fresh in-memory database has nothing to migrate, but this runs anyway so
+   * the demo exercises the same boot sequence as production. A migration that
+   * only ever runs against real data is one nobody has watched work.
+   */
+  await runMigrations();
+
+  /**
+   * Not optional, even in a demo: `$geoNear` fails outright without a 2dsphere
+   * index, so "markets near me" and "nearest rider" both 500 without this.
+   */
+  await ensureIndexes();
+
   await seedIfEmpty();
 
-  const app = createApp();
+  /**
+   * The clock. Without it a demo silently loses three behaviours that only
+   * happen when time passes: the 90s sourcing window closing, an unanswered
+   * rider offer cascading, and held earnings being paid out.
+   */
+  sweeper.start();
   const server = app.listen(config.port, () => {
     console.info(`\n[dev] API listening on http://localhost:${config.port}`);
     console.info('[dev] Open the app at http://localhost:3000 (run `npm run dev` in another terminal)\n');
@@ -46,6 +89,7 @@ async function main() {
   });
 
   async function shutdown() {
+    sweeper.stop();
     server.close(async () => {
       await disconnect().catch(() => {});
       await replSet.stop().catch(() => {});

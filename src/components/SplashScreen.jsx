@@ -1,29 +1,53 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 export default function SplashScreen({ onComplete }) {
   const [isFading, setIsFading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef(null);
+  /** Whichever path finishes first wins; the others become no-ops. */
+  const finishedRef = useRef(false);
 
-  const handleFinish = () => {
+  const handleFinish = useCallback(() => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+
     setIsFading(true);
     // Wait for the fade-out transition to complete before unmounting
     setTimeout(() => {
       onComplete();
     }, 700);
-  };
+  }, [onComplete]);
+
+  /**
+   * A hard ceiling, because the splash must never be able to gate the app.
+   *
+   * `onComplete` used to be reachable only from the video's `playing` event. A
+   * browser that refuses to autoplay — iOS in low-power mode, data saver, a
+   * reduce-motion or enterprise policy — therefore left the splash on screen
+   * permanently: the video sat loaded and paused, `playing` never fired, and
+   * the user never reached the app at all. Nothing errored, so nothing
+   * recovered either.
+   *
+   * This timer runs regardless of what the video does. The animation is
+   * decoration and is now treated as such.
+   */
+  useEffect(() => {
+    const ceiling = setTimeout(handleFinish, 3200);
+    return () => clearTimeout(ceiling);
+  }, [handleFinish]);
 
   const handleVideoPlay = () => {
     if (isPlaying) return; // Ensure this only triggers once
     setIsPlaying(true);
-    
+
     // Maintain the 2x speed for fast, energetic motion
     if (videoRef.current) {
       videoRef.current.playbackRate = 2.0;
     }
 
     // Force transition exactly 2.3 seconds after the video actually starts playing
-    // (2.3s play time + 0.7s fade out transition = exactly 3 seconds total)
+    // (2.3s play time + 0.7s fade out transition = exactly 3 seconds total).
+    // Lands before the ceiling above, so a playing video still sets the pace.
     setTimeout(() => {
       handleFinish();
     }, 2300);
@@ -45,6 +69,8 @@ export default function SplashScreen({ onComplete }) {
           muted 
           playsInline
           onPlaying={handleVideoPlay}
+          // A missing or undecodable file should skip the splash, not sit on it.
+          onError={handleFinish}
           className={`w-full h-full object-cover transition-all duration-[3000ms] ease-out ${
             isPlaying && !isFading ? 'scale-100 brightness-100' : 'scale-110 brightness-75'
           }`}
@@ -62,7 +88,7 @@ export default function SplashScreen({ onComplete }) {
             🌿
           </div>
           <h1 className="font-vintage text-4xl font-black text-white tracking-tight drop-shadow-xl">
-            VegBazzar
+            VegDrop
           </h1>
           <p className="mt-1.5 text-[10px] font-bold text-emerald-300 uppercase tracking-widest drop-shadow-lg flex items-center gap-2">
             <span className="w-1 h-1 rounded-full bg-emerald-400"></span>

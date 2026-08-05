@@ -126,6 +126,49 @@ const paymentLimiter = rateLimit({
   handler: jsonLimitHandler('Too many payment requests. Please wait a moment.', 'RATE_LIMITED'),
 });
 
+/** KYC submission and penny-drop initiation both cost real money downstream. */
+const kycLimiter = rateLimit({
+  ...base,
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) => `kyc:${req.user?._id || ipKeyGenerator(req.ip)}`,
+  handler: jsonLimitHandler(
+    'Too many verification attempts. Please wait before trying again.',
+    'KYC_RATE_LIMITED'
+  ),
+});
+
+/**
+ * A rider's position heartbeat.
+ *
+ * Generous by design: this is the highest-frequency authenticated call in the
+ * system, and the whole dispatch engine is only as good as how fresh these are.
+ * Keyed per rider rather than per IP so a depot full of agents on one office
+ * Wi-Fi does not share — and exhaust — a single budget.
+ */
+const riderLocationLimiter = rateLimit({
+  ...base,
+  windowMs: 60 * 1000,
+  limit: 30,
+  keyGenerator: (req) => `rloc:${req.user?._id || ipKeyGenerator(req.ip)}`,
+  handler: jsonLimitHandler('Location updates are coming in too fast.', 'RATE_LIMITED'),
+});
+
+/**
+ * Accepting and packing, keyed per shopkeeper.
+ *
+ * Not a security boundary — the claim itself is atomic and a losing claim costs
+ * one indexed write. This is a backstop against a wedged client retry loop
+ * turning one shop's bad network into database load for the whole market.
+ */
+const stallActionLimiter = rateLimit({
+  ...base,
+  windowMs: 60 * 1000,
+  limit: 120,
+  keyGenerator: (req) => `stall:${req.user?._id || ipKeyGenerator(req.ip)}`,
+  handler: jsonLimitHandler('Too many actions. Please slow down.', 'RATE_LIMITED'),
+});
+
 module.exports = {
   globalLimiter,
   otpRequestLimiter,
@@ -133,4 +176,7 @@ module.exports = {
   otpVerifyLimiter,
   lookupLimiter,
   paymentLimiter,
+  kycLimiter,
+  riderLocationLimiter,
+  stallActionLimiter,
 };

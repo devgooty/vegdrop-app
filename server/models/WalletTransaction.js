@@ -60,7 +60,17 @@ const walletTransactionSchema = new mongoose.Schema(
     reason: {
       type: String,
       required: true,
-      enum: ['razorpay_topup', 'order_payment', 'order_refund', 'promotional_credit', 'admin_adjustment'],
+      enum: [
+        'razorpay_topup',
+        'order_payment',
+        'order_refund',
+        'promotional_credit',
+        'admin_adjustment',
+        // A stall being paid for goods it supplied, once the order reached the
+        // customer. See services/settlement.js — the money is held for a day
+        // first, so this entry lands well after the order was delivered.
+        'stall_settlement',
+      ],
     },
 
     /**

@@ -1,4 +1,4 @@
-# VegBazzar WhatsApp bot (unofficial)
+# VegDrop WhatsApp bot (unofficial)
 
 Free WhatsApp sending and a small inbound bot, using the **WhatsApp Web
 protocol** via [baileys] — not the official Business API.

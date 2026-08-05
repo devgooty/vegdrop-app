@@ -40,7 +40,7 @@ function transport(provider, responses = [{ status: 200, body: { id: 'ok' } }]) 
   const t = createHttpEmailTransport({
     provider,
     apiKey: 'test-key',
-    from: 'VegBazzar <no-reply@example.com>',
+    from: 'VegDrop <no-reply@example.com>',
     fetchImpl: impl,
   });
   return { t, calls };
@@ -49,8 +49,8 @@ function transport(provider, responses = [{ status: 200, body: { id: 'ok' } }]) 
 const message = {
   channel: 'email',
   to: 'customer@example.com',
-  subject: 'Your VegBazzar verification code',
-  text: '123456 is your VegBazzar verification code to sign in to your account.',
+  subject: 'Your VegDrop verification code',
+  text: '123456 is your VegDrop verification code to sign in to your account.',
 };
 
 // ---------------------------------------------------------------------------
@@ -215,8 +215,8 @@ test('a chain with no transports is refused at construction', () => {
 // ---------------------------------------------------------------------------
 
 test('a sender is split into name and address', () => {
-  assert.deepEqual(parseSender('VegBazzar <no-reply@example.com>'), {
-    name: 'VegBazzar',
+  assert.deepEqual(parseSender('VegDrop <no-reply@example.com>'), {
+    name: 'VegDrop',
     email: 'no-reply@example.com',
   });
   assert.deepEqual(parseSender('plain@example.com'), { name: undefined, email: 'plain@example.com' });
@@ -246,4 +246,57 @@ test('the configured sender is the one EMAIL_FROM sets', () => {
   assert.ok(config.email.from.includes('@'), 'a sender must carry an address');
   // SMTP settings live in their own object so the collision cannot come back.
   assert.equal(typeof config.email.smtp, 'object');
+});
+
+// ---------------------------------------------------------------------------
+// The HTML part
+// ---------------------------------------------------------------------------
+
+const htmlMessage = { ...message, html: '<p>123456</p>' };
+
+test('every provider carries the HTML part when one is supplied', async () => {
+  for (const provider of PROVIDER_NAMES) {
+    const { t, calls } = transport(provider);
+    await t.send(htmlMessage);
+
+    const body = JSON.stringify(calls[0].body);
+    assert.match(body, /<p>123456<\/p>/, `${provider}: the markup must reach the provider`);
+  }
+});
+
+test('every provider still sends plain text when there is no HTML', async () => {
+  for (const provider of PROVIDER_NAMES) {
+    const { t, calls } = transport(provider);
+    await t.send(message);
+
+    const body = JSON.stringify(calls[0].body);
+    assert.match(body, /123456/, `${provider}: the code must still be sent`);
+    assert.doesNotMatch(body, /<p>/, `${provider}: no markup was asked for`);
+  }
+});
+
+test('SendGrid receives plain text before HTML, which it requires', async () => {
+  const { t, calls } = transport('sendgrid');
+  await t.send(htmlMessage);
+
+  // Ascending order of preference is not a style choice here: SendGrid rejects
+  // the request outright when text/html comes first.
+  assert.deepEqual(
+    calls[0].body.content.map((part) => part.type),
+    ['text/plain', 'text/html']
+  );
+});
+
+test('Plunk declares the body type it is actually sending', async () => {
+  // It takes one body rather than both parts, so the flag and the content have
+  // to agree — declaring html for plain text renders the source as-is.
+  const withHtml = transport('plunk');
+  await withHtml.t.send(htmlMessage);
+  assert.equal(withHtml.calls[0].body.type, 'html');
+  assert.equal(withHtml.calls[0].body.body, htmlMessage.html);
+
+  const withoutHtml = transport('plunk');
+  await withoutHtml.t.send(message);
+  assert.equal(withoutHtml.calls[0].body.type, 'text');
+  assert.equal(withoutHtml.calls[0].body.body, message.text);
 });

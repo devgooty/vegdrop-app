@@ -13,7 +13,7 @@ export default class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     this.setState({ errorInfo });
-    console.error('🚨 VegBazzar Error Boundary caught:', error, errorInfo);
+    console.error('🚨 VegDrop Error Boundary caught:', error, errorInfo);
   }
 
   handleReload = () => {
@@ -37,7 +37,7 @@ export default class ErrorBoundary extends React.Component {
                 Something went wrong
               </h1>
               <p className="text-sm text-emerald-100/70 leading-relaxed">
-                VegBazzar encountered an unexpected error. Your cart and session data has been preserved.
+                VegDrop encountered an unexpected error. Your cart and session data has been preserved.
               </p>
             </div>
 
@@ -72,7 +72,7 @@ export default class ErrorBoundary extends React.Component {
 
             {/* Branding */}
             <p className="text-[10px] text-emerald-400/50 font-mono uppercase tracking-widest pt-2">
-              VegBazzar Production Error Handler
+              VegDrop Production Error Handler
             </p>
           </div>
         </div>
