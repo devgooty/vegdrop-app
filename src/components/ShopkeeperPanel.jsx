@@ -299,12 +299,17 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
             </div>
           </div>
         </div>
-        <button 
-          onClick={() => setIsStoreOnline(!isStoreOnline)}
-          className={`relative w-14 h-8 rounded-full transition-colors duration-300 ease-in-out ${isStoreOnline ? 'bg-green-500' : 'bg-gray-300'}`}
-        >
-          <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-transform duration-300 ease-in-out ${isStoreOnline ? 'translate-x-7' : 'translate-x-1'}`} />
-        </button>
+        <div className="flex flex-col items-end gap-1.5">
+          <button
+            onClick={() => setIsStoreOnline(!isStoreOnline)}
+            className={`relative w-14 h-8 rounded-full transition-colors duration-300 ease-in-out ${isStoreOnline ? 'bg-green-500' : 'bg-gray-300'}`}
+          >
+            <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-transform duration-300 ease-in-out ${isStoreOnline ? 'translate-x-7' : 'translate-x-1'}`} />
+          </button>
+          <span className={`text-[10px] font-black uppercase tracking-wider ${isStoreOnline ? 'text-green-600' : 'text-gray-400'}`}>
+            {isStoreOnline ? 'Shop Online' : 'Shop Offline'}
+          </span>
+        </div>
       </div>
 
       {/* Stats Grid */}
