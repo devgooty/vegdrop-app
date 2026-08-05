@@ -450,52 +450,78 @@ export default function CustomerOrders({
                   </div>
                 </div>
 
-                {/* Days of week */}
-                <div className="grid grid-cols-7 gap-1 mb-2 text-center text-[10px] font-black text-gray-400 uppercase tracking-wider">
-                  {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
-                    <div key={day}>{day}</div>
-                  ))}
-                </div>
+                {/* Once a single delivery day is picked, the full grid just repeats
+                    the same answer back — collapse it to the date itself. */}
+                {scheduleFilter === 'Daily' && selectedDates.length > 0 ? (
+                  <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-4 flex items-center justify-between animate-scale-in">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-white rounded-xl p-2.5 shadow-sm border border-blue-100">
+                        <CalendarIcon className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Delivery Date</p>
+                        <p className="font-black text-gray-800 text-sm">
+                          {new Date(selectedDates[0]).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setSelectedDates([])}
+                      className="text-xs font-bold text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Change
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {/* Days of week */}
+                    <div className="grid grid-cols-7 gap-1 mb-2 text-center text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                      {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
+                        <div key={day}>{day}</div>
+                      ))}
+                    </div>
 
-                {/* Calendar Grid */}
-                <div className="grid grid-cols-7 gap-1.5 mb-4">
-                  {emptyDays.map(empty => (
-                    <div key={`empty-${empty}`} className="h-8"></div>
-                  ))}
-                  {daysArray.map((dateObj, idx) => {
-                    const dateStr = formatDateStr(dateObj);
-                    const isSelected = selectedDates.includes(dateStr);
-                    const isToday = idx === 0; // The first day in our array is always today
-                    return (
-                      <button
-                        key={dateStr}
-                        onClick={() => handleDateClick(dateObj)}
-                        className={`relative h-9 rounded-xl text-xs font-extrabold flex items-center justify-center transition-all shadow-sm ${
-                          isSelected 
-                            ? 'bg-blue-600 text-white shadow-md scale-110'
-                            : isToday 
-                              ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                              : 'bg-gray-50 text-gray-700 border border-gray-100 hover:bg-blue-50'
-                        }`}
-                      >
-                        {dateObj.getDate()}
-                        
-                        {/* Tiny Cart Badge for Selected Dates */}
-                        {isSelected && (
-                          <div 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onStartScheduledShopping();
-                            }}
-                            className="absolute -top-1.5 -right-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full p-0.5 shadow-sm border border-white z-10 animate-scale-in cursor-pointer active:scale-95"
+                    {/* Calendar Grid */}
+                    <div className="grid grid-cols-7 gap-1.5 mb-4">
+                      {emptyDays.map(empty => (
+                        <div key={`empty-${empty}`} className="h-8"></div>
+                      ))}
+                      {daysArray.map((dateObj, idx) => {
+                        const dateStr = formatDateStr(dateObj);
+                        const isSelected = selectedDates.includes(dateStr);
+                        const isToday = idx === 0; // The first day in our array is always today
+                        return (
+                          <button
+                            key={dateStr}
+                            onClick={() => handleDateClick(dateObj)}
+                            className={`relative h-9 rounded-xl text-xs font-extrabold flex items-center justify-center transition-all shadow-sm ${
+                              isSelected
+                                ? 'bg-blue-600 text-white shadow-md scale-110'
+                                : isToday
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                  : 'bg-gray-50 text-gray-700 border border-gray-100 hover:bg-blue-50'
+                            }`}
                           >
-                            <ShoppingBag className="w-2.5 h-2.5" />
-                          </div>
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
+                            {dateObj.getDate()}
+
+                            {/* Tiny Cart Badge for Selected Dates */}
+                            {isSelected && (
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onStartScheduledShopping();
+                                }}
+                                className="absolute -top-1.5 -right-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full p-0.5 shadow-sm border border-white z-10 animate-scale-in cursor-pointer active:scale-95"
+                              >
+                                <ShoppingBag className="w-2.5 h-2.5" />
+                              </div>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
 
                 {/* Validation messages for Weekly & Monthly */}
                 {scheduleFilter === 'Weekly' && selectedDates.length > 0 && selectedDates.length < 3 && (
