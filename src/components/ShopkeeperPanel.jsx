@@ -41,7 +41,7 @@ function KycGateBanner({ kyc, onOpenKyc }) {
   );
 }
 
-export default function ShopkeeperPanel({ user, orders, products, setProducts, onUpdateOrderStatus, onOrderAccepted, onLogout, onSyncOrders, kyc = null, onOpenKyc, onUserUpdated }) {
+export default function ShopkeeperPanel({ user, orders, products, setProducts, categories = [], onAddProduct, onEditProduct, onUpdateOrderStatus, onOrderAccepted, onLogout, onSyncOrders, kyc = null, onOpenKyc, onUserUpdated }) {
   // UX gate only. Every catalog write is authorized again by the API.
   const canUpdateStock = kyc ? kyc.canUpdateStock : true;
 
@@ -211,14 +211,39 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
   // Form State
   const initialProductState = {
     name: '',
-    category: 'Vegetables',
+    categoryId: categories[0]?.id ?? 1,
     price: '',
-    unit: '1 Kg',
+    weight: '1 Kg',
     stock: '',
-    description: '',
-    image: 'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?auto=format&fit=crop&q=80&w=300' // mock default
+    image: ''
   };
   const [productForm, setProductForm] = useState(initialProductState);
+  const [productFormError, setProductFormError] = useState('');
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [imagePreviewError, setImagePreviewError] = useState(false);
+
+  /** sku is globally unique (this catalog has no per-vendor scoping), so a
+   * pure name-slug would let two vendors' identical product names collide.
+   * The random suffix keeps that from blocking an honest second listing. */
+  const generateSku = (name) => {
+    const slug = name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'ITEM';
+    const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+    return `${slug}-${suffix}`;
+  };
+
+  /** Compact relative time for "added" timestamps; null when there's nothing to show. */
+  const formatAddedAt = (iso) => {
+    if (!iso) return null;
+    const then = new Date(iso).getTime();
+    if (Number.isNaN(then)) return null;
+    const diffMs = Date.now() - then;
+    const minute = 60_000, hour = 60 * minute, day = 24 * hour;
+    if (diffMs < minute) return 'Added just now';
+    if (diffMs < hour) return `Added ${Math.floor(diffMs / minute)}m ago`;
+    if (diffMs < day) return `Added ${Math.floor(diffMs / hour)}h ago`;
+    if (diffMs < 7 * day) return `Added ${Math.floor(diffMs / day)}d ago`;
+    return `Added ${new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`;
+  };
 
   // Derived Stats
   const pendingOrders = orders.filter((o) => o.status === 'Pending');
@@ -228,41 +253,53 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
   const lowStockItems = products ? products.filter((p) => p.isOutofStock) : [];
 
   // Handlers
-  const handleAddProduct = () => {
-    if (!productForm.name || !productForm.price) return alert("Name and price required!");
-    const newProduct = {
-      id: Math.floor(Math.random() * 10000) + 200,
-      name: productForm.name,
-      category: productForm.category,
-      price: parseFloat(productForm.price),
-      unit: productForm.unit,
-      isOutofStock: parseInt(productForm.stock) === 0,
-      image: productForm.image,
-      stock: parseInt(productForm.stock) || 0
-    };
-    if (setProducts) {
-      setProducts(prev => [newProduct, ...prev]);
+  const handleAddProduct = async () => {
+    if (!productForm.name || !productForm.price) {
+      setProductFormError('Name and price are required.');
+      return;
     }
-    setProductForm(initialProductState);
-    setActiveScreen('list');
+    if (!onAddProduct) return;
+    setProductFormError('');
+    setIsSavingProduct(true);
+    const ok = await onAddProduct({
+      sku: generateSku(productForm.name),
+      categoryId: Number(productForm.categoryId),
+      name: productForm.name,
+      weight: productForm.weight,
+      price: parseFloat(productForm.price),
+      stock: parseInt(productForm.stock, 10) || 0,
+      ...(productForm.image ? { image: productForm.image } : {}),
+    });
+    setIsSavingProduct(false);
+    if (ok) {
+      setProductForm(initialProductState);
+      setActiveScreen('list');
+    }
   };
 
-  const handleEditProduct = () => {
-    if (!productForm.name || !productForm.price) return alert("Name and price required!");
-    if (setProducts) {
-      setProducts(prev => prev.map(p => p.id === selectedProduct.id ? {
-        ...p,
-        name: productForm.name,
-        category: productForm.category,
-        price: parseFloat(productForm.price),
-        unit: productForm.unit,
-        isOutofStock: parseInt(productForm.stock) === 0,
-        stock: parseInt(productForm.stock) || 0
-      } : p));
+  const handleEditProduct = async () => {
+    if (!productForm.name || !productForm.price) {
+      setProductFormError('Name and price are required.');
+      return;
     }
-    setProductForm(initialProductState);
-    setSelectedProduct(null);
-    setActiveScreen('list');
+    if (!onEditProduct) return;
+    setProductFormError('');
+    setIsSavingProduct(true);
+    // categoryId and sku are immutable after creation — the server's PATCH
+    // schema doesn't accept them, so only the editable fields are sent.
+    const ok = await onEditProduct(selectedProduct.id, {
+      name: productForm.name,
+      weight: productForm.weight,
+      price: parseFloat(productForm.price),
+      stock: parseInt(productForm.stock, 10) || 0,
+      image: productForm.image || undefined,
+    });
+    setIsSavingProduct(false);
+    if (ok) {
+      setProductForm(initialProductState);
+      setSelectedProduct(null);
+      setActiveScreen('list');
+    }
   };
 
   const handleDeleteProduct = (id) => {
@@ -364,13 +401,40 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
       return (
         <div className="space-y-6 pb-20 animate-fade-in">
           <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => { setActiveScreen('list'); setProductForm(initialProductState); }} className="p-2 rounded-full bg-gray-100"><ArrowLeft className="w-5 h-5" /></button>
+            <button onClick={() => { setActiveScreen('list'); setProductForm(initialProductState); setProductFormError(''); setImagePreviewError(false); }} className="p-2 rounded-full bg-gray-100"><ArrowLeft className="w-5 h-5" /></button>
             <h2 className="font-black text-xl text-gray-900">{activeScreen === 'add-product' ? 'Add New Product' : 'Edit Product'}</h2>
           </div>
 
           <KycGateBanner kyc={kyc} onOpenKyc={onOpenKyc} />
 
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 space-y-4">
+            {productFormError && (
+              <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{productFormError}</p>
+            )}
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Product Image</label>
+              <div className="flex items-center gap-3">
+                {productForm.image && !imagePreviewError ? (
+                  <img
+                    src={productForm.image}
+                    alt=""
+                    className="w-14 h-14 rounded-xl object-cover border border-gray-200 shrink-0"
+                    onError={() => setImagePreviewError(true)}
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-xl bg-gray-100 border border-dashed border-gray-300 flex items-center justify-center shrink-0">
+                    <Camera className="w-5 h-5 text-gray-300" />
+                  </div>
+                )}
+                <input
+                  type="url"
+                  value={productForm.image}
+                  onChange={e => { setProductForm({...productForm, image: e.target.value}); setImagePreviewError(false); }}
+                  className="flex-1 bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold text-sm"
+                  placeholder="https://example.com/tomato.jpg"
+                />
+              </div>
+            </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">Product Name</label>
               <input type="text" value={productForm.name} onChange={e => setProductForm({...productForm, name: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold" placeholder="e.g. Fresh Tomatoes" />
@@ -382,7 +446,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">Unit</label>
-                <select value={productForm.unit} onChange={e => setProductForm({...productForm, unit: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold">
+                <select value={productForm.weight} onChange={e => setProductForm({...productForm, weight: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold">
                   <option>1 Kg</option>
                   <option>500 g</option>
                   <option>1 Piece</option>
@@ -393,11 +457,19 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">Category</label>
-                <select value={productForm.category} onChange={e => setProductForm({...productForm, category: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold">
-                  <option>Vegetables</option>
-                  <option>Fruits</option>
-                  <option>Exotics</option>
+                <select
+                  value={productForm.categoryId}
+                  onChange={e => setProductForm({...productForm, categoryId: Number(e.target.value)})}
+                  disabled={activeScreen === 'edit-product'}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold disabled:opacity-60"
+                >
+                  {categories.map(c => (
+                    <option key={c.id} value={c.id}>{c.title}</option>
+                  ))}
                 </select>
+                {activeScreen === 'edit-product' && (
+                  <p className="text-[11px] text-gray-400 mt-1">Category can't be changed after a product is created.</p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">Stock Qty</label>
@@ -406,10 +478,10 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
             </div>
             <button
               onClick={activeScreen === 'add-product' ? handleAddProduct : handleEditProduct}
-              disabled={!canUpdateStock}
+              disabled={!canUpdateStock || isSavingProduct}
               className="w-full py-4 bg-green-600 text-white rounded-xl font-black shadow-lg active:scale-95 transition-transform mt-4 disabled:bg-gray-300 disabled:active:scale-100 disabled:shadow-none"
             >
-              {activeScreen === 'add-product' ? 'Save Product' : 'Update Product'}
+              {isSavingProduct ? 'Saving…' : (activeScreen === 'add-product' ? 'Save Product' : 'Update Product')}
             </button>
           </div>
         </div>
@@ -422,28 +494,43 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
 
         {products?.map(product => (
           <div key={product.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex gap-4 items-center">
-            <img src={product.image} alt={product.name} className="w-20 h-20 object-cover rounded-xl border border-gray-200" />
+            {product.image ? (
+              <img
+                src={product.image}
+                alt={product.name}
+                className="w-20 h-20 object-cover rounded-xl border border-gray-200 shrink-0"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
+                <Camera className="w-6 h-6 text-gray-300" />
+              </div>
+            )}
             <div className="flex-1">
               <h3 className="font-black text-gray-900">{product.name}</h3>
-              <p className="text-xs text-gray-500 font-bold mb-1">₹{product.price} / {product.unit}</p>
-              {product.isOutofStock ? (
+              <p className="text-xs text-gray-500 font-bold mb-1">₹{product.price} / {product.weight}</p>
+              {(product.stock ?? 0) <= 0 ? (
                 <span className="text-[10px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded-md">OUT OF STOCK</span>
               ) : (
-                <span className="text-[10px] font-black bg-green-100 text-green-700 px-2 py-0.5 rounded-md">IN STOCK ({product.stock || 50})</span>
+                <span className="text-[10px] font-black bg-green-100 text-green-700 px-2 py-0.5 rounded-md">IN STOCK ({product.stock})</span>
+              )}
+              {formatAddedAt(product.createdAt) && (
+                <p className="text-[10px] text-gray-400 font-semibold mt-1">{formatAddedAt(product.createdAt)}</p>
               )}
             </div>
             <div className="flex flex-col gap-2">
-              <button 
+              <button
                 onClick={() => {
                   setSelectedProduct(product);
+                  setImagePreviewError(false);
+                  setProductFormError('');
                   setProductForm({
                     name: product.name,
-                    category: product.category,
+                    categoryId: product.categoryId,
                     price: product.price,
-                    unit: product.unit,
+                    weight: product.weight || '',
                     stock: product.stock || 0,
-                    description: '',
-                    image: product.image
+                    image: product.image || ''
                   });
                   setActiveScreen('edit-product');
                 }}
@@ -459,7 +546,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, o
         ))}
         {/* Floating Add Button */}
         <button 
-          onClick={() => { setProductForm(initialProductState); setActiveScreen('add-product'); }}
+          onClick={() => { setProductForm(initialProductState); setProductFormError(''); setImagePreviewError(false); setActiveScreen('add-product'); }}
           className="fixed bottom-24 right-4 w-14 h-14 bg-green-600 text-white rounded-full shadow-[0_10px_20px_rgba(34,197,94,0.3)] flex items-center justify-center active:scale-90 transition-transform z-50"
         >
           <Plus className="w-6 h-6" />

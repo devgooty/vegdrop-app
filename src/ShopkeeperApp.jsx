@@ -6,7 +6,7 @@ import { useToast } from './components/Toast';
 import { restoreSession, logout } from './services/auth';
 import { fetchKycStatus } from './services/kyc';
 import { initialCategories, sampleProducts, initialOrders, initialRegisteredUsers } from './data/mockData';
-import { fetchProducts, updateStock } from './services/products';
+import { fetchProducts, updateStock, createProduct, updateProduct } from './services/products';
 import { fetchOrders, updateOrderStatus } from './services/orders';
 import { fetchMyStall } from './services/stalls';
 import { fetchMyJoinRequest } from './services/markets';
@@ -276,6 +276,30 @@ export default function ShopkeeperApp() {
     }
   }, [orders, toast]);
 
+  const handleAddProduct = useCallback(async (productData) => {
+    try {
+      const created = await createProduct(productData);
+      setProducts((prev) => [created, ...prev]);
+      toast.success(`${created.name} added to your catalog! 🥬`);
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Could not add the product.');
+      return false;
+    }
+  }, [toast]);
+
+  const handleEditProduct = useCallback(async (productId, productData) => {
+    try {
+      const updated = await updateProduct(productId, productData);
+      setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      toast.success(`${updated.name} updated. ✅`);
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Could not update the product.');
+      return false;
+    }
+  }, [toast]);
+
   const handleOrderAccepted = useCallback((order) => {
     setDeliveryNotifications(prev => {
       if (prev.find(n => n.id === order.id)) return prev;
@@ -398,6 +422,9 @@ export default function ShopkeeperApp() {
         orders={orders}
         products={products}
         setProducts={setProducts}
+        categories={categories}
+        onAddProduct={handleAddProduct}
+        onEditProduct={handleEditProduct}
         onUpdateOrderStatus={handleUpdateOrderStatus}
         onOrderAccepted={handleOrderAccepted}
         onLogout={handleLogout}
