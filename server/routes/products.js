@@ -32,14 +32,21 @@ router.get(
         categoryId: z.coerce.number().int().optional(),
         search: z.string().trim().max(120).optional(),
         limit: z.coerce.number().int().min(1).max(200).default(100),
+        /**
+         * One independent shop's own catalog. Omit it and the response is the
+         * whole catalog exactly as before, which is what the market and legacy
+         * paths still read.
+         */
+        shopId: fields.objectId.optional(),
       })
       .strict(),
   }),
   async (req, res) => {
-    const { categoryId, search, limit } = req.valid.query;
+    const { categoryId, search, limit, shopId } = req.valid.query;
 
     const filter = { isActive: true };
     if (categoryId !== undefined) filter.categoryId = categoryId;
+    if (shopId !== undefined) filter.owner = shopId;
     if (search) {
       // Escape regex metacharacters: an unescaped user string is a ReDoS vector.
       filter.name = { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
@@ -81,8 +88,8 @@ router.patch(
     body: z.object({ stock: z.number().int().min(0).max(1_000_000) }).strict(),
   }),
   async (req, res) => {
-    const updated = await Product.findByIdAndUpdate(
-      req.valid.params.id,
+    const updated = await Product.findOneAndUpdate(
+      writableProductFilter(req.valid.params.id, req.user),
       { $set: { stock: req.valid.body.stock } },
       { new: true, runValidators: true }
     );
@@ -117,12 +124,49 @@ router.post(
     const { price, oldPrice, ...rest } = req.valid.body;
     const product = await Product.create({
       ...rest,
+      /**
+       * A shopkeeper's listing belongs to their own shop; a market_owner or
+       * developer is curating the shared platform catalog, which markets sell
+       * from, so theirs stays unowned. Read from the authenticated session, never
+       * from the body.
+       */
+      owner: req.user.role === 'shopkeeper' ? req.user._id : null,
       pricePaise: price,
       oldPricePaise: oldPrice ?? null,
     });
     return res.status(201).json({ data: product.toJSON() });
   }
 );
+
+/**
+ * Restrict a write to the listings this caller may touch.
+ *
+ * Until per-shop catalogs existed, every verified vendor could edit and restock
+ * every product in the system, because nothing recorded who added one. Once one
+ * shopkeeper's listings are distinguishable from another's, that is a live hole:
+ * a competitor could reprice or zero the stock on someone else's shop.
+ *
+ * A shopkeeper may write two kinds of row:
+ *   - their own (`owner` is them), and
+ *   - the shared platform catalog (`owner` null, which also matches the rows
+ *     that predate this field).
+ *
+ * The second is not an oversight. The legacy single-shop flow — one flat
+ * catalog, one implicit shop — is what the currently deployed app runs on, and
+ * managing that catalog's stock is the shopkeeper panel's whole job today.
+ * Excluding it would log every existing vendor out of their own inventory.
+ *
+ * market_owner and developer keep curating everything.
+ *
+ * Expressed as a query filter rather than a load-then-compare so the ownership
+ * test and the write stay one atomic operation. A non-match then 404s through
+ * the existing not-found path, which is also right on the merits: a vendor has
+ * no business learning that another shop's product id exists.
+ */
+function writableProductFilter(id, user) {
+  if (user.role !== 'shopkeeper') return { _id: id };
+  return { _id: id, $or: [{ owner: null }, { owner: user._id }] };
+}
 
 router.patch(
   '/:id',
@@ -156,8 +200,8 @@ router.patch(
       throw new ApiError(400, 'No fields to update.', 'VALIDATION_ERROR');
     }
 
-    const updated = await Product.findByIdAndUpdate(
-      req.valid.params.id,
+    const updated = await Product.findOneAndUpdate(
+      writableProductFilter(req.valid.params.id, req.user),
       { $set: update },
       { new: true, runValidators: true }
     );

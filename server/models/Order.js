@@ -145,6 +145,20 @@ const orderSchema = new mongoose.Schema(
     marketName: { type: String, default: null, maxlength: 160 },
 
     /**
+     * The independent shop this order was placed with.
+     *
+     * A User id, because in this model the shop IS the shopkeeper: Stall.market
+     * is required, so a shop outside any market cannot be a stall.
+     *
+     * Mutually exclusive with `market` — an order has one seller. Both null is
+     * the legacy marketless order, which every shopkeeper still sees, exactly as
+     * before. Note that `{ shop: null }` also matches documents written before
+     * this field existed, which is what makes that filter need no backfill.
+     */
+    shop: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+    shopName: { type: String, default: null, maxlength: 160 },
+
+    /**
      * Fine-grained fulfillment state. Authoritative for market orders; `status`
      * above is its derived mirror, written in the same atomic update.
      */
@@ -231,6 +245,8 @@ const orderSchema = new mongoose.Schema(
 
 orderSchema.index({ customer: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
+/** An independent shop's own order list. */
+orderSchema.index({ shop: 1, createdAt: -1 });
 
 /**
  * The sweeper's query, run every few seconds: which sourcing windows have

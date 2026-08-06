@@ -25,6 +25,7 @@ const whatsappRoutes = require('./routes/whatsapp');
 const marketRoutes = require('./routes/markets');
 const stallRoutes = require('./routes/stalls');
 const riderRoutes = require('./routes/rider');
+const shopRoutes = require('./routes/shops');
 
 const WHATSAPP_WEBHOOK_PATH = '/api/whatsapp';
 
@@ -281,6 +282,8 @@ function createApp() {
   app.use('/api/markets', marketRoutes);
   app.use('/api/stalls', stallRoutes);
   app.use('/api/rider', riderRoutes);
+  // Shopkeepers who trade from their own premises rather than a market stall.
+  app.use('/api/shops', shopRoutes);
 
   /**
    * The client, served from this same origin.

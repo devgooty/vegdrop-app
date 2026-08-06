@@ -7,6 +7,8 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Market = require('../models/Market');
 const Stall = require('../models/Stall');
+const User = require('../models/User');
+const VendorKyc = require('../models/VendorKyc');
 const { ApiError } = require('../middleware/errors');
 const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
@@ -81,12 +83,32 @@ async function visibilityFilter(user) {
     const stall = await Stall.findOne({ owner: user._id, isActive: true, status: 'approved' })
       .select('_id market')
       .lean();
-    if (!stall) return { market: null };
+
+    /**
+     * `{ market: null, shop: null }` is the legacy pool: orders placed before a
+     * customer could name a seller. It stays shared by every shopkeeper because
+     * that is what the original single-shop flow depends on, and `{ shop: null }`
+     * matches documents written before the field existed, so nothing needs a
+     * backfill.
+     *
+     * Narrowing it from a bare `{ market: null }` is what stops one independent
+     * shop reading another's orders: without the extra clause, every order
+     * addressed to a specific shop would also land in every other stall-less
+     * shopkeeper's list.
+     *
+     * This clause can be dropped entirely once every client path sends either a
+     * marketId or a shopId and any remaining legacy orders are closed out.
+     */
+    const legacyPool = { market: null, shop: null };
+
+    // No stall: their own shop's orders, plus the legacy pool.
+    if (!stall) return { $or: [{ shop: user._id }, legacyPool] };
+
     return {
       $or: [
         { market: stall.market, 'fulfillment.status': 'sourcing' },
         { 'items.claim.stall': stall._id },
-        { market: null },
+        legacyPool,
       ],
     };
   }
@@ -112,7 +134,14 @@ async function visibilityFilter(user) {
           'fulfillment.riderOffer.expiresAt': { $gt: new Date() },
         },
         { assignedTo: null, 'fulfillment.riderOffer.openPool': true },
-        // Legacy marketless orders keep the original unclaimed-pool behaviour.
+        /**
+         * Legacy marketless orders keep the original unclaimed-pool behaviour.
+         *
+         * Deliberately NOT narrowed by `shop`, unlike the shopkeeper branch
+         * above: an independent shop has no market, so the dispatch cascade —
+         * which picks the rider nearest a market — has no origin to work from.
+         * The open pool is how a shop order reaches a rider at all.
+         */
         { assignedTo: null, market: null, status: { $in: ['Preparing', 'Out for Delivery'] } },
       ],
     };
@@ -188,6 +217,16 @@ router.post(
          * accepts. Supply it and the order is offered to that market's stalls.
          */
         marketId: fields.objectId.optional(),
+
+        /**
+         * Which independent shop to buy from — a shopkeeper's own user id, since
+         * a shop outside any market cannot be a stall.
+         *
+         * Mutually exclusive with marketId: an order has one seller. Omit both
+         * and this is still the legacy marketless order, unchanged.
+         */
+        shopId: fields.objectId.optional(),
+
         // Where it is going. Used to find the next nearest market if the first
         // one cannot fill the order. The customer app has had these in local
         // storage all along and simply never sent them.
@@ -197,7 +236,15 @@ router.post(
       .strict(),
   }),
   async (req, res) => {
-    const { items, address, paymentMethod, marketId, lat, lng } = req.valid.body;
+    const { items, address, paymentMethod, marketId, shopId, lat, lng } = req.valid.body;
+
+    if (marketId && shopId) {
+      throw new ApiError(
+        400,
+        'An order is placed with one seller: a market or a shop, not both.',
+        'VALIDATION_ERROR'
+      );
+    }
 
     // Collapse duplicate lines so quantity limits cannot be bypassed by repetition.
     const quantities = new Map();
@@ -217,6 +264,59 @@ router.post(
 
     if (products.length !== productIds.length) {
       throw new ApiError(400, 'One or more products are unavailable.', 'PRODUCT_UNAVAILABLE');
+    }
+
+    /**
+     * Resolve the independent shop, and re-check everything that made it
+     * listable.
+     *
+     * The customer's list could be minutes old, and each of these can change in
+     * that window: the shopkeeper can pull the shutter down, be suspended, or —
+     * the interesting one — be approved into a market, at which point they are
+     * reached through that market and must stop taking direct orders. Trusting
+     * the client's shopId without re-checking would let a stale card keep
+     * selling.
+     */
+    let shopkeeper = null;
+    if (shopId) {
+      shopkeeper = await User.findOne({
+        _id: shopId,
+        role: 'shopkeeper',
+        status: 'active',
+        'shop.isOpen': true,
+        'shop.location': { $exists: true },
+      });
+      if (!shopkeeper) {
+        throw new ApiError(400, 'That shop is not open right now.', 'SHOP_UNAVAILABLE');
+      }
+
+      const kyc = await VendorKyc.findOne({ user: shopkeeper._id }).select('status').lean();
+      if (kyc?.status !== 'verified') {
+        throw new ApiError(400, 'That shop is not open right now.', 'SHOP_UNAVAILABLE');
+      }
+
+      if (await Stall.exists({ owner: shopkeeper._id, status: 'approved' })) {
+        throw new ApiError(
+          409,
+          'That shop now trades at a market. Pick the market instead.',
+          'SHOP_JOINED_MARKET'
+        );
+      }
+
+      /**
+       * Every line must belong to this shop. The shared platform catalog
+       * (`owner: null`) is not theirs to sell, and a cart spanning two shops has
+       * no single seller — the same reasoning as the mixed-market guard.
+       */
+      const foreign = products.find((p) => String(p.owner) !== String(shopkeeper._id));
+      if (foreign) {
+        throw new ApiError(
+          400,
+          'Your basket has items this shop does not sell.',
+          'MIXED_SELLERS',
+          [{ field: 'items', message: `${foreign.name} is not sold by this shop.` }]
+        );
+      }
     }
 
     /**
@@ -324,13 +424,28 @@ router.post(
             status: 'Pending',
             statusHistory: [{ status: 'Pending', at: new Date(), by: req.user._id }],
 
+            /**
+             * Stored for every order that supplies coordinates, not only market
+             * ones. Market orders behaved this way already; a marketless or shop
+             * order simply gains it, which is strictly more for the rider to go
+             * on and costs nothing when absent.
+             */
+            ...(lat !== undefined && lng !== undefined
+              ? { deliveryLocation: { type: 'Point', coordinates: [lng, lat] } }
+              : {}),
+
+            /**
+             * An independent shop order stays marketless: no sourcing window, no
+             * stall broadcast, no sweeper. It is the legacy single-shop path with
+             * a named seller, so `status` stays Pending until that shopkeeper
+             * accepts it by hand.
+             */
+            ...(shopkeeper ? { shop: shopkeeper._id, shopName: shopkeeper.shop.name } : {}),
+
             ...(market
               ? {
                   market: market._id,
                   marketName: market.name,
-                  ...(lat !== undefined && lng !== undefined
-                    ? { deliveryLocation: { type: 'Point', coordinates: [lng, lat] } }
-                    : {}),
                   /**
                    * Built here rather than in a follow-up update so the order is
                    * never briefly visible in `sourcing` with no deadline — the
@@ -522,6 +637,21 @@ router.patch(
     }
 
     /**
+     * A shopkeeper may only drive an order addressed to their own shop.
+     *
+     * Same shape and same reasoning as the delivery check below: the visibility
+     * filter already hides a competitor's order, but the consequence of getting
+     * it wrong is one shopkeeper running another's order and, for a COD one,
+     * flipping it to paid. Orders with no shop are the legacy pool, which every
+     * shopkeeper is still allowed to work.
+     */
+    if (req.user.role === 'shopkeeper' && order.shop) {
+      if (order.shop.toString() !== req.user._id.toHexString()) {
+        throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+      }
+    }
+
+    /**
      * A delivery agent may only complete an order that is theirs.
      *
      * The visibility filter above already hides another agent's assignment, so
@@ -601,11 +731,14 @@ router.post(
      * Conditional update: only an unassigned order can be claimed, so two agents
      * racing for the same order cannot both win.
      *
-     * Scoped to `market: null` — legacy orders only. A market order is offered
-     * to one rider at a time, nearest first, and letting anyone grab it here
-     * would undercut that cascade and hand the job to a rider who happened to
-     * be watching the list rather than the one standing closest to the market.
-     * Riders take those through POST /api/rider/orders/:id/accept.
+     * Scoped to `market: null` — legacy and independent-shop orders. A market
+     * order is offered to one rider at a time, nearest first, and letting anyone
+     * grab it here would undercut that cascade and hand the job to a rider who
+     * happened to be watching the list rather than the one standing closest to
+     * the market. Riders take those through POST /api/rider/orders/:id/accept.
+     *
+     * An independent shop belongs on this side on purpose: it has no market, so
+     * there is no origin for the cascade to measure from.
      */
     const order = await Order.findOneAndUpdate(
       {
