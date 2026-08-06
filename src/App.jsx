@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from 'react';
 import Header from './components/Header';
 import HomeHeroBanner from './components/HomeHeroBanner';
 import Categories from './components/Categories';
@@ -175,6 +175,45 @@ export default function App() {
       setActiveTab(targetTab);
     }
   }, []);
+
+  /**
+   * Wire the phone/browser back button to the bottom-nav tabs.
+   *
+   * Prices (and every other tab) had no way back at all: they are top-level
+   * screens with no on-screen back arrow, so the only route to them was
+   * tapping another icon in BottomNav. Nothing here ever touched browser
+   * history, so pressing device back from Prices didn't return to Home — it
+   * left the app entirely, landing on whatever page opened it (or closing a
+   * installed PWA outright).
+   *
+   * Every tab change now pushes a history entry, and popping it lands back on
+   * the previous tab instead. `isPoppingRef` stops that landing from pushing
+   * a second entry, which would otherwise turn one back press into a no-op.
+   */
+  const isPoppingRef = useRef(false);
+
+  useEffect(() => {
+    window.history.replaceState({ vegdropTab: activeTab }, '');
+  }, []); // seed once, so the very first back press has a defined entry to land on
+
+  useEffect(() => {
+    const onPopState = (event) => {
+      isPoppingRef.current = true;
+      setActiveTab(event.state?.vegdropTab || 'home');
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [setActiveTab]);
+
+  useEffect(() => {
+    if (isPoppingRef.current) {
+      isPoppingRef.current = false;
+      return;
+    }
+    // Pre-auth screens aren't tabs to navigate back through.
+    if (activeTab === 'login' || activeTab === 'signup') return;
+    window.history.pushState({ vegdropTab: activeTab }, '');
+  }, [activeTab]);
 
   /**
    * Initial load.
