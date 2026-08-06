@@ -77,12 +77,47 @@ router.post(
     let isMock = false;
 
     if (razorpayClient) {
-      const order = await razorpayClient.orders.create({
-        amount: amountPaise,
-        currency: 'INR',
-        receipt: `topup_${req.user._id.toHexString()}_${Date.now()}`,
-        notes: { userId: req.user._id.toHexString(), purpose: 'wallet_topup' },
-      });
+      /**
+       * A Razorpay rejection is our integration's fault, not the caller's, so
+       * it surfaces as 502 — the same rule payouts.js follows and the one
+       * middleware/errors.js exists to enforce. It is also caught at all: the
+       * SDK rejects with a plain `{statusCode, error}` object rather than an
+       * Error, so uncaught it reached the client as a bare 500 whose log line
+       * had an undefined name, message, and stack. That is what hid the
+       * receipt-length bug below.
+       */
+      let order;
+      try {
+        order = await razorpayClient.orders.create({
+          amount: amountPaise,
+          currency: 'INR',
+          /**
+           * Razorpay caps `receipt` at 40 characters and rejects the whole
+           * order with a 400 when it is longer. `topup_` + a 24-char ObjectId
+           * + `_` + a millisecond epoch is 44, so every live top-up failed
+           * here — the mock path has no such limit, which is why this
+           * survived.
+           *
+           * Base 36 puts the timestamp in 8 characters instead of 13, landing
+           * at 39, and stays 8 characters until well past 2050.
+           */
+          receipt: `topup_${req.user._id.toHexString()}_${Date.now().toString(36)}`,
+          notes: { userId: req.user._id.toHexString(), purpose: 'wallet_topup' },
+        });
+      } catch (err) {
+        // Full detail for operators; the caller learns only that we failed.
+        console.error('[wallet] razorpay rejected order creation', {
+          status: err?.statusCode,
+          code: err?.error?.code,
+          description: err?.error?.description,
+          reason: err?.error?.reason,
+        });
+        throw new ApiError(
+          502,
+          'Could not start the payment. Please try again in a moment.',
+          'PAYMENT_PROVIDER_ERROR'
+        );
+      }
       razorpayOrderId = order.id;
     } else if (config.razorpay.allowMock) {
       // Development affordance only. config/env.js aborts boot if production
@@ -174,7 +209,27 @@ router.post(
 
       // Authoritative amount check against Razorpay, not against the request.
       if (razorpayClient) {
-        const payment = await razorpayClient.payments.fetch(paymentId);
+        /**
+         * Same plain-object rejection as orders.create, and the same 502. This
+         * one fails closed either way — an unreadable payment must never be
+         * credited — but as an uncaught 500 it was indistinguishable from a
+         * bug in our own handler.
+         */
+        let payment;
+        try {
+          payment = await razorpayClient.payments.fetch(paymentId);
+        } catch (err) {
+          console.error('[wallet] razorpay payment lookup failed', {
+            status: err?.statusCode,
+            code: err?.error?.code,
+            description: err?.error?.description,
+          });
+          throw new ApiError(
+            502,
+            'Could not confirm the payment with the provider. It has not been credited yet.',
+            'PAYMENT_PROVIDER_ERROR'
+          );
+        }
         if (payment.status !== 'captured' && payment.status !== 'authorized') {
           throw new ApiError(400, `Payment is not complete (status: ${payment.status}).`, 'PAYMENT_NOT_CAPTURED');
         }
