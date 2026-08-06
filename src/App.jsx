@@ -718,7 +718,22 @@ export default function App() {
           item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
-      return [...prev, { id: product.id, name: product.name, price: product.price, quantity: 1, image: product.image }];
+      /**
+       * `originalId` has to survive into the cart line.
+       *
+       * For a weight-based product `id` is a variant key — `<catalogId>-500g`
+       * — and the catalog id lives only on `originalId`. This rebuilt the line
+       * from a fixed set of fields and dropped it, so checkout fell back to
+       * `id` and posted the variant key as `productId`.
+       */
+      return [...prev, {
+        id: product.id,
+        originalId: product.originalId ?? product.id,
+        name: product.name,
+        price: product.price,
+        quantity: 1,
+        image: product.image,
+      }];
     });
 
     if (!existing) {
