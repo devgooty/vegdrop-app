@@ -111,21 +111,42 @@ async function migrateWalletLedgerSequence() {
   const WalletTransaction = mongoose.models.WalletTransaction;
   if (!WalletTransaction) return { usersFixed: 0, entriesFixed: 0, overdraftsFound: [] };
 
-  const affectedUsers = await WalletTransaction.collection
-    .aggregate([
-      { $match: { seq: { $type: 'number' } } },
-      { $group: { _id: { user: '$user', seq: '$seq' }, count: { $sum: 1 } } },
-      { $match: { count: { $gt: 1 } } },
-      { $group: { _id: '$_id.user' } },
-    ])
-    .toArray();
+  /**
+   * Every user, unconditionally, rather than pre-filtering to "users with a
+   * seq collision" first.
+   *
+   * An earlier version of this migration used an aggregation ($group by
+   * {user, seq}, keep groups with count > 1) to find affected users before
+   * doing the expensive per-user replay. That ran in production, found
+   * nothing, and the exact same index build failure it was meant to fix
+   * happened again on the very next boot.
+   *
+   * The likely reason: a unique index is multikey-aware — if `seq` on one
+   * document is ever an array (a stray `$push` somewhere, instead of `$set`,
+   * at some point in this collection's history) rather than the plain number
+   * the schema declares, MongoDB's index build still collides `[7]` against a
+   * sibling document's plain `7`, because it indexes each array element
+   * separately. The aggregation's $group does not: `[7]` and `7` are
+   * different group keys to it, so a document in exactly that shape hides
+   * from detection while still breaking the index build it was meant to
+   * explain. Recomputing every user and diffing against what is actually
+   * stored — rather than trusting a pre-filter to have already found the
+   * problem — catches that shape (or any other one) the same way it catches
+   * a plain numeric collision: `typeof entry.seq === 'number'` is false for
+   * an array, so the entry is corrected regardless of why it was wrong.
+   *
+   * Collections here are small (per-user wallet history, not a shared table),
+   * so scanning everyone on every boot costs nothing worth optimising away —
+   * and an early return in the loop below skips a user immediately once
+   * their own entries are confirmed already correct.
+   */
+  const userIds = await WalletTransaction.collection.distinct('user');
 
-  if (affectedUsers.length === 0) return { usersFixed: 0, entriesFixed: 0, overdraftsFound: [] };
-
+  let usersFixed = 0;
   let entriesFixed = 0;
   const overdraftsFound = [];
 
-  for (const { _id: userId } of affectedUsers) {
+  for (const userId of userIds) {
     const entries = await WalletTransaction.collection
       .find({ user: userId })
       .sort({ createdAt: 1, _id: 1 })
@@ -148,7 +169,13 @@ async function migrateWalletLedgerSequence() {
       }
 
       const correctSeq = index + 1;
-      if (entry.seq !== correctSeq || entry.balanceAfterPaise !== runningPaise) {
+      // typeof-checked, not just !==: a non-numeric seq (an array, from the
+      // corruption this migration exists to catch) is wrong regardless of
+      // what it happens to loosely compare equal to.
+      const seqIsClean = typeof entry.seq === 'number' && entry.seq === correctSeq;
+      const balanceIsClean = entry.balanceAfterPaise === runningPaise;
+
+      if (!seqIsClean || !balanceIsClean) {
         ops.push({
           updateOne: {
             filter: { _id: entry._id },
@@ -161,10 +188,11 @@ async function migrateWalletLedgerSequence() {
     if (ops.length > 0) {
       await WalletTransaction.collection.bulkWrite(ops, { ordered: true });
       entriesFixed += ops.length;
+      usersFixed += 1;
     }
   }
 
-  return { usersFixed: affectedUsers.length, entriesFixed, overdraftsFound };
+  return { usersFixed, entriesFixed, overdraftsFound };
 }
 
 /**

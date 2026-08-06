@@ -168,3 +168,64 @@ test('a chronological replay that goes negative is reported, not silently clampe
 
   await rebuildSeqIndex();
 });
+
+/**
+ * The bug this migration originally shipped with: an aggregation that grouped
+ * by the *stored value* of `seq` found `{seq: 2}` and `{seq: [2]}` as two
+ * different group keys and never flagged the user as affected — while a
+ * unique index, which is multikey-aware, still collides a scalar `2` against
+ * an array containing `2` at build time (each array element gets its own
+ * index entry). Ran once against real production data and found nothing, on
+ * the exact user the index build kept failing for.
+ *
+ * Reproduced here with a genuine collision — a scalar `seq: 2` and a sibling
+ * `seq: [2]`, which is what a stray `$push` somewhere leaves behind instead
+ * of `$set` — so the "before" index build in this test fails exactly the way
+ * production's did, and the "after" one proves the fix.
+ */
+test('catches a seq stored as an array, which a value-grouping query would not', async () => {
+  const { user } = await createUser();
+  await dropSeqIndex();
+
+  const base = Date.now() - 10000;
+  await WalletTransaction.collection.insertMany([
+    {
+      user: user._id, type: 'credit', amountPaise: 5000, balanceAfterPaise: 5000,
+      seq: 1, reason: 'promotional_credit', idempotencyKey: uniq(),
+      createdAt: new Date(base), updatedAt: new Date(base),
+    },
+    {
+      user: user._id, type: 'credit', amountPaise: 3000, balanceAfterPaise: 8000,
+      seq: 2, reason: 'promotional_credit', idempotencyKey: uniq(),
+      createdAt: new Date(base + 1000), updatedAt: new Date(base + 1000),
+    },
+    // The corruption: same index value as the entry above, wrapped in an
+    // array. A value-grouping query sees group keys `2` and `[2]` — distinct
+    // — and never notices these collide.
+    {
+      user: user._id, type: 'credit', amountPaise: 1000, balanceAfterPaise: 9000,
+      seq: [2], reason: 'promotional_credit', idempotencyKey: uniq(),
+      createdAt: new Date(base + 2000), updatedAt: new Date(base + 2000),
+    },
+  ]);
+
+  // Confirms the fixture is realistic: this is a genuine index-build failure,
+  // the same one production hit, not a synthetic case the index would ignore.
+  await assert.rejects(rebuildSeqIndex(), /duplicate key/);
+
+  const result = await migrateWalletLedgerSequence();
+
+  assert.equal(result.usersFixed, 1, 'a query that only groups by stored value would report 0 here');
+  assert.equal(result.entriesFixed, 1, 'only the array-valued entry needs correcting');
+
+  const repaired = await WalletTransaction.collection
+    .find({ user: user._id })
+    .sort({ createdAt: 1 })
+    .toArray();
+
+  assert.equal(repaired[2].seq, 3, 'renumbered past the entry it was colliding with');
+  assert.equal(typeof repaired[2].seq, 'number', 'the array is replaced with a plain number');
+
+  // The index that a same-shape grouping query left broken now builds clean.
+  await assert.doesNotReject(rebuildSeqIndex());
+});
