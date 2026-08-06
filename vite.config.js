@@ -21,10 +21,14 @@ import tailwindcss from '@tailwindcss/vite';
  * warnings. The plugin is imported dynamically, after the guard runs, because
  * a static `import` would be hoisted above it and read NODE_ENV too early.
  */
-export default defineConfig(async ({ command }) => {
+export default defineConfig(async ({ command, mode }) => {
   if (command === 'build') process.env.NODE_ENV = 'production';
 
   const { default: react } = await import('@vitejs/plugin-react');
+
+  // 'altport' mode runs a second instance of this app side-by-side with the
+  // default one, pointed at its own API instead of the default instance's.
+  const apiPort = mode === 'altport' ? 5001 : 5000;
 
   return {
     plugins: [react(), tailwindcss()],
@@ -35,7 +39,7 @@ export default defineConfig(async ({ command }) => {
       host: true, // Listen on all local IPs
       proxy: {
         '/api': {
-          target: 'http://localhost:5000',
+          target: `http://localhost:${apiPort}`,
           changeOrigin: true,
           // Required for the httpOnly refresh cookie to survive the proxy hop.
           cookieDomainRewrite: 'localhost',
