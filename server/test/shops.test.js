@@ -585,6 +585,37 @@ test('a shopkeeper cannot edit or restock another shop product', async () => {
   assert.equal(untouched.stock, 500);
 });
 
+test('mine returns the shared catalog plus my own, never a competitor listing', async () => {
+  const shopA = await seedListedShop({ name: 'Shop A' });
+  const shopB = await seedListedShop({ name: 'Shop B' });
+  await seedProduct({ owner: shopA.user._id, name: 'A Tomato' });
+  await seedProduct({ owner: shopB.user._id, name: 'B Potato' });
+  await seedProduct({ name: 'Platform Onion' });
+
+  const res = await api().get('/api/products?mine=true').set(auth(shopA.accessToken));
+
+  const names = res.body.data.map((p) => p.name).sort();
+  assert.deepEqual(
+    names,
+    ['A Tomato', 'Platform Onion'],
+    'the shared rows are what the legacy single-shop flow manages; the competitor row is not'
+  );
+});
+
+test('a mine listing is never stored in a shared cache', async () => {
+  const shop = await seedListedShop();
+
+  const scoped = await api().get('/api/products?mine=true').set(auth(shop.accessToken));
+  assert.match(
+    scoped.headers['cache-control'],
+    /no-store/,
+    'two shopkeepers get different answers from this URL'
+  );
+
+  const open = await api().get('/api/products');
+  assert.match(open.headers['cache-control'], /public/, 'the plain catalog stays cacheable');
+});
+
 test('the shared catalog stays writable, which the single-shop flow depends on', async () => {
   const shop = await seedListedShop();
   const shared = await seedProduct({ name: 'Platform Onion' });

@@ -35,6 +35,8 @@ export function toUiOrder(order) {
      * what the UI offers them — whether it is too late to cancel.
      */
     marketName: order.marketName || null,
+    // The independent shop it was placed with, when it was not a market.
+    shopName: order.shopName || null,
     fulfillmentStatus: order.fulfillment?.status || null,
     sourcingDeadline: order.fulfillment?.sourcingDeadline || null,
     // The moment the stalls committed. Past this the cancel button should go.
@@ -91,21 +93,29 @@ export async function fetchOrders(filters = {}) {
  * market if the first one cannot fill it.
  *
  * @param {{items: Array<{productId: string, quantity: number}>, address: string,
- *          paymentMethod: 'wallet'|'cod', marketId?: string,
+ *          paymentMethod: 'wallet'|'cod', marketId?: string, shopId?: string,
  *          lat?: number, lng?: number}} payload
+ *   `marketId` and `shopId` are mutually exclusive — an order has one seller,
+ *   and the server refuses a request naming both.
  * @returns {Promise<object>} the created order, priced by the server
  * @throws {ApiRequestError} 402 INSUFFICIENT_FUNDS, 409 INSUFFICIENT_STOCK,
- *   409 MARKET_CANNOT_FILL, 400 MARKET_UNAVAILABLE
+ *   409 MARKET_CANNOT_FILL, 400 MARKET_UNAVAILABLE, 400 SHOP_UNAVAILABLE,
+ *   409 SHOP_JOINED_MARKET, 400 MIXED_SELLERS
  */
-export async function createOrder({ items, address, paymentMethod, marketId, lat, lng }) {
+export async function createOrder({ items, address, paymentMethod, marketId, shopId, lat, lng }) {
   const body = { items, address, paymentMethod };
-  if (marketId) {
-    body.marketId = marketId;
-    // Only sent alongside a market — the server has no use for them otherwise.
-    if (typeof lat === 'number' && typeof lng === 'number') {
-      body.lat = lat;
-      body.lng = lng;
-    }
+  if (marketId) body.marketId = marketId;
+  else if (shopId) body.shopId = shopId;
+
+  /**
+   * Sent whenever they are known, not only alongside a market.
+   *
+   * They were gated behind `marketId`, so a marketless order stored no delivery
+   * point at all and the rider had only the address text to work from.
+   */
+  if (typeof lat === 'number' && typeof lng === 'number') {
+    body.lat = lat;
+    body.lng = lng;
   }
 
   const result = await api.post('/orders', body);

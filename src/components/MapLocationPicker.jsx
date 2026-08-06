@@ -188,7 +188,15 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
 
   const handleConfirm = () => {
     if (locationDetails && formattedFullAddress) {
-      onConfirm(formattedFullAddress, locationDetails);
+      /**
+       * The GPS fix goes out with the address.
+       *
+       * It was held here and dropped: callers got a human-readable string and no
+       * coordinates, so a customer who set their address through this picker had
+       * nothing for the nearby-markets and nearby-shops queries to work from,
+       * and the app silently re-prompted for location later.
+       */
+      onConfirm(formattedFullAddress, locationDetails, gpsPos);
     }
   };
 

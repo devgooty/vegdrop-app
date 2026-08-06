@@ -38,11 +38,20 @@ router.get(
          * paths still read.
          */
         shopId: fields.objectId.optional(),
+
+        /**
+         * The listings the caller may actually manage: the shared platform
+         * catalog plus their own. Mirrors writableProductFilter below, so the
+         * shopkeeper panel stops showing rows that would 404 on edit.
+         *
+         * Distinct from `shopId`, which is a public view of one shop.
+         */
+        mine: z.coerce.boolean().optional(),
       })
       .strict(),
   }),
   async (req, res) => {
-    const { categoryId, search, limit, shopId } = req.valid.query;
+    const { categoryId, search, limit, shopId, mine } = req.valid.query;
 
     const filter = { isActive: true };
     if (categoryId !== undefined) filter.categoryId = categoryId;
@@ -52,14 +61,30 @@ router.get(
       filter.name = { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
     }
 
+    /**
+     * `mine` needs a session; without one it would silently widen to the whole
+     * catalog, which is the opposite of what the caller asked for.
+     */
+    const scopedToCaller = Boolean(mine) && Boolean(req.user);
+    if (scopedToCaller && req.user.role === 'shopkeeper') {
+      filter.$or = [{ owner: null }, { owner: req.user._id }];
+    }
+
     const products = await Product.find(filter).sort({ categoryId: 1, name: 1 }).limit(limit);
 
-    // The catalog is identical for every visitor, so it is safe to cache in
-    // shared caches and CDNs. Kept short because stock moves; stale-while-
-    // revalidate lets a returning client paint instantly from cache while a
-    // fresh copy is fetched in the background.
-    // Express's ETag then turns most of these into a 304 with no body at all.
-    res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+    if (scopedToCaller) {
+      // Identity-scoped: two shopkeepers get different lists from the same URL,
+      // so this must never reach a shared cache. Falls back to the API-wide
+      // no-store default.
+      res.set('Cache-Control', 'no-store');
+    } else {
+      // The catalog is identical for every visitor, so it is safe to cache in
+      // shared caches and CDNs. Kept short because stock moves; stale-while-
+      // revalidate lets a returning client paint instantly from cache while a
+      // fresh copy is fetched in the background.
+      // Express's ETag then turns most of these into a 304 with no body at all.
+      res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+    }
 
     return res.json({ data: products.map((p) => p.toJSON()) });
   }

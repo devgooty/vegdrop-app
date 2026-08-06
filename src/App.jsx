@@ -19,6 +19,8 @@ import AccountRewards from './components/AccountRewards';
 import PageTransition from './components/PageTransition';
 import OTPBoxGroup from './components/OTPBoxGroup';
 import MarketPicker from './components/MarketPicker';
+import NearbyShops from './components/NearbyShops';
+import LocationPrimer from './components/LocationPrimer';
 import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
@@ -137,6 +139,23 @@ export default function App() {
    */
   const [selectedMarket, setSelectedMarket] = useState(null);
   const [marketProducts, setMarketProducts] = useState([]);
+
+  /**
+   * The independent shop being bought from instead, and its own catalog.
+   *
+   * Mutually exclusive with `selectedMarket` — an order has one seller, and the
+   * server refuses a request naming both. Resolved here rather than inside
+   * either picker so neither has to know the other exists.
+   */
+  const [selectedShop, setSelectedShop] = useState(null);
+  const [shopProducts, setShopProducts] = useState([]);
+
+  /**
+   * Where the customer is, once known. Seeded from whatever the address picker
+   * saved earlier so a returning visitor is never asked again, and updated when
+   * the primer resolves so both nearby lists can load without a reload.
+   */
+  const [customerCoords, setCustomerCoords] = useState(() => savedCustomerCoords());
 
   // Profile editing, plus the verified phone-change flow
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -694,18 +713,95 @@ export default function App() {
     };
   }, [selectedMarket]);
 
+  /**
+   * Current seller and basket size, for the selection handlers below.
+   *
+   * Held in a ref so those handlers can keep a STABLE identity. MarketPicker
+   * runs its load-and-auto-select effect whenever its `onSelectMarket` prop
+   * changes; if the handler were rebuilt every time the selection changed, then
+   * picking a shop (which clears the market) would hand MarketPicker a fresh
+   * callback, it would re-run, find no market selected, and auto-select the
+   * nearest one straight back — silently undoing the customer's choice.
+   */
+  const sellerRef = useRef({ market: null, shop: null, cartCount: 0 });
+  useEffect(() => {
+    sellerRef.current = { market: selectedMarket, shop: selectedShop, cartCount: cartItems.length };
+  });
+
+  /**
+   * Switching seller empties the basket.
+   *
+   * The decision is made out here rather than inside a setState updater. An
+   * updater runs during React's render phase, so calling `setCartItems` and
+   * `toast` from within one updates another component mid-render — React warns
+   * about exactly this ("Cannot update a component while rendering a different
+   * component"), and the toast can be dropped.
+   */
+  const switchSeller = useCallback(
+    (changed, message) => {
+      if (!changed || sellerRef.current.cartCount === 0) return;
+      setCartItems([]);
+      toast.info(message);
+    },
+    [setCartItems, toast]
+  );
+
   const handleSelectMarket = useCallback(
     (market) => {
-      setSelectedMarket((previous) => {
-        if (previous && previous.id !== market.id && cartItems.length > 0) {
-          setCartItems([]);
-          toast.info(`Switched to ${market.name}. Your cart was cleared — prices differ by market.`);
-        }
-        return market;
-      });
+      const { market: current, shop } = sellerRef.current;
+      switchSeller(
+        (current && current.id !== market.id) || Boolean(shop),
+        `Switched to ${market.name}. Your cart was cleared — prices differ by market.`
+      );
+      setSelectedMarket(market);
+      // One seller at a time.
+      setSelectedShop(null);
     },
-    [cartItems.length, setCartItems, toast]
+    [switchSeller]
   );
+
+  /**
+   * Switch to buying from one independent shop.
+   *
+   * Clears the market for the same reason switching market clears the cart: the
+   * basket is priced against whoever is selling, and a shop's own listings are
+   * not the market's price sheet. Carrying items across would show one price and
+   * charge another — and the server rejects a basket that mixes sellers outright.
+   */
+  const handleSelectShop = useCallback(
+    (shop) => {
+      const { market, shop: current } = sellerRef.current;
+      switchSeller(
+        current?.id !== shop.id || Boolean(market),
+        `Shopping from ${shop.name}. Your cart was cleared — prices differ by shop.`
+      );
+      setSelectedShop(shop);
+      setSelectedMarket(null);
+      setMarketProducts([]);
+    },
+    [switchSeller]
+  );
+
+  /** One shop's own listings. Empty until a shop is chosen. */
+  useEffect(() => {
+    if (!selectedShop) {
+      setShopProducts([]);
+      return;
+    }
+    let cancelled = false;
+
+    fetchProducts({ shopId: selectedShop.id, limit: 200 })
+      .then((items) => !cancelled && setShopProducts(items))
+      .catch((err) => {
+        if (cancelled) return;
+        setShopProducts([]);
+        console.warn('shop catalog unavailable:', err.message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedShop]);
 
   /**
    * What the customer is actually browsing.
@@ -724,7 +820,19 @@ export default function App() {
    * too — see the Header, SearchResultsView and RelatedProducts call sites
    * below.
    */
-  const browseProducts = selectedMarket && marketProducts.length > 0 ? marketProducts : products;
+  const browseProducts = selectedShop
+    ? /**
+       * A shop's own listings, and NO fallback when it has none.
+       *
+       * Falling through to the platform catalog here would fill the screen with
+       * items this shop does not stock; the server rejects a basket that mixes
+       * sellers, so the customer would only find out at checkout. An empty shop
+       * reads as empty.
+       */
+      shopProducts
+    : selectedMarket && marketProducts.length > 0
+      ? marketProducts
+      : products;
 
   const handleAddToCart = useCallback((product, event) => {
     if (product.stock === 0) {
@@ -914,14 +1022,17 @@ export default function App() {
     // Coordinates let the server hop to the next nearest market if this one's
     // stalls cannot fill the order. Without them it falls back to searching
     // outward from the market itself, which still works.
-    const coords = savedCustomerCoords();
+    const coords = customerCoords || savedCustomerCoords();
 
     try {
       const order = await createOrder({
         items,
         address,
         paymentMethod,
+        // Mutually exclusive, and already kept that way by the selection
+        // handlers — passed through as-is so the server sees at most one.
         marketId: selectedMarket?.id,
+        shopId: selectedShop?.id,
         lat: coords?.lat,
         lng: coords?.lng,
       });
@@ -970,6 +1081,15 @@ export default function App() {
         toast.error(`${selectedMarket?.name || 'This market'} is not selling one of these today. Try another market.`);
       } else if (err instanceof ApiRequestError && err.code === 'MARKET_UNAVAILABLE') {
         toast.error(`${selectedMarket?.name || 'That market'} has closed. Pick another one.`);
+      } else if (err instanceof ApiRequestError && err.code === 'SHOP_UNAVAILABLE') {
+        toast.error(`${selectedShop?.name || 'That shop'} has closed. Pick another one.`);
+        setSelectedShop(null);
+      } else if (err instanceof ApiRequestError && err.code === 'SHOP_JOINED_MARKET') {
+        // They now trade at a market, so they are reached through it instead.
+        toast.info(`${selectedShop?.name || 'That shop'} has moved into a market. Pick the market instead.`);
+        setSelectedShop(null);
+      } else if (err instanceof ApiRequestError && err.code === 'MIXED_SELLERS') {
+        toast.error(err.message);
       } else {
         toast.error(err.message || 'Could not place your order. Please try again.');
       }
@@ -990,6 +1110,8 @@ export default function App() {
     setCartItems,
     toast,
     selectedMarket,
+    selectedShop,
+    customerCoords,
     walletBalance,
     setWalletBalance,
     setWalletTransactions,
@@ -1199,12 +1321,32 @@ export default function App() {
                     />
 
                     {/*
+                      Why we want location, before the browser asks. Renders
+                      nothing once answered, or if permission is already settled
+                      either way.
+                    */}
+                    <LocationPrimer onLocated={setCustomerCoords} />
+
+                    {/*
                       Which market am I buying from — above the categories,
                       because it decides what every price below it says.
+
+                      Keyed on the coordinates so it reloads once the primer
+                      resolves; without that a first-time visitor who has just
+                      granted location keeps the "set your address" card until
+                      they reload.
                     */}
                     <MarketPicker
+                      key={customerCoords ? `${customerCoords.lat},${customerCoords.lng}` : 'no-coords'}
                       selectedMarket={selectedMarket}
                       onSelectMarket={handleSelectMarket}
+                    />
+
+                    {/* And the shops that are nobody's stall. */}
+                    <NearbyShops
+                      coords={customerCoords}
+                      selectedShop={selectedShop}
+                      onSelectShop={handleSelectShop}
                     />
 
                     {/* 3. DYNAMIC 2-COLUMN CATEGORIES SECTION */}
@@ -1213,10 +1355,19 @@ export default function App() {
                       onSelectCategory={(cat) => setActiveCategoryDetail(cat)}
                     />
 
-                    {/* 4. HORIZONTAL PRODUCT CAROUSELS PER CATEGORY */}
+                    {/*
+                      4. HORIZONTAL PRODUCT CAROUSELS PER CATEGORY
+
+                      `browseProducts`, not `products` — this is a browse
+                      surface, so it has to show whoever is being bought from.
+                      Left on the raw catalog it offered items the selected
+                      seller does not stock, which for a shop is not merely
+                      cosmetic: the server rejects a basket that mixes sellers,
+                      so the customer would only find out at checkout.
+                    */}
                     <ProductList
                       categories={categories}
-                      products={products}
+                      products={browseProducts}
                       cartItems={activeCartItems}
                       onAddToCart={handleAddToCart}
                       onUpdateQuantity={handleUpdateQuantity}
