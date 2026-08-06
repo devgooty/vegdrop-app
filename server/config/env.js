@@ -234,18 +234,20 @@ const kycEncryptionKey = secret('KYC_ENCRYPTION_KEY');
  * Payouts (RazorpayX) are a DIFFERENT product from Razorpay Payments above and
  * carry their own credentials. Payments-only credentials cannot move money out,
  * so the vendor penny drop needs these before it can run for real.
+ *
+ * Deliberately NOT a boot-time fatal check, unlike RAZORPAY_* above. Customer
+ * checkout needs Payments on every boot; vendor KYC payouts are a narrower
+ * feature that only matters once a shopkeeper actually applies. Refusing to
+ * start the whole app — checkout included — over a product a customer will
+ * never touch was too broad a blast radius for one feature's dependency.
+ * services/payouts.js refuses the request at the point of use instead: it
+ * still never runs the mock provider in production, it just fails on the one
+ * call that needs it rather than on every boot.
  */
 const payoutKeyId = process.env.RAZORPAYX_KEY_ID || '';
 const payoutKeySecret = process.env.RAZORPAYX_KEY_SECRET || '';
 const payoutAccountNumber = process.env.RAZORPAYX_ACCOUNT_NUMBER || '';
 const payoutConfigured = Boolean(payoutKeyId && payoutKeySecret && payoutAccountNumber);
-
-if (isProduction && !payoutConfigured) {
-  fatal.push(
-    'RAZORPAYX_KEY_ID / RAZORPAYX_KEY_SECRET / RAZORPAYX_ACCOUNT_NUMBER are required in production. ' +
-      'Vendor KYC penny-drop verification cannot run in mock mode against real vendors.'
-  );
-}
 
 const config = Object.freeze({
   NODE_ENV,

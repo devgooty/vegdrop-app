@@ -75,12 +75,32 @@ async function callProvider(path, { method = 'POST', body, idempotencyKey } = {}
 }
 
 // ---------------------------------------------------------------------------
+// Unavailable provider (production, unconfigured)
+// ---------------------------------------------------------------------------
+
+/**
+ * RazorpayX is unconfigured and this is production: refuse the one call that
+ * needs it rather than fake a bank-account verification. config/env.js no
+ * longer holds the whole app hostage to this — checkout works regardless —
+ * but a real vendor must never be told their bank account passed a check that
+ * never ran against a real bank.
+ */
+const unavailable = {
+  async validateVpa() {
+    throw new ApiError(503, 'Vendor verification is not available right now.', 'PAYOUT_PROVIDER_UNCONFIGURED');
+  },
+  async sendPennyDrop() {
+    throw new ApiError(503, 'Vendor verification is not available right now.', 'PAYOUT_PROVIDER_UNCONFIGURED');
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Mock provider (development only)
 // ---------------------------------------------------------------------------
 
 /**
  * Simulates the provider so the whole KYC flow is exercisable without RazorpayX
- * credentials. Production boot refuses to start in this mode — see config/env.js.
+ * credentials. Never selected in production — see `provider` below.
  */
 const mock = {
   async validateVpa(vpa) {
@@ -147,10 +167,10 @@ const razorpayx = {
   },
 };
 
-const provider = config.payouts.configured ? razorpayx : mock;
+const provider = config.payouts.configured ? razorpayx : config.isProduction ? unavailable : mock;
 
 module.exports = {
   validateVpa: (vpa) => provider.validateVpa(vpa),
   sendPennyDrop: (args) => provider.sendPennyDrop(args),
-  isMock: !config.payouts.configured,
+  isMock: provider === mock,
 };
