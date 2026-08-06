@@ -28,7 +28,7 @@ import useLocalStorage from './hooks/useLocalStorage';
 import { initialCategories, sampleProducts, initialOrders, initialRegisteredUsers, initialScheduledOrders } from './data/mockData';
 import { fetchProducts, updateStock } from './services/products';
 import { fetchOrders, createOrder, updateOrderStatus, cancelOrder } from './services/orders';
-import { fetchWallet } from './services/wallet';
+import { fetchWallet, topUpWallet } from './services/wallet';
 import { fetchUsers, updateUser, updateUserRole, deleteUser } from './services/users';
 import { ApiRequestError, NetworkError } from './services/apiClient';
 import { RUPEES_PER_BATCH, TOKENS_PER_BATCH } from './services/rewards';
@@ -808,7 +808,57 @@ export default function App() {
       return false;
     }
 
-    const paymentMethod = selectedPaymentMethod === 'VegWallet' ? 'wallet' : 'cod';
+    /**
+     * Online payment tops the wallet up, then the order is paid from it.
+     *
+     * Charging the order directly would leave the customer paid-but-orderless
+     * whenever the stock check fails after capture, and unwinding that needs a
+     * refund. Money landing in the wallet first has no such window: if the order
+     * is then rejected, the balance simply stays theirs and the next attempt
+     * spends it.
+     *
+     * Only the shortfall is charged, so an existing balance is spent before the
+     * card is.
+     */
+    const isOnlinePayment = selectedPaymentMethod !== 'COD' && selectedPaymentMethod !== 'VegWallet';
+
+    if (isOnlinePayment) {
+      const shortfallRupees = Math.max(0, totalAmount - walletBalance);
+
+      if (shortfallRupees > 0) {
+        // The server's floor for a single top-up. Below it, the smallest
+        // allowed payment is collected and the remainder stays in the wallet.
+        const MIN_TOPUP = 10;
+        const chargeRupees = Math.max(MIN_TOPUP, Math.ceil(shortfallRupees));
+
+        try {
+          const result = await topUpWallet(chargeRupees, user);
+          setWalletBalance(result.balance);
+          if (chargeRupees > shortfallRupees) {
+            toast.success(
+              `Paid ₹${chargeRupees}. ₹${(chargeRupees - shortfallRupees).toFixed(0)} stays in your VegWallet.`
+            );
+          }
+        } catch (err) {
+          // A dismissed checkout sheet is a decision, not a fault.
+          if (/cancel/i.test(err?.message || '')) return false;
+          toast.error(err?.message || 'Payment failed. Your order was not placed.');
+          return false;
+        }
+
+        // The balance the order will be charged against is now the server's,
+        // so re-read it rather than trusting the number we just computed.
+        fetchWallet()
+          .then((w) => {
+            setWalletBalance(w.balance);
+            setWalletTransactions(w.transactions);
+          })
+          .catch(() => {});
+      }
+    }
+
+    const paymentMethod =
+      selectedPaymentMethod === 'VegWallet' || isOnlinePayment ? 'wallet' : 'cod';
     const address =
       localStorage.getItem('vegdrop_customer_location') ||
       'Koramangala, Bengaluru, Karnataka - 560034';
@@ -884,9 +934,27 @@ export default function App() {
       } else {
         toast.error(err.message || 'Could not place your order. Please try again.');
       }
+
+      /**
+       * The payment already went through when this is an online method, so say
+       * where the money is. Without this the failure reads as "charged and lost
+       * it" — the balance is the thing that answers that.
+       */
+      if (isOnlinePayment) {
+        toast.info('Your payment is safe in your VegWallet. Nothing was lost.');
+      }
       return false;
     }
-  }, [cartItems, user, setCartItems, toast, selectedMarket]);
+  }, [
+    cartItems,
+    user,
+    setCartItems,
+    toast,
+    selectedMarket,
+    walletBalance,
+    setWalletBalance,
+    setWalletTransactions,
+  ]);
 
 
   /**

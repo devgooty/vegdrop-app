@@ -15,6 +15,9 @@ const FREE_DELIVERY_THRESHOLD = 300;
 export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity, onCheckout, walletBalance = 0, onSelectProduct }) {
   const [placed, setPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('COD'); // 'PhonePe' | 'Google Pay' | 'Paytm' | 'COD' | 'VegWallet'
+  // Razorpay opens in a modal over this one; without this the button stays live
+  // underneath it and a second tap starts a second payment.
+  const [isPaying, setIsPaying] = useState(false);
 
   // The Razorpay checkout script is NOT loaded here. This modal no longer opens
   // checkout itself — card and UPI route through the wallet top-up in
@@ -27,8 +30,20 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
   const grandTotal = total + deliveryFee;
   const savedAddress = localStorage.getItem('vegdrop_customer_location') || 'Koramangala, Bengaluru, Karnataka - 560034';
 
+  /**
+   * What an online method will actually charge.
+   *
+   * Any wallet balance is spent first, so the card is only asked for the
+   * remainder — mirrored from handleCheckout, which does the real arithmetic.
+   * Shown here so the amount is not a surprise when Razorpay opens.
+   */
+  const isOnlinePayment = paymentMethod !== 'COD' && paymentMethod !== 'VegWallet';
+  const shortfall = Math.max(0, grandTotal - walletBalance);
+  const cardAmount = shortfall > 0 ? Math.max(10, Math.ceil(shortfall)) : 0;
+  const walletCovers = isOnlinePayment && shortfall === 0;
+
   const handlePlaceOrder = async () => {
-    if (cartItems.length === 0) return;
+    if (cartItems.length === 0 || isPaying) return;
 
     // onCheckout is async and server-authoritative: it returns false when the
     // server rejects the order (insufficient funds, insufficient stock).
@@ -45,25 +60,27 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
     }
 
     /**
-     * UPI and card payments are funded through the wallet.
+     * UPI and card open Razorpay, and the method is passed through as chosen.
      *
-     * This previously opened Razorpay inline with a hardcoded key id, called two
-     * endpoints that no longer exist (/api/razorpay/*), swallowed both failures,
-     * and then reported success regardless of whether anything had been
-     * verified. Collecting money in the browser and informing the server
-     * afterwards is not something the server can trust.
-     *
-     * Top-up now happens in WalletModal against a server-recorded payment
-     * intent, and checkout debits that verified balance.
+     * It used to be rewritten to 'VegWallet' here, which meant picking UPI with
+     * an empty wallet failed with "insufficient funds" and no way to pay from
+     * the basket. handleCheckout now collects the shortfall through Razorpay
+     * first — the payment is still verified server-side against a recorded
+     * intent, which is the part that must never move into the browser.
      */
-    const result = await onCheckout(grandTotal, 'VegWallet');
-    if (result === false) return;
+    setIsPaying(true);
+    try {
+      const result = await onCheckout(grandTotal, paymentMethod);
+      if (result === false) return;
 
-    setPlaced(true);
-    setTimeout(() => {
-      setPlaced(false);
-      onClose();
-    }, 2500);
+      setPlaced(true);
+      setTimeout(() => {
+        setPlaced(false);
+        onClose();
+      }, 2500);
+    } finally {
+      setIsPaying(false);
+    }
   };
 
   return (
@@ -264,12 +281,47 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                   </div>
                 </div>
 
+                {/* What the card is actually charged, when it differs from the total */}
+                {isOnlinePayment && (
+                  <div className="bg-white border border-gray-200 rounded-xl p-2.5 text-[11px] space-y-1">
+                    {walletCovers ? (
+                      <p className="text-gray-600 font-semibold">
+                        Your VegWallet balance covers this. Nothing to pay by {paymentMethod}.
+                      </p>
+                    ) : (
+                      <>
+                        {walletBalance > 0 && (
+                          <div className="flex justify-between text-gray-600">
+                            <span>From VegWallet</span>
+                            <span className="font-bold">−₹{Math.min(walletBalance, grandTotal).toFixed(0)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-gray-900">
+                          <span className="font-semibold">Pay by {paymentMethod}</span>
+                          <span className="font-black">₹{cardAmount}</span>
+                        </div>
+                        {cardAmount > shortfall && (
+                          <p className="text-[10px] text-gray-500 leading-tight pt-0.5">
+                            ₹10 is the minimum online payment; the extra ₹{(cardAmount - shortfall).toFixed(0)} stays in your VegWallet.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
                 <button
                   onClick={handlePlaceOrder}
-                  disabled={cartItems.length === 0}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3 rounded-xl text-sm transition-colors shadow-md flex items-center justify-center gap-2 active:scale-95"
+                  disabled={cartItems.length === 0 || isPaying}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-black py-3 rounded-xl text-sm transition-colors shadow-md flex items-center justify-center gap-2 active:scale-95"
                 >
-                  <span>Place Order • ₹{grandTotal} ({paymentMethod})</span>
+                  <span>
+                    {isPaying
+                      ? 'Waiting for payment…'
+                      : isOnlinePayment && !walletCovers
+                        ? `Pay ₹${cardAmount} • ${paymentMethod}`
+                        : `Place Order • ₹${grandTotal} (${paymentMethod})`}
+                  </span>
                 </button>
               </div>
             )}
