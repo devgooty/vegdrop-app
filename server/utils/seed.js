@@ -227,4 +227,10 @@ async function seedIfEmpty() {
   );
 }
 
-module.exports = { seedIfEmpty, SEED_ACCOUNTS };
+/**
+ * The specs are exported, not just the accounts, so scripts/remove-demo-seed.js
+ * identifies what to delete from the same constants that created it. A removal
+ * list maintained separately would silently stop matching the moment either
+ * side gained a row.
+ */
+module.exports = { seedIfEmpty, SEED_ACCOUNTS, SEED_PRODUCTS, SEED_MARKETS, SEED_STALLS };
