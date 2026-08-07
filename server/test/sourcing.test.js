@@ -320,7 +320,7 @@ test('auto-accept fires only for stalls that declared stock', async () => {
   // Auto-accept on, but nothing declared — must not fire.
   await seedStall(market, { stallNumber: 'A-1', autoAccept: true });
 
-  const nothing = await sourcing.runAutoAccept(order._id);
+  const nothing = await sourcing.offerRound(order._id);
   assert.equal(nothing.claimed, 0);
   assert.equal((await Order.findById(order._id)).fulfillment.status, 'sourcing');
 
@@ -328,7 +328,7 @@ test('auto-accept fires only for stalls that declared stock', async () => {
   const stocked = await seedStall(market, { stallNumber: 'B-2', autoAccept: true });
   await stock(stocked, tomato, 10);
 
-  const result = await sourcing.runAutoAccept(order._id);
+  const result = await sourcing.offerRound(order._id);
   assert.equal(result.claimed, 1);
 
   const fresh = await Order.findById(order._id);
@@ -341,7 +341,7 @@ test('auto-accept fires only for stalls that declared stock', async () => {
   assert.equal(inv.stock, 7);
 });
 
-test('auto-accept ignores a stall that has not opted in', async () => {
+test('a stall that has not opted in is offered the line, not claimed for', async () => {
   const customer = await newUser('customer');
   const market = await seedMarket();
   const tomato = await seedProduct();
@@ -350,8 +350,13 @@ test('auto-accept ignores a stall that has not opted in', async () => {
   const manual = await seedStall(market, { stallNumber: 'A-1', autoAccept: false });
   await stock(manual, tomato, 50);
 
-  const result = await sourcing.runAutoAccept(order._id);
-  assert.equal(result.claimed, 0);
+  const result = await sourcing.offerRound(order._id);
+  assert.equal(result.claimed, 0, 'nothing is committed without the shopkeeper');
+  assert.equal(result.offered, 1, 'but they are asked');
+
+  const fresh = await Order.findById(order._id);
+  assert.equal(String(fresh.items[0].offer.stall), String(manual._id));
+  assert.ok(fresh.fulfillment.stallOffer.expiresAt > new Date(), 'the round clock is running');
 });
 
 test('auto-accept prefers the least busy stall', async () => {
@@ -364,7 +369,7 @@ test('auto-accept prefers the least busy stall', async () => {
   const quiet = await seedStall(market, { stallNumber: 'Z-9', autoAccept: true, activeLoad: 1 });
   await Promise.all([stock(busy, tomato, 50), stock(quiet, tomato, 50)]);
 
-  await sourcing.runAutoAccept(order._id);
+  await sourcing.offerRound(order._id);
 
   const fresh = await Order.findById(order._id);
   assert.equal(
@@ -374,7 +379,16 @@ test('auto-accept prefers the least busy stall', async () => {
   );
 });
 
-test('auto-accept spreads a multi-line order rather than piling it on one stall', async () => {
+/**
+ * This assertion is the REVERSE of what it used to be, and deliberately so.
+ *
+ * The old engine ranked each line independently by how busy a stall was, so two
+ * equally quiet stalls took one line each and a five-line order could scatter
+ * across five stalls. The cascade ranks by coverage first: one stall that can
+ * supply the whole order is worth more than two that can each supply half,
+ * because the rider then makes one stop instead of two.
+ */
+test('a multi-line order goes to the fewest stalls that can cover it', async () => {
   const customer = await newUser('customer');
   const market = await seedMarket();
   const [p1, p2] = await Promise.all([seedProduct({ name: 'Tomato' }), seedProduct({ name: 'Onion' })]);
@@ -384,11 +398,12 @@ test('auto-accept spreads a multi-line order rather than piling it on one stall'
   const b = await seedStall(market, { stallNumber: 'B-2', autoAccept: true, activeLoad: 0 });
   await Promise.all([stock(a, p1, 10), stock(a, p2, 10), stock(b, p1, 10), stock(b, p2, 10)]);
 
-  await sourcing.runAutoAccept(order._id);
+  await sourcing.offerRound(order._id);
 
   const fresh = await Order.findById(order._id);
   const stalls = new Set(fresh.items.map((i) => String(i.claim.stall)));
-  assert.equal(stalls.size, 2, 'two equally quiet stalls should take one line each');
+  assert.equal(stalls.size, 1, 'one stall covers both lines, so it takes both');
+  assert.equal([...stalls][0], String(a._id), 'the tie on coverage and load breaks by stall number');
 });
 
 // ---------------------------------------------------------------------------
@@ -537,6 +552,16 @@ test('a hop never travels to a market that would cost more than the customer pai
   assert.equal((await Order.findById(order._id)).fulfillment.status, 'failed');
 });
 
+/**
+ * The path into this changed, the invariant did not.
+ *
+ * A partly-claimed order no longer hops on its own — it stops and asks the
+ * customer, because throwing away three claimed lines to restart somewhere else
+ * is rarely what they would choose. So the hop is now driven by the customer
+ * asking to try another market, and that is the path this exercises. What must
+ * still hold is the same: a stall released from an order it never delivered
+ * must not stay looking busy, or it stops being picked by the ranking.
+ */
 test('a hop releases the busy count of stalls that had claimed lines', async () => {
   const customer = await newUser('customer');
   const near = await seedMarket({ name: 'Near', lng: 78.4867, lat: 17.385 });
@@ -564,13 +589,21 @@ test('a hop releases the busy count of stalls that had claimed lines', async () 
   });
   assert.equal((await Stall.findById(a._id)).activeLoad, 1);
 
+  // One of the two lines is claimed, so the market is exhausted into a review
+  // rather than hopping by itself.
   await Order.updateOne({ _id: order._id }, { $set: { 'fulfillment.sourcingDeadline': new Date(Date.now() - 1000) } });
-  await sourcing.expireSourcing(order._id);
+  const expired = await sourcing.expireSourcing(order._id);
+  assert.equal(expired.action, 'partial', 'a partly-filled order asks rather than hops');
+
+  // The customer would rather we looked elsewhere.
+  const retried = await sourcing.retryPartial(order._id);
+  assert.equal(retried.retried, true);
 
   assert.equal((await Stall.findById(a._id)).activeLoad, 0, 'a stall must not stay busy for work it never did');
 
   const fresh = await Order.findById(order._id);
   assert.equal(fresh.items[0].claim.stall, null, 'claims are handed back on a hop');
+  assert.equal(String(fresh.market), String(next._id), 'and the order is now sourcing in the next market');
 });
 
 test('running out of markets refunds a wallet order exactly once and restores stock', async () => {
@@ -713,5 +746,5 @@ test('an order with no market is invisible to the engine', async () => {
 
   const result = await sourcing.expireSourcing(legacy._id);
   assert.equal(result.action, 'skipped');
-  assert.equal((await sourcing.runAutoAccept(legacy._id)).claimed, 0);
+  assert.equal((await sourcing.offerRound(legacy._id)).claimed, 0);
 });

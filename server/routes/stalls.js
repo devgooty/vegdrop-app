@@ -61,11 +61,23 @@ async function loadStall(req, _res, next) {
 
 const stallGate = [requireAuth, requireRole('shopkeeper', 'developer'), loadStall];
 
-/** Shape one order for a stall's eyes: the goods, never the customer. */
+/**
+ * Shape one order for a stall's eyes: the goods, never the customer.
+ *
+ * `openLines` is what this stall is being ASKED for, which is not the same as
+ * every unclaimed line. During a ranked round the order is split between
+ * several stalls, and each is shown only its own slice — showing a shopkeeper
+ * lines that were offered to someone else would invite them to tap accept on
+ * work they cannot win. Once the cascade falls through to the market-wide open
+ * pool, every unclaimed line is fair game again and all of them appear.
+ */
 function forStall(order, stallId) {
   const key = String(stallId);
   const mine = order.items.filter((i) => String(i.claim?.stall) === key);
-  const open = order.items.filter((i) => !i.claim?.stall);
+  const openPool = Boolean(order.fulfillment?.stallOffer?.openPool);
+  const open = order.items.filter(
+    (i) => !i.claim?.stall && (openPool || String(i.offer?.stall) === key)
+  );
 
   return {
     id: String(order._id),
@@ -74,8 +86,15 @@ function forStall(order, stallId) {
     status: order.fulfillment?.status,
     // What the customer sees as the deadline to beat.
     sourcingDeadline: order.fulfillment?.sourcingDeadline,
+    /**
+     * The clock that actually matters to a shopkeeper: how long THIS round of
+     * offers stays live. `sourcingDeadline` is only the market-wide backstop.
+     */
+    offerExpiresAt: order.fulfillment?.stallOffer?.expiresAt || null,
+    /** True when these lines are up for grabs rather than reserved for us. */
+    openPool,
     placedAt: order.createdAt,
-    /** Lines nobody has taken — what this stall may still claim. */
+    /** Lines this stall may still claim — see the note above. */
     openLines: open.map((i) => ({
       lineId: String(i.lineId),
       name: i.name,
@@ -210,10 +229,17 @@ router.put(
 /**
  * Everything this stall needs to look at right now.
  *
- * `offers` are live in this market and still have unclaimed lines; `packing` is
- * work already committed to. The apps poll this on the same 5s cycle they
- * already use for orders, so a new offer surfaces within five seconds without
- * any push infrastructure.
+ * `offers` are the orders this stall is currently being ASKED about; `packing`
+ * is work already committed to. The apps poll this on the same 5s cycle they
+ * already use for orders, so an offer surfaces within five seconds of the round
+ * opening — comfortably inside a two-minute window, which is why this needs no
+ * push infrastructure.
+ *
+ * The query used to be every sourcing order in the market. It is now scoped to
+ * offers addressed to this stall, plus orders that fell through to the
+ * market-wide pool. That is the difference between a scramble and a cascade:
+ * before, the fastest tapper won every order and a shopkeeper had no window in
+ * which anything was meaningfully theirs to answer.
  */
 router.get('/me/orders', ...stallGate, async (req, res) => {
   const [sourcingOrders, mine] = await Promise.all([
@@ -222,8 +248,14 @@ router.get('/me/orders', ...stallGate, async (req, res) => {
       'fulfillment.status': 'sourcing',
       // Only orders with something left to take.
       items: { $elemMatch: { 'claim.stall': null } },
+      $or: [
+        { 'items.offer.stall': req.stall._id },
+        { 'fulfillment.stallOffer.openPool': true },
+      ],
     })
-      .select('orderNumber marketName items fulfillment.status fulfillment.sourcingDeadline createdAt')
+      .select(
+        'orderNumber marketName items fulfillment.status fulfillment.sourcingDeadline fulfillment.stallOffer createdAt'
+      )
       .sort({ createdAt: 1 })
       .limit(50)
       .lean(),
@@ -232,7 +264,9 @@ router.get('/me/orders', ...stallGate, async (req, res) => {
       'items.claim.stall': req.stall._id,
       'fulfillment.status': { $in: ['packing', 'awaiting_rider', 'collecting'] },
     })
-      .select('orderNumber marketName items fulfillment.status fulfillment.sourcingDeadline createdAt')
+      .select(
+        'orderNumber marketName items fulfillment.status fulfillment.sourcingDeadline fulfillment.stallOffer createdAt'
+      )
       .sort({ createdAt: 1 })
       .limit(50)
       .lean(),
@@ -297,16 +331,20 @@ router.post(
       lineIds: req.valid.body.lineIds,
       auto: false,
       actorId: req.user._id,
+      // A stall may only take what it was actually asked for. Without this the
+      // ranking would be advisory — any stall could claim any line the moment
+      // it appeared, which is exactly the scramble the cascade replaced.
+      requireOffer: true,
     });
 
     if (result.won.length === 0) {
-      throw new ApiError(
-        409,
+      const message =
         result.reason === 'NOT_SOURCING'
           ? 'That order has already moved on.'
-          : 'Another stall took those items first.',
-        result.reason || 'ALREADY_TAKEN'
-      );
+          : result.reason === 'NOT_OFFERED'
+            ? 'Those items are not offered to your stall.'
+            : 'Another stall took those items first.';
+      throw new ApiError(409, message, result.reason || 'ALREADY_TAKEN');
     }
 
     const fresh = await Order.findById(order._id).lean();
@@ -319,6 +357,43 @@ router.post(
         locked: Boolean(result.promoted),
       },
     });
+  }
+);
+
+/**
+ * Turn an offer down.
+ *
+ * There was no way to do this before, because there were no offers to turn
+ * down — every stall saw every order and simply ignored what it could not
+ * fill. Now that an order is addressed to specific stalls, saying no promptly
+ * is worth something: the lines move to the next-ranked stall immediately
+ * instead of waiting out the rest of the two-minute window.
+ *
+ * A decline is remembered for as long as the order stays in this market, so
+ * the cascade never circles back and asks again.
+ */
+router.post(
+  '/orders/:id/decline',
+  ...stallGate,
+  stallActionLimiter,
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const order = await Order.findOne({
+      _id: req.valid.params.id,
+      market: req.stall.market,
+    }).select('_id');
+
+    // 404 rather than 403, matching the claim route: a stall must not be able
+    // to probe for orders in markets it has nothing to do with.
+    if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+
+    const result = await sourcing.declineRound({ orderId: order._id, stallId: req.stall._id });
+
+    if (!result.declined) {
+      throw new ApiError(409, 'That order is no longer offered to your stall.', result.reason || 'NOT_YOURS');
+    }
+
+    return res.json({ data: { declined: true } });
   }
 );
 

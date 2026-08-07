@@ -151,10 +151,15 @@ function initialFulfillment(marketId) {
   const now = Date.now();
   return {
     status: 'sourcing',
+    // The backstop, not the working clock. `stallOffer.expiresAt` drives the
+    // cascade; this only catches an order whose round bookkeeping went wrong.
     sourcingDeadline: new Date(now + config.marketplace.sourcingWindowSeconds * 1000),
     attempt: 1,
     triedMarkets: [objectId(marketId)],
     lockedAt: null,
+    stallOffer: emptyStallOffer(),
+    droppedItems: [],
+    partialDeadline: null,
     riderOffer: { rider: null, expiresAt: null, count: 0, declinedBy: [], openPool: false },
     events: [{ at: new Date(now), type: 'sourcing_started', market: objectId(marketId) }],
   };
@@ -163,6 +168,19 @@ function initialFulfillment(marketId) {
 /** A fresh, explicitly-null claim. Never leave this implicit — see the note in Order.js. */
 function emptyClaim() {
   return { stall: null, stallNumber: null, claimedAt: null, auto: false, packedAt: null, collectedAt: null };
+}
+
+/** A fresh, explicitly-null offer. Same reasoning as `emptyClaim`. */
+function emptyOffer() {
+  return { stall: null, offeredAt: null };
+}
+
+/**
+ * A cascade with no history. Written on a new order and again on every hop —
+ * a stall's refusal in one market says nothing about the stalls in the next.
+ */
+function emptyStallOffer() {
+  return { round: 0, expiresAt: null, declinedBy: [], openPool: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -179,7 +197,23 @@ function emptyClaim() {
  *
  * @returns {Promise<{won: Array, lost: Array, order: object|null, promoted: object|null}>}
  */
-async function claimLines({ orderId, stallId, stallNumber, lineIds, auto = false, actorId = null }) {
+async function claimLines({
+  orderId,
+  stallId,
+  stallNumber,
+  lineIds,
+  auto = false,
+  actorId = null,
+  /**
+   * Require the line to have been offered to this stall.
+   *
+   * True for a shopkeeper tapping accept — the cascade splits an order between
+   * several stalls, and without this any stall could take any line and the
+   * ranking would mean nothing. False for the cascade's own auto-accept, which
+   * claims straight from the plan without writing an offer first.
+   */
+  requireOffer = false,
+}) {
   const stall = objectId(stallId);
   const wanted = lineIds.map((id) => objectId(id));
   const wantedKeys = new Set(wanted.map(String));
@@ -187,17 +221,33 @@ async function claimLines({ orderId, stallId, stallNumber, lineIds, auto = false
   // Read first purely so we can report accurately. The read is NOT the guard —
   // the guard is the arrayFilter below, which is evaluated by the server at
   // write time and cannot be raced.
-  const before = await Order.findById(orderId).select('items.lineId items.claim.stall fulfillment.status').lean();
+  const before = await Order.findById(orderId)
+    .select('items.lineId items.claim.stall items.offer.stall fulfillment.status fulfillment.stallOffer.openPool')
+    .lean();
   if (!before) return { won: [], lost: [], order: null, promoted: null };
   if (before.fulfillment?.status !== 'sourcing') {
     return { won: [], lost: [], order: null, promoted: null, reason: 'NOT_SOURCING' };
   }
 
+  // In the open pool the ranking has already been exhausted, so a line needs no
+  // offer to be claimable — that is the whole point of the pool.
+  const enforceOffer = requireOffer && !before.fulfillment?.stallOffer?.openPool;
+
   const eligible = before.items.filter(
-    (item) => item.lineId && wantedKeys.has(String(item.lineId)) && !item.claim?.stall
+    (item) =>
+      item.lineId &&
+      wantedKeys.has(String(item.lineId)) &&
+      !item.claim?.stall &&
+      (!enforceOffer || String(item.offer?.stall) === String(stall))
   );
   if (eligible.length === 0) {
-    return { won: [], lost: [...wantedKeys], order: null, promoted: null, reason: 'ALREADY_TAKEN' };
+    return {
+      won: [],
+      lost: [...wantedKeys],
+      order: null,
+      promoted: null,
+      reason: enforceOffer ? 'NOT_OFFERED' : 'ALREADY_TAKEN',
+    };
   }
 
   const now = new Date();
@@ -216,6 +266,10 @@ async function claimLines({ orderId, stallId, stallNumber, lineIds, auto = false
         'items.$[line].claim.stallNumber': stallNumber,
         'items.$[line].claim.claimedAt': now,
         'items.$[line].claim.auto': auto,
+        // The offer is answered; clear it so the round expiry does not later
+        // record this stall as having gone silent on a line it actually took.
+        'items.$[line].offer.stall': null,
+        'items.$[line].offer.offeredAt': null,
       },
       $push: {
         'fulfillment.events': eventPush({
@@ -227,7 +281,13 @@ async function claimLines({ orderId, stallId, stallNumber, lineIds, auto = false
       },
     },
     {
-      arrayFilters: [{ 'line.lineId': { $in: wanted }, 'line.claim.stall': null }],
+      arrayFilters: [
+        {
+          'line.lineId': { $in: wanted },
+          'line.claim.stall': null,
+          ...(enforceOffer ? { 'line.offer.stall': stall } : {}),
+        },
+      ],
       new: true,
     }
   );
@@ -294,39 +354,40 @@ async function promoteIfComplete(orderId, actorId = null) {
 }
 
 // ---------------------------------------------------------------------------
-// Auto-accept
+// The stall cascade: who gets asked, in what order
 // ---------------------------------------------------------------------------
 
 /**
- * Answer on behalf of the stalls that opted into answering automatically.
+ * Rank the market's stalls against the lines still needing a taker, and split
+ * those lines between the best few.
  *
- * Auto-accept fires ONLY where the stall has declared stock covering the line.
- * That declared stock is the whole signal — a stall saying "this is on my table
- * right now", which is what makes answering without a human safe. A stall with
- * auto-accept switched on but no inventory rows simply never fires; it can
- * still accept by hand.
+ * THE RANKING, IN ORDER OF PRECEDENCE
  *
- * Among stalls that qualify, the least busy wins (`activeLoad`), so a market's
- * orders spread across its stalls instead of piling onto whichever stall
- * happens to sort first — and the rider's collection round stays short.
+ * 1. **Coverage** — how many of the remaining lines this stall could supply.
+ *    Most first. This is the rule the whole cascade exists for: a stall holding
+ *    four of the five items is worth far more than one holding a single item,
+ *    because an order split across fewer stalls is one the rider can actually
+ *    collect. The previous implementation ranked each line INDEPENDENTLY and so
+ *    scattered a five-line order across five stalls whenever it could.
+ * 2. **Load** — `activeLoad`, lines claimed but not yet collected. Between two
+ *    stalls that cover the same amount, the quieter one gets the work.
+ * 3. **Stall number** — purely so the outcome is deterministic and testable.
+ *
+ * Greedy set cover, not exhaustive: after each pick the covered lines are
+ * removed and every remaining stall is re-scored against what is left. Optimal
+ * set cover is NP-hard and the greedy answer is within a log factor, which for
+ * a handful of stalls and a handful of lines is indistinguishable from perfect.
+ *
+ * @returns {Promise<Array<{stallId, stallNumber, autoAccept, lineIds: Array, take: Array}>>}
  */
-async function runAutoAccept(orderId, actorId = null) {
-  const order = await Order.findById(orderId)
-    .select('items market fulfillment.status')
-    .lean();
+async function planRound({ marketId, lines, declinedBy = [] }) {
+  if (lines.length === 0) return [];
 
-  if (!order || !order.market || order.fulfillment?.status !== 'sourcing') {
-    return { claimed: 0, promoted: null };
-  }
-
-  const unclaimed = order.items.filter((item) => item.lineId && !item.claim?.stall);
-  if (unclaimed.length === 0) return { claimed: 0, promoted: null };
-
-  const candidates = await StallInventory.aggregate([
+  const rows = await StallInventory.aggregate([
     {
       $match: {
-        market: objectId(order.market),
-        product: { $in: unclaimed.map((l) => objectId(l.product)) },
+        market: objectId(marketId),
+        product: { $in: lines.map((l) => objectId(l.product)) },
         stock: { $gt: 0 },
       },
     },
@@ -342,13 +403,17 @@ async function runAutoAccept(orderId, actorId = null) {
     // `status` is checked alongside `isActive` rather than trusting it alone: a
     // stall awaiting its market owner's approval is held inactive, but nothing
     // stops an owner toggling `isActive` on a row they have not yet accepted,
-    // and auto-accept would then commit produce from an unapproved stall.
+    // and the cascade would then offer produce from an unapproved stall.
+    //
+    // Note there is NO `autoAccept` filter here, unlike the auto-accept-only
+    // query this replaced. Every qualifying stall is a candidate to be ASKED;
+    // auto-accept only decides whether a human has to tap the button.
     {
       $match: {
-        'stallDoc.autoAccept': true,
         'stallDoc.isOpen': true,
         'stallDoc.isActive': true,
         'stallDoc.status': 'approved',
+        'stallDoc._id': { $nin: declinedBy.map(objectId) },
       },
     },
     {
@@ -359,90 +424,375 @@ async function runAutoAccept(orderId, actorId = null) {
         stallId: '$stallDoc._id',
         stallNumber: '$stallDoc.stallNumber',
         activeLoad: '$stallDoc.activeLoad',
+        autoAccept: '$stallDoc.autoAccept',
       },
     },
   ]);
 
-  if (candidates.length === 0) return { claimed: 0, promoted: null };
+  if (rows.length === 0) return [];
 
-  const byProduct = new Map();
-  for (const row of candidates) {
-    const key = String(row.product);
-    if (!byProduct.has(key)) byProduct.set(key, []);
-    byProduct.get(key).push(row);
+  const stalls = new Map();
+  for (const row of rows) {
+    const key = String(row.stallId);
+    if (!stalls.has(key)) {
+      stalls.set(key, {
+        stallId: row.stallId,
+        stallNumber: row.stallNumber,
+        activeLoad: row.activeLoad || 0,
+        autoAccept: Boolean(row.autoAccept),
+        stock: new Map(),
+        used: false,
+      });
+    }
+    stalls.get(key).stock.set(String(row.product), row.stock);
   }
 
   /**
-   * Load we are about to add but have not written yet. Without this, every line
-   * of a five-line order would be handed to whichever stall was quietest when
-   * the round started — the exact pile-up the ranking exists to prevent.
+   * What this stall could take from what is left.
+   *
+   * Walks a scratch copy of the declared stock so a stall holding 3kg is
+   * credited with covering ONE 2kg line, not two — the same reservation the
+   * previous implementation did inline, kept because it is the difference
+   * between a plan that works and one that over-commits a single crate.
    */
-  const pending = new Map();
-  const plan = new Map(); // stallId -> { stallNumber, lineIds[], take: [{product, quantity}] }
+  function coverageOf(stall, remaining) {
+    const scratch = new Map(stall.stock);
+    const lineIds = [];
+    const take = [];
 
-  for (const line of unclaimed) {
-    const pool = (byProduct.get(String(line.product)) || []).filter((c) => c.stock >= line.quantity);
-    if (pool.length === 0) continue;
+    for (const line of remaining.values()) {
+      const key = String(line.product);
+      const available = scratch.get(key) || 0;
+      if (available < line.quantity) continue;
+      scratch.set(key, available - line.quantity);
+      lineIds.push(line.lineId);
+      take.push({ product: line.product, quantity: line.quantity });
+    }
 
-    pool.sort((a, b) => {
-      const la = a.activeLoad + (pending.get(String(a.stallId)) || 0);
-      const lb = b.activeLoad + (pending.get(String(b.stallId)) || 0);
-      if (la !== lb) return la - lb;
-      return String(a.stallNumber).localeCompare(String(b.stallNumber));
-    });
-
-    const chosen = pool[0];
-    const key = String(chosen.stallId);
-
-    if (!plan.has(key)) plan.set(key, { stallId: chosen.stallId, stallNumber: chosen.stallNumber, lineIds: [], take: [] });
-    plan.get(key).lineIds.push(line.lineId);
-    plan.get(key).take.push({ product: line.product, quantity: line.quantity });
-
-    pending.set(key, (pending.get(key) || 0) + 1);
-    // Reflect the reservation locally so a stall holding 3kg is not offered two
-    // 2kg lines of the same product in the same pass.
-    chosen.stock -= line.quantity;
+    return { lineIds, take };
   }
 
+  const remaining = new Map(lines.map((l) => [String(l.lineId), l]));
+  const plan = [];
+
+  while (remaining.size > 0 && plan.length < config.marketplace.maxStallsPerOrder) {
+    let best = null;
+
+    for (const stall of stalls.values()) {
+      if (stall.used) continue;
+      const cover = coverageOf(stall, remaining);
+      if (cover.lineIds.length === 0) continue;
+
+      if (
+        !best ||
+        cover.lineIds.length > best.cover.lineIds.length ||
+        (cover.lineIds.length === best.cover.lineIds.length &&
+          (stall.activeLoad < best.stall.activeLoad ||
+            (stall.activeLoad === best.stall.activeLoad &&
+              String(stall.stallNumber).localeCompare(String(best.stall.stallNumber), undefined, {
+                numeric: true,
+              }) < 0)))
+      ) {
+        best = { stall, cover };
+      }
+    }
+
+    // Nobody left who can supply anything still outstanding. The remaining
+    // lines simply go unoffered this round; the caller decides what that means.
+    if (!best) break;
+
+    best.stall.used = true;
+    plan.push({
+      stallId: best.stall.stallId,
+      stallNumber: best.stall.stallNumber,
+      autoAccept: best.stall.autoAccept,
+      lineIds: best.cover.lineIds,
+      take: best.cover.take,
+    });
+
+    for (const lineId of best.cover.lineIds) remaining.delete(String(lineId));
+  }
+
+  return plan;
+}
+
+/**
+ * Draw down a stall's declared stock for lines it actually won.
+ *
+ * Guarded, and deliberately best-effort: if the guard fails the stall's
+ * declared figure was stale, but the claim still stands. Declared stock is an
+ * availability hint, not a ledger — the produce itself is on a table and the
+ * shopkeeper reconciles it. Failing the claim here would leave the line
+ * unsourced for a stall that does have the goods.
+ */
+async function drawDownStock(stallId, take, wonLineIds, lineIds) {
+  const wonKeys = new Set(wonLineIds.map(String));
+  await Promise.all(
+    take
+      .filter((_, index) => wonKeys.has(String(lineIds[index])))
+      .map((t) =>
+        StallInventory.updateOne(
+          { stall: stallId, product: t.product, stock: { $gte: t.quantity } },
+          { $inc: { stock: -t.quantity } }
+        ).catch(() => {})
+      )
+  );
+}
+
+/**
+ * Open one round: rank the stalls, then ask them.
+ *
+ * A round asks SEVERAL stalls at once, each about its own disjoint slice of the
+ * order. Asking them one at a time would be more literal but multiplies the
+ * customer's wait by the number of stalls needed, for no gain — the slices do
+ * not compete, so there is nothing to serialise.
+ *
+ * A stall with `autoAccept` and the stock declared is claimed for outright
+ * rather than offered, which is what keeps a well-stocked market locking in
+ * milliseconds exactly as it did before the cascade existed.
+ */
+async function offerRound(orderId, actorId = null) {
+  const order = await Order.findById(orderId).select('items market fulfillment').lean();
+
+  if (!order || !order.market || order.fulfillment?.status !== 'sourcing') {
+    return { offered: 0, claimed: 0, promoted: null, reason: 'NOT_SOURCING' };
+  }
+
+  const unclaimed = order.items.filter((item) => item.lineId && !item.claim?.stall);
+  if (unclaimed.length === 0) {
+    return { offered: 0, claimed: 0, promoted: await promoteIfComplete(orderId, actorId) };
+  }
+
+  const stallOffer = order.fulfillment.stallOffer || {};
+  const round = stallOffer.round || 0;
+
+  // Ranked rounds are spent. Fall through to the market-wide pool rather than
+  // cascading for ever — the same backstop the rider dispatch uses.
+  if (round >= config.marketplace.maxStallRounds) return openStallPool(orderId);
+
+  const plan = await planRound({
+    marketId: order.market,
+    lines: unclaimed,
+    declinedBy: stallOffer.declinedBy || [],
+  });
+
+  // Nobody ranked is left who can supply anything. Straight to the pool: a
+  // stall that declared no inventory is invisible to `planRound` but can still
+  // answer by hand, and this is where it gets the chance.
+  if (plan.length === 0) return openStallPool(orderId);
+
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + config.marketplace.stallOfferWindowSeconds * 1000);
+
+  /**
+   * Claim the round before making any offer.
+   *
+   * Guarded on the round number we planned against, so two sweeper instances
+   * expiring the same order cannot both open a round and double-offer the same
+   * lines to different stalls.
+   */
+  const opened = await Order.findOneAndUpdate(
+    {
+      _id: orderId,
+      'fulfillment.status': 'sourcing',
+      'fulfillment.stallOffer.round': round,
+    },
+    {
+      $set: { 'fulfillment.stallOffer.expiresAt': expiresAt },
+      $inc: { 'fulfillment.stallOffer.round': 1 },
+      $push: {
+        'fulfillment.events': eventPush({
+          at: now,
+          type: 'stall_round_opened',
+          note: `round ${round + 1}, ${plan.length} stall(s)`,
+        }),
+      },
+    },
+    { new: true }
+  );
+
+  if (!opened) return { offered: 0, claimed: 0, promoted: null, reason: 'RACED' };
+
+  let offered = 0;
   let claimed = 0;
   let promoted = null;
 
-  for (const entry of plan.values()) {
-    const result = await claimLines({
-      orderId,
-      stallId: entry.stallId,
-      stallNumber: entry.stallNumber,
-      lineIds: entry.lineIds,
-      auto: true,
-      actorId,
-    });
+  for (const entry of plan) {
+    if (entry.autoAccept) {
+      const result = await claimLines({
+        orderId,
+        stallId: entry.stallId,
+        stallNumber: entry.stallNumber,
+        lineIds: entry.lineIds,
+        auto: true,
+        actorId,
+      });
 
-    claimed += result.won.length;
-    if (result.promoted) promoted = result.promoted;
+      claimed += result.won.length;
+      if (result.promoted) promoted = result.promoted;
+      await drawDownStock(entry.stallId, entry.take, result.won.map((i) => i.lineId), entry.lineIds);
+      continue;
+    }
 
     /**
-     * Draw down declared stock for what was actually won.
-     *
-     * Guarded, and deliberately best-effort: if the guard fails the stall's
-     * declared figure was stale, but the claim still stands. Declared stock is
-     * an availability hint that powers auto-accept, not a ledger — the produce
-     * itself is on a table, and the shopkeeper reconciles it. Failing the claim
-     * here would leave the line unsourced for a stall that does have the goods.
+     * `claim.stall: null` in the arrayFilter, not just the line id: an
+     * auto-accepting stall earlier in this same plan may have taken a line a
+     * moment ago, and offering an already-claimed line would show a shopkeeper
+     * work they cannot actually win.
      */
-    const wonKeys = new Set(result.won.map((item) => String(item.lineId)));
-    await Promise.all(
-      entry.take
-        .filter((_, index) => wonKeys.has(String(entry.lineIds[index])))
-        .map((t) =>
-          StallInventory.updateOne(
-            { stall: entry.stallId, product: t.product, stock: { $gte: t.quantity } },
-            { $inc: { stock: -t.quantity } }
-          ).catch(() => {})
-        )
+    const written = await Order.updateOne(
+      { _id: orderId, 'fulfillment.status': 'sourcing' },
+      {
+        $set: {
+          'items.$[line].offer.stall': objectId(entry.stallId),
+          'items.$[line].offer.offeredAt': now,
+        },
+      },
+      {
+        arrayFilters: [
+          { 'line.lineId': { $in: entry.lineIds.map(objectId) }, 'line.claim.stall': null },
+        ],
+      }
     );
+
+    if (written.modifiedCount > 0) offered += 1;
   }
 
-  return { claimed, promoted };
+  return { offered, claimed, promoted, round: round + 1, expiresAt };
+}
+
+/**
+ * Give up on ranking and let any stall in the market take what is left.
+ *
+ * This is the behaviour the whole market had before the cascade: every
+ * approved, open stall sees every unclaimed line. Demoting it to the last tier
+ * INSIDE a market — rather than removing it — is what makes hopping to another
+ * market rare, which is the point. A stall that never declared its inventory is
+ * invisible to `planRound` and would otherwise never be asked at all.
+ *
+ * Guarded on `openPool: false` so repeated calls cannot keep pushing the
+ * deadline out and hold an order in the pool for ever.
+ */
+async function openStallPool(orderId) {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + config.marketplace.stallOfferWindowSeconds * 1000);
+
+  const updated = await Order.findOneAndUpdate(
+    { _id: orderId, 'fulfillment.status': 'sourcing', 'fulfillment.stallOffer.openPool': false },
+    {
+      $set: {
+        'fulfillment.stallOffer.openPool': true,
+        'fulfillment.stallOffer.expiresAt': expiresAt,
+        'items.$[line].offer.stall': null,
+        'items.$[line].offer.offeredAt': null,
+      },
+      $push: { 'fulfillment.events': eventPush({ at: now, type: 'stall_open_pool' }) },
+    },
+    { arrayFilters: [{ 'line.claim.stall': null }], new: true }
+  );
+
+  return { offered: 0, claimed: 0, promoted: null, openPool: Boolean(updated), order: updated, reason: 'OPEN_POOL' };
+}
+
+/**
+ * A stall says no. Never ask it again in this market, and move to the next
+ * round immediately rather than making everyone wait out the clock.
+ */
+async function declineRound({ orderId, stallId }) {
+  const stall = objectId(stallId);
+  const now = new Date();
+
+  const updated = await Order.findOneAndUpdate(
+    { _id: orderId, 'fulfillment.status': 'sourcing', 'items.offer.stall': stall },
+    {
+      $set: { 'items.$[line].offer.stall': null, 'items.$[line].offer.offeredAt': null },
+      $addToSet: { 'fulfillment.stallOffer.declinedBy': stall },
+      $push: { 'fulfillment.events': eventPush({ at: now, type: 'stall_declined', stall }) },
+    },
+    { arrayFilters: [{ 'line.offer.stall': stall }], new: true }
+  );
+
+  if (!updated) return { declined: false, reason: 'NOT_YOURS' };
+
+  // Straight to the next round. If this was the pool tier there is no next
+  // round to open — `offerRound` recognises that and the sweeper finishes it.
+  const next = updated.fulfillment?.stallOffer?.openPool ? null : await offerRound(orderId);
+  return { declined: true, next };
+}
+
+/**
+ * The round's clock ran out.
+ *
+ * Every stall still sitting on an unanswered offer is recorded as having
+ * refused. A timeout has to be treated exactly like a decline, or the next
+ * round re-offers the same lines to the same unattended phone and the cascade
+ * makes no progress at all — the same reasoning as `dispatch.expireOffer`.
+ */
+async function expireStallRound(orderId) {
+  const order = await Order.findById(orderId).select('items fulfillment market').lean();
+  if (!order || order.fulfillment?.status !== 'sourcing') return { action: 'skipped' };
+
+  const stallOffer = order.fulfillment.stallOffer || {};
+  const expiresAt = stallOffer.expiresAt;
+  if (!expiresAt || expiresAt > new Date()) return { action: 'skipped' };
+
+  // A stall may have taken the last line between the timer firing and this
+  // running. Promotion is guarded, so asking costs nothing and is the
+  // difference between a delivered order and a spurious extra round.
+  const promoted = await promoteIfComplete(orderId);
+  if (promoted) return { action: 'promoted', order: promoted };
+
+  // The pool was the last tier this market had. Nothing else to try here.
+  if (stallOffer.openPool) return exhaustMarket(orderId);
+
+  const silent = [
+    ...new Set(
+      order.items
+        .filter((item) => !item.claim?.stall && item.offer?.stall)
+        .map((item) => String(item.offer.stall))
+    ),
+  ].map(objectId);
+
+  const now = new Date();
+
+  /**
+   * Match the exact expiry we read. If another instance already handled this
+   * round, our filter no longer matches and we write nothing.
+   */
+  const released = await Order.findOneAndUpdate(
+    { _id: orderId, 'fulfillment.status': 'sourcing', 'fulfillment.stallOffer.expiresAt': expiresAt },
+    {
+      $set: {
+        'items.$[line].offer.stall': null,
+        'items.$[line].offer.offeredAt': null,
+        /**
+         * Clearing this is what makes the optimistic lock actually lock.
+         *
+         * Nothing else in this update touches `expiresAt`, so without it a
+         * second instance matching on the same value it read would still match
+         * and expire the round a second time — burning two rounds of the
+         * market's budget for one lapsed clock. Leaving it null is also safe if
+         * the re-offer below fails: the sweeper's unopened-round query picks
+         * the order straight back up.
+         */
+        'fulfillment.stallOffer.expiresAt': null,
+      },
+      $addToSet: { 'fulfillment.stallOffer.declinedBy': { $each: silent } },
+      $push: {
+        'fulfillment.events': eventPush({
+          at: now,
+          type: 'stall_round_expired',
+          note: `${silent.length} stall(s) did not answer`,
+        }),
+      },
+    },
+    { arrayFilters: [{ 'line.claim.stall': null }], new: true }
+  );
+
+  if (!released) return { action: 'skipped' };
+
+  const next = await offerRound(orderId);
+  return { action: 'reoffered', next };
 }
 
 // ---------------------------------------------------------------------------
@@ -631,6 +981,17 @@ async function hopToMarket(order, market, priced) {
       'fulfillment.sourcingDeadline': new Date(now.getTime() + config.marketplace.sourcingWindowSeconds * 1000),
       'fulfillment.sourceSubtotalPaise': priced.sourceSubtotalPaise,
       'fulfillment.lockedAt': null,
+      /**
+       * The cascade starts from nothing in the new market.
+       *
+       * `declinedBy` in particular MUST be cleared: it holds stall ids from the
+       * market we are leaving, and carrying them over would silently bar
+       * unrelated stalls here — stall ids are unique across markets, so the
+       * filter would not misfire, but the round counter and open-pool flag
+       * would, and the order would reach its new market with its budget
+       * already spent.
+       */
+      'fulfillment.stallOffer': emptyStallOffer(),
     }),
   };
   const arrayFilters = [];
@@ -643,6 +1004,8 @@ async function hopToMarket(order, market, priced) {
     set[`items.$[${id}].claim.claimedAt`] = null;
     set[`items.$[${id}].claim.auto`] = false;
     set[`items.$[${id}].claim.packedAt`] = null;
+    set[`items.$[${id}].offer.stall`] = null;
+    set[`items.$[${id}].offer.offeredAt`] = null;
     arrayFilters.push({ [`${id}.lineId`]: objectId(line.lineId) });
   });
 
@@ -664,7 +1027,7 @@ async function hopToMarket(order, market, priced) {
     { arrayFilters, new: true }
   );
 
-  if (hopped) await runAutoAccept(hopped._id);
+  if (hopped) await offerRound(hopped._id);
   return hopped;
 }
 
@@ -729,11 +1092,281 @@ async function failOrder(order, note = 'No market could source this order.') {
 }
 
 /**
- * The sourcing window ran out. Hop, or give up.
+ * This market has nothing left to offer: the ranked rounds are spent and the
+ * open pool has closed. Decide what happens to the order.
+ *
+ * The split here is the whole reason a partial fill exists. If NOTHING was
+ * claimed, the market simply could not help and the order moves on — the
+ * original behaviour, untouched. If SOME lines were claimed, hopping would
+ * throw that progress away and restart the clock somewhere else, so instead the
+ * customer is asked whether a smaller order is worth having.
+ */
+async function exhaustMarket(orderId) {
+  const order = await Order.findById(orderId);
+  if (!order || order.fulfillment?.status !== 'sourcing') return { action: 'skipped' };
+
+  const claimed = order.items.filter((item) => item.claim?.stall).length;
+  if (claimed > 0) return openPartialReview(order);
+
+  if (order.fulfillment.attempt >= config.marketplace.maxSourcingAttempts) {
+    const failed = await failOrder(order, 'Ran out of markets to try.');
+    return { action: 'failed', order: failed };
+  }
+
+  const next = await findNextMarket(order);
+  if (!next) {
+    const failed = await failOrder(order, 'No other market nearby can fill this order.');
+    return { action: 'failed', order: failed };
+  }
+
+  await releaseClaims(order);
+  const hopped = await hopToMarket(order, next.market, next.priced);
+  return hopped ? { action: 'hopped', order: hopped, market: next.market } : { action: 'skipped' };
+}
+
+/**
+ * Hold the order and ask the customer: some of this is available, some is not.
+ *
+ * The claims are deliberately KEPT. Those stalls have produce set aside, and
+ * releasing it while we wait would mean re-sourcing from scratch if the answer
+ * turns out to be yes — which is the likely answer.
+ */
+async function openPartialReview(order) {
+  const now = new Date();
+  const missing = order.items.filter((item) => !item.claim?.stall).length;
+
+  const updated = await Order.findOneAndUpdate(
+    { _id: order._id, 'fulfillment.status': 'sourcing' },
+    {
+      $set: transitionTo('partial_review', {
+        'fulfillment.partialDeadline': new Date(
+          now.getTime() + config.marketplace.partialDecisionWindowSeconds * 1000
+        ),
+        'fulfillment.stallOffer.expiresAt': null,
+        'items.$[line].offer.stall': null,
+        'items.$[line].offer.offeredAt': null,
+      }),
+      $push: {
+        'fulfillment.events': eventPush({
+          at: now,
+          type: 'partial_review_opened',
+          note: `${missing} line(s) unfilled`,
+        }),
+      },
+    },
+    { arrayFilters: [{ 'line.claim.stall': null }], new: true }
+  );
+
+  return { action: 'partial', order: updated };
+}
+
+/**
+ * The customer will take what is available (or said nothing and the clock ran
+ * out, which is treated the same way — they have already waited through a full
+ * sourcing attempt, and cancelling on them turns a mostly-successful order into
+ * nothing at all).
+ *
+ * The unfilled lines are moved to `fulfillment.droppedItems` rather than
+ * deleted, and their value comes back.
+ */
+async function acceptPartial(orderId, actorId = null) {
+  const order = await Order.findById(orderId);
+  if (!order || order.fulfillment?.status !== 'partial_review') {
+    return { accepted: false, reason: 'NOT_PARTIAL' };
+  }
+
+  const dropped = order.items.filter((item) => !item.claim?.stall);
+  const kept = order.items.filter((item) => item.claim?.stall);
+
+  // Cannot happen from `exhaustMarket`, which only opens a review when at least
+  // one line is claimed — but an order with no items at all would violate the
+  // schema's 1-100 validator, so it is worth refusing explicitly.
+  if (kept.length === 0) return { accepted: false, reason: 'NOTHING_CLAIMED' };
+
+  const droppedValuePaise = dropped.reduce((sum, item) => sum + item.lineTotalPaise, 0);
+  const subtotalPaise = kept.reduce((sum, item) => sum + item.lineTotalPaise, 0);
+
+  /**
+   * Only money already taken comes back. A COD order has paid nothing yet, so
+   * there is nothing to refund — the total simply drops and less is collected
+   * at the door.
+   */
+  const refundPaise = order.paymentStatus === 'paid' ? droppedValuePaise : 0;
+
+  /**
+   * The delivery fee is NOT recomputed.
+   *
+   * It is waived above a subtotal threshold, so recalculating it on a smaller
+   * basket could ADD a fee the customer never agreed to — charging them more
+   * because we failed to supply what they ordered. It stays exactly as quoted.
+   */
+  const totalAmountPaise = subtotalPaise + order.deliveryFeePaise;
+  const now = new Date();
+
+  /**
+   * One guarded update does the whole thing, so a customer tapping twice — or
+   * tapping at the moment the sweeper fires — resolves to exactly one winner.
+   * The loser's `partial_review` filter no longer matches and it writes nothing.
+   *
+   * `$pull` on `items` and `$push` on `fulfillment.droppedItems` are distinct
+   * paths, so they do not trip MongoDB's conflicting-update-path rule.
+   */
+  const settled = await Order.findOneAndUpdate(
+    { _id: orderId, 'fulfillment.status': 'partial_review' },
+    {
+      $set: transitionTo('packing', {
+        subtotalPaise,
+        totalAmountPaise,
+        'fulfillment.lockedAt': now,
+        'fulfillment.partialDeadline': null,
+        'fulfillment.sourceSubtotalPaise': kept.reduce(
+          (sum, item) => sum + (item.sourcePricePaise ?? item.unitPricePaise) * item.quantity,
+          0
+        ),
+      }),
+      $pull: { items: { 'claim.stall': null } },
+      $push: {
+        'fulfillment.droppedItems': {
+          $each: dropped.map((item) => ({
+            product: item.product,
+            name: item.name,
+            quantity: item.quantity,
+            lineTotalPaise: item.lineTotalPaise,
+            refundedPaise: order.paymentStatus === 'paid' ? item.lineTotalPaise : 0,
+            at: now,
+          })),
+        },
+        statusHistory: { status: 'Preparing', at: now, by: actorId },
+        'fulfillment.events': eventPush({
+          at: now,
+          type: 'partial_accepted',
+          note: `${kept.length} kept, ${dropped.length} dropped`,
+        }),
+      },
+    },
+    { new: true }
+  );
+
+  if (!settled) return { accepted: false, reason: 'RACED' };
+
+  /**
+   * Refund after winning the guard, never before: the other thing a customer
+   * can do from this screen is ask to try another market, and crediting first
+   * would refund lines that then get sourced somewhere else.
+   *
+   * `refundedPaise` is written on the dropped lines above, so an order whose
+   * process died in this gap is identifiable after the fact rather than
+   * silently short-paying someone.
+   */
+  if (refundPaise > 0) {
+    await wallet
+      .credit({
+        userId: settled.customer,
+        amountPaise: refundPaise,
+        reason: 'order_refund',
+        // Distinct from the full-refund key used by `failOrder` and cancel, so
+        // a partial followed by a cancellation pays out both, exactly once each.
+        idempotencyKey: `refund:${settled._id.toHexString()}:partial`,
+        note: `${dropped.length} unavailable item(s) from ${settled.orderNumber}`,
+        session: null,
+      })
+      .catch((err) => console.warn(`[sourcing] partial refund for ${settled.orderNumber}: ${err.message}`));
+  }
+
+  // Put the dropped produce back on the shelf — it was decremented at checkout.
+  await Promise.all(
+    dropped.map((item) =>
+      Product.updateOne({ _id: item.product }, { $inc: { stock: item.quantity } }).catch(() => {})
+    )
+  );
+
+  if (config.marketplace.riderDispatchOn === 'packing') {
+    const dispatch = require('./dispatch');
+    fireAndForget(dispatch.offerToNearestRider(settled._id), `rider dispatch for ${settled.orderNumber}`);
+  }
+
+  return { accepted: true, order: settled, refundPaise, dropped: dropped.length };
+}
+
+/**
+ * The customer would rather we looked somewhere else.
+ *
+ * Everything claimed here is handed back — those stalls are released, not left
+ * holding produce for an order that has moved on — and the order re-enters
+ * sourcing in the next market with a fresh cascade.
+ */
+async function retryPartial(orderId) {
+  const order = await Order.findById(orderId);
+  if (!order || order.fulfillment?.status !== 'partial_review') {
+    return { retried: false, reason: 'NOT_PARTIAL' };
+  }
+
+  if (order.fulfillment.attempt >= config.marketplace.maxSourcingAttempts) {
+    return { retried: false, reason: 'NO_ATTEMPTS_LEFT' };
+  }
+
+  const next = await findNextMarket(order);
+  if (!next) return { retried: false, reason: 'NO_MARKET' };
+
+  /**
+   * Back to `sourcing` before hopping, because `hopToMarket` is guarded on that
+   * state — it is written for an order whose window expired, not one parked in
+   * review. Guarded on `partial_review` so this cannot race the accept path.
+   */
+  const reopened = await Order.findOneAndUpdate(
+    { _id: orderId, 'fulfillment.status': 'partial_review' },
+    {
+      $set: transitionTo('sourcing', { 'fulfillment.partialDeadline': null }),
+      $push: { 'fulfillment.events': eventPush({ at: new Date(), type: 'partial_retried' }) },
+    },
+    { new: true }
+  );
+
+  if (!reopened) return { retried: false, reason: 'RACED' };
+
+  await releaseClaims(reopened);
+  const hopped = await hopToMarket(reopened, next.market, next.priced);
+  return hopped
+    ? { retried: true, order: hopped, market: next.market }
+    : { retried: false, reason: 'RACED' };
+}
+
+/**
+ * The customer never answered. Send what we have.
+ *
+ * Leases the deadline first so two instances cannot both settle the order; the
+ * accept path is idempotent anyway, but the lease keeps the ledger warning in
+ * `acceptPartial` from firing spuriously.
+ */
+async function expirePartialReview(orderId) {
+  const order = await Order.findById(orderId).select('fulfillment.status fulfillment.partialDeadline').lean();
+  if (!order || order.fulfillment?.status !== 'partial_review') return { action: 'skipped' };
+
+  const seen = order.fulfillment.partialDeadline;
+  if (!seen || seen > new Date()) return { action: 'skipped' };
+
+  const leased = await Order.findOneAndUpdate(
+    { _id: orderId, 'fulfillment.status': 'partial_review', 'fulfillment.partialDeadline': seen },
+    { $set: { 'fulfillment.partialDeadline': new Date(Date.now() + SWEEP_LEASE_MS) } },
+    { new: true }
+  );
+  if (!leased) return { action: 'skipped' };
+
+  const result = await acceptPartial(orderId);
+  return result.accepted ? { action: 'partial_auto_accepted', order: result.order } : { action: 'skipped' };
+}
+
+/**
+ * The absolute ceiling on one market ran out.
+ *
+ * This is a BACKSTOP, not the normal path — `expireStallRound` drives the
+ * cascade, and an order reaching this point means its round bookkeeping stalled
+ * somehow. Rather than guess at what went wrong, treat the market as spent and
+ * take the ordinary hop-or-partial decision.
  *
  * Claiming the work is an optimistic lock on the deadline we read: the first
- * sweeper to push the deadline forward owns this order, and any other instance
- * matching on the old value writes nothing and moves on. If this process dies
+ * sweeper to push it forward owns this order, and any other instance matching
+ * on the old value writes nothing and moves on. If this process dies
  * mid-decision, the extended lease expires and the next sweep retries.
  */
 async function expireSourcing(orderId) {
@@ -755,20 +1388,7 @@ async function expireSourcing(orderId) {
   const promoted = await promoteIfComplete(orderId);
   if (promoted) return { action: 'promoted', order: promoted };
 
-  if (leased.fulfillment.attempt >= config.marketplace.maxSourcingAttempts) {
-    const failed = await failOrder(leased, 'Ran out of markets to try.');
-    return { action: 'failed', order: failed };
-  }
-
-  const next = await findNextMarket(leased);
-  if (!next) {
-    const failed = await failOrder(leased, 'No other market nearby can fill this order.');
-    return { action: 'failed', order: failed };
-  }
-
-  await releaseClaims(leased);
-  const hopped = await hopToMarket(leased, next.market, next.priced);
-  return hopped ? { action: 'hopped', order: hopped, market: next.market } : { action: 'skipped' };
+  return exhaustMarket(orderId);
 }
 
 module.exports = {
@@ -777,14 +1397,25 @@ module.exports = {
   hopPriceCeiling,
   initialFulfillment,
   emptyClaim,
+  emptyOffer,
+  emptyStallOffer,
   claimLines,
   promoteIfComplete,
-  runAutoAccept,
+  planRound,
+  offerRound,
+  openStallPool,
+  declineRound,
+  expireStallRound,
   packLines,
   advanceWhenFullyPacked,
   findNextMarket,
   releaseClaims,
   hopToMarket,
   failOrder,
+  exhaustMarket,
+  openPartialReview,
+  acceptPartial,
+  retryPartial,
+  expirePartialReview,
   expireSourcing,
 };

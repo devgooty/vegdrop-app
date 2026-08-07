@@ -106,7 +106,24 @@ async function visibilityFilter(user) {
 
     return {
       $or: [
-        { market: stall.market, 'fulfillment.status': 'sourcing' },
+        /**
+         * Live sourcing in my market — but only what is actually addressed to
+         * me, or has fallen through to the market-wide pool.
+         *
+         * This used to be every sourcing order in the market. Narrowing it is
+         * what makes the ranked cascade real rather than advisory: a stall that
+         * can see an order can also claim from it, so an unscoped clause here
+         * would let any stall take lines that were offered to a better-ranked
+         * one, and the ranking would decide nothing.
+         */
+        {
+          market: stall.market,
+          'fulfillment.status': 'sourcing',
+          $or: [
+            { 'items.offer.stall': stall._id },
+            { 'fulfillment.stallOffer.openPool': true },
+          ],
+        },
         { 'items.claim.stall': stall._id },
         legacyPool,
       ],
@@ -389,13 +406,15 @@ router.post(
             lineTotalPaise,
             // Market orders get a stable per-line handle so a stall can claim
             // "these two" without depending on array position, plus an
-            // explicitly-empty claim so `claim.stall: null` unambiguously means
-            // unclaimed. Legacy orders leave both null and nothing reads them.
+            // explicitly-empty claim and offer so `claim.stall: null` and
+            // `offer.stall: null` unambiguously mean unclaimed and unoffered.
+            // Legacy orders leave them null and nothing reads them.
             ...(market
               ? {
                   lineId: new mongoose.Types.ObjectId(),
                   sourcePricePaise: unitPricePaise,
                   claim: sourcing.emptyClaim(),
+                  offer: sourcing.emptyOffer(),
                 }
               : {}),
           });
@@ -495,18 +514,18 @@ router.post(
     });
 
     /**
-     * Let the stalls that answer automatically answer now.
+     * Open the first round of stall offers.
      *
      * Deliberately AFTER the transaction commits: a stall must never be shown,
      * or be able to claim, an order that could still be rolled back. Awaited so
-     * the customer's own response already reflects any instant acceptance — a
-     * fully auto-accepted order comes back locked, with nothing to wait for.
+     * the customer's own response already reflects any instant acceptance — an
+     * order every stall auto-accepts comes back locked, with nothing to wait for.
      */
     if (order.market) {
-      await sourcing.runAutoAccept(order._id, req.user._id).catch((err) => {
-        // A failure here costs nothing: the order simply waits for a human, and
-        // the sweeper still owns the deadline. Never fail a paid checkout for it.
-        console.warn(`[orders] auto-accept failed for ${order.orderNumber}: ${err.message}`);
+      await sourcing.offerRound(order._id, req.user._id).catch((err) => {
+        // A failure here costs nothing: the sweeper still owns the deadline and
+        // opens the round on its next tick. Never fail a paid checkout for it.
+        console.warn(`[orders] first stall round failed for ${order.orderNumber}: ${err.message}`);
       });
       const settled = await Order.findById(order._id);
       return res.status(201).json({ data: settled.toJSON() });
@@ -591,6 +610,94 @@ async function cancelMarketOrder({ req, res, order }) {
 
   return res.json({ data: cancelled.toJSON() });
 }
+
+// ---------------------------------------------------------------------------
+// "Only some of your items are available"
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve an order parked in `partial_review` for the customer who placed it.
+ *
+ * Staff are deliberately excluded. This is a question about whether a smaller
+ * basket is still worth buying, and only the person paying can answer it — a
+ * market owner tapping "continue" on someone else's behalf would be committing
+ * them to a purchase they did not agree to.
+ */
+async function loadPartialOrder(req) {
+  const order = await Order.findOne({
+    _id: req.valid.params.id,
+    customer: req.user._id,
+  }).select('_id fulfillment.status');
+
+  if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+
+  if (order.fulfillment?.status !== 'partial_review') {
+    throw new ApiError(
+      409,
+      'This order is no longer waiting on your decision.',
+      'NOT_PARTIAL'
+    );
+  }
+
+  return order;
+}
+
+/**
+ * Send what is available. The rest is dropped and refunded.
+ *
+ * The same call the sweeper makes when the customer never answers, so there is
+ * exactly one implementation of "settle a partial order" and no chance of the
+ * timeout path and the button path disagreeing about the money.
+ */
+router.post(
+  '/:id/partial/accept',
+  requireAuth,
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const order = await loadPartialOrder(req);
+    const result = await sourcing.acceptPartial(order._id, req.user._id);
+
+    if (!result.accepted) {
+      throw new ApiError(409, 'This order is no longer waiting on your decision.', result.reason);
+    }
+
+    return res.json({
+      data: {
+        ...result.order.toJSON(),
+        refundPaise: result.refundPaise,
+        droppedCount: result.dropped,
+      },
+    });
+  }
+);
+
+/**
+ * Look somewhere else instead.
+ *
+ * Everything claimed here is handed back, so the stalls holding produce for
+ * this order are released rather than left waiting on a customer who has moved
+ * on. Fails cleanly when there is no other market to try — the honest answer at
+ * that point is that continuing or cancelling are the only options left.
+ */
+router.post(
+  '/:id/partial/retry',
+  requireAuth,
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const order = await loadPartialOrder(req);
+    const result = await sourcing.retryPartial(order._id);
+
+    if (!result.retried) {
+      const message =
+        result.reason === 'NO_MARKET' || result.reason === 'NO_ATTEMPTS_LEFT'
+          ? 'No other market nearby can fill the rest of this order.'
+          : 'This order is no longer waiting on your decision.';
+      throw new ApiError(409, message, result.reason);
+    }
+
+    return res.json({ data: result.order.toJSON() });
+  }
+);
 
 router.patch(
   '/:id/status',

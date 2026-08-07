@@ -64,6 +64,89 @@ async function sweepSourcing() {
   return results;
 }
 
+/**
+ * Stall offer rounds that have run out, plus orders whose first round never
+ * opened.
+ *
+ * The second query is the one that matters most, and mirrors the rider retry
+ * below. Checkout opens the first round inline, but it does so outside the
+ * transaction and swallows any failure rather than failing a paid order — so
+ * without this, an order whose first round failed to open would sit in
+ * `sourcing` with a null deadline and nothing would ever ask a stall about it.
+ */
+async function sweepStallRounds() {
+  const now = new Date();
+
+  const expired = await Order.find({
+    'fulfillment.status': 'sourcing',
+    'fulfillment.stallOffer.expiresAt': { $lte: now },
+  })
+    .select('_id orderNumber')
+    .limit(BATCH_SIZE)
+    .lean();
+
+  const results = { expired: 0, opened: 0 };
+
+  for (const order of expired) {
+    try {
+      await sourcing.expireStallRound(order._id);
+      results.expired += 1;
+    } catch (err) {
+      console.warn(`[sweeper] stall round ${order.orderNumber}: ${err.message}`);
+    }
+  }
+
+  const unopened = await Order.find({
+    'fulfillment.status': 'sourcing',
+    'fulfillment.stallOffer.expiresAt': null,
+    'fulfillment.stallOffer.openPool': false,
+  })
+    .select('_id orderNumber')
+    .limit(BATCH_SIZE)
+    .lean();
+
+  for (const order of unopened) {
+    try {
+      await sourcing.offerRound(order._id);
+      results.opened += 1;
+    } catch (err) {
+      console.warn(`[sweeper] stall round open ${order.orderNumber}: ${err.message}`);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Customers who never answered "some of your items are available".
+ *
+ * Silence is taken as yes — see `sourcing.acceptPartial`. They have already
+ * waited through a full sourcing attempt, and cancelling on them would turn a
+ * mostly-successful order into nothing at all.
+ */
+async function sweepPartialDecisions() {
+  const due = await Order.find({
+    'fulfillment.status': 'partial_review',
+    'fulfillment.partialDeadline': { $lte: new Date() },
+  })
+    .select('_id orderNumber')
+    .limit(BATCH_SIZE)
+    .lean();
+
+  let settled = 0;
+
+  for (const order of due) {
+    try {
+      const outcome = await sourcing.expirePartialReview(order._id);
+      if (outcome.action === 'partial_auto_accepted') settled += 1;
+    } catch (err) {
+      console.warn(`[sweeper] partial review ${order.orderNumber}: ${err.message}`);
+    }
+  }
+
+  return { settled, due: due.length };
+}
+
 /** Rider offers nobody answered, plus packed orders still waiting for anyone. */
 async function sweepRiderOffers() {
   const now = new Date();
@@ -141,10 +224,22 @@ async function tick() {
   try {
     // Sequential rather than parallel: these touch the same orders, and the
     // point of the tick is correctness, not shaving milliseconds.
+    //
+    // Rounds run before the backstop deliberately. `sweepSourcing` treats a
+    // market as spent, so letting it act on an order whose next round was about
+    // to open would hop an order that still had candidates left to ask.
+    const roundResult = await sweepStallRounds();
     const sourcingResult = await sweepSourcing();
+    const partialResult = await sweepPartialDecisions();
     const riderResult = await sweepRiderOffers();
     const settlementResult = await sweepSettlements();
-    return { sourcing: sourcingResult, rider: riderResult, settlement: settlementResult };
+    return {
+      stallRounds: roundResult,
+      sourcing: sourcingResult,
+      partial: partialResult,
+      rider: riderResult,
+      settlement: settlementResult,
+    };
   } finally {
     running = false;
   }
@@ -172,4 +267,13 @@ function stop() {
   timer = null;
 }
 
-module.exports = { start, stop, tick, sweepSourcing, sweepRiderOffers, sweepSettlements };
+module.exports = {
+  start,
+  stop,
+  tick,
+  sweepStallRounds,
+  sweepSourcing,
+  sweepPartialDecisions,
+  sweepRiderOffers,
+  sweepSettlements,
+};

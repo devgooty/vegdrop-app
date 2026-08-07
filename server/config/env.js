@@ -249,6 +249,23 @@ const payoutKeySecret = process.env.RAZORPAYX_KEY_SECRET || '';
 const payoutAccountNumber = process.env.RAZORPAYX_ACCOUNT_NUMBER || '';
 const payoutConfigured = Boolean(payoutKeyId && payoutKeySecret && payoutAccountNumber);
 
+/**
+ * The stall cascade's clocks, resolved before the config object so the ceiling
+ * can be derived from the rounds it has to contain.
+ *
+ * `sourcingWindowSeconds` used to BE the sourcing clock. It is now only a
+ * backstop, and a backstop shorter than one round would fire mid-cascade and
+ * hop an order that nobody had finished considering — so the configured value
+ * is a floor, not the answer. The `+1` round is the open pool, which gets a
+ * window of its own after the ranked rounds are spent.
+ */
+const stallOfferWindowSeconds = int('MARKET_STALL_OFFER_WINDOW_SECONDS', 120);
+const maxStallRounds = int('MARKET_MAX_STALL_ROUNDS', 3);
+const sourcingCeilingSeconds = Math.max(
+  int('MARKET_SOURCING_WINDOW_SECONDS', 90),
+  (maxStallRounds + 1) * stallOfferWindowSeconds + 60
+);
+
 const config = Object.freeze({
   NODE_ENV,
   isProduction,
@@ -400,9 +417,44 @@ const config = Object.freeze({
    * that takes and how far it is allowed to travel looking for one.
    */
   marketplace: Object.freeze({
-    // How long stalls have to accept before the order moves on. Stalls with
-    // auto-accept answer in milliseconds; this window is for the humans.
-    sourcingWindowSeconds: int('MARKET_SOURCING_WINDOW_SECONDS', 90),
+    /**
+     * How long ONE round of stall offers stays live. This is the real sourcing
+     * clock — the window a shopkeeper actually has to look at their phone and
+     * answer. Stalls with auto-accept answer in milliseconds and never use it.
+     */
+    stallOfferWindowSeconds,
+    /**
+     * Rounds of ranked offers before a market falls back to its open pool.
+     *
+     * Each round costs a full window, so this bounds how long one market can
+     * hold an order: rounds x window, then one more window in the pool.
+     */
+    maxStallRounds,
+    /**
+     * Most stalls one order may be split across.
+     *
+     * Not a correctness limit — a cap on the rider's walk. Six stalls for one
+     * order is a long collection round and a lot of ways for it to go wrong.
+     */
+    maxStallsPerOrder: int('MARKET_MAX_STALLS_PER_ORDER', 4),
+    /**
+     * How long the customer has to answer "3 of your 5 items are available".
+     *
+     * Silence is taken as "send what you have" — they have already waited
+     * through a full sourcing attempt, and cancelling on them would turn a
+     * mostly-successful order into nothing at all.
+     */
+    partialDecisionWindowSeconds: int('MARKET_PARTIAL_DECISION_WINDOW_SECONDS', 300),
+    /**
+     * Absolute ceiling on one market, as a backstop only.
+     *
+     * `stallOffer.expiresAt` drives the cascade; this exists so an order can
+     * never be stranded if round bookkeeping goes wrong, and because the
+     * sweeper already indexes it. Derived from the round budget above and
+     * floored by MARKET_SOURCING_WINDOW_SECONDS, so it can never be shorter
+     * than the cascade it is supposed to outlive.
+     */
+    sourcingWindowSeconds: sourcingCeilingSeconds,
     // Total markets an order may be offered to, including the first. Each hop
     // costs the customer another full window, so this is deliberately small.
     maxSourcingAttempts: int('MARKET_MAX_SOURCING_ATTEMPTS', 3),
