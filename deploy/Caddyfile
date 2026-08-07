@@ -61,6 +61,5 @@ your-domain.com {
 # 	}
 # }
 
-# The bot's own HTTP surface (server/bot/bridge.mjs) is NOT proxied here and
-# never should be — it binds to 127.0.0.1 only and can send WhatsApp messages
-# as you. Only the Express API on :5000 talks to it, over loopback.
+# Express on :5000 is the only upstream. Nothing else on this box should be
+# proxied, and nothing else should be listening.

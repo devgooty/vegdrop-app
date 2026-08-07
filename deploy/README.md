@@ -1,7 +1,7 @@
 # Deploying VegDrop to a free always-on VM
 
 One VM (Oracle Cloud "Always Free", or Google Cloud `e2-micro` if your Oracle
-region has no ARM capacity) runs the API and the WhatsApp bot. MongoDB Atlas
+region has no ARM capacity) runs the API. MongoDB Atlas
 M0 is the database. Caddy serves the built frontend and reverse-proxies `/api`
 to Express, so browser and API share one origin — required, because
 `src/services/apiClient.js` calls the API with a relative path (`/api`).
@@ -23,7 +23,7 @@ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 source ~/.bashrc
 nvm install 22
 
-# PM2 — keeps the API and bot alive, restarts on crash and on reboot
+# PM2 — keeps the API alive, restarts on crash and on reboot
 npm install -g pm2
 
 # Caddy — see https://caddyserver.com/docs/install for your distro; on
@@ -38,8 +38,8 @@ sudo apt update && sudo apt install -y caddy
 
 Open ports 80 and 443 in the VM's security list / firewall (Oracle: the
 subnet's Security List needs an explicit ingress rule — the OS firewall alone
-is not enough). **Do not open port 5055** (the bot's bridge) or 5000 (the raw
-API) — Caddy is the only thing that should be internet-facing.
+is not enough). **Do not open port 5000** (the raw API) — Caddy is the only
+thing that should be internet-facing.
 
 ## 2. Set up the database
 
@@ -90,26 +90,18 @@ sudo systemctl restart caddy
 sudo systemctl enable caddy   # survive a reboot
 ```
 
-## 6. Start the API and the bot
+## 6. Start the API
 
 ```bash
 pm2 start deploy/ecosystem.config.js
-pm2 logs                 # watch both start up cleanly
+pm2 logs                 # watch it start up cleanly
 ```
 
-If `NOTIFY_TRANSPORT=whatsapp_bot`, the bot process prints a QR code to its
-log the first time — scan it once from the phone that owns the number
-(WhatsApp → Settings → Linked devices → Link a device):
+Confirm the startup line reports the transport you expect. `NOTIFY_TRANSPORT`
+must be `whatsapp` here — production refuses to boot on the `console` stub,
+because that writes verification codes to the log instead of delivering them.
 
-```bash
-pm2 logs vegdrop-bot
-```
-
-Once paired, credentials persist in `server/bot/.auth/` — gitignored,
-treat it like a password, and it survives restarts (no re-scan needed unless
-you delete that directory or the phone unlinks the device).
-
-Make both processes survive a VM reboot:
+Make it survive a VM reboot:
 
 ```bash
 pm2 save
@@ -124,10 +116,6 @@ curl https://your-domain.com/api/health
 
 curl -H "Authorization: Bearer wrong" https://your-domain.com/api/orders
 # 401 — confirms Caddy is actually routing /api to Express, not 404ing
-
-# If using the bot: confirm the bridge is reachable from the API's side
-# (this is loopback-only — it will NOT respond from outside the VM)
-curl http://127.0.0.1:5055/health
 ```
 
 Then open `https://your-domain.com` in a browser and confirm login end to end
@@ -141,7 +129,6 @@ git pull
 npm install               # only needed if dependencies changed
 npm run build              # only needed if frontend code changed
 pm2 restart vegdrop-api  # only needed if server code changed
-pm2 restart vegdrop-bot  # only needed if server/bot code changed
 ```
 
 Caddy needs no restart for a frontend-only change — it serves `dist/` fresh
@@ -149,12 +136,11 @@ off disk on every request.
 
 ## What NOT to do
 
-- Don't expose port 5055 (the bot bridge) or 5000 (raw Express) to the
-  internet. Caddy on 80/443 is the only public surface.
+- Don't expose port 5000 (raw Express) to the internet. Caddy on 80/443 is the
+  only public surface.
 - Don't run more than one PM2 instance of `vegdrop-api` — rate limiting and
   the refresh-token flow assume a single process (see `ecosystem.config.js`).
-- Don't copy `server/bot/.auth/` anywhere insecure. It **is** the WhatsApp
-  session; anyone with it can send messages as your number.
-- Don't set `NOTIFY_TRANSPORT=whatsapp_bot` as your only path to sign in
-  without reading `../server/bot/README.md` first — that number can be
-  banned without warning, and if it is, nobody can log in.
+- Don't reintroduce an unofficial WhatsApp Web client for OTP delivery. One
+  used to live at `server/bot/` and was removed: sign-in is passwordless, so a
+  banned number locks out every user at once with no recovery path. Use the
+  Cloud API, or add an SMS provider.

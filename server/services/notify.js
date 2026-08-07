@@ -75,23 +75,6 @@ const nullTransport = {
  * to be possible and threw at send time — see resolveRegistry below.
  */
 function resolvePhoneTransport() {
-  if (config.notifyTransport === 'whatsapp_bot') {
-    const { createWhatsappBridgeTransport } = require('./transports/whatsappBridge');
-    const bot = config.whatsappBot;
-
-    console.warn(
-      '[notify] transport=whatsapp_bot — UNOFFICIAL WhatsApp client.\n' +
-      '[notify] This violates WhatsApp\'s Terms of Service and the number may be banned.\n' +
-      `[notify] Requires \`npm run bot\` running and paired at ${bot.bridgeUrl}.`
-    );
-
-    return createWhatsappBridgeTransport({
-      bridgeUrl: bot.bridgeUrl,
-      bridgeToken: bot.bridgeToken,
-      timeoutMs: bot.bridgeTimeoutMs,
-    });
-  }
-
   if (config.notifyTransport === 'whatsapp') {
     // Required config is validated at boot in config/env.js, so reaching here
     // with incomplete credentials is impossible.

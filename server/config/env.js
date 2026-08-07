@@ -89,8 +89,6 @@ const whatsappAccessToken = optional('WHATSAPP_ACCESS_TOKEN', '');
 const whatsappTemplateName = optional('WHATSAPP_OTP_TEMPLATE_NAME', '');
 const whatsappConfigured = Boolean(whatsappPhoneNumberId && whatsappAccessToken && whatsappTemplateName);
 
-const whatsappBotBridgeToken = optional('WHATSAPP_BOT_BRIDGE_TOKEN', '');
-
 /**
  * SMTP, for copying a login code to a verified email address.
  *
@@ -171,12 +169,16 @@ if (smtpHost && !smtpFrom && emailProviders.length === 0) {
 }
 
 /**
- * console      — dev stub, prints codes to stdout
- * whatsapp     — official WhatsApp Cloud API (approved template, paid per message)
- * whatsapp_bot — UNOFFICIAL WhatsApp Web client via server/bot (free, against
- *                WhatsApp's Terms of Service, the number can be banned)
+ * console  — dev stub, prints codes to stdout
+ * whatsapp — official WhatsApp Cloud API (approved template, paid per message)
+ *
+ * An unofficial WhatsApp Web client used to be a third option. It was removed:
+ * sign-in here is passwordless, so the OTP transport IS the authentication
+ * system, and resting that on a client that violates WhatsApp's Terms of
+ * Service means a ban locks every user out at once with no way back in. That
+ * is not a risk a payments app gets to take to save on message fees.
  */
-const VALID_TRANSPORTS = ['console', 'whatsapp', 'whatsapp_bot'];
+const VALID_TRANSPORTS = ['console', 'whatsapp'];
 
 /**
  * Which transport delivers codes to phone numbers.
@@ -197,11 +199,6 @@ if (notifyTransport === 'whatsapp' && !whatsappConfigured) {
   );
 }
 
-if (notifyTransport === 'whatsapp_bot' && whatsappBotBridgeToken.length < 16) {
-  fatal.push(
-    'NOTIFY_TRANSPORT=whatsapp_bot requires WHATSAPP_BOT_BRIDGE_TOKEN (at least 16 characters). Generate one with: node -e "console.log(require(\'crypto\').randomBytes(24).toString(\'base64url\'))"'
-  );
-}
 
 // Shipping the console stub to production means verification codes are written
 // to server logs instead of being delivered. Fail at boot, not at first send.
@@ -349,30 +346,6 @@ const config = Object.freeze({
     // Verifies inbound webhook calls actually came from Meta.
     appSecret: optional('WHATSAPP_APP_SECRET', ''),
     webhookVerifyToken: optional('WHATSAPP_WEBHOOK_VERIFY_TOKEN', ''),
-  }),
-
-  /**
-   * Unofficial WhatsApp bot (server/bot). Free, and against WhatsApp's Terms of
-   * Service — the number can be banned without warning.
-   */
-  whatsappBot: Object.freeze({
-    bridgeHost: optional('WHATSAPP_BOT_BRIDGE_HOST', '127.0.0.1'),
-    bridgePort: int('WHATSAPP_BOT_BRIDGE_PORT', 5055),
-    bridgeUrl: optional('WHATSAPP_BOT_BRIDGE_URL', `http://127.0.0.1:${int('WHATSAPP_BOT_BRIDGE_PORT', 5055)}`),
-    bridgeToken: whatsappBotBridgeToken,
-    // Generous: the bot paces sends on purpose, so a queued message waits.
-    bridgeTimeoutMs: int('WHATSAPP_BOT_BRIDGE_TIMEOUT_MS', 30000),
-
-    authDir: optional('WHATSAPP_BOT_AUTH_DIR', '.auth'),
-    countryCode: optional('WHATSAPP_BOT_COUNTRY_CODE', '91').replace(/\D/g, ''),
-
-    // Ban-avoidance pacing. Raising these raises the risk.
-    minIntervalMs: int('WHATSAPP_BOT_MIN_INTERVAL_MS', 3000),
-    jitterMs: int('WHATSAPP_BOT_JITTER_MS', 2000),
-    dailyCap: int('WHATSAPP_BOT_DAILY_CAP', 200),
-    perRecipientCooldownMs: int('WHATSAPP_BOT_RECIPIENT_COOLDOWN_MS', 60000),
-
-    verbose: optional('WHATSAPP_BOT_VERBOSE', 'false') === 'true',
   }),
 
   email: Object.freeze({
