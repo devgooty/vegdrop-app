@@ -302,9 +302,11 @@ async function settleIntent(intent, paymentId) {
  * top-up screen even promised "if you were charged, it will be reconciled",
  * which was not true of any code that existed.
  *
- * Deliberately NOT rate-limited. paymentLimiter keys on IP, and Razorpay's
- * retries all arrive from a small set of theirs — throttling them would drop
- * precisely the deliveries this exists to catch. The signature is the gate.
+ * Deliberately NOT behind paymentLimiter. That allows 30 requests per IP per
+ * 15 minutes, and Razorpay's retries all arrive from a small set of theirs —
+ * it would throttle precisely the deliveries this exists to catch. The
+ * signature is the gate. (The far looser global limiter in app.js still
+ * applies, at 600 per 15 minutes, which no realistic webhook volume reaches.)
  *
  * Unauthenticated for the same reason: there is no user session on a
  * server-to-server call. The signature proves the sender, and the intent lookup

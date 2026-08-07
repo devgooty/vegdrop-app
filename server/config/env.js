@@ -226,19 +226,23 @@ if (isProduction && (!razorpayConfigured || !/^rzp_(live|test)_/.test(razorpayKe
  * you register the endpoint, and verifying with the key secret simply never
  * matches.
  *
- * Required in production because without it a captured payment can be lost for
- * good. The browser calling /topup/verify is the only thing that credits a
- * wallet otherwise, and a closed tab, a dead battery, or a dropped connection
- * between capture and that call leaves the money taken and never credited, with
- * nothing to reconcile it. The webhook is the path that does not depend on the
- * customer's device surviving.
+ * WARNED ABOUT, NOT FATAL — and the distinction is the same one RAZORPAYX_*
+ * settled earlier in this file's history.
+ *
+ * Every boot-time failure above gates something that is actively WRONG without
+ * it: no CORS origins and the client cannot reach the API, no JWT secret and
+ * auth is broken, mock Razorpay and payments are theatre. Missing this one
+ * leaves the app behaving exactly as it did before the webhook existed —
+ * `/topup/verify` still credits, and routes/wallet.js answers the webhook with
+ * a 503 and a loud log rather than trusting an unverifiable body. That is a
+ * missing recovery path, not a broken system, and refusing to start the whole
+ * app over it would take checkout down to protect a fallback.
+ *
+ * It still matters: without it, a tab closed in the seconds after paying means
+ * the money was captured and never credited, with nothing to reconcile it. The
+ * warning below is deliberately blunt about that.
  */
 const razorpayWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || '';
-if (isProduction && !razorpayWebhookSecret) {
-  fatal.push(
-    'RAZORPAY_WEBHOOK_SECRET is required in production. Without it a captured payment whose browser never returned is never credited and nothing reconciles it.'
-  );
-}
 
 /**
  * Vendor KYC.
@@ -588,6 +592,22 @@ if (ephemeral.length > 0 && !isTest) {
   console.warn(
     `[config] ${ephemeral.join(', ')} not set — generated ephemeral secret(s) for this process.\n` +
     '[config] Sessions will not survive a restart. Set real values in .env before deploying.'
+  );
+}
+
+/**
+ * Collecting money with no way to recover a payment the browser never confirmed.
+ *
+ * Only worth saying when Razorpay is actually live — in development there is
+ * nothing to reconcile, and a warning printed on every local boot is a warning
+ * nobody reads.
+ */
+if (razorpayConfigured && !razorpayWebhookSecret && !isTest) {
+  console.warn(
+    '[config] RAZORPAY_WEBHOOK_SECRET is not set, so POST /api/wallet/webhook answers 503.\n' +
+    '[config] Payments still work, but a customer whose browser closes between paying and\n' +
+    '[config] returning will have been charged without being credited, and nothing will fix it.\n' +
+    '[config] Register the endpoint in the Razorpay dashboard and set the secret it gives you.'
   );
 }
 
