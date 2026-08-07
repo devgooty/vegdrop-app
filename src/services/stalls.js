@@ -23,9 +23,15 @@ export async function updateMyStall(changes) {
 /**
  * Everything this stall should be looking at right now.
  *
- * `offers` are live in this market with lines still going; `packing` is work
- * already committed to. Poll this on the same 5s cycle the apps already use —
- * a new offer surfaces within five seconds with no push infrastructure at all.
+ * `offers` are the orders this stall has actually been ASKED about, not every
+ * order in the market: the server ranks stalls by how much of an order they can
+ * cover and addresses each one only its own slice. `openPool` on an offer means
+ * the ranking was exhausted and it is now first-come for the whole market.
+ *
+ * `packing` is work already committed to. Poll this on the same 5s cycle the
+ * apps already use — an offer surfaces within five seconds of the round
+ * opening, comfortably inside the two-minute window, with no push
+ * infrastructure at all.
  *
  * @returns {Promise<{offers: Array, packing: Array, stall: object}>}
  */
@@ -45,6 +51,21 @@ export async function fetchStallOrders() {
  */
 export async function claimLines(orderId, lineIds) {
   const result = await api.post(`/stalls/orders/${orderId}/claim`, { lineIds });
+  return result.data;
+}
+
+/**
+ * Turn an offer down.
+ *
+ * Worth doing rather than just ignoring it: the lines move to the next-ranked
+ * stall immediately instead of sitting out the rest of the two-minute window,
+ * so the customer waits less. The refusal is remembered, so this stall is not
+ * asked about this order again while it stays in this market.
+ *
+ * @throws {ApiRequestError} 409 NOT_YOURS when the offer already moved on
+ */
+export async function declineOffer(orderId) {
+  const result = await api.post(`/stalls/orders/${orderId}/decline`);
   return result.data;
 }
 

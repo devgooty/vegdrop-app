@@ -29,7 +29,10 @@ import { restoreSession, logout, startPhoneChange, verifyPhoneChange } from './s
 import useLocalStorage from './hooks/useLocalStorage';
 import { initialCategories, sampleProducts, initialOrders, initialRegisteredUsers, initialScheduledOrders } from './data/mockData';
 import { fetchProducts, updateStock } from './services/products';
-import { fetchOrders, createOrder, updateOrderStatus, cancelOrder } from './services/orders';
+import {
+  fetchOrders, createOrder, updateOrderStatus, cancelOrder,
+  acceptPartialOrder, retryPartialOrder,
+} from './services/orders';
 import { fetchWallet, topUpWallet } from './services/wallet';
 import { fetchUsers, updateUser, updateUserRole, deleteUser } from './services/users';
 import { ApiRequestError, NetworkError } from './services/apiClient';
@@ -1147,6 +1150,62 @@ export default function App() {
     }
   }, [toast]);
 
+  /**
+   * "Send the 3 that are available."
+   *
+   * The refund lands in the wallet whatever they paid with, so the balance is
+   * pulled again — otherwise the money appears only after a reload and looks
+   * like it went missing.
+   *
+   * A 409 here means the decision window lapsed and the server already did this
+   * on their behalf. That is the same outcome they just asked for, so it is
+   * reported as progress rather than an error.
+   */
+  const handleAcceptPartial = useCallback(async (order) => {
+    try {
+      const updated = await acceptPartialOrder(order.serverId || order.id);
+      setOrders((prev) => prev.map((o) => (o.serverId === updated.serverId ? updated : o)));
+      // `refund` is what the server actually credited — zero for COD, which has
+      // paid nothing yet and simply owes less at the door.
+      toast.success(
+        updated.refund > 0
+          ? `On its way. ₹${updated.refund} for the unavailable items is back in your wallet.`
+          : 'On its way. You will only be charged for what arrives.'
+      );
+      fetchWallet()
+        .then((w) => {
+          setWalletBalance(w.balance);
+          setWalletTransactions(w.transactions);
+        })
+        .catch(() => {});
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.code === 'NOT_PARTIAL') {
+        toast.info('Already sorted — your order is on its way.');
+        fetchOrders({ limit: 100 }).then(setOrders).catch(() => {});
+      } else {
+        toast.error(err.message || 'Could not update that order.');
+      }
+    }
+  }, [toast]);
+
+  /** "Try another market for everything." */
+  const handleRetryPartial = useCallback(async (order) => {
+    try {
+      const updated = await retryPartialOrder(order.serverId || order.id);
+      setOrders((prev) => prev.map((o) => (o.serverId === updated.serverId ? updated : o)));
+      toast.info(`Looking in ${updated.marketName || 'another market'} for the full order.`);
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.code === 'NO_MARKET') {
+        toast.warning('No other market nearby has the rest. Send what is available, or cancel.');
+      } else if (err instanceof ApiRequestError && err.code === 'NOT_PARTIAL') {
+        toast.info('That order has already moved on.');
+        fetchOrders({ limit: 100 }).then(setOrders).catch(() => {});
+      } else {
+        toast.error(err.message || 'Could not try another market.');
+      }
+    }
+  }, [toast]);
+
   const handleOpenProductDetail = useCallback((product, cat) => {
     const parentCategory = cat || categories.find((c) => c.id === product.categoryId);
     setActiveProductDetail({ product, category: parentCategory });
@@ -1396,6 +1455,8 @@ export default function App() {
                   }}
                   onGoHome={() => setActiveTab('home')}
                   onCancelOrder={handleCancelOrder}
+                  onAcceptPartial={handleAcceptPartial}
+                  onRetryPartial={handleRetryPartial}
                 />
               ) : activeTab === 'developer' && user?.role === 'developer' ? (
                 <Suspense fallback={<HomeSkeleton />}>

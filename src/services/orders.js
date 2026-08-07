@@ -42,10 +42,47 @@ export function toUiOrder(order) {
     // The moment the stalls committed. Past this the cancel button should go.
     lockedAt: order.fulfillment?.lockedAt || null,
     canCancel: order.market
-      ? order.fulfillment?.status === 'sourcing'
+      ? ['sourcing', 'partial_review'].includes(order.fulfillment?.status)
       : order.status === 'Pending',
     // How many markets have been tried, so "still looking" can say so honestly.
     sourcingAttempt: order.fulfillment?.attempt || 0,
+
+    /**
+     * The market could fill some of this order but not all of it, and is
+     * waiting on an answer.
+     *
+     * `droppedItems` is what would be lost by continuing, and `refundIfAccepted`
+     * what would come back — both shown up front, because "continue" is a
+     * decision about money and the customer should not have to work it out.
+     */
+    awaitingPartialChoice: order.fulfillment?.status === 'partial_review',
+    partialDeadline: order.fulfillment?.partialDeadline || null,
+    unavailableItems: (order.items || [])
+      .filter((item) => !item.claim?.stall)
+      .map((item) => ({ name: item.name, quantity: item.quantity })),
+    availableItems: (order.items || [])
+      .filter((item) => item.claim?.stall)
+      .map((item) => ({ name: item.name, quantity: item.quantity })),
+    /**
+     * What continuing would be worth, and whether it comes BACK or is simply
+     * never charged.
+     *
+     * COD has paid nothing yet, so there is no refund — the total drops and
+     * less is collected at the door. Saying "₹170 back" there would promise a
+     * credit that never arrives, so the two cases are kept apart rather than
+     * collapsed into one number.
+     */
+    unavailableValue:
+      (order.items || [])
+        .filter((item) => !item.claim?.stall)
+        .reduce((sum, item) => sum + (item.lineTotalPaise ?? 0), 0) / 100,
+    alreadyPaid: order.paymentStatus === 'paid',
+    /** Lines already dropped by an accepted partial, kept for the receipt. */
+    droppedItems: (order.fulfillment?.droppedItems || []).map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+      refunded: (item.refundedPaise ?? 0) / 100,
+    })),
     totalAmount: (order.totalAmountPaise ?? 0) / 100,
     subtotal: (order.subtotalPaise ?? 0) / 100,
     deliveryFee: (order.deliveryFeePaise ?? 0) / 100,
@@ -133,6 +170,33 @@ export async function createOrder({ items, address, paymentMethod, marketId, sho
  */
 export async function cancelOrder(orderId) {
   const result = await api.patch(`/orders/${orderId}/status`, { status: 'Cancelled' });
+  return toUiOrder(result.data);
+}
+
+/**
+ * Take what the market could supply. The rest is dropped and refunded.
+ *
+ * Only valid while the order is in `partial_review`. If the decision window
+ * lapsed first the server has already done this on the customer's behalf, and
+ * this returns 409 — refresh and the order is simply on its way.
+ *
+ * @throws {ApiRequestError} 409 NOT_PARTIAL
+ */
+export async function acceptPartialOrder(orderId) {
+  const result = await api.post(`/orders/${orderId}/partial/accept`);
+  return { ...toUiOrder(result.data), refund: (result.data.refundPaise ?? 0) / 100 };
+}
+
+/**
+ * Look in another market for the whole order instead.
+ *
+ * Everything the current market had claimed is handed back, so this genuinely
+ * starts over rather than adding to what is already there.
+ *
+ * @throws {ApiRequestError} 409 NO_MARKET when there is nowhere left to try
+ */
+export async function retryPartialOrder(orderId) {
+  const result = await api.post(`/orders/${orderId}/partial/retry`);
   return toUiOrder(result.data);
 }
 

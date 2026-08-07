@@ -5,17 +5,24 @@ import {
 } from 'lucide-react';
 import { useToast } from './Toast';
 import {
-  fetchStallOrders, claimLines, packOrder, updateMyStall, secondsLeft, formatPaise,
+  fetchStallOrders, claimLines, declineOffer, packOrder, updateMyStall, secondsLeft, formatPaise,
   fetchEarnings, withdrawEarnings, timeUntil,
 } from '../services/stalls';
 
 /**
  * The stall screen.
  *
- * A shopkeeper sees two things: offers going right now in their market, and the
+ * A shopkeeper sees two things: offers addressed to them right now, and the
  * work they have already committed to. Nothing else — no customer name, no phone
  * number, no delivery address. The server does not send those to a stall, and
  * this screen would have nowhere to put them.
+ *
+ * An offer here is a genuine question, not a race. The server picks the stalls
+ * that can cover the most of an order and asks each about its own slice, so the
+ * lines on a card are reserved for this stall for the length of the countdown.
+ * Declining hands them straight to the next stall rather than making everyone
+ * wait out the clock. The exception is an offer flagged `openPool`, where the
+ * ranking has been exhausted and it really is first-come.
  *
  * The whole thing is driven by one polled endpoint on the same five-second
  * cycle the rest of the app already uses, so a new offer appears within five
@@ -132,12 +139,35 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
       const message =
         err.code === 'ALREADY_TAKEN'
           ? 'Another stall took those first.'
-          : err.code === 'NOT_SOURCING'
-            ? 'That order has already moved on.'
-            : err.code === 'STALL_CLOSED'
-              ? 'Your stall is closed. Open it to accept orders.'
-              : err.message || 'Could not accept.';
+          : err.code === 'NOT_OFFERED'
+            ? 'That offer has moved on to another stall.'
+            : err.code === 'NOT_SOURCING'
+              ? 'That order has already moved on.'
+              : err.code === 'STALL_CLOSED'
+                ? 'Your stall is closed. Open it to accept orders.'
+                : err.message || 'Could not accept.';
       toast.error(message);
+      await refresh();
+    } finally {
+      setBusyOrder(null);
+    }
+  };
+
+  /**
+   * Say no now rather than letting the clock run out.
+   *
+   * Both amount to the same thing for this stall — the order goes elsewhere and
+   * will not be offered again — but declining promptly is worth a couple of
+   * minutes to the customer, so it is worth making it a real button.
+   */
+  const handleDecline = async (order) => {
+    setBusyOrder(order.id);
+    try {
+      await declineOffer(order.id);
+      toast.info('Passed on. It has gone to another stall.');
+      await refresh();
+    } catch (err) {
+      toast.error(err.code === 'NOT_YOURS' ? 'That offer already moved on.' : err.message || 'Could not pass.');
       await refresh();
     } finally {
       setBusyOrder(null);
@@ -260,13 +290,15 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
             <EmptyState
               icon={<ShoppingBasket className="w-6 h-6" />}
               title="Nothing on offer"
-              body="When a customer orders from this market, it appears here within a few seconds."
+              body="Orders come to the stalls that can fill most of them, least busy first. Declaring your stock makes yours easier to pick."
             />
           )}
 
           <div className="space-y-3">
             {offers.map((order) => {
-              const remaining = secondsLeft(order.sourcingDeadline);
+              // The round clock, not the market-wide backstop — this is the
+              // window the shopkeeper actually has to answer in.
+              const remaining = secondsLeft(order.offerExpiresAt || order.sourcingDeadline);
               const chosen = selection[order.id] || [];
 
               return (
@@ -278,7 +310,8 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
                     <div className="min-w-0">
                       <p className="text-[13px] font-bold text-[#0F1F17]">{order.orderNumber}</p>
                       <p className="text-[11.5px] text-[#5B6B62]">
-                        {order.openLines.length} item{order.openLines.length === 1 ? '' : 's'} going
+                        {order.openLines.length} item{order.openLines.length === 1 ? '' : 's'}
+                        {order.openPool ? ' · open to any stall' : ' · held for you'}
                       </p>
                     </div>
                     <Countdown seconds={remaining} />
@@ -314,11 +347,25 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
                     })}
                   </ul>
 
-                  <div className="p-3 bg-gray-50">
+                  <div className="p-3 bg-gray-50 flex gap-2">
+                    {/*
+                      No decline button in the open pool: there is nothing to
+                      decline, because the order was never reserved for this
+                      stall. Passing on it there just means not tapping accept.
+                    */}
+                    {!order.openPool && (
+                      <button
+                        onClick={() => handleDecline(order)}
+                        disabled={busyOrder === order.id || remaining === 0}
+                        className="px-4 text-[14px] font-bold py-3.5 rounded-xl border border-gray-300 text-[#5B6B62] bg-white hover:bg-gray-100 transition active:translate-y-px disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Pass
+                      </button>
+                    )}
                     <button
                       onClick={() => handleAccept(order)}
                       disabled={busyOrder === order.id || !stall?.isOpen || remaining === 0}
-                      className="w-full bg-[#0B7A37] hover:bg-[#08652C] text-white text-[14px] font-bold py-3.5 rounded-xl transition active:translate-y-px disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex-1 bg-[#0B7A37] hover:bg-[#08652C] text-white text-[14px] font-bold py-3.5 rounded-xl transition active:translate-y-px disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {busyOrder === order.id
                         ? 'Accepting…'
