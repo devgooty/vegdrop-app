@@ -8,7 +8,6 @@ const Product = require('../models/Product');
 const { ApiError } = require('../middleware/errors');
 const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const StallEarning = require('../models/StallEarning');
 const { stallActionLimiter } = require('../middleware/rateLimit');
 const sourcing = require('../services/sourcing');
 const settlement = require('../services/settlement');
@@ -459,31 +458,10 @@ router.post(
 router.get('/me/earnings', ...stallGate, async (req, res) => {
   const [summary, recent] = await Promise.all([
     settlement.summaryForOwner(req.user._id),
-    StallEarning.find({ owner: req.user._id })
-      .sort({ earnedAt: -1 })
-      .limit(50)
-      .select('orderNumber netPaise grossPaise commissionPaise status earnedAt releaseAt releasedAt releasedEarly lines')
-      .lean(),
+    settlement.recentForOwner(req.user._id),
   ]);
 
-  return res.json({
-    data: {
-      ...summary,
-      recent: recent.map((row) => ({
-        id: String(row._id),
-        orderNumber: row.orderNumber,
-        netPaise: row.netPaise,
-        grossPaise: row.grossPaise,
-        commissionPaise: row.commissionPaise,
-        status: row.status,
-        earnedAt: row.earnedAt,
-        releaseAt: row.releaseAt,
-        releasedAt: row.releasedAt,
-        releasedEarly: row.releasedEarly,
-        itemCount: row.lines.reduce((sum, l) => sum + l.quantity, 0),
-      })),
-    },
-  });
+  return res.json({ data: { ...summary, recent } });
 });
 
 /**

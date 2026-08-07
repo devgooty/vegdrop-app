@@ -54,3 +54,28 @@ export async function updateMyShop(fields) {
   const result = await api.patch('/shops/me', fields);
   return result.data;
 }
+
+/**
+ * What this shop is owed, what has been paid, and when the rest lands.
+ *
+ * The stall equivalent lives in services/stalls.js and hits /stalls/me/earnings,
+ * which is gated on having a stall — an independent shopkeeper gets 404 there,
+ * which is why this exists separately rather than being shared.
+ */
+export async function fetchShopEarnings() {
+  const result = await api.get('/shops/me/earnings');
+  return result.data;
+}
+
+/**
+ * Take the held money now instead of waiting out the hold.
+ *
+ * Releases everything pending, not just the minimum — a partial payout would
+ * leave dust that could never be withdrawn again.
+ *
+ * @throws {ApiRequestError} 409 BELOW_MINIMUM when there is not enough yet
+ */
+export async function withdrawShopEarnings() {
+  const result = await api.post('/shops/me/earnings/withdraw');
+  return result.data;
+}

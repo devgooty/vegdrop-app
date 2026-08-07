@@ -7,6 +7,8 @@ const VendorKyc = require('../models/VendorKyc');
 const { pointFromLatLng } = require('../models/geoPoint');
 const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
+const { stallActionLimiter } = require('../middleware/rateLimit');
+const settlement = require('../services/settlement');
 
 const router = express.Router();
 
@@ -242,5 +244,42 @@ router.patch(
     return res.json({ data: { updated: true } });
   }
 );
+
+// ---------------------------------------------------------------------------
+// Earnings
+// ---------------------------------------------------------------------------
+
+/**
+ * What this shop is owed, what has already been paid, and when the rest lands.
+ *
+ * The same two routes exist under /api/stalls, behind that router's stall gate.
+ * They are duplicated rather than shared because the GATE is the difference: a
+ * shopkeeper trading from their own premises has no stall, so `stallGate`
+ * answers 404 NO_STALL and they could not reach their money at all. The
+ * handlers themselves are three lines each and delegate to the same functions,
+ * which are keyed on `owner` and do not care which kind of seller is asking.
+ */
+router.get('/me/earnings', ...shopGate, async (req, res) => {
+  const [summary, recent] = await Promise.all([
+    settlement.summaryForOwner(req.user._id),
+    settlement.recentForOwner(req.user._id),
+  ]);
+
+  return res.json({ data: { ...summary, recent } });
+});
+
+/**
+ * Take the held money now rather than waiting out the hold.
+ *
+ * Rate-limited for the same reason as the stall equivalent: it is the one route
+ * here that moves money, and a retry loop against it is worth bounding hard.
+ */
+router.post('/me/earnings/withdraw', ...shopGate, stallActionLimiter, async (req, res) => {
+  // Throws 409 BELOW_MINIMUM with the shortfall when there is not enough yet.
+  const result = await settlement.releaseEarly(req.user._id);
+  const summary = await settlement.summaryForOwner(req.user._id);
+
+  return res.json({ data: { ...result, ...summary } });
+});
 
 module.exports = router;

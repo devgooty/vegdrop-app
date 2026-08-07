@@ -221,6 +221,26 @@ if (isProduction && (!razorpayConfigured || !/^rzp_(live|test)_/.test(razorpayKe
 }
 
 /**
+ * The webhook secret, which is a THIRD credential — not the key secret above.
+ * Razorpay signs webhook bodies with a value you choose in their dashboard when
+ * you register the endpoint, and verifying with the key secret simply never
+ * matches.
+ *
+ * Required in production because without it a captured payment can be lost for
+ * good. The browser calling /topup/verify is the only thing that credits a
+ * wallet otherwise, and a closed tab, a dead battery, or a dropped connection
+ * between capture and that call leaves the money taken and never credited, with
+ * nothing to reconcile it. The webhook is the path that does not depend on the
+ * customer's device surviving.
+ */
+const razorpayWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || '';
+if (isProduction && !razorpayWebhookSecret) {
+  fatal.push(
+    'RAZORPAY_WEBHOOK_SECRET is required in production. Without it a captured payment whose browser never returned is never credited and nothing reconciles it.'
+  );
+}
+
+/**
  * Vendor KYC.
  *
  * PAN and bank account numbers are encrypted at rest. The key is separate from
@@ -385,6 +405,7 @@ const config = Object.freeze({
   razorpay: Object.freeze({
     keyId: razorpayKeyId,
     keySecret: razorpayKeySecret,
+    webhookSecret: razorpayWebhookSecret,
     configured: razorpayConfigured,
     // Mock order creation is a development affordance only; prod is blocked above.
     allowMock: !isProduction && !razorpayConfigured,

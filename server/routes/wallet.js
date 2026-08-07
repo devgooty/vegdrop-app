@@ -242,27 +242,7 @@ router.post(
       }
     }
 
-    const result = await withTransaction(async (session) =>
-      wallet.credit({
-        userId: req.user._id,
-        // The recorded intent, never a client-supplied amount.
-        amountPaise: intent.amountPaise,
-        reason: 'razorpay_topup',
-        // Replay-proof: the unique index on this key absorbs duplicate calls.
-        idempotencyKey: `razorpay:${paymentId}`,
-        razorpayOrderId: orderId,
-        razorpayPaymentId: paymentId,
-        note: 'Wallet top-up',
-        session,
-      })
-    );
-
-    if (intent.status !== 'paid') {
-      intent.status = 'paid';
-      intent.razorpayPaymentId = paymentId;
-      intent.settledAt = new Date();
-      await intent.save();
-    }
+    const result = await settleIntent(intent, paymentId);
 
     return res.json({
       data: {
@@ -273,5 +253,158 @@ router.post(
     });
   }
 );
+
+/**
+ * Credit a verified payment against its recorded intent, and mark the intent.
+ *
+ * Shared by the browser's verification call and the webhook below, so the two
+ * cannot credit differently — or twice. `razorpay:<paymentId>` is the whole
+ * guard: whichever arrives second collides on the ledger's unique index and is
+ * reported as the first one's success.
+ *
+ * The amount always comes from the stored intent. Neither caller is trusted for
+ * it — not the browser, and not the webhook body either, since a body is only
+ * as trustworthy as the signature that covered it.
+ */
+async function settleIntent(intent, paymentId) {
+  const result = await withTransaction(async (session) =>
+    wallet.credit({
+      userId: intent.user,
+      amountPaise: intent.amountPaise,
+      reason: 'razorpay_topup',
+      idempotencyKey: `razorpay:${paymentId}`,
+      razorpayOrderId: intent.razorpayOrderId,
+      razorpayPaymentId: paymentId,
+      note: 'Wallet top-up',
+      session,
+    })
+  );
+
+  if (intent.status !== 'paid') {
+    intent.status = 'paid';
+    intent.razorpayPaymentId = paymentId;
+    intent.settledAt = new Date();
+    await intent.save();
+  }
+
+  return result;
+}
+
+/**
+ * Razorpay's webhook — the path that does not depend on the customer's browser.
+ *
+ * WHY THIS EXISTS
+ *
+ * Until now `/topup/verify` was the only thing that credited a wallet, and it
+ * is called by the page that Razorpay redirects back to. Close the tab, lose
+ * signal, or run out of battery in the seconds after paying and the money was
+ * captured and never credited — with nothing anywhere to reconcile it. The
+ * top-up screen even promised "if you were charged, it will be reconciled",
+ * which was not true of any code that existed.
+ *
+ * Deliberately NOT rate-limited. paymentLimiter keys on IP, and Razorpay's
+ * retries all arrive from a small set of theirs — throttling them would drop
+ * precisely the deliveries this exists to catch. The signature is the gate.
+ *
+ * Unauthenticated for the same reason: there is no user session on a
+ * server-to-server call. The signature proves the sender, and the intent lookup
+ * decides whose wallet is credited — the request body never names a user.
+ */
+router.post('/webhook', async (req, res) => {
+  const secret = config.razorpay.webhookSecret;
+
+  if (!secret) {
+    /**
+     * 503, not 200. An unconfigured secret means we cannot tell a real delivery
+     * from a forged one, so the only safe answer is "not now" — and Razorpay
+     * retrying is what gives an operator time to set it before the payment is
+     * lost. Production cannot reach this; config/env.js refuses to boot.
+     */
+    console.error('[wallet] webhook received but RAZORPAY_WEBHOOK_SECRET is not set');
+    return res.status(503).json({ error: { code: 'WEBHOOK_NOT_CONFIGURED' } });
+  }
+
+  const signature = req.get('x-razorpay-signature') || '';
+  // Set by the express.json verify hook in app.js, for this path only.
+  const raw = req.rawBody;
+
+  if (!raw || !verifyWebhookSignature(raw, signature, secret)) {
+    // 400 and not 401: there is no credential to re-present. Razorpay does not
+    // retry a 4xx, which is right — a bad signature will never become good.
+    return res.status(400).json({ error: { code: 'INVALID_SIGNATURE' } });
+  }
+
+  const event = req.body?.event;
+  const payment = req.body?.payload?.payment?.entity;
+
+  // Everything else Razorpay may send (refunds, settlements, disputes) is
+  // acknowledged rather than retried. Answering non-2xx to an event we simply
+  // do not handle gets the whole webhook disabled after enough failures.
+  if (!payment?.id || !payment?.order_id) {
+    return res.json({ data: { handled: false, event: event || null } });
+  }
+
+  const intent = await PaymentIntent.findOne({ razorpayOrderId: payment.order_id });
+  if (!intent) {
+    // Not ours, or older than the intent's 25-hour retention. Nothing to do,
+    // and nothing a retry would fix.
+    return res.json({ data: { handled: false, reason: 'NO_INTENT' } });
+  }
+
+  if (event === 'payment.failed') {
+    if (intent.status === 'created') {
+      intent.status = 'failed';
+      await intent.save();
+    }
+    return res.json({ data: { handled: true, event } });
+  }
+
+  if (event !== 'payment.captured') {
+    return res.json({ data: { handled: false, event } });
+  }
+
+  /**
+   * A signed body proving ₹10 was captured must not credit a ₹5000 intent.
+   *
+   * This should be impossible — Razorpay collects against the order we created
+   * — so it is logged loudly and left uncredited rather than reconciled
+   * automatically. 200, because retrying will send the same mismatch for ever.
+   */
+  if (Number(payment.amount) !== intent.amountPaise) {
+    console.error('[wallet] webhook amount does not match the recorded intent', {
+      razorpayOrderId: payment.order_id,
+      paymentId: payment.id,
+      captured: payment.amount,
+      expected: intent.amountPaise,
+    });
+    return res.json({ data: { handled: false, reason: 'AMOUNT_MISMATCH' } });
+  }
+
+  // Belt and braces: a mock intent is a development artefact and must never be
+  // settled by anything claiming to be Razorpay.
+  if (intent.isMock) {
+    return res.json({ data: { handled: false, reason: 'MOCK_INTENT' } });
+  }
+
+  const result = await settleIntent(intent, payment.id);
+
+  // `replayed` is the normal case whenever the browser got back first, which is
+  // most of the time. It is a success, not a duplicate to worry about.
+  console.log(
+    `[wallet] webhook credited ${payment.id} (${result.replayed ? 'already credited' : 'new'})`
+  );
+
+  return res.json({ data: { handled: true, credited: !result.replayed } });
+});
+
+/** Constant-time HMAC-SHA256 comparison over the exact bytes Razorpay sent. */
+function verifyWebhookSignature(rawBody, signature, secret) {
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  const expectedBuf = Buffer.from(expected, 'utf8');
+  const actualBuf = Buffer.from(signature, 'utf8');
+
+  // timingSafeEqual throws on a length mismatch, so the length is checked first.
+  return expectedBuf.length === actualBuf.length && crypto.timingSafeEqual(expectedBuf, actualBuf);
+}
 
 module.exports = router;

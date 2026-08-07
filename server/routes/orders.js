@@ -15,6 +15,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { withTransaction } = require('../db/connect');
 const wallet = require('../services/wallet');
 const sourcing = require('../services/sourcing');
+const settlement = require('../services/settlement');
 const { CANCELLABLE_BY_CUSTOMER, CANCELLABLE_BY_STAFF, transitionTo } = require('../utils/orderStatus');
 
 const router = express.Router();
@@ -823,6 +824,26 @@ router.patch(
     order.status = status;
     order.statusHistory.push({ status, at: new Date(), by: req.user._id });
     await order.save();
+
+    /**
+     * The customer has the goods, so the shop has earned its money.
+     *
+     * The market equivalent lives in services/dispatch.js, on the rider's
+     * completion. This branch had no equivalent at all, so an independent shop
+     * was paid for nothing it sold through the app — the customer's wallet was
+     * debited and no obligation was ever written.
+     *
+     * Same shape as the dispatch call deliberately: awaited because it is
+     * money, but never allowed to fail a delivery that genuinely happened. The
+     * sweeper's backfill picks up anything left with `settledAt` unset.
+     */
+    if (status === 'Delivered' && order.shop) {
+      try {
+        await settlement.recordDelivery(order._id);
+      } catch (err) {
+        console.warn(`[orders] settlement for ${order.orderNumber} deferred: ${err.message}`);
+      }
+    }
 
     return res.json({ data: order.toJSON() });
   }

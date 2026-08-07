@@ -28,6 +28,17 @@ const riderRoutes = require('./routes/rider');
 const shopRoutes = require('./routes/shops');
 
 const WHATSAPP_WEBHOOK_PATH = '/api/whatsapp';
+/**
+ * Razorpay's payment webhook. Needs the raw bytes for the same reason WhatsApp
+ * does — its HMAC covers exactly what was sent, and re-serialising the parsed
+ * body does not reproduce those bytes.
+ *
+ * Unlike WhatsApp's, this one is mounted BELOW the database gate, on purpose:
+ * it has to write to the ledger, so answering 503 while Mongo is down is
+ * correct. Razorpay retries a failed webhook, which is exactly what should
+ * happen to a credit we could not record.
+ */
+const RAZORPAY_WEBHOOK_PATH = '/api/wallet/webhook';
 
 /**
  * The built client, when there is one.
@@ -197,15 +208,16 @@ function createApp() {
     express.json({
       limit: '100kb',
       /**
-       * Retain the raw bytes for the WhatsApp webhook only.
+       * Retain the raw bytes for the signed webhooks only.
        *
-       * Its X-Hub-Signature-256 HMAC covers exactly what Meta sent, and
+       * Their HMACs cover exactly what the sender transmitted, and
        * re-serialising the parsed object does not reproduce those bytes (key
-       * order and number formatting are not preserved). Scoped to the one path
-       * that needs it rather than buffering a second copy of every request body.
+       * order and number formatting are not preserved). Scoped to the paths
+       * that need it rather than buffering a second copy of every request body.
        */
       verify(req, _res, buf) {
-        if (req.originalUrl && req.originalUrl.startsWith(WHATSAPP_WEBHOOK_PATH)) {
+        const url = req.originalUrl || '';
+        if (url.startsWith(WHATSAPP_WEBHOOK_PATH) || url.startsWith(RAZORPAY_WEBHOOK_PATH)) {
           req.rawBody = buf;
         }
       },

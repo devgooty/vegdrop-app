@@ -982,7 +982,9 @@ export default function App() {
         const chargeRupees = Math.max(MIN_TOPUP, Math.ceil(shortfallRupees));
 
         try {
-          const result = await topUpWallet(chargeRupees, user);
+          // The method the customer picked in the basket, so choosing PhonePe
+          // there opens PhonePe rather than the generic sheet.
+          const result = await topUpWallet(chargeRupees, user, { method: selectedPaymentMethod });
           setWalletBalance(result.balance);
           if (chargeRupees > shortfallRupees) {
             toast.success(

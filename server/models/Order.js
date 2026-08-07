@@ -353,6 +353,13 @@ orderSchema.index({ 'fulfillment.riderOffer.rider': 1, 'fulfillment.riderOffer.e
 orderSchema.index({ 'items.claim.stall': 1, 'fulfillment.status': 1 });
 /** The settlement backfill: delivered, but the stalls' payouts never recorded. */
 orderSchema.index({ 'fulfillment.status': 1, 'fulfillment.settledAt': 1 });
+/**
+ * The same backfill for an independent shop, which needs its own index because
+ * it needs its own query: a shop order has no sourcing engine, so
+ * `fulfillment.status` is null for its whole life and the coarse `status` is
+ * the only record that it was delivered.
+ */
+orderSchema.index({ shop: 1, status: 1, 'fulfillment.settledAt': 1 });
 
 orderSchema.virtual('id').get(function getId() {
   return this._id.toHexString();

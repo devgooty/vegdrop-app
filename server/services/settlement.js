@@ -8,7 +8,13 @@ const { ApiError } = require('../middleware/errors');
 const wallet = require('./wallet');
 
 /**
- * Paying the stalls.
+ * Paying the sellers — market stalls and independent shops alike.
+ *
+ * Only the market half existed, and the gap was not cosmetic: `recordDelivery`
+ * returned early on an order with no market, so a wallet-paid shop order took
+ * the customer's money and wrote no obligation at all. Nothing downstream was
+ * broken, because there was nothing downstream — the release sweep can only pay
+ * what was recorded. COD hid it, since the rider hands over cash either way.
  *
  * Three rules, and the order of them is the whole design:
  *
@@ -80,17 +86,64 @@ function splitByStall(order) {
 }
 
 /**
- * Record what every stall on this order is owed, and start the clock.
+ * What the platform keeps, and what reaches the seller.
+ *
+ * One place for the arithmetic so a stall and a shop are never rounded
+ * differently on the same gross.
+ */
+function applyCommission(grossPaise) {
+  const commissionPaise = Math.round((grossPaise * config.settlement.commissionBps) / 10000);
+  return { commissionPaise, netPaise: grossPaise - commissionPaise };
+}
+
+/**
+ * Write one obligation, absorbing the replay.
+ *
+ * @returns {Promise<boolean>} whether this call is the one that created it
+ */
+async function createEarning(doc) {
+  try {
+    await StallEarning.create(doc);
+    return true;
+  } catch (err) {
+    // 11000 is the (order, stall) unique index doing its job on a replay.
+    if (err?.code !== 11000) throw err;
+    return false;
+  }
+}
+
+/**
+ * Record what the seller on this order is owed, and start the clock.
  *
  * Called the moment a delivery is confirmed. Safe to call again — the unique
  * index means a repeat writes nothing rather than creating a second obligation.
+ *
+ * Both kinds of seller come through here. Which branch runs is decided by the
+ * order, not by the caller, so the market rider's completion and a shop order's
+ * status change cannot disagree about what gets recorded.
  *
  * @returns {Promise<{recorded: number, totalNetPaise: number}>}
  */
 async function recordDelivery(orderId) {
   const order = await Order.findById(orderId).lean();
-  if (!order || !order.market) return { recorded: 0, totalNetPaise: 0 };
+  if (!order) return { recorded: 0, totalNetPaise: 0 };
 
+  if (order.market) return recordMarketDelivery(order);
+  if (order.shop) return recordShopDelivery(order);
+
+  /**
+   * A legacy order with no named seller. There is nobody to pay — these predate
+   * both markets and shops — so mark it settled rather than leaving the backfill
+   * sweep to pick it up on every tick for ever.
+   */
+  await markSettled(order._id);
+  return { recorded: 0, totalNetPaise: 0, reason: 'NO_SELLER' };
+}
+
+/**
+ * A market order: one obligation per stall that supplied a line.
+ */
+async function recordMarketDelivery(order) {
   if (order.fulfillment?.status !== 'delivered') {
     // Not an error worth throwing: the sweeper scans broadly and may reach an
     // order that has since been cancelled.
@@ -121,36 +174,95 @@ async function recordDelivery(orderId) {
     const stall = ownerByStall.get(String(share.stall));
     if (!stall?.owner) continue;
 
-    const commissionPaise = Math.round((share.grossPaise * config.settlement.commissionBps) / 10000);
-    const netPaise = share.grossPaise - commissionPaise;
+    const { commissionPaise, netPaise } = applyCommission(share.grossPaise);
     if (netPaise <= 0) continue;
 
-    try {
-      await StallEarning.create({
-        stall: share.stall,
-        stallNumber: share.stallNumber || stall.stallNumber || null,
-        owner: stall.owner,
-        market: order.market,
-        order: order._id,
-        orderNumber: order.orderNumber,
-        lines: share.lines,
-        grossPaise: share.grossPaise,
-        commissionPaise,
-        netPaise,
-        status: 'pending',
-        earnedAt,
-        releaseAt,
-      });
+    const created = await createEarning({
+      stall: share.stall,
+      stallNumber: share.stallNumber || stall.stallNumber || null,
+      owner: stall.owner,
+      market: order.market,
+      order: order._id,
+      orderNumber: order.orderNumber,
+      lines: share.lines,
+      grossPaise: share.grossPaise,
+      commissionPaise,
+      netPaise,
+      status: 'pending',
+      earnedAt,
+      releaseAt,
+    });
+
+    if (created) {
       recorded += 1;
       totalNetPaise += netPaise;
-    } catch (err) {
-      // 11000 is the (order, stall) unique index doing its job on a replay.
-      if (err?.code !== 11000) throw err;
     }
   }
 
   await markSettled(order._id);
   return { recorded, totalNetPaise };
+}
+
+/**
+ * An independent shop order: one obligation, for the whole basket.
+ *
+ * No `splitByStall`, because there is nothing to split — the shop supplied
+ * every line itself.
+ *
+ * Delivery is read from the coarse `status`, not from `fulfillment.status`. A
+ * shop order has no sourcing engine and never sets one, so `fulfillment.status`
+ * is null for its entire life; keying off it here is what made the first
+ * version of this silently record nothing.
+ *
+ * Recorded whatever the customer paid with, exactly as for a market order. Only
+ * a rider or an admin can mark an order Delivered — a shopkeeper cannot — so
+ * COD cash reaches the platform through the rider either way, and the platform
+ * owes the seller in both cases.
+ */
+async function recordShopDelivery(order) {
+  if (order.status !== 'Delivered') {
+    return { recorded: 0, totalNetPaise: 0, reason: 'NOT_DELIVERED' };
+  }
+
+  const lines = order.items.map((item) => ({
+    name: item.name,
+    quantity: item.quantity,
+    unitPricePaise: item.unitPricePaise,
+    lineTotalPaise: item.unitPricePaise * item.quantity,
+  }));
+
+  /**
+   * Summed from the lines rather than taken from `subtotalPaise`, so `lines`
+   * and `grossPaise` can never disagree — and the delivery fee stays out of it,
+   * because that is the platform's, not the shop's.
+   */
+  const grossPaise = lines.reduce((sum, line) => sum + line.lineTotalPaise, 0);
+  const { commissionPaise, netPaise } = applyCommission(grossPaise);
+
+  if (netPaise <= 0) {
+    await markSettled(order._id);
+    return { recorded: 0, totalNetPaise: 0 };
+  }
+
+  const earnedAt = new Date();
+  const created = await createEarning({
+    shop: order.shop,
+    owner: order.shop,
+    order: order._id,
+    orderNumber: order.orderNumber,
+    lines,
+    grossPaise,
+    commissionPaise,
+    netPaise,
+    status: 'pending',
+    earnedAt,
+    releaseAt: new Date(earnedAt.getTime() + HOLD_MS),
+  });
+
+  await markSettled(order._id);
+  return created
+    ? { recorded: 1, totalNetPaise: netPaise }
+    : { recorded: 0, totalNetPaise: 0 };
 }
 
 /** Flag the order so the backfill sweep stops looking at it. */
@@ -283,12 +395,20 @@ async function releaseEarly(ownerId) {
  *
  * Cheap because it is driven by a flag on the order rather than by joining
  * against the earnings collection.
+ *
+ * The two branches read different fields on purpose, and it is the same
+ * distinction `recordDelivery` makes: a market order's truth is
+ * `fulfillment.status`, and a shop order never sets one. A single query over
+ * `fulfillment.status: 'delivered'` matched market orders only, which is how
+ * every shop delivery slipped past this as well as past the live path.
  */
 async function backfillUnsettled({ limit = 50 } = {}) {
   const orders = await Order.find({
-    'fulfillment.status': 'delivered',
     'fulfillment.settledAt': null,
-    market: { $ne: null },
+    $or: [
+      { market: { $ne: null }, 'fulfillment.status': 'delivered' },
+      { shop: { $ne: null }, status: 'Delivered' },
+    ],
   })
     .select('_id orderNumber')
     .limit(limit)
@@ -342,12 +462,44 @@ async function summaryForOwner(ownerId) {
   };
 }
 
+/**
+ * The seller's own statement: what each order earned them and where it is.
+ *
+ * Keyed on `owner` alone, so it answers for a stall keeper and an independent
+ * shopkeeper without either route needing to know which it is asking about.
+ */
+async function recentForOwner(ownerId, { limit = 50 } = {}) {
+  const rows = await StallEarning.find({ owner: ownerId })
+    .sort({ earnedAt: -1 })
+    .limit(limit)
+    .select('orderNumber netPaise grossPaise commissionPaise status earnedAt releaseAt releasedAt releasedEarly lines stallNumber shop')
+    .lean();
+
+  return rows.map((row) => ({
+    id: String(row._id),
+    orderNumber: row.orderNumber,
+    netPaise: row.netPaise,
+    grossPaise: row.grossPaise,
+    commissionPaise: row.commissionPaise,
+    status: row.status,
+    earnedAt: row.earnedAt,
+    releaseAt: row.releaseAt,
+    releasedAt: row.releasedAt,
+    releasedEarly: row.releasedEarly,
+    // Lets one screen render both without a second call to work out which.
+    seller: row.shop ? 'shop' : 'stall',
+    stallNumber: row.stallNumber || null,
+    itemCount: row.lines.reduce((sum, l) => sum + l.quantity, 0),
+  }));
+}
+
 module.exports = {
   recordDelivery,
   releaseDue,
   releaseEarly,
   backfillUnsettled,
   summaryForOwner,
+  recentForOwner,
   splitByStall,
   payoutKey,
 };
