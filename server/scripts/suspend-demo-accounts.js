@@ -123,11 +123,11 @@ async function main() {
     }
 
     if (!APPLY) {
-      const verb = RESTORE ? 'restore' : 'suspend';
+      const verb = RESTORE ? 'restored' : 'suspended';
       const n = users.filter((u) =>
         RESTORE ? u.status === 'suspended' : u.status !== 'suspended'
       ).length;
-      console.info(`\nDry run complete. ${n} account(s) would be ${verb}d.`);
+      console.info(`\nDry run complete. ${n} account(s) would be ${verb}.`);
       console.info(`Re-run with --apply${RESTORE ? ' --restore' : ''} to write.`);
       return;
     }
