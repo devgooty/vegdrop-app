@@ -50,6 +50,17 @@ export async function fetchMarketCatalog(marketId, { categoryId, search } = {}) 
     rating: item.rating,
     reviews: item.reviews,
     price: item.price,
+    /**
+     * When a stall in this market last photographed the real thing, or null.
+     *
+     * The photo itself is a separate request — `freshPhotoUrl` below — so the
+     * catalog stays a small JSON response instead of carrying a couple of
+     * hundred inlined images.
+     */
+    freshPhotoAt: item.freshPhotoAt || null,
+    freshPhotoUrl: item.freshPhotoAt
+      ? `/api/markets/${item.marketId}/products/${item.id}/fresh-photo`
+      : null,
     // Shown under the product name on the card, as asked.
     marketId: item.marketId,
     marketName: item.marketName,

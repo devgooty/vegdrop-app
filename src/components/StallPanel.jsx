@@ -1,13 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Store, Clock, Package, CheckCircle2, Zap, LogOut, RefreshCw,
   AlertTriangle, ShoppingBasket, Timer, Check, Wallet, Lock,
+  Plus, Search, X, Camera, Trash2, Boxes,
 } from 'lucide-react';
 import { useToast } from './Toast';
 import {
   fetchStallOrders, claimLines, declineOffer, packOrder, updateMyStall, secondsLeft, formatPaise,
   fetchEarnings, withdrawEarnings, timeUntil,
+  fetchStallStock, saveStallInventory, saveFreshPhoto, removeFreshPhoto,
 } from '../services/stalls';
+import { toUploadableJpeg, approximateKb } from '../services/imageCapture';
 
 /**
  * The stall screen.
@@ -39,6 +42,16 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
   const [earnings, setEarnings] = useState(null);
   const [withdrawing, setWithdrawing] = useState(false);
 
+  /**
+   * What this stall is holding, and everything the market prices that it could
+   * hold. One list serves both: `stock > 0` is the table, the rest is the
+   * picker.
+   */
+  const [stock, setStock] = useState([]);
+  /** The product being added or edited in the sheet, or null when it is shut. */
+  const [editing, setEditing] = useState(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
   /** Per-order line selection, so a stall can take part of an order. */
   const [selection, setSelection] = useState({});
 
@@ -52,16 +65,21 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [data, money] = await Promise.all([
+      const [data, money, table] = await Promise.all([
         fetchStallOrders(),
         // Earnings move on a much slower clock than offers, but folding them
         // into the same poll keeps the screen to one request cycle.
         fetchEarnings().catch(() => null),
+        // Stock changes only when this shopkeeper changes it — except for the
+        // price, which the market owner can move at any moment. Polling it is
+        // how a stall finds out their tomatoes are now ₹65.
+        fetchStallStock().catch(() => null),
       ]);
       setOffers(data.offers);
       setPacking(data.packing);
       setStall((prev) => ({ ...prev, ...data.stall }));
       if (money) setEarnings(money);
+      if (table) setStock(table);
     } catch (err) {
       // Transient; the next tick retries. Only surfaced on the first load.
       if (loading) toast.error(err.message || 'Could not load your stall.');
@@ -81,6 +99,39 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
     } finally {
       setWithdrawing(false);
     }
+  };
+
+  /** What is actually on the table right now. */
+  const held = useMemo(() => stock.filter((p) => p.stock > 0), [stock]);
+
+  /**
+   * Save one row of stock, and its photo if one was taken.
+   *
+   * The inventory endpoint upserts per product, so sending a single row leaves
+   * every other line alone — which is what lets the sheet add one product at a
+   * time instead of resubmitting the whole table.
+   *
+   * The photo is a separate request on purpose: it is optional, it is two
+   * orders of magnitude larger, and a failed photo must not lose the stock
+   * figure the shopkeeper just typed.
+   */
+  const handleSaveStock = async ({ productId, quantity, photo, removePhoto }) => {
+    await saveStallInventory([{ productId, stock: quantity }]);
+
+    if (photo) {
+      try {
+        await saveFreshPhoto(productId, photo);
+      } catch (err) {
+        toast.warning(`Stock saved, but the photo did not upload: ${err.message}`);
+        await refresh();
+        return;
+      }
+    } else if (removePhoto) {
+      await removeFreshPhoto(productId).catch(() => {});
+    }
+
+    toast.success(quantity > 0 ? 'Stock updated 🧺' : 'Taken off your table');
+    await refresh();
   };
 
   /** Poll, pausing while the tab is hidden — same pattern as the other apps. */
@@ -277,6 +328,30 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
           onWithdraw={handleWithdraw}
         />}
 
+        {/* --- What is on the table ---------------------------------------- */}
+        <section>
+          <SectionHeading
+            icon={<Boxes className="w-4 h-4" />}
+            title="My stock"
+            count={held.length}
+            tone="emerald"
+          />
+
+          {!loading && held.length === 0 && (
+            <EmptyState
+              icon={<Boxes className="w-6 h-6" />}
+              title="Nothing listed yet"
+              body="Tap + to say what you are holding today. Orders go to the stalls that can fill most of them, so a stall that lists nothing is never the best answer."
+            />
+          )}
+
+          <div className="space-y-2">
+            {held.map((item) => (
+              <StockRow key={item.id} item={item} onEdit={() => setEditing(item)} />
+            ))}
+          </div>
+        </section>
+
         {/* --- Live offers ------------------------------------------------- */}
         <section>
           <SectionHeading
@@ -459,8 +534,323 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
           </div>
         </section>
       </main>
+
+      {/*
+        The + is fixed at the bottom centre, where a thumb reaches it on a phone
+        held one-handed. It is the only way onto the stock screen, so it stays
+        put rather than scrolling away with the list.
+      */}
+      <button
+        onClick={() => setPickerOpen(true)}
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 w-14 h-14 rounded-full bg-[#0B7A37] text-white shadow-lg shadow-black/20 flex items-center justify-center active:scale-95 transition"
+        aria-label="Add a product to your stock"
+      >
+        <Plus className="w-7 h-7" />
+      </button>
+
+      {pickerOpen && (
+        <ProductPicker
+          products={stock}
+          onPick={(item) => {
+            setPickerOpen(false);
+            setEditing(item);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      {editing && (
+        <StockSheet
+          item={editing}
+          onClose={() => setEditing(null)}
+          onSave={handleSaveStock}
+        />
+      )}
     </div>
   );
+}
+
+/** One product this stall is holding. Price is the market's, and is not editable. */
+function StockRow({ item, onEdit }) {
+  const photoAge = item.photoTakenAt ? timeSince(item.photoTakenAt) : null;
+
+  return (
+    <button
+      onClick={onEdit}
+      className="w-full text-left bg-white rounded-2xl border border-gray-200 p-3 flex items-center gap-3 active:scale-[0.99] transition"
+    >
+      <img
+        src={item.image}
+        alt=""
+        className="w-12 h-12 rounded-xl object-cover bg-gray-100 shrink-0"
+        onError={(e) => { e.target.style.visibility = 'hidden'; }}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-[14px] font-bold text-[#0F1F17] truncate">{item.name}</p>
+        <p className="text-[12px] text-[#5B6B62]">
+          {formatPaise(item.pricePaise)}{item.weight ? ` · ${item.weight}` : ''}
+        </p>
+        {photoAge ? (
+          <p className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
+            <Camera className="w-3 h-3" /> Photo from {photoAge}
+          </p>
+        ) : (
+          <p className="text-[11px] text-[#8A9A91] flex items-center gap-1 mt-0.5">
+            <Camera className="w-3 h-3" /> No photo yet
+          </p>
+        )}
+      </div>
+      <div className="text-right shrink-0">
+        <p className="text-[16px] font-black text-[#0F1F17]">{item.stock}</p>
+        <p className="text-[10px] text-[#8A9A91] uppercase tracking-wide">in stock</p>
+      </div>
+    </button>
+  );
+}
+
+/**
+ * Pick a product to stock.
+ *
+ * A bottom sheet rather than a native dropdown: the list runs to hundreds of
+ * rows and each one carries a picture and a price, which a `<select>` cannot
+ * show. Search filters the list already in memory, so it responds on every
+ * keystroke without a request.
+ */
+function ProductPicker({ products, onPick, onClose }) {
+  const [query, setQuery] = useState('');
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter((p) => p.name.toLowerCase().includes(q));
+  }, [products, query]);
+
+  return (
+    <Sheet title="Add to your stock" onClose={onClose}>
+      <div className="px-4 pb-3">
+        <div className="relative">
+          <Search className="w-4 h-4 text-[#8A9A91] absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search vegetables…"
+            className="w-full bg-[#F6F8F6] border border-gray-200 rounded-xl pl-9 pr-3 py-2.5 text-[14px] outline-none focus:border-[#0B7A37]"
+          />
+        </div>
+      </div>
+
+      <div className="overflow-y-auto px-4 pb-6 space-y-2">
+        {matches.length === 0 && (
+          <p className="text-[13px] text-[#5B6B62] text-center py-8">
+            Nothing matches “{query}”. The list is what this market is selling today.
+          </p>
+        )}
+
+        {matches.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => onPick(p)}
+            className="w-full text-left bg-white rounded-2xl border border-gray-200 p-3 flex items-center gap-3 active:scale-[0.99] transition"
+          >
+            {/* The catalog picture, filled in for you — this is the "pre picture". */}
+            <img
+              src={p.image}
+              alt=""
+              className="w-11 h-11 rounded-xl object-cover bg-gray-100 shrink-0"
+              onError={(e) => { e.target.style.visibility = 'hidden'; }}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-[14px] font-bold text-[#0F1F17] truncate">{p.name}</p>
+              <p className="text-[12px] text-[#5B6B62]">
+                {formatPaise(p.pricePaise)}{p.weight ? ` · ${p.weight}` : ''}
+              </p>
+            </div>
+            {p.stock > 0 ? (
+              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
+                {p.stock} listed
+              </span>
+            ) : (
+              <Plus className="w-4 h-4 text-[#8A9A91] shrink-0" />
+            )}
+          </button>
+        ))}
+      </div>
+    </Sheet>
+  );
+}
+
+/**
+ * How much of one product, and optionally a photograph of it.
+ *
+ * The price sits here as a fact, not a field. One price per product per market,
+ * set by the market owner — every stall sells at the same figure, and it
+ * changes for all of them at once when the owner edits it.
+ */
+function StockSheet({ item, onClose, onSave }) {
+  const toast = useToast();
+  const [quantity, setQuantity] = useState(String(item.stock || ''));
+  const [photo, setPhoto] = useState(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+
+  const parsed = Number.parseInt(quantity, 10);
+  const valid = Number.isInteger(parsed) && parsed >= 0;
+
+  const handleFile = async (event) => {
+    const file = event.target.files?.[0];
+    // Let the same file be chosen again after a failure.
+    event.target.value = '';
+    if (!file) return;
+
+    setPreparing(true);
+    try {
+      // A camera original is several megabytes and the limit is 120 KB, so this
+      // has to happen before anything reaches the network.
+      setPhoto(await toUploadableJpeg(file));
+      setRemovePhoto(false);
+    } catch (err) {
+      toast.error(err.message || 'That photo could not be used.');
+    } finally {
+      setPreparing(false);
+    }
+  };
+
+  const submit = async () => {
+    if (!valid || busy) return;
+    setBusy(true);
+    try {
+      await onSave({ productId: item.id, quantity: parsed, photo, removePhoto });
+      onClose();
+    } catch (err) {
+      toast.error(err.message || 'Could not save that.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const hasPhoto = Boolean(photo) || (Boolean(item.photoTakenAt) && !removePhoto);
+
+  return (
+    <Sheet title={item.name} onClose={onClose}>
+      <div className="px-4 pb-6 space-y-5 overflow-y-auto">
+        <div className="flex items-center gap-3">
+          <img
+            src={photo || item.image}
+            alt=""
+            className="w-16 h-16 rounded-2xl object-cover bg-gray-100 shrink-0"
+            onError={(e) => { e.target.style.visibility = 'hidden'; }}
+          />
+          <div className="min-w-0">
+            <p className="text-[20px] font-black text-[#0F1F17]">{formatPaise(item.pricePaise)}</p>
+            <p className="text-[11px] text-[#5B6B62] leading-tight">
+              Set by the market owner. Every stall here sells at this price.
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="stall-stock" className="block text-[12px] font-bold text-[#0F1F17] mb-1.5">
+            How many do you have?
+          </label>
+          <input
+            id="stall-stock"
+            type="number"
+            inputMode="numeric"
+            min="0"
+            autoFocus
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            placeholder="0"
+            className="w-full bg-[#F6F8F6] border border-gray-200 rounded-xl px-3 py-3 text-[18px] font-bold outline-none focus:border-[#0B7A37]"
+          />
+          <p className="text-[11px] text-[#8A9A91] mt-1.5">
+            This is what auto-accept and the ranking run on. Set it to 0 to take
+            the line off your table.
+          </p>
+        </div>
+
+        <div>
+          <p className="text-[12px] font-bold text-[#0F1F17] mb-1.5">
+            Today’s photo <span className="font-normal text-[#8A9A91]">— optional</span>
+          </p>
+
+          <div className="flex gap-2">
+            <label className="flex-1 cursor-pointer">
+              <input
+                type="file"
+                accept="image/*"
+                // Opens the camera directly on a phone rather than a file browser.
+                capture="environment"
+                onChange={handleFile}
+                className="hidden"
+              />
+              <span className="flex items-center justify-center gap-2 w-full bg-white border-2 border-dashed border-gray-300 rounded-xl py-3 text-[13px] font-bold text-[#0F1F17] active:scale-[0.99] transition">
+                {preparing
+                  ? <><RefreshCw className="w-4 h-4 animate-spin" /> Preparing…</>
+                  : <><Camera className="w-4 h-4" /> {hasPhoto ? 'Retake' : 'Take a photo'}</>}
+              </span>
+            </label>
+
+            {hasPhoto && (
+              <button
+                onClick={() => { setPhoto(null); setRemovePhoto(true); }}
+                className="px-3 rounded-xl border border-gray-200 text-[#8A9A91] active:scale-95 transition"
+                aria-label="Remove the photo"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          <p className="text-[11px] text-[#8A9A91] mt-1.5 leading-relaxed">
+            {photo
+              ? `Ready to upload (${approximateKb(photo)} KB). It shows on the product page next to the catalogue picture.`
+              : 'A picture of what is actually on your table today. Customers see it next to the catalogue image, so they know what they are getting.'}
+          </p>
+        </div>
+
+        <button
+          onClick={submit}
+          disabled={!valid || busy || preparing}
+          className="w-full bg-[#0F1F17] hover:bg-black text-white text-[15px] font-bold py-3.5 rounded-xl transition active:translate-y-px disabled:opacity-40"
+        >
+          {busy ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** A bottom sheet. Shared by the picker and the stock form. */
+function Sheet({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50 backdrop-blur-sm">
+      {/* Tapping the dimmed area closes it, the usual mobile affordance. */}
+      <button className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Close" />
+      <div className="relative w-full max-w-2xl bg-[#F6F8F6] rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col animate-slide-up">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 shrink-0">
+          <h2 className="text-[15px] font-extrabold text-[#0F1F17] truncate pr-2">{title}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-200 shrink-0">
+            <X className="w-5 h-5 text-[#5B6B62]" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** "3 hours ago" for a photo timestamp. */
+function timeSince(when) {
+  const minutes = Math.round((Date.now() - new Date(when).getTime()) / 60000);
+  if (minutes < 2) return 'just now';
+  if (minutes < 60) return `${minutes} minutes ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
 /**

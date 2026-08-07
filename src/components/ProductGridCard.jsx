@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Star, Plus, Minus } from 'lucide-react';
+import { Star, Plus, Minus, Camera } from 'lucide-react';
 
 /**
  * The two-per-row product card.
@@ -99,6 +99,22 @@ export default function ProductGridCard({
             {item.isOrganic && (
               <span className="bg-[#EAE4D7] text-[#1B4D3E] border border-[#D5CDBC] absolute top-1 left-1 text-[8px] font-extrabold px-1.5 py-0.2 rounded-md uppercase tracking-wider shadow-2xs">
                 Organic
+              </span>
+            )}
+
+            {/*
+              A stall in this market photographed the real thing today.
+
+              A badge rather than the photo itself, deliberately: the grid can
+              hold two hundred cards, and swapping every one for a real upload
+              would be several megabytes on a mobile connection. The photo is
+              shown full size in the detail view, one tap away, which is where
+              someone is actually deciding whether to buy it.
+            */}
+            {item.freshPhotoAt && (
+              <span className="bg-[#1B4D3E] text-white absolute top-1 right-1 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider shadow-xs flex items-center gap-0.5">
+                <Camera className="w-2.5 h-2.5" />
+                Today
               </span>
             )}
             <div className="absolute bottom-1 right-1 bg-[#FFFDF9]/95 backdrop-blur-xs px-1.5 py-0.2 rounded-md text-[9px] font-bold text-[#2D2A26] flex items-center gap-0.5 border border-[#E0D9C8] shadow-xs">

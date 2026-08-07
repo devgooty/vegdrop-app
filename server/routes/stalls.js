@@ -1,9 +1,12 @@
 'use strict';
 
 const express = require('express');
+const config = require('../config/env');
 const Order = require('../models/Order');
 const Stall = require('../models/Stall');
 const StallInventory = require('../models/StallInventory');
+const StallPhoto = require('../models/StallPhoto');
+const MarketPrice = require('../models/MarketPrice');
 const Product = require('../models/Product');
 const { ApiError } = require('../middleware/errors');
 const { validate, z, fields } = require('../middleware/validate');
@@ -218,6 +221,195 @@ router.put(
     );
 
     return res.json({ data: { updated: items.length } });
+  }
+);
+
+/**
+ * Everything the stock screen needs, in one request.
+ *
+ * Every product this market prices, each with the market owner's price, this
+ * stall's declared stock (0 when it has declared none), and when this stall
+ * last photographed it.
+ *
+ * The alternative was for the client to fetch /markets/:id/catalog and
+ * /stalls/me/inventory and join them by product id. Joining server-side keeps
+ * the screen to one request and, more usefully, means the picker and the stock
+ * list are two filters over one list rather than two lists that can disagree:
+ * `stock > 0` is what you are holding, `stock === 0` is what you could add.
+ *
+ * The price is READ-ONLY here and comes from MarketPrice, never from
+ * `Product.pricePaise`. One price per product per market, set by the market
+ * owner — a stall sells at it and cannot change it, which is why the screen
+ * shows it as a fact rather than a field.
+ */
+router.get('/me/stock', ...stallGate, async (req, res) => {
+  const [sheet, declared, photos] = await Promise.all([
+    MarketPrice.find({ market: req.stall.market, isAvailable: true })
+      .select('product pricePaise')
+      .lean(),
+    StallInventory.find({ stall: req.stall._id }).select('product stock').lean(),
+    // `image` is deliberately NOT selected: this is a list of up to a few
+    // hundred rows and the payload would be megabytes. The screen only needs to
+    // know a photo exists and how old it is.
+    StallPhoto.find({ stall: req.stall._id }).select('product takenAt').lean(),
+  ]);
+
+  const products = await Product.find({
+    _id: { $in: sheet.map((row) => row.product) },
+    isActive: true,
+  })
+    .select('name weight image categoryId isOrganic')
+    .lean();
+
+  const priceByProduct = new Map(sheet.map((r) => [String(r.product), r.pricePaise]));
+  const stockByProduct = new Map(declared.map((r) => [String(r.product), r.stock]));
+  const photoByProduct = new Map(photos.map((r) => [String(r.product), r.takenAt]));
+
+  const data = products.map((p) => {
+    const key = String(p._id);
+    return {
+      id: key,
+      name: p.name,
+      weight: p.weight,
+      image: p.image,
+      categoryId: p.categoryId,
+      isOrganic: p.isOrganic,
+      pricePaise: priceByProduct.get(key),
+      price: priceByProduct.get(key) / 100,
+      stock: stockByProduct.get(key) ?? 0,
+      photoTakenAt: photoByProduct.get(key) || null,
+    };
+  });
+
+  // Held first, then everything else, each alphabetically — the shopkeeper's
+  // own table before the rest of the market's list.
+  data.sort((a, b) => {
+    if ((a.stock > 0) !== (b.stock > 0)) return a.stock > 0 ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  return res.json({ data });
+});
+
+// ---------------------------------------------------------------------------
+// Photographs of the actual produce
+// ---------------------------------------------------------------------------
+
+/**
+ * A body parser for this route alone.
+ *
+ * The app-wide limit is 100 KB (see server/app.js), which is right for JSON but
+ * far too small for an image — and base64 inflates by a third on top of the
+ * decoded size. Widening the global limit to suit one route would raise the
+ * ceiling on every endpoint in the system, so this is scoped here, exactly as
+ * app.js scopes its raw-body hook to the two webhook paths.
+ */
+const photoBody = express.json({ limit: '1mb' });
+
+/** `data:image/jpeg;base64,…` → the parts, or null if it is not one. */
+function parseDataUri(value) {
+  const match = /^data:(image\/(?:jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(value);
+  if (!match) return null;
+
+  const [, mimeType, base64] = match;
+  const buffer = Buffer.from(base64, 'base64');
+  // Round-trip check: a truncated or padded string decodes without complaint
+  // and would be stored as an image that never renders.
+  if (buffer.length === 0 || buffer.toString('base64') !== base64) return null;
+
+  return { mimeType, base64, bytes: buffer.length };
+}
+
+/**
+ * Post today's photo of one product.
+ *
+ * Optional throughout: a stall that never uses this shows the catalog image and
+ * behaves exactly as before. What it buys is that the customer sees the actual
+ * produce rather than a stock photograph of the idea of it.
+ *
+ * The format allow-list is jpeg and webp, and the exclusions matter more than
+ * the inclusions. SVG is a script container and this file is served back to
+ * customers; PNG is lossless and would blow the size cap on any real photo.
+ */
+router.put(
+  '/me/photos/:productId',
+  ...stallGate,
+  stallActionLimiter,
+  photoBody,
+  validate({
+    params: z.object({ productId: fields.objectId }).strict(),
+    body: z.object({ image: z.string().min(32).max(2_000_000) }).strict(),
+  }),
+  async (req, res) => {
+    const { productId } = req.valid.params;
+
+    const parsed = parseDataUri(req.valid.body.image);
+    if (!parsed) {
+      throw new ApiError(
+        400,
+        'Send a JPEG or WebP photo as a data URI.',
+        'UNSUPPORTED_IMAGE'
+      );
+    }
+
+    if (parsed.bytes > config.freshPhoto.maxBytes) {
+      throw new ApiError(
+        413,
+        `That photo is ${Math.round(parsed.bytes / 1024)} KB. The limit is ${Math.round(config.freshPhoto.maxBytes / 1024)} KB.`,
+        'PHOTO_TOO_LARGE'
+      );
+    }
+
+    /**
+     * The market must actually sell this product.
+     *
+     * Without it a stall could attach a photograph to any product id in the
+     * system, and it would surface on another market's catalog through the
+     * newest-photo-wins lookup.
+     */
+    const priced = await MarketPrice.exists({
+      market: req.stall.market,
+      product: productId,
+      isAvailable: true,
+    });
+    if (!priced) {
+      throw new ApiError(400, 'This market is not selling that product.', 'PRODUCT_UNAVAILABLE');
+    }
+
+    // Upsert on {stall, product}: today's photo replaces yesterday's rather
+    // than accumulating a gallery nobody prunes.
+    const photo = await StallPhoto.findOneAndUpdate(
+      { stall: req.stall._id, product: productId },
+      {
+        $set: {
+          market: req.stall.market,
+          image: parsed.base64,
+          mimeType: parsed.mimeType,
+          bytes: parsed.bytes,
+          takenAt: new Date(),
+        },
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+
+    return res.json({
+      data: { productId, takenAt: photo.takenAt, bytes: photo.bytes },
+    });
+  }
+);
+
+router.delete(
+  '/me/photos/:productId',
+  ...stallGate,
+  validate({ params: z.object({ productId: fields.objectId }).strict() }),
+  async (req, res) => {
+    // Scoped to this stall, so the id in the URL cannot reach anyone else's.
+    const result = await StallPhoto.deleteOne({
+      stall: req.stall._id,
+      product: req.valid.params.productId,
+    });
+
+    return res.json({ data: { removed: result.deletedCount > 0 } });
   }
 );
 

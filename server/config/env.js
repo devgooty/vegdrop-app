@@ -544,6 +544,33 @@ const config = Object.freeze({
     commissionBps: int('STALL_COMMISSION_BPS', 0),
   }),
 
+  /**
+   * Photographs of the actual produce, taken by the stall holding it.
+   *
+   * Stored inline rather than in object storage, so the cap is doing real work:
+   * it bounds a Mongo document, an API response, and a customer's mobile data
+   * all at once. The client downscales before uploading, but the client cannot
+   * be trusted, so the same limit is enforced at the route.
+   */
+  freshPhoto: Object.freeze({
+    /** Decoded bytes. ~120 KB is a legible 800px photo at JPEG quality 0.6. */
+    maxBytes: int('MARKET_FRESH_PHOTO_MAX_BYTES', 120_000),
+
+    /**
+     * How long a photo counts as "today's".
+     *
+     * Deliberately shorter than the retention below: a stale photo stops being
+     * shown to customers long before it is deleted, so a shopkeeper who
+     * re-photographs on day three overwrites their row rather than creating a
+     * second one. Showing a four-day-old photograph as evidence of freshness
+     * would be worse than showing the stock image.
+     */
+    freshForHours: int('MARKET_FRESH_PHOTO_FRESH_HOURS', 24),
+
+    /** When the TTL index removes it. See models/StallPhoto.js. */
+    retentionDays: int('MARKET_FRESH_PHOTO_RETENTION_DAYS', 7),
+  }),
+
   cookies: Object.freeze({
     refreshName: 'vb_rt',
     secure: isProduction,

@@ -95,6 +95,45 @@ export async function saveStallInventory(items) {
 }
 
 /**
+ * Everything the stock screen renders, in one request.
+ *
+ * Every product this market prices, with the market owner's price, this stall's
+ * declared stock (0 when none), and when this stall last photographed it. The
+ * picker and the stock list are two filters over this one list — `stock === 0`
+ * is what you could add, `stock > 0` is what you are holding — so the two can
+ * never disagree about what exists.
+ *
+ * `price` here is READ-ONLY. One price per product per market, set by the
+ * market owner; a stall sells at it and cannot change it.
+ *
+ * @returns {Promise<Array<{id, name, weight, image, pricePaise, price, stock, photoTakenAt}>>}
+ */
+export async function fetchStallStock() {
+  const result = await api.get('/stalls/me/stock');
+  return result.data;
+}
+
+/**
+ * Post today's photo of the real produce.
+ *
+ * Optional throughout — a stall that never does this shows the catalog image,
+ * exactly as before. Pass a data URI from services/imageCapture.js, which is
+ * what gets a phone camera file under the size limit.
+ *
+ * @throws {ApiRequestError} 413 PHOTO_TOO_LARGE, 400 UNSUPPORTED_IMAGE,
+ *   400 PRODUCT_UNAVAILABLE when the market is not selling that product
+ */
+export async function saveFreshPhoto(productId, dataUri) {
+  const result = await api.put(`/stalls/me/photos/${productId}`, { image: dataUri });
+  return result.data;
+}
+
+export async function removeFreshPhoto(productId) {
+  const result = await api.delete(`/stalls/me/photos/${productId}`);
+  return result.data;
+}
+
+/**
  * What this stall is owed, what has been paid, and when the rest arrives.
  *
  * Nothing appears here until a customer has actually taken delivery — an order

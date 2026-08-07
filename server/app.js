@@ -204,25 +204,42 @@ function createApp() {
 
   // --- Parsing -------------------------------------------------------------
   // An explicit cap: without one, a single large body can exhaust memory.
-  app.use(
-    express.json({
-      limit: '100kb',
-      /**
-       * Retain the raw bytes for the signed webhooks only.
-       *
-       * Their HMACs cover exactly what the sender transmitted, and
-       * re-serialising the parsed object does not reproduce those bytes (key
-       * order and number formatting are not preserved). Scoped to the paths
-       * that need it rather than buffering a second copy of every request body.
-       */
-      verify(req, _res, buf) {
-        const url = req.originalUrl || '';
-        if (url.startsWith(WHATSAPP_WEBHOOK_PATH) || url.startsWith(RAZORPAY_WEBHOOK_PATH)) {
-          req.rawBody = buf;
-        }
-      },
-    })
-  );
+  const jsonParser = express.json({
+    limit: '100kb',
+    /**
+     * Retain the raw bytes for the signed webhooks only.
+     *
+     * Their HMACs cover exactly what the sender transmitted, and
+     * re-serialising the parsed object does not reproduce those bytes (key
+     * order and number formatting are not preserved). Scoped to the paths
+     * that need it rather than buffering a second copy of every request body.
+     */
+    verify(req, _res, buf) {
+      const url = req.originalUrl || '';
+      if (url.startsWith(WHATSAPP_WEBHOOK_PATH) || url.startsWith(RAZORPAY_WEBHOOK_PATH)) {
+        req.rawBody = buf;
+      }
+    },
+  });
+
+  /**
+   * Routes that carry an image, and so need a bigger body than 100 KB.
+   *
+   * The limit itself is not raised here — these paths are simply left unparsed
+   * so the route can mount its own parser with its own ceiling. Doing it the
+   * other way round does not work: this middleware runs first, rejects the body
+   * with "request entity too large", and the route-level parser never sees it.
+   *
+   * Keeping the default tight matters. Every other endpoint takes small JSON,
+   * and one route needing more is not a reason to let all of them accept a
+   * megabyte.
+   */
+  const LARGE_BODY_PATHS = [/^\/api\/stalls\/me\/photos\//];
+
+  app.use((req, res, next) => {
+    if (LARGE_BODY_PATHS.some((pattern) => pattern.test(req.path))) return next();
+    return jsonParser(req, res, next);
+  });
   app.use(cookieParser());
 
   // --- Request correlation -------------------------------------------------

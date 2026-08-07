@@ -1,8 +1,11 @@
 'use strict';
 
 const express = require('express');
+const mongoose = require('mongoose');
+const config = require('../config/env');
 const Market = require('../models/Market');
 const MarketPrice = require('../models/MarketPrice');
+const StallPhoto = require('../models/StallPhoto');
 const Stall = require('../models/Stall');
 const Product = require('../models/Product');
 const User = require('../models/User');
@@ -17,6 +20,17 @@ const router = express.Router();
 
 /** Only a market owner (or a developer) shapes a market and its price sheet. */
 const MARKET_MANAGERS = ['market_owner', 'developer'];
+
+/**
+ * The oldest a produce photograph may be and still be shown as "today's".
+ *
+ * Photos are retained for a week but only DISPLAYED for a day. Presenting a
+ * four-day-old picture as evidence of what is on the table would be worse than
+ * showing the stock image, which at least does not claim to be current.
+ */
+function freshPhotoCutoff() {
+  return new Date(Date.now() - config.freshPhoto.freshForHours * 60 * 60 * 1000);
+}
 
 /**
  * Holding `market_owner` says you run *a* market, not that you run *this* one.
@@ -203,12 +217,35 @@ router.get(
       productFilter.name = { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
     }
 
-    const [sheet, products] = await Promise.all([
+    const [sheet, products, freshPhotos] = await Promise.all([
       MarketPrice.find({ market: id, isAvailable: true }).select('product pricePaise').lean(),
       Product.find(productFilter).select('name weight image isOrganic rating reviews categoryId').lean(),
+      /**
+       * When each product was last photographed by a stall in this market.
+       *
+       * Newest wins: several stalls may hold the same product, and the most
+       * recent photograph is the best evidence of what is on the tables today.
+       *
+       * Only the TIMESTAMP is read here — `image` is excluded, and that is the
+       * whole reason this is viable. A catalog is up to 200 products; inlining
+       * even small photos would be a multi-megabyte response on a mobile
+       * connection. The bytes are fetched one at a time from the route below,
+       * where the browser caches them like any other image.
+       */
+      StallPhoto.aggregate([
+        {
+          $match: {
+            market: new mongoose.Types.ObjectId(String(id)),
+            takenAt: { $gte: freshPhotoCutoff() },
+          },
+        },
+        { $sort: { takenAt: -1 } },
+        { $group: { _id: '$product', takenAt: { $first: '$takenAt' } } },
+      ]),
     ]);
 
     const priceByProduct = new Map(sheet.map((row) => [String(row.product), row.pricePaise]));
+    const photoByProduct = new Map(freshPhotos.map((row) => [String(row._id), row.takenAt]));
 
     const data = products
       .filter((p) => priceByProduct.has(String(p._id)))
@@ -224,6 +261,11 @@ router.get(
         reviews: p.reviews,
         pricePaise: priceByProduct.get(String(p._id)),
         price: priceByProduct.get(String(p._id)) / 100,
+        /**
+         * When a stall here last photographed the real thing, or null. The
+         * client points an <img> at /products/:id/fresh-photo when it is set.
+         */
+        freshPhotoAt: photoByProduct.get(String(p._id)) || null,
         // Shown on the card next to the product name, as asked.
         marketId: String(market._id),
         marketName: market.name,
@@ -233,6 +275,60 @@ router.get(
     // short-lived because a market can pull a line at any moment.
     res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
     return res.json({ data });
+  }
+);
+
+/**
+ * The photograph itself — actual image bytes, not JSON.
+ *
+ * Served as its own resource rather than inlined in the catalog above so the
+ * browser caches and lazy-loads it like any other image, and so a catalog of
+ * 200 products stays a small JSON response instead of a multi-megabyte one.
+ *
+ * Public, matching the catalog: a visitor can browse a market before creating
+ * an account, and a photo of a crate of tomatoes identifies nobody. The stall
+ * that took it is deliberately not named in the response — which stall you are
+ * buying from is decided later by the cascade, and naming one here would imply
+ * a choice the customer has not made.
+ */
+router.get(
+  '/:id/products/:productId/fresh-photo',
+  validate({
+    params: z.object({ id: fields.objectId, productId: fields.objectId }).strict(),
+  }),
+  async (req, res) => {
+    const { id, productId } = req.valid.params;
+
+    const photo = await StallPhoto.findOne({
+      market: id,
+      product: productId,
+      takenAt: { $gte: freshPhotoCutoff() },
+    })
+      .sort({ takenAt: -1 })
+      .lean();
+
+    // 404 rather than a placeholder: an <img> that fails simply falls back to
+    // whatever the page already had, and a stale photo must not be served.
+    if (!photo) throw new ApiError(404, 'No recent photo for that product.', 'NOT_FOUND');
+
+    const buffer = Buffer.from(photo.image, 'base64');
+
+    /**
+     * `/api` is Cache-Control: no-store by default because nearly every
+     * response is identity-scoped, and this opts out explicitly — the same way
+     * the catalog above does. Long-lived because the content at this URL only
+     * changes when a shopkeeper takes a new photograph, and `must-revalidate`
+     * keeps a client from showing yesterday's after the freshness window.
+     */
+    res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=3600');
+    res.set('Content-Type', photo.mimeType);
+    res.set('Content-Length', String(buffer.length));
+    // The bytes came from a shopkeeper's phone; refuse to let a browser guess
+    // any other type for them.
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Last-Modified', new Date(photo.takenAt).toUTCString());
+
+    return res.send(buffer);
   }
 );
 
