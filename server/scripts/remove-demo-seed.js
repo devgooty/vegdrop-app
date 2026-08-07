@@ -71,7 +71,11 @@ async function plan() {
   const users = await User.find({
     $or: SEED_ACCOUNTS.map((account) => ({ phone: account.phone, email: account.email })),
   })
-    .select('_id name email phone role createdAt')
+    // `status` is needed by scripts/suspend-demo-accounts.js, which reuses this
+    // matcher to decide what is already locked. Omitting it left `u.status`
+    // undefined there, so the "skip the ones already suspended" guard never
+    // matched and restore filtered everything out.
+    .select('_id name email phone role status createdAt')
     .lean();
 
   /**
