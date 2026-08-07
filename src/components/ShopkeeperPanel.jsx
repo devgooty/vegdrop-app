@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Store, Package, ShoppingBag, CheckCircle2, Clock, Truck,
   MapPin, LogOut, User, LayoutDashboard, Plus, Edit, Trash2,
-  AlertTriangle, Navigation, Check, Camera, MessageSquare, TrendingUp, BarChart3, Star, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert
+  AlertTriangle, Navigation, Check, Camera, TrendingUp, BarChart3, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert
 } from 'lucide-react';
 import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../services/auth';
 import { fetchShopEarnings, withdrawShopEarnings } from '../services/shops';
@@ -68,10 +68,9 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
   // Navigation & State
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isStoreOnline, setIsStoreOnline] = useState(true);
-  const [activeScreen, setActiveScreen] = useState('list'); // 'list', 'add-product', 'edit-product', 'inventory', 'reviews', 'settings', 'delivery-assign'
+  const [activeScreen, setActiveScreen] = useState('list'); // 'list' | 'add-product' | 'edit-product' | 'inventory' | 'hours' | 'bank'
   
   // Modals & deep dive
-  const [selectedOrder, setSelectedOrder] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   
@@ -128,11 +127,13 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
   }, []);
 
   /**
-   * Loaded when the screen opens rather than on mount: it is one tab of many,
-   * and money owed does not change on the timescale of a dashboard poll.
+   * Loaded when a screen that shows money opens, rather than on mount: money
+   * owed does not change on the timescale of a dashboard poll.
    */
+  const needsEarnings = activeScreen === 'bank' || activeTab === 'analytics';
+
   useEffect(() => {
-    if (activeScreen !== 'bank') return undefined;
+    if (!needsEarnings) return undefined;
 
     let cancelled = false;
     fetchShopEarnings()
@@ -144,7 +145,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
       });
 
     return () => { cancelled = true; };
-  }, [activeScreen]);
+  }, [needsEarnings]);
 
   const handleWithdraw = async () => {
     setWithdrawing(true);
@@ -295,8 +296,35 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
   const pendingOrders = orders.filter((o) => o.status === 'Pending');
   const preparingOrders = orders.filter((o) => o.status === 'Preparing');
   const deliveredOrders = orders.filter((o) => o.status === 'Delivered');
-  const revenueToday = deliveredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
   const lowStockItems = products ? products.filter((p) => p.isOutofStock) : [];
+
+  /**
+   * Takings for the calendar day, which is what "Today's Revenue" claimed to be.
+   *
+   * It summed every delivered order the panel had ever loaded, so the figure
+   * only ever climbed and a quiet day still showed a month of trading.
+   */
+  const startOfToday = new Date().setHours(0, 0, 0, 0);
+  const todaysDelivered = deliveredOrders.filter((o) => (o.timestamp ?? 0) >= startOfToday);
+  const revenueToday = todaysDelivered.reduce((sum, o) => sum + o.totalAmount, 0);
+
+  /**
+   * What actually sold, counted from delivered orders rather than asserted.
+   *
+   * The list this replaces was two fixed rows — "Organic Onions 124 Kg" and
+   * "Fresh Tomatoes 89 Kg" — printed identically for every shop in the system,
+   * including one that had never sold either.
+   */
+  const topSellers = Object.entries(
+    deliveredOrders.reduce((tally, order) => {
+      for (const item of order.items || []) {
+        tally[item.name] = (tally[item.name] || 0) + item.quantity;
+      }
+      return tally;
+    }, {})
+  )
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
 
   // Handlers
   const handleAddProduct = async () => {
@@ -356,14 +384,46 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
     }
   };
 
-  const handleAssignDelivery = (orderId) => {
-    const order = orders.find(o => o.id === orderId);
-    onUpdateOrderStatus(orderId, 'Preparing'); // Transition to preparing (which driver sees as 'ready for pickup')
-    if (order && onOrderAccepted) {
-      onOrderAccepted(order); // 🔔 Push notification to Delivery Panel
-    }
-    setSelectedOrder(null);
-    setActiveScreen('list');
+  /**
+   * Take the order on. A rider picks it up from the open pool afterwards.
+   *
+   * This replaces an "Assign Delivery" screen that offered a choice between two
+   * hardcoded couriers — "Rahul K., 4.9 stars, 0.5 km away" and a permanently
+   * busy "Suresh M." — neither of whom existed. Whichever you tapped, the same
+   * thing happened: the order moved to Preparing. There is no endpoint for
+   * listing riders, and a shopkeeper does not pick one in this system; riders
+   * claim marketless orders themselves.
+   */
+  const handleAcceptOrder = (order) => {
+    onUpdateOrderStatus(order.id, 'Preparing');
+    if (onOrderAccepted) onOrderAccepted(order);
+  };
+
+  const handleRejectOrder = (orderId) => {
+    // The server refunds a wallet-paid order and restocks it on cancellation.
+    onUpdateOrderStatus(orderId, 'Cancelled');
+  };
+
+  /**
+   * Open the edit form for one product.
+   *
+   * Shared so the inventory list's "Update" button lands somewhere — it had no
+   * handler at all, and was the only way that screen offered to fix a stock
+   * count it had just flagged as low.
+   */
+  const openProductEditor = (product) => {
+    setSelectedProduct(product);
+    setImagePreviewError(false);
+    setProductFormError('');
+    setProductForm({
+      name: product.name,
+      categoryId: product.categoryId,
+      price: product.price,
+      weight: product.weight || '',
+      stock: product.stock || 0,
+      image: product.image || '',
+    });
+    setActiveScreen('edit-product');
   };
 
   // Render Screens
@@ -566,20 +626,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
             </div>
             <div className="flex flex-col gap-2">
               <button
-                onClick={() => {
-                  setSelectedProduct(product);
-                  setImagePreviewError(false);
-                  setProductFormError('');
-                  setProductForm({
-                    name: product.name,
-                    categoryId: product.categoryId,
-                    price: product.price,
-                    weight: product.weight || '',
-                    stock: product.stock || 0,
-                    image: product.image || ''
-                  });
-                  setActiveScreen('edit-product');
-                }}
+                onClick={() => openProductEditor(product)}
                 className="p-2 bg-gray-100 text-gray-600 rounded-lg active:scale-90 transition-transform"
               >
                 <Edit className="w-4 h-4" />
@@ -602,40 +649,6 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
   };
 
   const renderOrders = () => {
-    if (activeScreen === 'delivery-assign') {
-      return (
-        <div className="space-y-6 pb-20 animate-fade-in">
-          <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => setActiveScreen('list')} className="p-2 rounded-full bg-gray-100"><ArrowLeft className="w-5 h-5" /></button>
-            <h2 className="font-black text-xl text-gray-900">Assign Delivery</h2>
-          </div>
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 space-y-4">
-            <h3 className="font-bold text-gray-700">Available Delivery Partners</h3>
-            <div className="border border-green-200 bg-green-50 rounded-xl p-4 flex items-center justify-between cursor-pointer active:scale-95 transition-transform" onClick={() => handleAssignDelivery(selectedOrder?.id)}>
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-gray-200 rounded-full bg-[url('https://images.unsplash.com/photo-1599566150163-29194dcaad36?auto=format&fit=crop&q=80&w=150')] bg-cover" />
-                <div>
-                  <h4 className="font-black text-gray-900 text-sm">Rahul K.</h4>
-                  <p className="text-xs text-gray-500 font-bold">4.9 ⭐ • 0.5 km away</p>
-                </div>
-              </div>
-              <button className="bg-green-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow-sm">Assign</button>
-            </div>
-            <div className="border border-gray-200 rounded-xl p-4 flex items-center justify-between opacity-60">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-gray-200 rounded-full bg-[url('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150')] bg-cover" />
-                <div>
-                  <h4 className="font-black text-gray-900 text-sm">Suresh M.</h4>
-                  <p className="text-xs text-gray-500 font-bold">4.7 ⭐ • 1.2 km away</p>
-                </div>
-              </div>
-              <button className="bg-gray-200 text-gray-600 font-bold px-3 py-1.5 rounded-lg text-xs" disabled>Busy</button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div className="space-y-6 pb-20 animate-fade-in">
         <div>
@@ -651,19 +664,30 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
                     <span className="font-bold text-gray-900">Order #{order.id}</span>
                     <span className="text-green-600 font-black">₹{order.totalAmount}</span>
                   </div>
-                  <p className="text-xs text-gray-500 mb-1">{order.customerName} • {order.items?.length} items</p>
-                  {/* Customer delivery address */}
-                  {(order.deliveryAddress || order.address) && (
-                    <div className="flex items-start gap-1.5 mb-2 bg-orange-50 border border-orange-100 rounded-lg px-2 py-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-orange-500 mt-0.5 shrink-0" />
-                      <p className="text-[11px] text-gray-600 leading-tight">{order.deliveryAddress || order.address}</p>
-                    </div>
-                  )}
-                  {/* Item list */}
+                  {/*
+                    The customer's name and delivery address used to sit here.
+                    The server no longer sends either to a shopkeeper: you pack
+                    the order, a rider carries it, and the address is the
+                    rider's business — the same rule the market stall screen has
+                    always followed.
+                  */}
+                  <p className="text-xs text-gray-500 mb-1">
+                    {order.items?.length} item{order.items?.length === 1 ? '' : 's'}
+                  </p>
                   <p className="text-[11px] text-gray-400 mb-3 line-clamp-2">{order.items?.map(i => `${i.quantity}x ${i.name}`).join(', ')}</p>
                   <div className="flex gap-2">
-                    <button className="flex-1 py-2 bg-gray-100 text-gray-600 rounded-lg font-bold text-xs">Reject</button>
-                    <button onClick={() => { setSelectedOrder(order); setActiveScreen('delivery-assign'); }} className="flex-1 py-2 bg-orange-500 text-white rounded-lg font-bold text-xs shadow-sm active:scale-95 transition-transform">Accept & Assign</button>
+                    <button
+                      onClick={() => handleRejectOrder(order.id)}
+                      className="flex-1 py-2 bg-gray-100 text-gray-600 rounded-lg font-bold text-xs active:scale-95 transition-transform"
+                    >
+                      Reject
+                    </button>
+                    <button
+                      onClick={() => handleAcceptOrder(order)}
+                      className="flex-1 py-2 bg-orange-500 text-white rounded-lg font-bold text-xs shadow-sm active:scale-95 transition-transform"
+                    >
+                      Accept order
+                    </button>
                   </div>
                 </div>
               ))}
@@ -685,7 +709,12 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
                     <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md text-[10px] font-bold">Waiting for Agent</span>
                   </div>
                   <p className="text-xs text-gray-500 mb-3 line-clamp-1">{order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</p>
-                  <button className="w-full py-2 bg-gray-100 text-gray-600 rounded-lg font-bold text-xs border border-gray-200 pointer-events-none">Waiting for pickup scan...</button>
+                  {/* A status line, not a control — it was marked up as a
+                      button with pointer-events disabled, so assistive tech
+                      announced a button that could never be pressed. */}
+                  <p className="w-full py-2 bg-gray-100 text-gray-500 rounded-lg font-bold text-xs border border-gray-200 text-center">
+                    Waiting for a rider to collect it
+                  </p>
                 </div>
               ))}
             </div>
@@ -695,21 +724,52 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
     );
   };
 
+  /**
+   * Trading, on figures that come from somewhere.
+   *
+   * What this replaced: a "This Week" that was literally today's number times
+   * four, a "Conversion 12.4%" that was a string in the markup, and a top-seller
+   * list of two fixed rows shown to every shop regardless of what it sold. The
+   * only honest number on the screen was the order count.
+   *
+   * Money owed is the real settlement summary — the same data the payout screen
+   * reads — so "Withdraw" now moves actual money instead of doing nothing.
+   */
   const renderAnalytics = () => (
     <div className="space-y-6 animate-fade-in pb-20">
       <div className="bg-gradient-to-br from-green-800 to-green-600 p-6 rounded-3xl shadow-xl text-white">
-        <span className="block text-green-200 text-sm font-bold uppercase tracking-wider mb-1">Today's Revenue</span>
-        <h2 className="text-5xl font-black mb-4">₹{revenueToday}</h2>
-        <div className="flex justify-between items-center border-t border-green-700/50 pt-4 mt-2">
-          <div>
-            <span className="block text-xs text-green-200">This Week</span>
-            <span className="font-bold text-lg">₹{revenueToday * 4}</span>
+        <span className="block text-green-200 text-sm font-bold uppercase tracking-wider mb-1">Delivered today</span>
+        <h2 className="text-5xl font-black mb-1">₹{revenueToday.toLocaleString('en-IN')}</h2>
+        <p className="text-green-200 text-xs mb-4">
+          {todaysDelivered.length} order{todaysDelivered.length === 1 ? '' : 's'} · what customers paid, before our commission
+        </p>
+
+        <div className="flex justify-between items-center border-t border-green-700/50 pt-4 mt-2 gap-3">
+          <div className="min-w-0">
+            <span className="block text-xs text-green-200">Yours to withdraw</span>
+            <span className="font-bold text-lg">
+              {earnings ? formatPaise(earnings.pendingPaise) : '—'}
+            </span>
           </div>
-          <button className="bg-white text-green-900 px-4 py-2 rounded-xl font-black text-xs shadow-md active:scale-95 transition-transform">
-            Withdraw
+          <button
+            onClick={handleWithdraw}
+            disabled={!earnings || withdrawing || !earnings.canWithdrawNow}
+            className="bg-white disabled:bg-white/40 disabled:text-green-900/50 text-green-900 px-4 py-2 rounded-xl font-black text-xs shadow-md active:scale-95 transition-transform shrink-0"
+          >
+            {withdrawing ? 'Moving…' : 'Withdraw'}
           </button>
         </div>
+        {earnings && !earnings.canWithdrawNow && earnings.pendingPaise > 0 && (
+          <p className="text-[10px] text-green-200/80 mt-2">
+            Reaches your wallet on its own within {earnings.holdHours} hours, or withdraw early from{' '}
+            {formatPaise(earnings.minEarlyPayoutPaise)}.
+          </p>
+        )}
       </div>
+
+      {earningsError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 text-xs text-red-700 font-bold">{earningsError}</div>
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
@@ -718,29 +778,30 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
           <p className="font-black text-xl text-gray-900">{orders.length}</p>
         </div>
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+          {/* Replaces a hardcoded "Conversion 12.4%". Nothing in this system
+              tracks how many people looked without buying, so a conversion rate
+              cannot be computed — this counts what actually completed. */}
           <TrendingUp className="w-6 h-6 text-green-500 mb-2" />
-          <p className="text-xs font-bold text-gray-500 mb-1">Conversion</p>
-          <p className="font-black text-xl text-gray-900">12.4%</p>
+          <p className="text-xs font-bold text-gray-500 mb-1">Delivered</p>
+          <p className="font-black text-xl text-gray-900">{deliveredOrders.length}</p>
         </div>
       </div>
 
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
         <h3 className="font-black text-gray-900 mb-4 border-b pb-2">Top Selling Items</h3>
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <span className="font-bold text-gray-700 text-sm">Organic Onions</span>
-            <span className="text-green-600 font-black text-sm">124 Kg</span>
+        {topSellers.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">Nothing delivered yet — this fills in as orders complete.</p>
+        ) : (
+          <div className="space-y-4">
+            {topSellers.map(([name, quantity]) => (
+              <div key={name} className="flex justify-between items-center gap-3">
+                <span className="font-bold text-gray-700 text-sm truncate">{name}</span>
+                <span className="text-green-600 font-black text-sm shrink-0">{quantity} sold</span>
+              </div>
+            ))}
           </div>
-          <div className="flex justify-between items-center">
-            <span className="font-bold text-gray-700 text-sm">Fresh Tomatoes</span>
-            <span className="text-green-600 font-black text-sm">89 Kg</span>
-          </div>
-        </div>
+        )}
       </div>
-      
-      <button className="w-full bg-gray-100 text-gray-700 font-bold py-4 rounded-2xl active:scale-95 transition-transform border border-gray-200">
-        Download Full Report
-      </button>
     </div>
   );
 
@@ -768,13 +829,6 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <button onClick={() => setActiveScreen('reviews')} className="w-full p-4 flex justify-between items-center border-b border-gray-50 hover:bg-gray-50 active:bg-gray-100 transition-colors text-left cursor-pointer">
-          <div className="flex items-center gap-3">
-            <Star className="w-5 h-5 text-orange-500" />
-            <span className="font-bold text-gray-700">Customer Reviews</span>
-          </div>
-          <span className="text-gray-400 font-bold">›</span>
-        </button>
         <button onClick={() => setActiveScreen('hours')} className="w-full p-4 flex justify-between items-center border-b border-gray-50 hover:bg-gray-50 active:bg-gray-100 transition-colors text-left cursor-pointer">
           <div className="flex items-center gap-3">
             <Clock className="w-5 h-5 text-blue-500" />
@@ -824,51 +878,23 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
           <div key={p.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center">
             <div>
               <h4 className="font-bold text-gray-900 text-sm">{p.name}</h4>
-              <p className="text-xs text-gray-500">{p.isOutofStock ? '0' : (p.stock || 50)} {p.unit} remaining</p>
+              {/* `p.stock || 50` invented a stock count whenever the real one
+                  was zero or absent, on the one screen whose job is to report
+                  stock. */}
+              <p className="text-xs text-gray-500">{p.stock ?? 0} {p.unit || 'units'} remaining</p>
             </div>
-            <button className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-bold active:scale-95">Update</button>
+            <button
+              onClick={() => openProductEditor(p)}
+              className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-bold active:scale-95"
+            >
+              Update
+            </button>
           </div>
         ))}
       </div>
     </div>
   );
 
-  const renderReviews = () => (
-    <div className="space-y-6 pb-20 animate-fade-in absolute inset-0 bg-gray-50 z-50 p-4 overflow-y-auto">
-      <div className="flex items-center gap-3 mb-4 sticky top-0 bg-gray-50 py-2">
-        <button onClick={() => setActiveScreen('list')} className="p-2 rounded-full bg-gray-200"><ArrowLeft className="w-5 h-5" /></button>
-        <h2 className="font-black text-xl text-gray-900">Customer Reviews</h2>
-      </div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 text-center mb-6">
-        <div className="text-5xl font-black text-gray-900 mb-2">4.8</div>
-        <div className="flex justify-center gap-1 text-orange-500 mb-2">
-          <Star className="w-5 h-5 fill-current" /><Star className="w-5 h-5 fill-current" /><Star className="w-5 h-5 fill-current" /><Star className="w-5 h-5 fill-current" /><Star className="w-5 h-5 fill-current" />
-        </div>
-        <p className="text-sm text-gray-500 font-bold">Based on 1,204 reviews</p>
-      </div>
-
-      <div className="space-y-4">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-            <div className="flex justify-between mb-2">
-              <span className="font-bold text-sm text-gray-900">{i === 0 ? 'Rahul Sharma' : i === 1 ? 'Priya Verma' : 'Srinivas Rao'}</span>
-              <span className="text-xs text-gray-400">{i === 0 ? '2 days ago' : i === 1 ? '4 days ago' : '1 week ago'}</span>
-            </div>
-            <div className="flex gap-1 text-orange-500 mb-2">
-              <Star className="w-3 h-3 fill-current" /><Star className="w-3 h-3 fill-current" /><Star className="w-3 h-3 fill-current" /><Star className="w-3 h-3 fill-current" /><Star className="w-3 h-3 fill-current" />
-            </div>
-            <p className="text-sm text-gray-600 mb-3">
-              {i === 0 && '"Fresh vegetables and super fast delivery. The tomatoes were excellent!"'}
-              {i === 1 && '"Always high quality organic produce. Packaged very cleanly."'}
-              {i === 2 && '"Best vegetable shop in Mylavaram area. Highly recommended!"'}
-            </p>
-            <button className="text-green-600 text-xs font-bold bg-green-50 px-3 py-1.5 rounded-lg active:scale-95 cursor-pointer">Reply to Customer</button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 
   const renderBusinessHours = () => (
     <div className="space-y-6 pb-20 animate-fade-in absolute inset-0 bg-gray-50 z-50 p-4 overflow-y-auto">
@@ -1176,7 +1202,6 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
         {activeTab === 'profile' && renderProfile()}
 
         {activeScreen === 'inventory' && renderInventory()}
-        {activeScreen === 'reviews' && renderReviews()}
         {activeScreen === 'hours' && renderBusinessHours()}
         {activeScreen === 'bank' && renderBankDetails()}
       </main>

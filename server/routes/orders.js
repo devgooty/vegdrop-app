@@ -168,6 +168,41 @@ async function visibilityFilter(user) {
   return { customer: user._id };
 }
 
+/**
+ * Strip the customer's identity from an order before a shopkeeper sees it.
+ *
+ * `visibilityFilter` above decides WHICH orders each role may read; this decides
+ * which FIELDS. A shopkeeper passed the filter and then received the whole
+ * document — name, phone, delivery address, and the delivery coordinates.
+ *
+ * The market stall side never had this problem, because routes/stalls.js
+ * projects a narrow shape by hand and deliberately never includes the customer:
+ * a stall is being asked "can you supply 2kg of tomatoes", and the name, phone
+ * and address belong to the rider's job. An independent shop is in exactly the
+ * same position — it packs, and a rider carries — so the same rule applies. It
+ * simply reached the customer through a different route, which is why it was
+ * missed.
+ *
+ * Only `shopkeeper` is redacted. A delivery agent needs all of it to find the
+ * door; a customer is reading their own order; `market_owner` and `developer`
+ * are operator roles already scoped by the filter above.
+ */
+function redactForViewer(order, user) {
+  if (user.role !== 'shopkeeper') return order;
+
+  const {
+    customerName: _name,
+    phone: _phone,
+    address: _address,
+    // The customer's home as a coordinate pair — identifying on its own, and a
+    // shopkeeper has no use for it.
+    deliveryLocation: _location,
+    ...rest
+  } = order;
+
+  return rest;
+}
+
 router.get(
   '/',
   requireAuth,
@@ -186,7 +221,7 @@ router.get(
     if (status) filter.status = status;
 
     const orders = await Order.find(filter).sort({ createdAt: -1 }).limit(limit);
-    return res.json({ data: orders.map((o) => o.toJSON()) });
+    return res.json({ data: orders.map((o) => redactForViewer(o.toJSON(), req.user)) });
   }
 );
 
@@ -198,7 +233,7 @@ router.get(
     const order = await Order.findOne({ _id: req.valid.params.id, ...(await visibilityFilter(req.user)) });
     // 404 rather than 403 so order ids are not probeable.
     if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
-    return res.json({ data: order.toJSON() });
+    return res.json({ data: redactForViewer(order.toJSON(), req.user) });
   }
 );
 
@@ -609,7 +644,7 @@ async function cancelMarketOrder({ req, res, order }) {
     )
   );
 
-  return res.json({ data: cancelled.toJSON() });
+  return res.json({ data: redactForViewer(cancelled.toJSON(), req.user) });
 }
 
 // ---------------------------------------------------------------------------
@@ -845,7 +880,7 @@ router.patch(
       }
     }
 
-    return res.json({ data: order.toJSON() });
+    return res.json({ data: redactForViewer(order.toJSON(), req.user) });
   }
 );
 
