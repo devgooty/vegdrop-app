@@ -28,7 +28,7 @@ const router = express.Router();
 /**
  * Resolve the caller's stall once, for every route below.
  *
- * The three ways this fails are told apart on purpose. A shopkeeper waiting on a
+ * The ways this fails are told apart on purpose. A shopkeeper waiting on a
  * market owner and a shopkeeper who was turned down are in very different
  * situations, and answering both with "you do not have a stall yet" invites the
  * first to apply again — creating a duplicate request — and leaves the second
@@ -49,7 +49,32 @@ async function loadStall(req, _res, next) {
     );
   }
 
-  if (!stall || !stall.isActive) {
+  /**
+   * Suspended: approved, but switched off by the market owner.
+   *
+   * A fourth situation, and the newest — see PATCH /markets/:id/stalls/:stallId.
+   * It has to be told apart from the others for the same reason they are told
+   * apart from each other, and more urgently: NO_STALL says "ask to join a
+   * market to get one", which a suspended trader cannot act on. The partial
+   * unique index on `owner` covers approved stalls, so applying elsewhere would
+   * be refused with "you already run a stall" — leaving them bounced between two
+   * messages that contradict each other and no way forward.
+   *
+   * Their stall still exists and can be switched back on, so the answer is the
+   * one fact that is actually true and the one action that actually helps.
+   */
+  if (stall && !stall.isActive) {
+    return next(
+      new ApiError(
+        403,
+        'Your stall has been suspended by the market. Speak to the market office to trade again.',
+        'STALL_SUSPENDED',
+        { marketId: String(stall.market), stallNumber: stall.stallNumber }
+      )
+    );
+  }
+
+  if (!stall) {
     return next(
       new ApiError(404, 'You do not have a stall yet. Ask to join a market to get one.', 'NO_STALL')
     );

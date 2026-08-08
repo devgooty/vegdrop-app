@@ -119,6 +119,19 @@ export function secondsLeft(deadline) {
   return Math.max(0, Math.floor((new Date(deadline).getTime() - Date.now()) / 1000));
 }
 
+/**
+ * Paise to something a person reads.
+ *
+ * Grouped Indian-style — ₹1,23,456 rather than ₹123456 — because these numbers
+ * are now large enough to need it: a market owner's monthly takings ran
+ * together into an unreadable string of digits. Whole rupees drop the paise, so
+ * the common case stays short.
+ */
 export function formatPaise(paise) {
-  return `₹${((paise || 0) / 100).toFixed(2).replace(/\.00$/, '')}`;
+  const rupees = (paise || 0) / 100;
+  const fractionDigits = Number.isInteger(rupees) ? 0 : 2;
+  return `₹${rupees.toLocaleString('en-IN', {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  })}`;
 }

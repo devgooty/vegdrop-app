@@ -1,8 +1,10 @@
 'use strict';
 
 const express = require('express');
+const mongoose = require('mongoose');
 const Market = require('../models/Market');
 const MarketPrice = require('../models/MarketPrice');
+const MarketPriceHistory = require('../models/MarketPriceHistory');
 const Stall = require('../models/Stall');
 const Product = require('../models/Product');
 const User = require('../models/User');
@@ -164,6 +166,23 @@ router.get('/mine', requireAuth, requireRole(MARKET_MANAGERS), async (req, res) 
       ...publicMarket(m),
       slug: m.slug,
       isActive: m.isActive,
+      /**
+       * The owner's own settings, which `publicMarket` deliberately withholds
+       * from the shopkeeper-facing list.
+       *
+       * Returned here rather than leaving the dashboard to fetch GET /:id per
+       * market: that route filters on `isActive: true`, so an owner who closed
+       * their market down could no longer read it back — and therefore could
+       * never turn it on again from a settings screen. Their own market is not
+       * something to hide from them.
+       *
+       * `.lean()` skips the lat/lng virtuals, so they are read straight off the
+       * GeoJSON pair — which is [lng, lat], in that order.
+       */
+      serviceRadiusMeters: m.serviceRadiusMeters,
+      contactPhone: m.contactPhone || '',
+      lat: m.location?.coordinates?.[1] ?? null,
+      lng: m.location?.coordinates?.[0] ?? null,
       pendingRequests: pendingByMarket.get(String(m._id)) || 0,
     })),
   });
@@ -233,6 +252,103 @@ router.get(
     // short-lived because a market can pull a line at any moment.
     res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
     return res.json({ data });
+  }
+);
+
+/**
+ * What this market has charged lately.
+ *
+ * Public, like the catalog it belongs to: a shopper deciding whether to buy
+ * today or wait is exactly who this is for, and they may not have an account.
+ *
+ * WHAT A SERIES DOES AND DOES NOT CONTAIN
+ *
+ * A point exists only where the price actually changed, so a line that has held
+ * steady for a month returns a single point. The client draws the step between
+ * points rather than interpolating — the price was that number for the whole
+ * interval, not drifting towards the next one.
+ *
+ * A product with no points has genuinely never been repriced since history
+ * started being kept. That is reported as an empty series rather than filled
+ * in, because a plausible-looking invented line is what this replaced.
+ */
+router.get(
+  '/:id/price-history',
+  optionalAuth,
+  validate({
+    params: z.object({ id: fields.objectId }).strict(),
+    query: z
+      .object({
+        days: z.coerce.number().int().min(1).max(365).default(30),
+        // Narrow to specific lines; omitted means the whole sheet.
+        productIds: z.string().trim().max(2000).optional(),
+      })
+      .strict(),
+  }),
+  async (req, res) => {
+    const { id } = req.valid.params;
+    const { days, productIds } = req.valid.query;
+
+    const market = await Market.findOne({ _id: id, isActive: true }).select('_id').lean();
+    if (!market) throw new ApiError(404, 'Market not found.', 'NOT_FOUND');
+
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const filter = { market: market._id, at: { $gte: since } };
+
+    if (productIds) {
+      const ids = productIds
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => /^[0-9a-fA-F]{24}$/.test(value));
+      if (ids.length === 0) return res.json({ data: { windowDays: days, since, series: {} } });
+      filter.product = { $in: ids.map((value) => new mongoose.Types.ObjectId(value)) };
+    }
+
+    const rows = await MarketPriceHistory.find(filter)
+      .select('product pricePaise isAvailable at')
+      .sort({ at: 1 })
+      .limit(5000)
+      .lean();
+
+    /**
+     * The price in force when the window opened.
+     *
+     * Without it a chart starts at the first change inside the window, so a
+     * product repriced once on day 28 would appear to have had no price for
+     * four weeks. One extra point per product, carried at the window's start.
+     */
+    const opening = await MarketPriceHistory.aggregate([
+      { $match: { ...filter, at: { $lt: since } } },
+      { $sort: { at: 1 } },
+      {
+        $group: {
+          _id: '$product',
+          pricePaise: { $last: '$pricePaise' },
+          isAvailable: { $last: '$isAvailable' },
+        },
+      },
+    ]);
+
+    const series = {};
+    for (const row of opening) {
+      series[String(row._id)] = [
+        { at: since, pricePaise: row.pricePaise, isAvailable: row.isAvailable, carried: true },
+      ];
+    }
+    for (const row of rows) {
+      const key = String(row.product);
+      if (!series[key]) series[key] = [];
+      series[key].push({
+        at: row.at,
+        pricePaise: row.pricePaise,
+        isAvailable: row.isAvailable,
+      });
+    }
+
+    // Same caching as the catalog: identical for every visitor, short-lived
+    // because a market can reprice at any moment.
+    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+    return res.json({ data: { windowDays: days, since, series } });
   }
 );
 
@@ -408,6 +524,34 @@ router.put(
       throw new ApiError(400, 'One or more products do not exist.', 'PRODUCT_UNAVAILABLE');
     }
 
+    /**
+     * Read the sheet before writing it, so the history can record changes only.
+     *
+     * The alternative — a history row per save — would draw a flat line densely
+     * dotted with re-affirmations of the same number every time the owner
+     * touched an unrelated line, because this endpoint takes the batch. That
+     * reads as volatility that never happened, which is the exact failure the
+     * history exists to stop.
+     */
+    const existing = await MarketPrice.find({
+      market: market._id,
+      product: { $in: productIds },
+    })
+      .select('product pricePaise isAvailable')
+      .lean();
+
+    const before = new Map(existing.map((row) => [String(row.product), row]));
+
+    const changed = prices.filter((row) => {
+      const previous = before.get(String(row.productId));
+      // A line that was not on the sheet at all is a change: it is its first price.
+      if (!previous) return true;
+      return (
+        previous.pricePaise !== row.price ||
+        previous.isAvailable !== (row.isAvailable ?? true)
+      );
+    });
+
     await MarketPrice.bulkWrite(
       prices.map((row) => ({
         updateOne: {
@@ -424,9 +568,48 @@ router.put(
       }))
     );
 
-    return res.json({ data: { updated: prices.length } });
+    /**
+     * Recorded after the sheet is written and deliberately not awaited for
+     * success: the price is already live, and losing a chart point must never
+     * fail a price change the market has committed to. Same reasoning as the
+     * notices elsewhere in this file.
+     */
+    if (changed.length > 0) {
+      const at = new Date();
+      MarketPriceHistory.insertMany(
+        changed.map((row) => ({
+          market: market._id,
+          product: row.productId,
+          pricePaise: row.price,
+          isAvailable: row.isAvailable ?? true,
+          changedBy: req.user._id,
+          at,
+        })),
+        { ordered: false }
+      ).catch((err) => {
+        console.warn(`[markets] price history for ${market.name} not recorded: ${err.message}`);
+      });
+    }
+
+    return res.json({ data: { updated: prices.length, changed: changed.length } });
   }
 );
+
+/** One trader in the market owner's roster. */
+function asStallRow(stall) {
+  return {
+    id: String(stall._id),
+    stallNumber: stall.stallNumber,
+    name: stall.name,
+    owner: stall.owner
+      ? { id: String(stall.owner._id), name: stall.owner.name, phone: stall.owner.phone || null }
+      : null,
+    autoAccept: stall.autoAccept,
+    isOpen: stall.isOpen,
+    isActive: stall.isActive,
+    activeLoad: stall.activeLoad,
+  };
+}
 
 /** The stalls in a market — who is trading, and how busy each of them is. */
 router.get(
@@ -445,18 +628,103 @@ router.get(
       .sort({ stallNumber: 1 })
       .lean();
 
-    return res.json({
-      data: stalls.map((s) => ({
-        id: String(s._id),
-        stallNumber: s.stallNumber,
-        name: s.name,
-        owner: s.owner ? { id: String(s.owner._id), name: s.owner.name, phone: s.owner.phone } : null,
-        autoAccept: s.autoAccept,
-        isOpen: s.isOpen,
-        isActive: s.isActive,
-        activeLoad: s.activeLoad,
-      })),
-    });
+    return res.json({ data: stalls.map(asStallRow) });
+  }
+);
+
+/**
+ * Suspend a trader, or move them to a different pitch.
+ *
+ * Accepting an application was a one-way door until this existed: a market owner
+ * could let somebody in and then had no way to put them out again, which makes
+ * approval a decision nobody can afford to get wrong. Suspension is the
+ * counterpart to approval and belongs to the same person.
+ *
+ * WHAT IS DELIBERATELY NOT HERE
+ *
+ * `isOpen` and `autoAccept` are the trader's own controls, changed through
+ * PATCH /api/stalls/me. A shutter is a statement about whether that shopkeeper
+ * is behind the counter right now, and a market owner reaching over to answer
+ * that question for them would make the field mean two different things
+ * depending on who last wrote it. Suspension says something the market owner
+ * genuinely knows — "you are not trading here" — and stops sourcing outright,
+ * which is the actual remedy.
+ *
+ * `isActive: false` is what makes it bite: every sourcing query filters on it,
+ * so a suspended stall is offered nothing. Lines it already holds are left
+ * alone on purpose — the customer is owed those goods, and cancelling them from
+ * here would strand a paid order rather than resolve it.
+ */
+router.patch(
+  '/:id/stalls/:stallId',
+  requireAuth,
+  requireRole(MARKET_MANAGERS),
+  validate({
+    params: z.object({ id: fields.objectId, stallId: fields.objectId }).strict(),
+    body: z
+      .object({
+        isActive: z.boolean().optional(),
+        stallNumber: fields.nonEmptyString(24).optional(),
+      })
+      .strict(),
+  }),
+  async (req, res) => {
+    await loadManagedMarket(req.valid.params.id, req.user);
+
+    const { isActive, stallNumber } = req.valid.body;
+    if (isActive === undefined && stallNumber === undefined) {
+      throw new ApiError(400, 'No fields to update.', 'VALIDATION_ERROR');
+    }
+
+    // Matched on market as well as id, for the reason the approve route gives:
+    // quoting somebody else's stall id must not reach into their market.
+    const stall = await Stall.findOne({
+      _id: req.valid.params.stallId,
+      market: req.valid.params.id,
+      status: 'approved',
+    }).populate('owner', 'name phone email');
+    if (!stall) throw new ApiError(404, 'No trading stall with that id.', 'NOT_FOUND');
+
+    const wasActive = stall.isActive;
+    if (isActive !== undefined) stall.isActive = isActive;
+    if (stallNumber !== undefined) stall.stallNumber = stallNumber;
+
+    try {
+      await stall.save();
+    } catch (err) {
+      // Same clash as approval: the number is unique among approved stalls.
+      if (err?.code === 11000) {
+        throw new ApiError(
+          409,
+          `Stall ${stallNumber} is already taken in this market.`,
+          'STALL_NUMBER_TAKEN'
+        );
+      }
+      throw err;
+    }
+
+    /**
+     * Tell them, and only when the answer actually changed.
+     *
+     * Being cut off from orders with no explanation is the kind of thing a
+     * trader discovers hours later by noticing an empty screen. Not awaited for
+     * success — the suspension is already in force, and a mail server having a
+     * bad minute must not undo it.
+     */
+    if (isActive !== undefined && isActive !== wasActive && stall.owner?.email) {
+      const firstName = String(stall.owner.name || '').split(/\s+/)[0] || 'there';
+      await notify.sendNotice({
+        to: stall.owner.email,
+        subject: isActive ? 'Your stall is trading again' : 'Your stall has been suspended',
+        text: isActive
+          ? `Hi ${firstName},\n\nYour stall is active again and will start receiving orders.\n\n— VegDrop`
+          : `Hi ${firstName},\n\nYour stall has been suspended by the market and will not be offered new orders.\n` +
+            'Anything you have already accepted still needs to be packed.\n\n' +
+            'Speak to the market office if this is unexpected.\n\n— VegDrop',
+      });
+    }
+
+    return res.json({ data: asStallRow(stall.toObject()) });
   }
 );
 
@@ -540,6 +808,16 @@ function asRequest(stall) {
   return {
     id: String(stall._id),
     status: stall.status,
+    /**
+     * Approved is not the same as trading.
+     *
+     * A market owner can suspend an accepted stall, which leaves `status` at
+     * `approved` while the stall is switched off. Reported explicitly rather
+     * than left to be inferred from "approved but /stalls/me refused me",
+     * which is the kind of deduction that goes wrong the first time anything
+     * else can produce the same symptom.
+     */
+    isActive: stall.isActive,
     proposedStallNumber: stall.stallNumber,
     name: stall.name,
     requestedAt: stall.requestedAt,

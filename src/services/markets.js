@@ -60,6 +60,32 @@ export async function fetchMarketCatalog(marketId, { categoryId, search } = {}) 
   }));
 }
 
+/**
+ * What this market has charged lately, per product.
+ *
+ * A series contains a point only where the price actually CHANGED, so a steady
+ * line comes back as one point and must be drawn as a step, not interpolated —
+ * the price was that number until the next point, it did not drift toward it.
+ * A product absent from `series` has never been repriced in the window; that is
+ * an empty state to show, not a gap to fill in.
+ *
+ * @param {string} marketId
+ * @param {{days?: number, productIds?: string[]}} [options]
+ * @returns {Promise<{windowDays: number, since: string, series: Record<string, Array>}>}
+ */
+export async function fetchMarketPriceHistory(marketId, { days, productIds } = {}) {
+  const params = new URLSearchParams();
+  if (days) params.set('days', String(days));
+  if (productIds?.length) params.set('productIds', productIds.join(','));
+
+  const query = params.toString();
+  const result = await api.get(
+    `/markets/${marketId}/price-history${query ? `?${query}` : ''}`,
+    { auth: false }
+  );
+  return result.data;
+}
+
 export async function fetchMarket(marketId) {
   const result = await api.get(`/markets/${marketId}`);
   return result.data;
@@ -115,6 +141,53 @@ export async function fetchMarketStalls(marketId) {
 
 export async function createStall(marketId, stall) {
   const result = await api.post(`/markets/${marketId}/stalls`, stall);
+  return result.data;
+}
+
+/**
+ * Suspend a trader, or move them to a different pitch.
+ *
+ * Only `isActive` and `stallNumber`. The shutter (`isOpen`) and auto-accept are
+ * the shopkeeper's own settings and are not the market owner's to write.
+ *
+ * @param {{isActive?: boolean, stallNumber?: string}} changes
+ */
+export async function updateMarketStall(marketId, stallId, changes) {
+  const result = await api.patch(`/markets/${marketId}/stalls/${stallId}`, changes);
+  return result.data;
+}
+
+/**
+ * Open a market.
+ *
+ * Whoever creates it runs it: the server assigns `owner` from the session for a
+ * market_owner and ignores any `ownerId` in the body, so this cannot be used to
+ * plant a market under someone else's account.
+ *
+ * `slug` has to be unique across the platform, so a collision comes back as a
+ * duplicate-key failure rather than silently attaching to an existing market.
+ */
+export async function createMarket({ name, slug, address, lat, lng, serviceRadiusMeters, contactPhone }) {
+  const result = await api.post('/markets', {
+    name,
+    slug,
+    address,
+    lat,
+    lng,
+    ...(serviceRadiusMeters === undefined ? {} : { serviceRadiusMeters }),
+    ...(contactPhone ? { contactPhone } : {}),
+  });
+  return result.data;
+}
+
+/**
+ * Change how the market itself is set up.
+ *
+ * Send `lat` and `lng` together or not at all — the server refuses one without
+ * the other rather than moving a market to a half-specified point.
+ */
+export async function updateMarket(marketId, changes) {
+  const result = await api.patch(`/markets/${marketId}`, changes);
   return result.data;
 }
 

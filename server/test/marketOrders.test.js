@@ -522,7 +522,27 @@ test('a rider sees the pickup they are being offered', async () => {
   const offer = feed.body.data.offers[0];
   assert.equal(offer.marketName, 'Rythu Bazaar');
   assert.equal(offer.stallCount, 1);
-  assert.equal(offer.pickups[0].stallNumber, 'C-7', 'the rider needs the stall number to walk to');
+
+  /**
+   * The round arrives on acceptance, not on the offer.
+   *
+   * An offer is shown to up to four riders in turn and then to everyone in the
+   * open pool, so it carries only what the decision rests on — how many stalls,
+   * not which ones (see forRider in routes/rider.js). The rider does need the
+   * stall number to walk to, which is why it is asserted here rather than
+   * dropped: it just belongs one step later.
+   */
+  assert.equal(offer.pickups, undefined, 'the round is not part of deciding');
+
+  const accepted = await api()
+    .post(`/api/rider/orders/${offer.id}/accept`)
+    .set(auth(rider.accessToken));
+  assert.equal(accepted.status, 200);
+  assert.equal(
+    accepted.body.data.pickups[0].stallNumber,
+    'C-7',
+    'the rider needs the stall number to walk to'
+  );
 
   // The general order list must show it too — that is where the fix was needed.
   const list = await api().get('/api/orders').set(auth(rider.accessToken));

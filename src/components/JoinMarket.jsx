@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Store, Clock, XCircle, Loader2, ArrowLeft, MapPin, Check } from 'lucide-react';
+import { Store, Clock, XCircle, Loader2, ArrowLeft, MapPin, Check, Ban } from 'lucide-react';
 
 import {
   fetchJoinableMarkets,
@@ -16,7 +16,7 @@ import {
  * another. In practice that only worked for people already known off-platform.
  * This is the direction that scales: the shopkeeper introduces themselves.
  *
- * Three states, told apart deliberately. Waiting and refused are very different
+ * The states are told apart deliberately. Waiting and refused are very different
  * situations, and collapsing them into "you have no stall" invites the first to
  * apply again — creating a duplicate the server then rejects — and leaves the
  * second waiting on a decision that has already been made.
@@ -25,7 +25,43 @@ export default function JoinMarket({ request, onChanged, onBack }) {
   const status = request?.status ?? null;
 
   if (status === 'pending') return <Waiting request={request} onChanged={onChanged} />;
+
+  /**
+   * Accepted, then switched off by the market owner.
+   *
+   * This must not fall through to the picker. A suspended stall is still an
+   * approved one, so it occupies the shopkeeper's slot in the partial unique
+   * index on `owner` — applying to another market comes back 409 "you already
+   * run a stall". Offering the picker here would be offering the one thing that
+   * cannot work.
+   */
+  if (status === 'approved' && request?.isActive === false) {
+    return <Suspended request={request} />;
+  }
+
   return <Picker request={request} onChanged={onChanged} onBack={onBack} />;
+}
+
+/** Suspended: the stall exists, it is simply switched off. */
+function Suspended({ request }) {
+  return (
+    <Shell>
+      <div className="text-center space-y-3">
+        <div className="w-14 h-14 rounded-full bg-red-50 border border-red-200 flex items-center justify-center mx-auto">
+          <Ban className="w-7 h-7 text-red-600" />
+        </div>
+        <h1 className="text-xl font-extrabold text-gray-900">Your stall is suspended</h1>
+        <p className="text-sm text-gray-600">
+          The market has switched off stall {request.proposedStallNumber}, so you will not be
+          offered new orders for now.
+        </p>
+        <p className="text-xs text-gray-500">
+          Nothing has been deleted — your stall and your earnings are exactly as you left them, and
+          the market can switch it back on. Speak to the market office to sort it out.
+        </p>
+      </div>
+    </Shell>
+  );
 }
 
 /** Applied, and the market owner has not decided. */
