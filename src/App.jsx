@@ -256,8 +256,11 @@ export default function App() {
               })
               .catch((err) => console.warn('wallet unavailable:', err.message)),
 
-            // Admin-only; a 403 here is expected for most roles.
-            ...(['developer', 'market_owner'].includes(user.role)
+            // Developer-only, and only DeveloperPanel renders it. A market owner
+            // used to be asked for this too, which was a request for the whole
+            // user table — phone numbers included — on behalf of a panel they
+            // never see. The server refuses them now; do not ask.
+            ...(['developer'].includes(user.role)
               ? [
                   fetchUsers({ limit: 200 })
                     .then((list) => {

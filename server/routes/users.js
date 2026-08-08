@@ -10,8 +10,33 @@ const { revokeAllForUser } = require('../services/tokens');
 
 const router = express.Router();
 
-/** Roles that may administer other accounts. */
-const ADMIN_ROLES = ['market_owner', 'developer'];
+/**
+ * Roles that may administer other accounts.
+ *
+ * `market_owner` used to be in here, and that was too much authority for what
+ * the role actually is. A market owner is a business partner who runs a
+ * marketplace, not platform staff:
+ *
+ *  - `PATCH /:id/role` accepts any value in ROLES, and self-modification is the
+ *    only thing blocked. So a market owner could promote a second account they
+ *    control to `developer` and inherit everything `developer` bypasses — every
+ *    order in the system with its customer's name, phone and address, every
+ *    market's price sheet, and the vendor KYC gate.
+ *  - `GET /` returns `toPublicJSON()`, which carries `email` and `phone`. That
+ *    handed every market owner the entire customer table, which is precisely
+ *    the competitor-to-competitor leak `visibilityFilter` in routes/orders.js
+ *    was rewritten to close. Scoping orders while leaving the user list open
+ *    closed the window and left the door.
+ *
+ * Nothing is lost by narrowing it. A market owner administers markets and
+ * stalls, and already has every market-scoped view they need: the stall-request
+ * queue carries each applicant's name and number, `/:id/stalls` lists their
+ * traders, and `/:id/analytics` reports how each is performing. Account-level
+ * authority — promoting, suspending, deleting a person — is platform staff's.
+ * The client agrees already: `registeredUsers` is only ever rendered by
+ * DeveloperPanel, which only mounts for `developer`.
+ */
+const ADMIN_ROLES = ['developer'];
 
 /**
  * User administration.

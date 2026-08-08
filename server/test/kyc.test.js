@@ -109,13 +109,23 @@ test('an unverified shopkeeper cannot create or edit products either', async () 
 });
 
 test('completing KYC unlocks stock updates', async () => {
-  const product = await seedProduct();
   const { accessToken } = await authenticatedUser('shopkeeper');
 
   await completeKyc(accessToken);
 
+  /**
+   * Listed through the API, not seeded: a vendor may only write to products
+   * they created, and only the create route stamps `createdBy`. Seeding here
+   * would test the ownership rule rather than the KYC gate this case is about.
+   */
+  const created = await api()
+    .post('/api/products')
+    .set(auth(accessToken))
+    .send({ sku: `SKU-KYC-${Date.now()}`, categoryId: 1, name: 'Unlocked', price: 30, stock: 5 });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
   const res = await api()
-    .patch(`/api/products/${product._id}/stock`)
+    .patch(`/api/products/${created.body.data.id}/stock`)
     .set(auth(accessToken))
     .send({ stock: 42 });
 

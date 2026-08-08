@@ -15,6 +15,7 @@ const {
 } = require('./helpers');
 
 const Product = require('../models/Product');
+const User = require('../models/User');
 const WalletTransaction = require('../models/WalletTransaction');
 const PaymentIntent = require('../models/PaymentIntent');
 
@@ -92,14 +93,25 @@ test('a customer cannot change product stock', async () => {
   assert.equal(unchanged.stock, 10);
 });
 
-test('a shopkeeper can change product stock', async () => {
-  const product = await seedProduct();
+test('a shopkeeper can change stock on a product they listed', async () => {
   const { accessToken, user } = await authenticatedUser('shopkeeper');
   // Catalog writes are gated on a verified settlement account.
   await verifyVendor(user);
 
+  /**
+   * Listed through the API rather than seeded straight into the collection.
+   * `createdBy` is what authorizes every later write, and only the create route
+   * stamps it — a seeded row is unowned, which now means vendor-writable by
+   * nobody. See catalogOwnership.test.js.
+   */
+  const created = await api()
+    .post('/api/products')
+    .set(auth(accessToken))
+    .send({ sku: `SKU-OWN-${Date.now()}`, categoryId: 1, name: 'Mine', price: 40, stock: 10 });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
   const res = await api()
-    .patch(`/api/products/${product._id}/stock`)
+    .patch(`/api/products/${created.body.data.id}/stock`)
     .set(auth(accessToken))
     .send({ stock: 42 });
 
@@ -140,7 +152,7 @@ test('a user cannot promote themselves via profile update', async () => {
 });
 
 test('an admin cannot change their own role', async () => {
-  const { accessToken, user } = await authenticatedUser('market_owner');
+  const { accessToken, user } = await authenticatedUser('developer');
 
   const res = await api()
     .patch(`/api/users/${user._id}/role`)
@@ -152,7 +164,7 @@ test('an admin cannot change their own role', async () => {
 
 test('an admin can change another user role, and it takes effect immediately', async () => {
   const target = await createUser({ role: 'customer' });
-  const { accessToken } = await authenticatedUser('market_owner');
+  const { accessToken } = await authenticatedUser('developer');
 
   const res = await api()
     .patch(`/api/users/${target.user._id}/role`)
@@ -161,6 +173,49 @@ test('an admin can change another user role, and it takes effect immediately', a
 
   assert.equal(res.status, 200);
   assert.equal(res.body.data.role, 'shopkeeper');
+});
+
+/**
+ * A market owner runs a marketplace; they are not platform staff. Holding the
+ * role once carried full account administration, which made minting a
+ * `developer` — and inheriting everything that bypasses — a two-step move
+ * available to any business partner.
+ */
+test('a market owner cannot promote anyone', async () => {
+  const target = await createUser({ role: 'customer' });
+  const { accessToken } = await authenticatedUser('market_owner');
+
+  const res = await api()
+    .patch(`/api/users/${target.user._id}/role`)
+    .set(auth(accessToken))
+    .send({ role: 'developer' });
+
+  assert.equal(res.status, 403, 'role assignment is platform staff only');
+
+  const unchanged = await User.findById(target.user._id);
+  assert.equal(unchanged.role, 'customer');
+});
+
+test('a market owner cannot list the user table', async () => {
+  const { accessToken } = await authenticatedUser('market_owner');
+
+  const res = await api().get('/api/users').set(auth(accessToken));
+
+  assert.equal(res.status, 403, 'toPublicJSON carries every customer phone and email');
+});
+
+test('a market owner cannot suspend or delete an account', async () => {
+  const target = await createUser({ role: 'customer' });
+  const { accessToken } = await authenticatedUser('market_owner');
+
+  const suspend = await api()
+    .patch(`/api/users/${target.user._id}/status`)
+    .set(auth(accessToken))
+    .send({ status: 'suspended' });
+  assert.equal(suspend.status, 403);
+
+  const removed = await api().delete(`/api/users/${target.user._id}`).set(auth(accessToken));
+  assert.equal(removed.status, 403);
 });
 
 // ---------------------------------------------------------------------------

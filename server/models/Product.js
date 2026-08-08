@@ -41,6 +41,27 @@ const productSchema = new mongoose.Schema(
     },
 
     isActive: { type: Boolean, default: true, index: true },
+
+    /**
+     * Who listed this, and therefore who may edit it.
+     *
+     * The catalog is one shared table with no per-row ownership, which was fine
+     * while `shopkeeper` was a role an administrator handed out. Vendor
+     * self-registration changed that: anyone who passes a penny drop reaches
+     * `PATCH /api/products/:id`, and without this field that call could reprice,
+     * restock or deactivate a competitor's entire listing.
+     *
+     * Null means nobody claimed it — seeded catalog and everything created
+     * before this existed. Those stay editable by `market_owner` and `developer`
+     * only, which is the safe reading of "unowned": a shared row is not the
+     * property of whichever vendor reaches it first.
+     */
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      index: true,
+    },
   },
   {
     timestamps: true,

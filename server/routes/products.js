@@ -12,6 +12,43 @@ const router = express.Router();
 /** Roles permitted to change the catalog. */
 const CATALOG_MANAGERS = ['shopkeeper', 'market_owner', 'developer'];
 
+/** Roles that administer the whole catalog rather than their own listings. */
+const CATALOG_ADMINS = ['market_owner', 'developer'];
+
+/**
+ * Load a product the caller is allowed to write to.
+ *
+ * Holding `shopkeeper` says you may list produce, not that you may edit
+ * everyone else's. Every write below routed through `findByIdAndUpdate` on a
+ * bare id, so any vendor who cleared KYC could reprice a competitor's line to
+ * zero, drop its stock, or deactivate it outright — and self-registration means
+ * clearing KYC is something a stranger can do unaided.
+ *
+ * Ownership is checked before the write rather than after, for the reason
+ * routes/markets.js gives about market edits: `findByIdAndUpdate` would have
+ * already applied the change by the time we noticed it was not theirs.
+ *
+ * 403 rather than the 404 used for order lookups. The catalog is public — GET
+ * /api/products already lists every one of these — so hiding existence buys
+ * nothing, and "this is not yours" is the actionable message.
+ */
+async function loadWritableProduct(id, user) {
+  const product = await Product.findById(id);
+  if (!product) throw new ApiError(404, 'Product not found.', 'NOT_FOUND');
+
+  if (CATALOG_ADMINS.includes(user.role)) return product;
+
+  if (!product.createdBy || String(product.createdBy) !== String(user._id)) {
+    throw new ApiError(
+      403,
+      'This listing belongs to another vendor. You can only change products you added.',
+      'NOT_YOUR_PRODUCT'
+    );
+  }
+
+  return product;
+}
+
 /**
  * Prices are stored and validated in integer paise. The API accepts rupees at
  * the boundary and converts once, so no float ever reaches persistence.
@@ -81,8 +118,10 @@ router.patch(
     body: z.object({ stock: z.number().int().min(0).max(1_000_000) }).strict(),
   }),
   async (req, res) => {
+    const product = await loadWritableProduct(req.valid.params.id, req.user);
+
     const updated = await Product.findByIdAndUpdate(
-      req.valid.params.id,
+      product._id,
       { $set: { stock: req.valid.body.stock } },
       { new: true, runValidators: true }
     );
@@ -119,6 +158,9 @@ router.post(
       ...rest,
       pricePaise: price,
       oldPricePaise: oldPrice ?? null,
+      // Stamped from the session, never the body — .strict() rejects an attempt
+      // to supply it, and this is what every later write is checked against.
+      createdBy: req.user._id,
     });
     return res.status(201).json({ data: product.toJSON() });
   }
@@ -156,8 +198,10 @@ router.patch(
       throw new ApiError(400, 'No fields to update.', 'VALIDATION_ERROR');
     }
 
+    const product = await loadWritableProduct(req.valid.params.id, req.user);
+
     const updated = await Product.findByIdAndUpdate(
-      req.valid.params.id,
+      product._id,
       { $set: update },
       { new: true, runValidators: true }
     );

@@ -69,51 +69,26 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
     };
   });
 
-  const [bankSearch, setBankSearch] = useState('');
-  const [bankDropdownOpen, setBankDropdownOpen] = useState(false);
-
-  const ALL_INDIAN_BANKS = [
-    { group: 'Public Sector Banks', banks: ['State Bank of India (SBI)', 'Bank of Baroda (BOB)', 'Bank of India (BOI)', 'Bank of Maharashtra (BOM)', 'Canara Bank', 'Central Bank of India', 'Indian Bank', 'Indian Overseas Bank (IOB)', 'Punjab & Sind Bank', 'Punjab National Bank (PNB)', 'UCO Bank', 'Union Bank of India'] },
-    { group: 'Private Sector Banks', banks: ['Axis Bank', 'Bandhan Bank', 'City Union Bank', 'CSB Bank (Catholic Syrian Bank)', 'DCB Bank', 'Dhanlaxmi Bank', 'Federal Bank', 'HDFC Bank', 'ICICI Bank', 'IDBI Bank', 'IDFC FIRST Bank', 'IndusInd Bank', 'Jammu & Kashmir Bank (JKB)', 'Karnataka Bank', 'Karur Vysya Bank (KVB)', 'Kotak Mahindra Bank', 'Lakshmi Vilas Bank', 'Nainital Bank', 'RBL Bank', 'South Indian Bank', 'Tamilnad Mercantile Bank (TMB)', 'Yes Bank'] },
-    { group: 'Small Finance Banks', banks: ['AU Small Finance Bank', 'Capital Small Finance Bank', 'Equitas Small Finance Bank', 'ESAF Small Finance Bank', 'Fincare Small Finance Bank', 'Jana Small Finance Bank', 'North East Small Finance Bank', 'Shivalik Small Finance Bank', 'Suryoday Small Finance Bank', 'Ujjivan Small Finance Bank', 'Unity Small Finance Bank', 'Utkarsh Small Finance Bank'] },
-    { group: 'Payment Banks', banks: ['Airtel Payments Bank', 'India Post Payments Bank (IPPB)', 'Fino Payments Bank', 'NSDL Payments Bank', 'Jio Payments Bank', 'Paytm Payments Bank'] },
-    { group: 'Foreign Banks', banks: ['Citibank India', 'Deutsche Bank India', 'DBS Bank India', 'HSBC India', 'Standard Chartered Bank India'] },
-    { group: 'Co-operative / Regional', banks: ['Saraswat Bank', 'Abhyudaya Bank', 'TJSB Sahakari Bank', 'Cosmos Bank', 'Other Co-operative Bank'] },
-  ];
-
-  const bankDetails_allBanks = ALL_INDIAN_BANKS.flatMap(g => g.banks);
-  const filteredBankGroups = bankSearch.trim()
-    ? [{ group: 'Search Results', banks: bankDetails_allBanks.filter(b => b.toLowerCase().includes(bankSearch.toLowerCase())) }]
-    : ALL_INDIAN_BANKS;
-
-  const [bankDetails, setBankDetails] = useState(() => {
-    try {
-      const saved = localStorage.getItem('vegdrop_shopkeeper_bank');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return {
-      bankName: 'State Bank of India (SBI)',
-      accountHolder: user?.name || 'Saibhargav Gooty',
-      accountNumber: '38291048592',
-      confirmAccountNumber: '38291048592',
-      accountType: 'Current',
-      ifscCode: 'SBIN0021482',
-      upiId: 'vegdrop.vendor@okicici',
-      panNumber: '',
-      gstin: '',
-      settlementCycle: 'Weekly (Every Monday)',
-      pendingAmount: '₹4,850.00',
-      isVerified: true,
-      verificationStatus: 'verified', // 'unverified' | 'pending' | 'verified'
-    };
-  });
-
-  const [bankFormError, setBankFormError] = useState('');
-  const [pennyDropStatus, setPennyDropStatus] = useState('idle'); // 'idle' | 'loading' | 'success' | 'failed'
-  const [showSecurityHold, setShowSecurityHold] = useState(false);
-
-  const validateIFSC = (code) => /^[A-Z]{4}0[A-Z0-9]{6}$/.test(code);
-  const validatePAN = (pan) => pan === '' || /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan);
+  /**
+   * There is deliberately no bank state here any more.
+   *
+   * This component used to hold a full settlement-account form — bank name,
+   * account number, IFSC, PAN, GSTIN — seeded from `localStorage` and written
+   * back to it on save. Two things made that worse than merely redundant:
+   *
+   *  - It defaulted to `verificationStatus: 'verified'` with a hardcoded
+   *    account number, so an untouched account displayed "✓ Verified" to a
+   *    vendor who had submitted nothing.
+   *  - Its penny drop was a 2.5s `setTimeout` that called no endpoint, then set
+   *    the same flag. A vendor could reach "verified" without a rupee moving.
+   *
+   * None of it was ever sent to the server, so it competed with the real KYC
+   * record rather than feeding it. Settlement details now live only in
+   * VendorKycModal and GET /api/kyc/me, where the PAN and account number are
+   * encrypted at rest, returned masked, and the amount a vendor must confirm is
+   * randomised and held as an HMAC. `renderBankDetails` below just reports that
+   * status and opens the real flow.
+   */
   const [profileData, setProfileData] = useState(() => {
     try {
       const savedKey = `vegdrop_shopkeeper_profile_${user?.phone || 'default'}`;
@@ -902,268 +877,101 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
     </div>
   );
 
-  const renderBankDetails = () => (
-    <div className="space-y-4 pb-20 animate-fade-in absolute inset-0 bg-gray-50 z-50 p-4 overflow-y-auto">
-      {/* Header */}
-      <div className="flex items-center gap-3 sticky top-0 bg-gray-50 py-2 z-10">
-        <button onClick={() => { setActiveScreen('list'); setBankFormError(''); setPennyDropStatus('idle'); setShowSecurityHold(false); }} className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors">
-          <ArrowLeft className="w-5 h-5 text-gray-700" />
-        </button>
-        <h2 className="font-black text-xl text-gray-900">Bank & Payout Details</h2>
-      </div>
+  /**
+   * Bank and payout details.
+   *
+   * This screen used to be a self-contained imitation of vendor onboarding: it
+   * collected an account number, IFSC and PAN, wrote all three to localStorage
+   * in the clear, and 'verified' the account with a 2.5s setTimeout that
+   * reached no server at all. Nothing it produced was ever sent anywhere, so a
+   * vendor who filled it in was told they were verified while remaining
+   * unverified everywhere that matters.
+   *
+   * Two things were wrong beyond the theatre. Financial identifiers in web
+   * storage are readable by any script that achieves XSS — the same reason the
+   * access token lives in a module variable and the wallet balance is no longer
+   * mirrored client-side. And a second, softer 'verified' state competing with
+   * the real one is how a vendor ends up trusting the wrong answer.
+   *
+   * The genuine flow already exists and is wired into this component: KYC
+   * status comes from GET /api/kyc/me, and VendorKycModal drives the real
+   * penny drop, whose amount is randomised, stored only as an HMAC, and must
+   * be read off an actual bank statement. This defers to it.
+   */
+  const renderBankDetails = () => {
+    const status = kyc?.status || 'missing';
+    const isVerified = Boolean(kyc?.canUpdateStock);
+    const inProgress = status === 'penny_sent';
 
-      {/* Payout Balance Card */}
-      <div className="bg-gradient-to-r from-[#1B4D3E] to-[#276652] p-5 rounded-2xl text-white shadow-md">
-        <div className="flex justify-between items-center mb-1">
-          <span className="text-[10px] text-emerald-200 font-bold uppercase tracking-wider">Payout Settlement Account</span>
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
-            bankDetails.verificationStatus === 'verified' ? 'bg-emerald-400/20 text-emerald-300 border-emerald-400/30' :
-            bankDetails.verificationStatus === 'pending' ? 'bg-yellow-400/20 text-yellow-300 border-yellow-400/30' :
-            'bg-red-400/20 text-red-300 border-red-400/30'
-          }`}>
-            {bankDetails.verificationStatus === 'verified' ? '✓ Verified' : bankDetails.verificationStatus === 'pending' ? '⏳ Pending' : '✗ Unverified'}
-          </span>
-        </div>
-        <p className="text-2xl font-black font-mono tracking-wider">{bankDetails.pendingAmount}</p>
-        <p className="text-[11px] text-emerald-100 mt-1">Next settlement: {bankDetails.settlementCycle}</p>
-        {showSecurityHold && (
-          <div className="mt-3 bg-yellow-400/20 border border-yellow-300/30 rounded-xl p-2.5">
-            <p className="text-[10px] text-yellow-200 font-bold">⚠️ Security Hold Active: Bank details were recently modified. Payouts are on hold for 48 hours for fraud protection.</p>
-          </div>
-        )}
-      </div>
+    const tone = isVerified
+      ? 'bg-emerald-400/20 text-emerald-300 border-emerald-400/30'
+      : inProgress
+        ? 'bg-yellow-400/20 text-yellow-300 border-yellow-400/30'
+        : 'bg-red-400/20 text-red-300 border-red-400/30';
 
-      {/* Security Notice */}
-      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3">
-        <span className="text-lg">🔒</span>
-        <div>
-          <p className="text-[11px] font-black text-amber-900">Security Policy (Amazon-style)</p>
-          <p className="text-[10px] text-amber-700 mt-0.5 leading-relaxed">Whenever you update bank details, a <strong>48–72 hour payout hold</strong> is automatically applied to prevent unauthorized fund hijacking. Your earnings are safe.</p>
-        </div>
-      </div>
+    const label = isVerified
+      ? '✓ Verified'
+      : inProgress
+        ? '⏳ Awaiting confirmation'
+        : '✗ Not verified';
 
-      {/* Error */}
-      {bankFormError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 text-xs text-red-700 font-bold">{bankFormError}</div>
-      )}
-
-      {/* Main Form */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-        <div className="flex items-center gap-3 pb-3 border-b border-gray-100">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center"><Wallet className="w-5 h-5 text-emerald-700" /></div>
-          <div>
-            <h3 className="font-extrabold text-gray-900 text-sm">Bank Account Details</h3>
-            <p className="text-[10px] text-gray-400">Used for weekly payout disbursements</p>
-          </div>
-        </div>
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            setBankFormError('');
-            // Validate
-            if (bankDetails.accountNumber !== bankDetails.confirmAccountNumber) {
-              setBankFormError('Account numbers do not match. Please re-enter carefully.');
-              return;
-            }
-            if (!validateIFSC(bankDetails.ifscCode)) {
-              setBankFormError('Invalid IFSC code format. Must be like: SBIN0021482');
-              return;
-            }
-            if (bankDetails.panNumber && !validatePAN(bankDetails.panNumber)) {
-              setBankFormError('Invalid PAN number format. Must be like: ABCDE1234F');
-              return;
-            }
-            const updated = { ...bankDetails, verificationStatus: 'pending', isVerified: false };
-            setBankDetails(updated);
-            setShowSecurityHold(true);
-            try { localStorage.setItem('vegdrop_shopkeeper_bank', JSON.stringify(updated)); } catch (err) {}
-            setActiveScreen('list');
-          }}
-          className="space-y-3 text-xs"
-        >
-          {/* Bank Name Searchable Picker */}
-          <div className="relative">
-            <label className="block font-bold text-gray-800 mb-1">Bank Name <span className="text-red-500">*</span></label>
-            <div
-              className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 cursor-pointer flex justify-between items-center hover:border-emerald-500 transition-colors"
-              onClick={() => { setBankDropdownOpen(o => !o); setBankSearch(''); }}
-            >
-              <span className={bankDetails.bankName ? 'text-gray-900' : 'text-gray-400'}>{bankDetails.bankName || '-- Select Your Bank --'}</span>
-              <svg className={`w-4 h-4 text-gray-400 transition-transform ${bankDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </div>
-            {bankDropdownOpen && (
-              <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden">
-                <div className="p-2 border-b border-gray-100 bg-gray-50">
-                  <div className="relative">
-                    <svg className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                    <input type="text" autoFocus value={bankSearch} onChange={(e) => setBankSearch(e.target.value)} placeholder="Search bank..." className="w-full bg-white border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-xs font-semibold text-gray-900 focus:outline-none focus:border-emerald-500" />
-                  </div>
-                </div>
-                <div className="max-h-48 overflow-y-auto">
-                  {filteredBankGroups.map(({ group, banks }) => banks.length > 0 && (
-                    <div key={group}>
-                      <div className="px-3 py-1 text-[10px] font-black text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">{group}</div>
-                      {banks.map(bank => (
-                        <button key={bank} type="button" onClick={() => { setBankDetails({ ...bankDetails, bankName: bank }); setBankDropdownOpen(false); setBankSearch(''); }}
-                          className={`w-full text-left px-4 py-2 text-xs font-semibold hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer ${bankDetails.bankName === bank ? 'bg-emerald-100 text-emerald-800' : 'text-gray-800'}`}>
-                          {bank}
-                        </button>
-                      ))}
-                    </div>
-                  ))}
-                  {filteredBankGroups[0]?.banks?.length === 0 && <div className="px-4 py-6 text-center text-xs text-gray-400 font-semibold">No bank found</div>}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Account Type */}
-          <div>
-            <label className="block font-bold text-gray-800 mb-1">Account Type <span className="text-red-500">*</span></label>
-            <div className="grid grid-cols-2 gap-2">
-              {['Savings', 'Current'].map(type => (
-                <button key={type} type="button"
-                  onClick={() => setBankDetails({ ...bankDetails, accountType: type })}
-                  className={`py-2 rounded-xl text-xs font-black border transition-all cursor-pointer ${
-                    bankDetails.accountType === type ? 'bg-emerald-600 text-white border-emerald-600 shadow-md' : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-emerald-400'
-                  }`}>
-                  {type === 'Savings' ? '🏦 Savings' : '🏢 Current'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Account Holder */}
-          <div>
-            <label className="block font-bold text-gray-800 mb-1">Account Holder Name <span className="text-red-500">*</span></label>
-            <p className="text-[10px] text-gray-400 mb-1">Must match your bank-registered name exactly</p>
-            <input type="text" value={bankDetails.accountHolder} onChange={(e) => setBankDetails({ ...bankDetails, accountHolder: e.target.value })}
-              className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 focus:outline-none focus:border-emerald-600" required />
-          </div>
-
-          {/* Account Number + Confirm */}
-          <div>
-            <label className="block font-bold text-gray-800 mb-1">Account Number <span className="text-red-500">*</span></label>
-            <input type="password" value={bankDetails.accountNumber} onChange={(e) => setBankDetails({ ...bankDetails, accountNumber: e.target.value })}
-              className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 focus:outline-none focus:border-emerald-600 font-mono" required />
-          </div>
-          <div>
-            <label className="block font-bold text-gray-800 mb-1">Confirm Account Number <span className="text-red-500">*</span></label>
-            <input type="text" value={bankDetails.confirmAccountNumber} onChange={(e) => setBankDetails({ ...bankDetails, confirmAccountNumber: e.target.value })}
-              className={`w-full bg-gray-50 border rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 focus:outline-none font-mono ${
-                bankDetails.confirmAccountNumber && bankDetails.accountNumber !== bankDetails.confirmAccountNumber
-                  ? 'border-red-400 focus:border-red-500' : 'border-gray-300 focus:border-emerald-600'
-              }`} required />
-            {bankDetails.confirmAccountNumber && bankDetails.accountNumber !== bankDetails.confirmAccountNumber && (
-              <p className="text-[10px] text-red-500 font-bold mt-1">⚠ Account numbers do not match</p>
-            )}
-            {bankDetails.confirmAccountNumber && bankDetails.accountNumber === bankDetails.confirmAccountNumber && bankDetails.confirmAccountNumber.length > 5 && (
-              <p className="text-[10px] text-emerald-600 font-bold mt-1">✓ Account numbers match</p>
-            )}
-          </div>
-
-          {/* IFSC */}
-          <div>
-            <label className="block font-bold text-gray-800 mb-1">IFSC Code <span className="text-red-500">*</span></label>
-            <input type="text" value={bankDetails.ifscCode} onChange={(e) => setBankDetails({ ...bankDetails, ifscCode: e.target.value.toUpperCase() })}
-              className={`w-full bg-gray-50 border rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 focus:outline-none font-mono uppercase ${
-                bankDetails.ifscCode && !validateIFSC(bankDetails.ifscCode) ? 'border-red-400' : 'border-gray-300 focus:border-emerald-600'
-              }`} required />
-            {bankDetails.ifscCode && !validateIFSC(bankDetails.ifscCode) && (
-              <p className="text-[10px] text-red-500 font-bold mt-1">⚠ Format: 4 letters + 0 + 6 alphanumeric (e.g. SBIN0021482)</p>
-            )}
-            {bankDetails.ifscCode && validateIFSC(bankDetails.ifscCode) && (
-              <p className="text-[10px] text-emerald-600 font-bold mt-1">✓ Valid IFSC format</p>
-            )}
-          </div>
-
-          {/* UPI */}
-          <div>
-            <label className="block font-bold text-gray-800 mb-1">UPI ID <span className="text-gray-400">(Optional)</span></label>
-            <input type="text" value={bankDetails.upiId} onChange={(e) => setBankDetails({ ...bankDetails, upiId: e.target.value })}
-              className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 focus:outline-none focus:border-emerald-600" />
-          </div>
-
-          {/* Tax Section */}
-          <div className="pt-2 border-t border-gray-100 space-y-3">
-            <p className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Tax Compliance (Required for Payouts)</p>
-            <div>
-              <label className="block font-bold text-gray-800 mb-1">PAN Number <span className="text-red-500">*</span></label>
-              <input type="text" value={bankDetails.panNumber} onChange={(e) => setBankDetails({ ...bankDetails, panNumber: e.target.value.toUpperCase() })}
-                placeholder="e.g. ABCDE1234F"
-                className={`w-full bg-gray-50 border rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 focus:outline-none font-mono uppercase ${
-                  bankDetails.panNumber && !validatePAN(bankDetails.panNumber) ? 'border-red-400' : 'border-gray-300 focus:border-emerald-600'
-                }`} />
-              {bankDetails.panNumber && !validatePAN(bankDetails.panNumber) && (
-                <p className="text-[10px] text-red-500 font-bold mt-1">⚠ PAN format: 5 letters + 4 digits + 1 letter (e.g. ABCDE1234F)</p>
-              )}
-            </div>
-            <div>
-              <label className="block font-bold text-gray-800 mb-1">GSTIN <span className="text-gray-400">(Optional)</span></label>
-              <input type="text" value={bankDetails.gstin} onChange={(e) => setBankDetails({ ...bankDetails, gstin: e.target.value.toUpperCase() })}
-                placeholder="e.g. 29ABCDE1234F1Z5"
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 focus:outline-none focus:border-emerald-600 font-mono uppercase" />
-            </div>
-          </div>
-
-          {/* Settlement Cycle */}
-          <div>
-            <label className="block font-bold text-gray-800 mb-1">Disbursement Schedule</label>
-            <select value={bankDetails.settlementCycle} onChange={(e) => setBankDetails({ ...bankDetails, settlementCycle: e.target.value })}
-              className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 focus:outline-none focus:border-emerald-600">
-              <option>Weekly (Every Monday)</option>
-              <option>Bi-Weekly (Every 14 days)</option>
-              <option>Monthly (1st of every month)</option>
-              <option>On-demand (After delivery confirmation)</option>
-            </select>
-          </div>
-
-          {/* Penny Drop Verification */}
-          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-2">
-            <p className="text-[11px] font-black text-blue-900">🔍 Penny Drop Verification</p>
-            <p className="text-[10px] text-blue-700 leading-relaxed">We will deposit ₹1 into your account to verify ownership. The credited amount will be automatically deducted from your first payout.</p>
-            {pennyDropStatus === 'idle' && (
-              <button type="button"
-                onClick={() => {
-                  if (!bankDetails.accountNumber || !bankDetails.ifscCode || !validateIFSC(bankDetails.ifscCode)) {
-                    setBankFormError('Please fill valid Account Number and IFSC before verifying.');
-                    return;
-                  }
-                  setPennyDropStatus('loading');
-                  setTimeout(() => { setPennyDropStatus('success'); setBankDetails(d => ({ ...d, verificationStatus: 'verified', isVerified: true })); }, 2500);
-                }}
-                className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl transition-all cursor-pointer active:scale-95">
-                Verify Bank Account (₹1 Drop)
-              </button>
-            )}
-            {pennyDropStatus === 'loading' && (
-              <div className="flex items-center gap-2 text-blue-700 text-[11px] font-bold">
-                <div className="w-4 h-4 border-2 border-blue-400 border-t-blue-700 rounded-full animate-spin"></div>
-                Sending ₹1 to your account...
-              </div>
-            )}
-            {pennyDropStatus === 'success' && (
-              <div className="flex items-center gap-2 text-emerald-700 text-[11px] font-black">
-                <Check className="w-4 h-4" /> ₹1 credited successfully — Account Verified! ✓
-              </div>
-            )}
-            {pennyDropStatus === 'failed' && (
-              <div className="flex items-center gap-2 text-red-600 text-[11px] font-black">
-                ✗ Verification failed. Please check your account details.
-              </div>
-            )}
-          </div>
-
-          {/* Submit */}
-          <button type="submit"
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3.5 rounded-xl transition-all shadow-md text-xs cursor-pointer active:scale-95">
-            Save & Apply 48h Security Hold
+    return (
+      <div className="space-y-4 pb-20 animate-fade-in absolute inset-0 bg-gray-50 z-50 p-4 overflow-y-auto">
+        <div className="flex items-center gap-3 sticky top-0 bg-gray-50 py-2 z-10">
+          <button onClick={() => setActiveScreen('list')} className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors">
+            <ArrowLeft className="w-5 h-5 text-gray-700" />
           </button>
-        </form>
+          <h2 className="font-black text-xl text-gray-900">Bank & Payout Details</h2>
+        </div>
+
+        <div className="bg-gradient-to-r from-[#1B4D3E] to-[#276652] p-5 rounded-2xl text-white shadow-md">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-[10px] text-emerald-200 font-bold uppercase tracking-wider">Settlement account</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${tone}`}>{label}</span>
+          </div>
+          {kyc?.upiVpa ? (
+            <p className="text-lg font-black font-mono tracking-wider">{kyc.upiVpa}</p>
+          ) : (
+            <p className="text-sm font-bold text-emerald-100">No settlement account on file yet.</p>
+          )}
+          {kyc?.bankAccountLast4 && (
+            <p className="text-[11px] text-emerald-100 mt-1">Account ending {kyc.bankAccountLast4}</p>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm space-y-3">
+          <p className="text-[11px] font-black text-gray-900">How verification works</p>
+          <p className="text-[10px] text-gray-600 leading-relaxed">
+            We send a small, random amount — somewhere between 1 and 100 paise — to your UPI ID.
+            You then tell us exactly what arrived. Only someone who can see that account can read
+            the amount, which is what proves the account is yours.
+          </p>
+          <p className="text-[10px] text-gray-600 leading-relaxed">
+            Your PAN and account number are encrypted before they are stored and are only ever
+            shown back to you masked. They are never kept on this device.
+          </p>
+
+          <button
+            type="button"
+            onClick={onOpenKyc}
+            className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl transition-all shadow-md cursor-pointer active:scale-95"
+          >
+            {isVerified
+              ? 'View verification details'
+              : inProgress
+                ? 'Enter the amount you received'
+                : 'Set up your settlement account'}
+          </button>
+
+          {!isVerified && (
+            <p className="text-[10px] text-amber-700 font-semibold">
+              Until this is verified you cannot list stock or change prices.
+            </p>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-[100dvh] bg-gray-50 flex flex-col font-sans relative max-w-md mx-auto shadow-2xl overflow-hidden border-x border-gray-200">

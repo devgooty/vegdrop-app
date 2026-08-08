@@ -264,7 +264,7 @@ test('the role in a token is not trusted over the database', async () => {
   const { accessToken, user } = await authenticatedUser('customer');
 
   // Promote out of band, then confirm the still-"customer" token gains access.
-  await User.updateOne({ _id: user._id }, { $set: { role: 'market_owner' } });
+  await User.updateOne({ _id: user._id }, { $set: { role: 'developer' } });
 
   const res = await api().get('/api/users').set(auth(accessToken));
   assert.equal(res.status, 200, 'authorization reads the live role, not the token claim');
