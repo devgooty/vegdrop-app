@@ -27,10 +27,7 @@ async function connect(uri = config.mongoUri) {
     maxPoolSize: 20,
   });
 
-  // Multi-document transactions require a replica set or sharded cluster. A
-  // standalone mongod (the common local dev setup) cannot run them.
-  const topology = mongoose.connection.client?.topology;
-  transactionsSupported = Boolean(topology?.hasSessionSupport?.());
+  transactionsSupported = await detectTransactionSupport();
 
   if (!transactionsSupported && config.isProduction) {
     throw new Error(
@@ -39,6 +36,42 @@ async function connect(uri = config.mongoUri) {
   }
 
   return mongoose.connection;
+}
+
+/**
+ * Can this deployment run multi-document transactions?
+ *
+ * Asked of the server itself, via `hello`, rather than of the driver's topology
+ * object. This used to read `topology.hasSessionSupport()`, which the Node
+ * driver removed — on driver 7.x the optional call yields `undefined`, so the
+ * answer was silently `false` on EVERY deployment, including a healthy replica
+ * set. Two things followed, both of them quiet:
+ *
+ *  - `withTransaction` ran every callback with a null session, so checkout, the
+ *    wallet ledger and settlement had no atomicity at all and were relying
+ *    entirely on their hand-rolled compensation paths.
+ *  - Production could not start. The guard above throws when support is missing,
+ *    so a correctly provisioned replica set was rejected at boot.
+ *
+ * `hello` is the supported way to ask and does not depend on driver internals:
+ * `setName` is present on a replica set member, and `msg: 'isdbgrid'` marks a
+ * mongos. A standalone has neither, which is exactly the case that genuinely
+ * cannot run transactions.
+ */
+async function detectTransactionSupport() {
+  try {
+    const info = await mongoose.connection.db.admin().command({ hello: 1 });
+    return Boolean(info?.setName) || info?.msg === 'isdbgrid';
+  } catch (err) {
+    // An old server without `hello` still answers the legacy name.
+    try {
+      const legacy = await mongoose.connection.db.admin().command({ isMaster: 1 });
+      return Boolean(legacy?.setName) || legacy?.msg === 'isdbgrid';
+    } catch {
+      console.warn(`[db] could not determine transaction support: ${err.message}`);
+      return false;
+    }
+  }
 }
 
 /**
