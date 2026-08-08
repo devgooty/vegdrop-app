@@ -669,53 +669,71 @@ async function hopToMarket(order, market, priced) {
 }
 
 /**
- * Nobody can fill this order. Refund, restock, and close it.
+ * Put a wallet-paid order's money back.
  *
- * The refund uses the SAME idempotency key as the customer-cancel path
- * (`refund:<orderId>`), which is what makes a cancel and a sweep firing at the
- * same moment safe: whichever arrives first writes the ledger entry, and the
- * second is recognised as a replay and writes nothing. The customer is refunded
- * exactly once, whichever path wins.
+ * THE ORDER OF THESE TWO STEPS IS THE WHOLE POINT.
+ *
+ * This runs only AFTER the order has been moved into a terminal state by a
+ * guarded update that actually matched. Refunding first — which both this file
+ * and the customer-cancel route used to do — is only safe if the state change
+ * that follows is certain to succeed, and it is not: a stall can claim the last
+ * line in the same millisecond, promoting the order to `packing` so the guard
+ * no longer matches. The credit had already landed, so the customer kept the
+ * money AND the groceries.
+ *
+ * Crediting second inverts the failure: a crash between the state change and
+ * the credit leaves a cancelled order still marked `paid`, which is visible,
+ * bounded, and swept up by `sweepPendingRefunds` rather than silently costing an
+ * order's value every time someone taps cancel on a locked order.
+ *
+ * The key is shared with every other refund path for this order, so a cancel and
+ * a sweep racing each other still credit exactly once.
+ *
+ * No session, deliberately. `wallet.appendEntry` retries a sequence collision up
+ * to five times — unless it is inside a transaction, where retrying is futile
+ * and it throws WALLET_CONFLICT instead. Wrapping this would turn an ordinary
+ * concurrent wallet write into a dead sweeper tick.
+ */
+async function refundToWallet(order) {
+  if (order.paymentMethod !== 'wallet' || order.paymentStatus !== 'paid') {
+    return { refunded: false };
+  }
+
+  await wallet.credit({
+    userId: order.customer,
+    amountPaise: order.totalAmountPaise,
+    reason: 'order_refund',
+    idempotencyKey: `refund:${order._id.toHexString()}`,
+    note: `Refund for ${order.orderNumber}`,
+    session: null,
+  });
+
+  // Guarded on `paid` so a concurrent refunder cannot flip this twice, and so a
+  // replayed credit is a no-op here too.
+  await Order.updateOne(
+    { _id: order._id, paymentStatus: 'paid' },
+    { $set: { paymentStatus: 'refunded' } }
+  );
+
+  return { refunded: true };
+}
+
+/**
+ * Nobody can fill this order. Close it, refund, and restock.
+ *
+ * The close comes first and is guarded on `sourcing`, so an order a stall
+ * completed while we were deciding is left alone entirely — no refund, no
+ * restock, no status change.
  */
 async function failOrder(order, note = 'No market could source this order.') {
   await releaseClaims(order);
 
-  /**
-   * No session, deliberately.
-   *
-   * `wallet.appendEntry` retries a sequence collision up to five times — unless
-   * it is inside a transaction, where retrying is futile and it throws
-   * WALLET_CONFLICT instead. Wrapping this would turn an ordinary concurrent
-   * wallet write into a dead sweeper tick.
-   */
-  if (order.paymentMethod === 'wallet' && order.paymentStatus === 'paid') {
-    await wallet.credit({
-      userId: order.customer,
-      amountPaise: order.totalAmountPaise,
-      reason: 'order_refund',
-      idempotencyKey: `refund:${order._id.toHexString()}`,
-      note: `Refund for ${order.orderNumber}`,
-      session: null,
-    });
-  }
-
-  // The catalog was decremented at checkout; put it back regardless of which
-  // lines a stall had committed to, because none of it ever left a table.
-  await Promise.all(
-    (order.items || []).map((item) =>
-      Product.updateOne({ _id: item.product }, { $inc: { stock: item.quantity } }).catch(() => {})
-    )
-  );
-
   const now = new Date();
-  const paymentStatus =
-    order.paymentMethod === 'wallet' && order.paymentStatus === 'paid'
-      ? 'refunded'
-      : order.paymentMethod === 'cod'
-        ? 'failed'
-        : order.paymentStatus;
+  // COD never took money, so there is nothing to give back — the payment simply
+  // never happens. A wallet refund is settled below, once the close has stuck.
+  const paymentStatus = order.paymentMethod === 'cod' ? 'failed' : order.paymentStatus;
 
-  return Order.findOneAndUpdate(
+  const failed = await Order.findOneAndUpdate(
     { _id: order._id, 'fulfillment.status': 'sourcing' },
     {
       $set: transitionTo('failed', { paymentStatus }),
@@ -726,6 +744,22 @@ async function failOrder(order, note = 'No market could source this order.') {
     },
     { new: true }
   );
+
+  // A stall took the last line between our decision and this write. The order is
+  // alive and on its way; touching the money or the stock now would corrupt it.
+  if (!failed) return null;
+
+  await refundToWallet(failed);
+
+  // The catalog was decremented at checkout; put it back regardless of which
+  // lines a stall had committed to, because none of it ever left a table.
+  await Promise.all(
+    (failed.items || []).map((item) =>
+      Product.updateOne({ _id: item.product }, { $inc: { stock: item.quantity } }).catch(() => {})
+    )
+  );
+
+  return Order.findById(failed._id);
 }
 
 /**
@@ -785,6 +819,7 @@ module.exports = {
   findNextMarket,
   releaseClaims,
   hopToMarket,
+  refundToWallet,
   failOrder,
   expireSourcing,
 };

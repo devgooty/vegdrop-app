@@ -421,32 +421,27 @@ async function cancelMarketOrder({ req, res, order }) {
   }
 
   const allowedStates = isCustomer ? CANCELLABLE_BY_CUSTOMER : CANCELLABLE_BY_STAFF;
+  const now = new Date();
 
   /**
-   * Refund BEFORE the state change, on the same idempotency key the sweeper
-   * uses. If this succeeds and the update below then loses its race, the ledger
-   * entry is simply replayed by whoever did win — the customer is credited
-   * exactly once either way.
+   * The state change comes FIRST, and its guard decides everything after it.
+   *
+   * This used to refund before the update, reasoning that a lost race would be
+   * replayed by whoever won. That holds only when the update is certain to
+   * match something. It is not: `allowedStates` stops at `sourcing` for a
+   * customer, so cancelling an order that has already locked — or been
+   * delivered — matched nothing and threw 409 with the credit already written.
+   * The customer kept the money and the groceries, on every attempt, for the
+   * price of tapping cancel late.
+   *
+   * Refunding only once this update has actually matched makes the 409 path
+   * cost nothing, and leaves a crash between the two as the sole failure mode —
+   * see refundToWallet, and sweepPendingRefunds which cleans up after it.
    */
-  if (order.paymentMethod === 'wallet' && order.paymentStatus === 'paid') {
-    await wallet.credit({
-      userId: order.customer,
-      amountPaise: order.totalAmountPaise,
-      reason: 'order_refund',
-      idempotencyKey: `refund:${order._id.toHexString()}`,
-      note: `Refund for ${order.orderNumber}`,
-      session: null,
-    });
-  }
-
-  const now = new Date();
-  const paymentStatus =
-    order.paymentMethod === 'wallet' && order.paymentStatus === 'paid' ? 'refunded' : order.paymentStatus;
-
   const cancelled = await Order.findOneAndUpdate(
     { _id: order._id, 'fulfillment.status': { $in: allowedStates } },
     {
-      $set: transitionTo('cancelled', { paymentStatus }),
+      $set: transitionTo('cancelled'),
       $push: {
         statusHistory: { status: 'Cancelled', at: now, by: req.user._id },
         'fulfillment.events': {
@@ -466,6 +461,8 @@ async function cancelMarketOrder({ req, res, order }) {
     );
   }
 
+  await sourcing.refundToWallet(cancelled);
+
   // Hand the produce back: stall queues shrink, and the catalog is restocked.
   await sourcing.releaseClaims(cancelled);
   await Promise.all(
@@ -474,7 +471,8 @@ async function cancelMarketOrder({ req, res, order }) {
     )
   );
 
-  return res.json({ data: cancelled.toJSON() });
+  const settled = await Order.findById(cancelled._id);
+  return res.json({ data: settled.toJSON() });
 }
 
 router.patch(

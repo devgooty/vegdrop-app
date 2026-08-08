@@ -129,6 +129,45 @@ async function sweepSettlements() {
   return { ...released, backfilled: backfilled.recorded };
 }
 
+/**
+ * Orders that ended without their money going back.
+ *
+ * Both refund paths — a customer cancelling and a sweep failing an order — now
+ * move the order into its terminal state first and credit the wallet after, so
+ * that a guard which legitimately refuses to match cannot pay out. The cost of
+ * that ordering is a window: crash between the two and the order reads
+ * `cancelled` while still marked `paid`, with the customer out of pocket.
+ *
+ * This is what closes it. The refund is keyed on the order, so re-running it
+ * against an order that was in fact already credited writes nothing.
+ */
+async function sweepPendingRefunds() {
+  const owed = await Order.find({
+    'fulfillment.status': { $in: ['cancelled', 'failed'] },
+    paymentMethod: 'wallet',
+    paymentStatus: 'paid',
+  })
+    .select('_id orderNumber customer totalAmountPaise paymentMethod paymentStatus')
+    .limit(BATCH_SIZE)
+    .lean();
+
+  let refunded = 0;
+  for (const order of owed) {
+    try {
+      const result = await sourcing.refundToWallet(order);
+      if (result.refunded) {
+        refunded += 1;
+        console.warn(`[sweeper] completed an interrupted refund for ${order.orderNumber}`);
+      }
+    } catch (err) {
+      // Ordinary ledger contention resolves itself on the next tick.
+      console.warn(`[sweeper] refund ${order.orderNumber}: ${err.message}`);
+    }
+  }
+
+  return { refunded };
+}
+
 /** One pass. Exported so tests can drive it directly instead of waiting. */
 async function tick() {
   if (!isConnected()) return null;
@@ -144,7 +183,13 @@ async function tick() {
     const sourcingResult = await sweepSourcing();
     const riderResult = await sweepRiderOffers();
     const settlementResult = await sweepSettlements();
-    return { sourcing: sourcingResult, rider: riderResult, settlement: settlementResult };
+    const refundResult = await sweepPendingRefunds();
+    return {
+      sourcing: sourcingResult,
+      rider: riderResult,
+      settlement: settlementResult,
+      refunds: refundResult,
+    };
   } finally {
     running = false;
   }
@@ -172,4 +217,12 @@ function stop() {
   timer = null;
 }
 
-module.exports = { start, stop, tick, sweepSourcing, sweepRiderOffers, sweepSettlements };
+module.exports = {
+  start,
+  stop,
+  tick,
+  sweepSourcing,
+  sweepRiderOffers,
+  sweepSettlements,
+  sweepPendingRefunds,
+};
