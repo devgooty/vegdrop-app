@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import {
   Code,
   Terminal,
-  Database,
-  Sliders,
+  Database,
   Copy,
   Check,
   UserPlus,
@@ -26,7 +25,7 @@ export default function DeveloperPanel({
   onRegisterUser = () => {},
   walletTransactions = [],
 }) {
-  const [activeSubTab, setActiveSubTab] = useState('roles'); // 'roles' | 'payloads' | 'flags' | 'wallet'
+  const [activeSubTab, setActiveSubTab] = useState('roles'); // 'roles' | 'payloads' | 'wallet'
   const [copied, setCopied] = useState(false);
 
   // Role-assignment form state. This grants a role to an account that already
@@ -36,22 +35,11 @@ export default function DeveloperPanel({
   const [regRole, setRegRole] = useState('shopkeeper');
   const [isAssigningRole, setIsAssigningRole] = useState(false);
 
-  const [featureFlags, setFeatureFlags] = useState({
-    passwordlessOtp: true,
-    autoRoleDetection: true,
-    expressDelivery10Min: true,
-    mockPaymentGateway: true,
-  });
-
   const handleCopyJSON = () => {
     const fullDump = { categories, products, orders, registeredUsers };
     navigator.clipboard.writeText(JSON.stringify(fullDump, null, 2));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const toggleFlag = (flagKey) => {
-    setFeatureFlags((prev) => ({ ...prev, [flagKey]: !prev[flagKey] }));
   };
 
   const handleAddRoleSubmit = async (e) => {
@@ -136,17 +124,19 @@ export default function DeveloperPanel({
           <span>Raw JSON State</span>
         </button>
 
-        <button
-          onClick={() => setActiveSubTab('flags')}
-          className={`flex-1 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-            activeSubTab === 'flags'
-              ? 'bg-cyan-600 text-white font-bold shadow-md'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Sliders className="w-3.5 h-3.5" />
-          <span>Feature Flags</span>
-        </button>
+        {/*
+          The "Feature Flags" tab is gone.
+
+          It listed four switches — passwordlessOtp, autoRoleDetection,
+          expressDelivery10Min, mockPaymentGateway — each labelled "Active in
+          production runtime" and each wired to nothing but a `useState` in this
+          component. There is no feature-flag system on the server; the values
+          reset on every reload and no request ever carried them. An operator
+          toggling `mockPaymentGateway` off had every reason to believe they had
+          just stopped mocking payments in production, and had done nothing at
+          all. Behaviour is configured through environment variables validated at
+          boot in config/env.js.
+        */}
 
         <button
           onClick={() => setActiveSubTab('wallet')}
@@ -292,41 +282,6 @@ export default function DeveloperPanel({
       )}
 
       {/* TAB 3: FEATURE FLAGS */}
-      {activeSubTab === 'flags' && (
-        <div className="space-y-3">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
-            <h4 className="font-mono text-xs font-bold text-cyan-400 uppercase tracking-wider mb-2">
-              System Feature Flag Toggles
-            </h4>
-
-            {Object.entries(featureFlags).map(([key, enabled]) => (
-              <div
-                key={key}
-                className="flex items-center justify-between p-2.5 bg-slate-950/60 rounded-xl border border-slate-800"
-              >
-                <div>
-                  <span className="font-mono text-xs font-bold text-slate-200 block">{key}</span>
-                  <span className="text-[10px] text-slate-400">
-                    {enabled ? 'Active in production runtime' : 'Disabled'}
-                  </span>
-                </div>
-
-                <button
-                  onClick={() => toggleFlag(key)}
-                  className={`px-3 py-1 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer ${
-                    enabled
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                      : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
-                  }`}
-                >
-                  {enabled ? 'ENABLED' : 'DISABLED'}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* TAB 4: WALLET MANAGEMENT */}
       {/* TAB 4: WALLET MANAGEMENT */}
       {activeSubTab === 'wallet' && (

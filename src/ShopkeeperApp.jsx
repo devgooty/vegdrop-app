@@ -5,7 +5,7 @@ import SplashScreen from './components/SplashScreen';
 import { useToast } from './components/Toast';
 import { restoreSession, logout } from './services/auth';
 import { fetchKycStatus } from './services/kyc';
-import { initialCategories, sampleProducts, initialOrders, initialRegisteredUsers } from './data/mockData';
+import { initialCategories } from './data/mockData';
 import { fetchProducts, updateStock, createProduct, updateProduct } from './services/products';
 import { fetchOrders, updateOrderStatus } from './services/orders';
 import { fetchMyStall } from './services/stalls';
@@ -26,12 +26,21 @@ const VendorKycModal = lazy(() => import('./components/VendorKycModal'));
 export default function ShopkeeperApp() {
   const toast = useToast();
 
+  /** Static taxonomy — there is no categories endpoint, and these are aisles. */
   const [categories] = useState(initialCategories);
-  const [products, setProducts] = useState(sampleProducts);
-  // Seeded from fixtures, then replaced by the server's role-scoped list. Never
-  // read from localStorage: that key is shared with every app on the origin.
-  const [orders, setOrders] = useState(initialOrders);
-  const [registeredUsers, setRegisteredUsers] = useState(initialRegisteredUsers);
+
+  /**
+   * Empty until the server answers, never seeded from fixtures.
+   *
+   * A shopkeeper seeing invented products in their own catalog is worse than a
+   * customer seeing them: the obvious next action is to correct a price or a
+   * stock level on a listing that does not exist, and every one of those writes
+   * fails against an id the server has never issued. Orders are never read from
+   * localStorage either — that key is shared with every app on the origin.
+   */
+  const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [registeredUsers, setRegisteredUsers] = useState([]);
 
   /**
    * Session state lives in memory and is restored from the httpOnly refresh
