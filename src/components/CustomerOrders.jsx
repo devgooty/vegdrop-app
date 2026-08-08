@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Package, Clock, IndianRupee, MapPin, ArrowRight, ShoppingBag, CalendarRange, RotateCw, PauseCircle, PlayCircle, Trash2, CalendarDays, CalendarClock, Calendar as CalendarIcon, ChevronRight, Navigation, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { setScheduleStatus, cancelSchedule, describeRecurrence } from '../services/schedules';
+import { Package, Clock, IndianRupee, MapPin, ArrowRight, ShoppingBag, CalendarRange, RotateCw, PauseCircle, PlayCircle, Trash2, CalendarDays, CalendarClock, Calendar as CalendarIcon, ChevronRight, Navigation, X, AlertTriangle } from 'lucide-react';
 
 /**
  * Plain-language labels for the market fulfillment stages.
@@ -19,6 +20,43 @@ const MARKET_STAGE = {
   cancelled: 'Cancelled',
 };
 
+/**
+ * The journey an order makes, in the order it makes it.
+ *
+ * Mirrors the server's `fulfillment.status` values rather than inventing a
+ * parallel vocabulary, so a stage is marked reached only when the server says
+ * the order actually reached it.
+ */
+const ORDER_STAGES = [
+  { key: 'sourcing', label: 'Finding a stall', hint: 'Stalls in the market are deciding who can fill this.' },
+  { key: 'packing', label: 'Being packed', hint: 'Your vegetables are being bagged.' },
+  { key: 'awaiting_rider', label: 'Waiting for a rider', hint: 'Packed, and waiting for someone to collect it.' },
+  { key: 'collecting', label: 'Rider collecting', hint: 'A rider is walking the stalls to pick everything up.' },
+  { key: 'dispatched', label: 'On the way', hint: 'It has left the market.' },
+  { key: 'delivered', label: 'Delivered', hint: '' },
+];
+
+/** Whether a stage is done, current, or still ahead. */
+function stageState(order, key) {
+  const current = order.fulfillmentStatus;
+
+  // A legacy order has no fulfilment detail, so it is placed against the coarse
+  // status instead of being shown as stuck at the first stage forever.
+  if (!current) {
+    const coarse = { Pending: 'sourcing', Preparing: 'packing', 'Out for Delivery': 'dispatched', Delivered: 'delivered' };
+    const mapped = coarse[order.status];
+    if (!mapped) return 'pending';
+    const at = ORDER_STAGES.findIndex((s) => s.key === mapped);
+    const index = ORDER_STAGES.findIndex((s) => s.key === key);
+    return index < at ? 'done' : index === at ? 'current' : 'pending';
+  }
+
+  const at = ORDER_STAGES.findIndex((s) => s.key === current);
+  const index = ORDER_STAGES.findIndex((s) => s.key === key);
+  if (at === -1) return 'pending';
+  return index < at ? 'done' : index === at ? 'current' : 'pending';
+}
+
 export default function CustomerOrders({
   orders,
   scheduledOrders,
@@ -37,67 +75,25 @@ export default function CustomerOrders({
 }) {
   const [activeTab, setActiveTab] = useState('recent');
   const [trackingModalOrder, setTrackingModalOrder] = useState(null);
-  const trackingMapRef = useRef(null);
-  const trackingMapInstanceRef = useRef(null);
-
-  // Build Leaflet tracking map for customer when modal opens
-  useEffect(() => {
-    if (!trackingModalOrder || !trackingMapRef.current) return;
-    if (!window.L) return;
-
-    // destroy previous
-    if (trackingMapInstanceRef.current) {
-      trackingMapInstanceRef.current.remove();
-      trackingMapInstanceRef.current = null;
-    }
-
-    const customerCoords = trackingModalOrder.deliveryCoords;
-    const center = customerCoords ? [customerCoords.lat, customerCoords.lng] : [12.9716, 77.5946];
-
-    const map = window.L.map(trackingMapRef.current, { attributionControl: false }).setView(center, 14);
-    trackingMapInstanceRef.current = map;
-
-    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-    // Customer delivery pin
-    if (customerCoords) {
-      window.L.marker([customerCoords.lat, customerCoords.lng], {
-        icon: window.L.divIcon({ className: '', html: '<div style="font-size:28px;line-height:1;">📍</div>', iconAnchor: [14, 28] })
-      }).addTo(map).bindPopup('Your delivery location').openPopup();
-    }
-
-    // Simulated delivery agent starting ~800m north of customer
-    const agentStartLat = (customerCoords?.lat ?? 12.9716) + 0.007;
-    const agentStartLng = (customerCoords?.lng ?? 77.5946);
-
-    const agentMarker = window.L.circleMarker([agentStartLat, agentStartLng], {
-      radius: 9, color: '#1B4D3E', fillColor: '#22c55e', fillOpacity: 1, weight: 3
-    }).addTo(map).bindPopup('🚴 Delivery Agent');
-
-    if (customerCoords) {
-      window.L.polyline([[agentStartLat, agentStartLng], [customerCoords.lat, customerCoords.lng]], {
-        color: '#1B4D3E', weight: 3, dashArray: '6 4', opacity: 0.7
-      }).addTo(map);
-      map.fitBounds([[agentStartLat, agentStartLng], [customerCoords.lat, customerCoords.lng]], { padding: [40, 40] });
-    }
-
-    // Animate agent marker moving toward customer over 30 steps
-    let step = 0;
-    const totalSteps = 30;
-    const interval = setInterval(() => {
-      step++;
-      if (step >= totalSteps) { clearInterval(interval); return; }
-      const t = step / totalSteps;
-      const lat = agentStartLat + t * ((customerCoords?.lat ?? agentStartLat) - agentStartLat);
-      const lng = agentStartLng + t * ((customerCoords?.lng ?? agentStartLng) - agentStartLng);
-      agentMarker.setLatLng([lat, lng]);
-    }, 600);
-
-    return () => {
-      clearInterval(interval);
-      if (trackingMapInstanceRef.current) { trackingMapInstanceRef.current.remove(); trackingMapInstanceRef.current = null; }
-    };
-  }, [trackingModalOrder]);
+  const [busyScheduleId, setBusyScheduleId] = useState(null);
+  const [scheduleError, setScheduleError] = useState(null);
+  /**
+   * The simulated rider that used to live here is gone.
+   *
+   * It built a Leaflet map behind an `if (!window.L) return` guard — a global
+   * that does not exist, so it never drew a single tile — and then animated a
+   * green dot from a point 800 m north of the customer towards their door over
+   * thirty timer ticks. It was not the rider, and it was not moving.
+   *
+   * Nothing in this system can tell a customer where their rider is: the order
+   * carries `assignedTo`, not a position, and a rider's live coordinates are
+   * deliberately never exposed outside dispatch (see the note on User.rider).
+   * A tracking screen that invents the one thing it exists to show is worse
+   * than one that admits it does not know.
+   *
+   * So the modal below reports what is actually known — which stage the order
+   * has reached, and the address it is going to.
+   */
 
   // Calendar logic: Rolling 30-day window starting from today
   const today = new Date();
@@ -135,20 +131,42 @@ export default function CustomerOrders({
     }
   };
 
-  const toggleScheduleStatus = (scheduleId) => {
+  /**
+   * Pausing and cancelling go to the server.
+   *
+   * Both used to edit a local array — the schedule "paused" on screen and went
+   * on doing nothing, because it had never been anywhere to pause. The server's
+   * answer is applied to the list rather than a guess about what it will be,
+   * since resuming recomputes the next date and only it knows what that is.
+   */
+  const toggleScheduleStatus = async (schedule) => {
     if (!setScheduledOrders) return;
-    setScheduledOrders(prev => prev.map(s => {
-      if (s.id === scheduleId) {
-        return { ...s, status: s.status === 'Active' ? 'Paused' : 'Active' };
-      }
-      return s;
-    }));
+    setBusyScheduleId(schedule.id);
+    try {
+      const updated = await setScheduleStatus(
+        schedule.id,
+        schedule.status === 'active' ? 'paused' : 'active'
+      );
+      setScheduledOrders((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    } catch (err) {
+      setScheduleError(err.message || 'Could not change that repeat delivery.');
+    } finally {
+      setBusyScheduleId(null);
+    }
   };
 
-  const deleteSchedule = (scheduleId) => {
+  const deleteSchedule = async (scheduleId) => {
     if (!setScheduledOrders) return;
-    if (window.confirm('Are you sure you want to cancel this scheduled delivery?')) {
-      setScheduledOrders(prev => prev.filter(s => s.id !== scheduleId));
+    if (!window.confirm('Stop this repeat delivery? Orders already placed are unaffected.')) return;
+
+    setBusyScheduleId(scheduleId);
+    try {
+      await cancelSchedule(scheduleId);
+      setScheduledOrders((prev) => prev.filter((s) => s.id !== scheduleId));
+    } catch (err) {
+      setScheduleError(err.message || 'Could not stop that repeat delivery.');
+    } finally {
+      setBusyScheduleId(null);
     }
   };
 
@@ -188,9 +206,11 @@ export default function CustomerOrders({
   const filteredSchedules = (scheduledOrders || [])
     .filter(s => {
       if (scheduleFilter === 'All') return true;
-      return s.frequency === scheduleFilter;
+      // The filter buttons are labelled Daily/Weekly/Monthly; the server
+      // stores the lowercase form.
+      return s.frequency === String(scheduleFilter).toLowerCase();
     })
-    .sort((a, b) => a.nextDeliveryDate - b.nextDeliveryDate);
+    .sort((a, b) => new Date(a.nextRunAt) - new Date(b.nextRunAt));
 
   const filterButtons = [
     { key: 'All', label: 'All', icon: CalendarRange, color: 'text-[#1B4D3E]' },
@@ -399,6 +419,22 @@ export default function CustomerOrders({
         {/* ==================== SCHEDULED DELIVERIES TAB ==================== */}
         {activeTab === 'scheduled' && (
           <>
+            {/*
+              The warning that stood here — "plans only, not yet placed" — was
+              true when schedules lived in React state and nothing turned one
+              into a delivery. They are now real records the server acts on, so
+              the honest thing to show is the failure of an individual schedule,
+              which is the case that actually needs explaining.
+            */}
+            {scheduleError && (
+              <div
+                role="alert"
+                className="mb-4 bg-red-50 border border-red-200 rounded-2xl p-3 text-[12.5px] text-red-800 font-medium"
+              >
+                {scheduleError}
+              </div>
+            )}
+
             {/* Frequency Filter Buttons */}
             <div className="flex flex-col gap-2 pb-4">
               {filterButtons.map(btn => {
@@ -406,7 +442,7 @@ export default function CustomerOrders({
                 const isActive = scheduleFilter === btn.key;
                 const count = btn.key === 'All' 
                   ? (scheduledOrders || []).length 
-                  : (scheduledOrders || []).filter(s => s.frequency === btn.key).length;
+                  : (scheduledOrders || []).filter(s => s.frequency === String(btn.key).toLowerCase()).length;
                 return (
                   <button
                     key={btn.key}
@@ -619,11 +655,11 @@ export default function CustomerOrders({
                 {filteredSchedules.map((schedule) => {
                   const freqStyle = getFrequencyStyle(schedule.frequency);
                   return (
-                    <div key={schedule.id} className={`bg-white rounded-[1.5rem] p-4 shadow-sm border border-gray-100 transition-all relative overflow-hidden group animate-fade-in mb-4 ${schedule.status === 'Paused' ? 'opacity-70' : ''}`}>
+                    <div key={schedule.id} className={`bg-white rounded-[1.5rem] p-4 shadow-sm border border-gray-100 transition-all relative overflow-hidden group animate-fade-in mb-4 ${schedule.status === 'paused' ? 'opacity-70' : ''}`}>
                       
                       {/* Frequency ribbon */}
                       <div className={`absolute -right-8 top-4 rotate-45 text-[9px] font-black uppercase tracking-wider py-1 px-10 text-white shadow-sm ${freqStyle.bg}`}>
-                        {schedule.frequency}
+                        {String(schedule.frequency).replace(/^./, (c) => c.toUpperCase())}
                       </div>
                       
                       {/* Header row */}
@@ -634,12 +670,12 @@ export default function CustomerOrders({
                               {schedule.id}
                             </span>
                             <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
-                              schedule.status === 'Active' 
+                              schedule.status === 'active' 
                                 ? 'bg-emerald-100 text-emerald-800 border-emerald-200' 
                                 : 'bg-amber-100 text-amber-800 border-amber-200'
                             }`}>
-                              <RotateCw className={`w-3 h-3 ${schedule.status === 'Active' ? 'animate-spin' : ''}`} style={schedule.status === 'Active' ? { animationDuration: '3s' } : {}} /> 
-                              {schedule.status}
+                              <RotateCw className={`w-3 h-3 ${schedule.status === 'active' ? 'animate-spin' : ''}`} style={schedule.status === 'active' ? { animationDuration: '3s' } : {}} /> 
+                              {schedule.status === 'active' ? 'Active' : 'Paused'}
                             </span>
                           </div>
                           
@@ -650,15 +686,27 @@ export default function CustomerOrders({
                           
                           <div className="flex items-center gap-1 text-[11px] text-gray-500 font-bold mt-2">
                             <CalendarRange className="w-3.5 h-3.5 text-[#1B4D3E]" />
-                            <span>Next Delivery: <span className="text-[#1B4D3E] font-extrabold">{new Date(schedule.nextDeliveryDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span></span>
+                            <span>Next Delivery: <span className="text-[#1B4D3E] font-extrabold">{new Date(schedule.nextRunAt).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span></span>
                           </div>
                         </div>
-                        <div className="text-right mt-1">
-                          <span className="text-lg font-black text-[#1B4D3E] flex items-center justify-end">
-                            <IndianRupee className="w-4 h-4" />
-                            {schedule.totalAmount}
+                        {/*
+                          No total here, deliberately.
+
+                          This used to print a rupee figure computed in the
+                          browser at the moment the schedule was created — the
+                          basket price multiplied by the number of dates ticked.
+                          A standing order has no total: each delivery is priced
+                          from the market's sheet on the morning it ships, which
+                          is the only honest answer for vegetables ordered weeks
+                          ahead. What it recurs on is the useful fact.
+                        */}
+                        <div className="text-right mt-1 max-w-[45%]">
+                          <span className="text-[11px] font-black text-[#1B4D3E] block leading-tight">
+                            {describeRecurrence(schedule)}
                           </span>
-                          <span className="text-[9px] text-gray-400 font-bold uppercase">per {schedule.frequency === 'Daily' ? 'day' : schedule.frequency === 'Weekly' ? 'week' : 'month'}</span>
+                          <span className="text-[9px] text-gray-400 font-bold uppercase">
+                            priced on the day
+                          </span>
                         </div>
                       </div>
 
@@ -668,26 +716,40 @@ export default function CustomerOrders({
                           <Package className="w-3 h-3" /> Subscribed Items
                         </h4>
                         <div className="space-y-1.5">
+                          {/* Quantities and names, no line prices — the same
+                              reason the card carries no total. */}
                           {schedule.items.map((item, idx) => (
                             <div key={idx} className="flex justify-between text-xs font-bold">
-                              <span className="text-gray-700">{item.quantity}x {item.name}</span>
-                              <span className="text-gray-900">₹{item.price * item.quantity}</span>
+                              <span className="text-gray-700">
+                                {item.quantity}x {item.name || 'Item'}
+                              </span>
                             </div>
                           ))}
                         </div>
                       </div>
 
+                      {/* Why nothing arrived, when that is the case. */}
+                      {schedule.lastFailure && (
+                        <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-start gap-2">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
+                          <p className="text-[11px] text-amber-900 leading-snug">
+                            {schedule.lastFailure.message}
+                          </p>
+                        </div>
+                      )}
+
                       {/* Action buttons */}
                       <div className="flex items-center gap-2 pt-1">
                         <button 
-                          onClick={() => toggleScheduleStatus(schedule.id)}
+                          onClick={() => toggleScheduleStatus(schedule)}
+                          disabled={busyScheduleId === schedule.id}
                           className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm border active:scale-95 ${
-                            schedule.status === 'Active' 
+                            schedule.status === 'active' 
                               ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
                               : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                           }`}
                         >
-                          {schedule.status === 'Active' ? (
+                          {schedule.status === 'active' ? (
                             <><PauseCircle className="w-4 h-4" /> Pause Delivery</>
                           ) : (
                             <><PlayCircle className="w-4 h-4" /> Resume Delivery</>
@@ -695,6 +757,7 @@ export default function CustomerOrders({
                         </button>
                         <button 
                           onClick={() => deleteSchedule(schedule.id)}
+                          disabled={busyScheduleId === schedule.id}
                           className="p-2.5 rounded-xl text-rose-500 bg-rose-50 border border-rose-100 hover:bg-rose-100 transition-all shadow-sm active:scale-95"
                           title="Cancel Subscription"
                         >
@@ -717,7 +780,7 @@ export default function CustomerOrders({
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-[#1B4D3E] to-emerald-600 text-white px-5 py-4 flex items-center justify-between">
               <div>
-                <p className="font-black text-base">🚴 Live Order Tracking</p>
+                <p className="font-black text-base">Order progress</p>
                 <p className="text-emerald-200 text-xs">Order #{trackingModalOrder.id} • {trackingModalOrder.customerName}</p>
               </div>
               <button onClick={() => setTrackingModalOrder(null)} className="p-1.5 bg-white/20 rounded-full">
@@ -725,14 +788,46 @@ export default function CustomerOrders({
               </button>
             </div>
 
-            {/* Status bar */}
-            <div className="px-4 py-2 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-              <p className="text-xs font-bold text-emerald-800">Delivery agent is on the way to your location</p>
-            </div>
+            {/*
+              The stages the order has actually reached.
 
-            {/* Map */}
-            <div ref={trackingMapRef} className="w-full" style={{ height: '320px' }} />
+              This replaced a banner reading "Delivery agent is on the way to
+              your location", shown regardless of state — including while stalls
+              were still deciding whether they could fill the order at all — and
+              a 320px map drawing a rider whose position nobody knows.
+            */}
+            <ol className="px-5 py-4 space-y-3">
+              {ORDER_STAGES.map((stage) => {
+                const state = stageState(trackingModalOrder, stage.key);
+                return (
+                  <li key={stage.key} className="flex items-start gap-3">
+                    <span
+                      className={`w-5 h-5 rounded-full shrink-0 mt-0.5 flex items-center justify-center text-[10px] font-black ${
+                        state === 'done'
+                          ? 'bg-emerald-500 text-white'
+                          : state === 'current'
+                            ? 'bg-emerald-100 text-emerald-700 ring-2 ring-emerald-400'
+                            : 'bg-gray-100 text-gray-300'
+                      }`}
+                    >
+                      {state === 'done' ? '✓' : ''}
+                    </span>
+                    <div className="min-w-0">
+                      <p
+                        className={`text-[13px] font-bold ${
+                          state === 'pending' ? 'text-gray-400' : 'text-gray-900'
+                        }`}
+                      >
+                        {stage.label}
+                      </p>
+                      {state === 'current' && (
+                        <p className="text-[11.5px] text-emerald-700">{stage.hint}</p>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
 
             {/* Address bar */}
             <div className="px-4 py-3 flex items-start gap-2 border-t border-gray-100">

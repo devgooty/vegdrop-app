@@ -135,6 +135,16 @@ const orderSchema = new mongoose.Schema(
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
 
     /**
+     * The standing order that produced this, if any.
+     *
+     * Null for an order somebody placed by hand, which is the overwhelming
+     * majority. Kept so a customer asking "why did this arrive?" can be shown
+     * the schedule that asked for it, and so a schedule can list what it has
+     * actually delivered rather than what it intended to.
+     */
+    schedule: { type: mongoose.Schema.Types.ObjectId, ref: 'ScheduledOrder', default: null, index: true },
+
+    /**
      * The market currently sourcing this order.
      *
      * Null means a legacy order: no stalls, no sourcing window, no sweeper. The

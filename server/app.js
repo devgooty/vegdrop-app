@@ -19,6 +19,7 @@ const authRoutes = require('./routes/auth');
 const kycRoutes = require('./routes/kyc');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
+const scheduleRoutes = require('./routes/schedules');
 const userRoutes = require('./routes/users');
 const walletRoutes = require('./routes/wallet');
 const whatsappRoutes = require('./routes/whatsapp');
@@ -274,6 +275,7 @@ function createApp() {
   app.use('/api/kyc', kycRoutes);
   app.use('/api/products', productRoutes);
   app.use('/api/orders', orderRoutes);
+  app.use('/api/schedules', scheduleRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/wallet', walletRoutes);
 

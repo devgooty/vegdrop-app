@@ -20,6 +20,7 @@ import PageTransition from './components/PageTransition';
 import OTPBoxGroup from './components/OTPBoxGroup';
 import MarketPicker from './components/MarketPicker';
 import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
+import { createSchedule, fetchSchedules, recurrenceFromDates, describeRecurrence } from './services/schedules';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
 import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon } from 'lucide-react';
@@ -33,7 +34,7 @@ import {
   verifyEmailChange,
 } from './services/auth';
 import useLocalStorage from './hooks/useLocalStorage';
-import { initialCategories, sampleProducts, initialOrders, initialRegisteredUsers, initialScheduledOrders } from './data/mockData';
+import { initialCategories } from './data/mockData';
 import { fetchProducts, updateStock } from './services/products';
 import { fetchOrders, createOrder, updateOrderStatus, cancelOrder } from './services/orders';
 import { fetchWallet, topUpWallet } from './services/wallet';
@@ -58,17 +59,31 @@ export default function App() {
 
   const toast = useToast();
 
-  const [categories] = useState(initialCategories);
-  const [products, setProducts] = useState(sampleProducts);
   /**
-   * Orders come from the server, which scopes them to this caller. They are
-   * deliberately NOT seeded from localStorage: that key is readable by every app
-   * on the origin, so the shopkeeper and delivery apps were picking up the
-   * customer's list (and vice versa).
+   * The category taxonomy is genuinely static — there is no categories endpoint
+   * and these are the aisles of a vegetable market, not records. It is the one
+   * thing still read from the fixtures.
    */
-  const [orders, setOrders] = useState(initialOrders);
-  const [scheduledOrders, setScheduledOrders] = useState(initialScheduledOrders);
-  const [registeredUsers, setRegisteredUsers] = useState(initialRegisteredUsers);
+  const [categories] = useState(initialCategories);
+
+  /**
+   * Everything below starts EMPTY, and waits for the server.
+   *
+   * These used to be seeded from `sampleProducts`, `initialOrders` and
+   * `initialRegisteredUsers`. Invented produce at invented prices rendered as
+   * the real catalog on first paint — and stayed if the fetch failed, so an
+   * offline shopper could fill a basket with items that do not exist and place
+   * an order the server had never heard of. `isAppLoading` already drives a
+   * skeleton, which is the honest version of that moment.
+   *
+   * Orders are also deliberately NOT seeded from localStorage: that key is
+   * readable by every app on the origin, so the shopkeeper and delivery apps
+   * were picking up the customer's list (and vice versa).
+   */
+  const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [scheduledOrders, setScheduledOrders] = useState([]);
+  const [registeredUsers, setRegisteredUsers] = useState([]);
   const [searchVal, setSearchVal] = useState('');
   /**
    * The *submitted* search, which is a different thing from `searchVal`, the
@@ -273,6 +288,15 @@ export default function App() {
               })
               .catch((err) => console.warn('orders unavailable:', err.message)),
 
+            // Standing orders now live on the server, so they survive a reload
+            // and actually place deliveries. Previously this list was React
+            // state seeded from a fixture and cleared on every refresh.
+            fetchSchedules()
+              .then((list) => {
+                if (!cancelled) setScheduledOrders(list);
+              })
+              .catch((err) => console.warn('schedules unavailable:', err.message)),
+
             fetchWallet()
               .then((w) => {
                 if (cancelled) return;
@@ -400,58 +424,84 @@ export default function App() {
     }
   }, [registeredUsers, toast]);
 
-  const handleScheduleCart = useCallback(() => {
-    if (selectedDates.length === 0) {
-      toast.warning('Please select a date first!');
-      return;
-    }
-    if (scheduleFilter === 'Weekly' && selectedDates.length < 3) {
-      toast.warning('Please select at least 3 days for a weekly schedule!');
-      return;
-    }
-    if (scheduleFilter === 'Monthly' && selectedDates.length < 15) {
-      toast.warning('Please select at least 15 days for a monthly schedule!');
+  /**
+   * Create a standing order on the server.
+   *
+   * This used to build an object with a `SUB${Math.random()}` id, push it into
+   * React state, and toast "schedule created successfully". Nothing was sent
+   * anywhere and a reload cleared it, so a customer expecting vegetables every
+   * Tuesday got none and no explanation.
+   *
+   * The total this used to compute is gone with it. A schedule stores intent,
+   * never a price: each run is priced from the market's sheet on the morning it
+   * ships, because a basket ordered three weeks ahead cannot honestly quote
+   * today's number.
+   */
+  const handleScheduleCart = useCallback(async () => {
+    if (!user) {
+      toast.warning('Sign in to set up a repeat delivery.');
       return;
     }
     if (!scheduledCartItems || scheduledCartItems.length === 0) {
-      toast.warning('Your cart is empty!');
+      toast.warning('Your basket is empty!');
       return;
     }
 
-    const targetDate = new Date(selectedDates[0]);
-    targetDate.setHours(8, 0, 0, 0);
+    const frequency = String(scheduleFilter || 'Daily').toLowerCase();
 
-    const baseAmount = scheduledCartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-    const totalAmount = (scheduleFilter === 'Weekly' || scheduleFilter === 'Monthly') 
-      ? baseAmount * selectedDates.length 
-      : baseAmount;
-
-    const newSchedule = {
-      id: `SUB${Math.floor(Math.random() * 100000)}`,
-      customerName: user ? user.name : 'Guest Customer',
-      phone: user ? user.phone : '1234567890',
-      address: 'Current Location',
-      items: [...scheduledCartItems],
-      totalAmount: totalAmount,
-      frequency: scheduleFilter,
-      selectedDates: selectedDates,
-      nextDeliveryDate: targetDate.getTime(),
-      status: 'Active'
-    };
-
-    setScheduledOrders(prev => [...(prev || []), newSchedule]);
-    setScheduledCartItems([]);
-    setSelectedDates([]);
-    setShoppingMode('regular');
-    setActiveTab('orders');
-    setIsScheduledCartOpen(false);
-    
-    if (scheduleFilter === 'Daily') {
-      toast.success(`Daily schedule created successfully for ${targetDate.toLocaleDateString()}! 📅`);
-    } else {
-      toast.success(`${scheduleFilter} schedule created successfully for ${selectedDates.length} days! 📅`);
+    // Daily needs no dates at all; the others need at least one to recur on.
+    if (frequency !== 'daily' && selectedDates.length === 0) {
+      toast.warning(
+        frequency === 'weekly'
+          ? 'Pick at least one day of the week.'
+          : 'Pick at least one day of the month.'
+      );
+      return;
     }
-  }, [selectedDates, scheduleFilter, scheduledCartItems, user, setScheduledOrders, setScheduledCartItems, setSelectedDates, setShoppingMode, setActiveTab, toast]);
+
+    const coords = savedCustomerCoords();
+
+    try {
+      const created = await createSchedule({
+        items: scheduledCartItems.map((item) => ({
+          productId: item.id,
+          quantity: item.quantity,
+        })),
+        // The same address and coordinates a manual checkout uses.
+        address:
+          localStorage.getItem('vegdrop_customer_location') ||
+          'Koramangala, Bengaluru, Karnataka - 560034',
+        // COD keeps a standing order working without a funded wallet. The
+        // server refuses razorpay outright — nobody is present to pay.
+        paymentMethod: 'cod',
+        marketId: selectedMarket?.id,
+        lat: coords?.lat,
+        lng: coords?.lng,
+        frequency,
+        ...recurrenceFromDates(frequency, selectedDates),
+      });
+
+      setScheduledOrders((prev) => [...(prev || []), created]);
+      setScheduledCartItems([]);
+      setSelectedDates([]);
+      setShoppingMode('regular');
+      setActiveTab('orders');
+      setIsScheduledCartOpen(false);
+
+      toast.success(
+        `${describeRecurrence(created)} — first delivery ${new Date(created.nextRunAt).toLocaleDateString()} 📅`
+      );
+    } catch (err) {
+      toast.error(err.message || 'Could not set up that repeat delivery.');
+    }
+  }, [
+    selectedDates,
+    scheduleFilter,
+    scheduledCartItems,
+    user,
+    selectedMarket,
+    toast,
+  ]);
 
   /**
    * Auth handlers.
@@ -1350,7 +1400,15 @@ export default function App() {
                   </>
                 )
               ) : activeTab === 'prices' ? (
-                <PriceHistory products={products} categories={categories} />
+                /* Scoped to the chosen market: prices are set per market, so a
+                   trend drawn across the platform catalog would not correspond
+                   to anything a shopper can actually buy at. `browseProducts`
+                   is that market's sheet when one is chosen. */
+                <PriceHistory
+                  products={browseProducts}
+                  categories={categories}
+                  market={selectedMarket}
+                />
               ) : activeTab === 'orders' ? (
                 <CustomerOrders 
                   orders={orders.filter(o => o.customerName === user?.name || o.phone === user?.phone)}

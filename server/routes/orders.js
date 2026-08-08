@@ -13,6 +13,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { withTransaction } = require('../db/connect');
 const wallet = require('../services/wallet');
 const sourcing = require('../services/sourcing');
+const checkout = require('../services/checkout');
 const { CANCELLABLE_BY_CUSTOMER, CANCELLABLE_BY_STAFF, transitionTo } = require('../utils/orderStatus');
 
 const router = express.Router();
@@ -197,206 +198,15 @@ router.post(
       .strict(),
   }),
   async (req, res) => {
-    const { items, address, paymentMethod, marketId, lat, lng } = req.valid.body;
-
-    // Collapse duplicate lines so quantity limits cannot be bypassed by repetition.
-    const quantities = new Map();
-    for (const { productId, quantity } of items) {
-      quantities.set(productId, (quantities.get(productId) || 0) + quantity);
-    }
-    for (const [productId, quantity] of quantities) {
-      if (quantity > 99) {
-        throw new ApiError(400, `Quantity for a single product may not exceed 99.`, 'VALIDATION_ERROR', [
-          { field: 'items', message: `Total quantity for product ${productId} is ${quantity}.` },
-        ]);
-      }
-    }
-
-    const productIds = [...quantities.keys()];
-    const products = await Product.find({ _id: { $in: productIds }, isActive: true });
-
-    if (products.length !== productIds.length) {
-      throw new ApiError(400, 'One or more products are unavailable.', 'PRODUCT_UNAVAILABLE');
-    }
-
     /**
-     * Resolve the market and its price sheet up front.
+     * The whole of this handler now lives in services/checkout.js.
      *
-     * A market order is priced from the market's own sheet, not the platform
-     * catalog — that is what "one price per market" means. The catalog price is
-     * only the fallback for a marketless order.
+     * Recurring deliveries place the same order without a request to carry
+     * it, and a second implementation of pricing, stock claiming, delivery
+     * fees and wallet debiting would drift from this one the first time
+     * either changed. One path, two callers.
      */
-    let market = null;
-    let marketPrices = null;
-    if (marketId) {
-      market = await Market.findOne({ _id: marketId, isActive: true, isOpen: true });
-      if (!market) {
-        throw new ApiError(400, 'That market is not open right now.', 'MARKET_UNAVAILABLE');
-      }
-
-      const priced = await sourcing.priceLinesAtMarket(
-        market._id,
-        products.map((p) => ({ product: p._id, quantity: quantities.get(p._id.toHexString()), lineId: p._id }))
-      );
-      if (!priced) {
-        throw new ApiError(
-          409,
-          'This market is not selling one or more of these items today.',
-          'MARKET_CANNOT_FILL'
-        );
-      }
-      marketPrices = new Map(priced.priced.map((line) => [String(line.lineId), line.sourcePricePaise]));
-    }
-
-    /** The market's price when buying from a market; the catalog price otherwise. */
-    const unitPriceFor = (product) =>
-      marketPrices ? marketPrices.get(String(product._id)) : product.pricePaise;
-
-    const order = await withTransaction(async (session) => {
-      const lines = [];
-      let subtotalPaise = 0;
-      const decremented = [];
-
-      try {
-        for (const product of products) {
-          const quantity = quantities.get(product._id.toHexString());
-
-          // Conditional decrement: the guard and the write are one atomic
-          // operation, so concurrent checkouts cannot oversell the last unit.
-          const claim = await Product.findOneAndUpdate(
-            { _id: product._id, stock: { $gte: quantity }, isActive: true },
-            { $inc: { stock: -quantity } },
-            { new: true, ...(session ? { session } : {}) }
-          );
-
-          if (!claim) {
-            throw new ApiError(
-              409,
-              `${product.name} does not have enough stock remaining.`,
-              'INSUFFICIENT_STOCK'
-            );
-          }
-          decremented.push({ id: product._id, quantity });
-
-          const unitPricePaise = unitPriceFor(product);
-          const lineTotalPaise = unitPricePaise * quantity;
-          subtotalPaise += lineTotalPaise;
-          lines.push({
-            product: product._id,
-            name: product.name,
-            unitPricePaise,
-            quantity,
-            lineTotalPaise,
-            // Market orders get a stable per-line handle so a stall can claim
-            // "these two" without depending on array position, plus an
-            // explicitly-empty claim so `claim.stall: null` unambiguously means
-            // unclaimed. Legacy orders leave both null and nothing reads them.
-            ...(market
-              ? {
-                  lineId: new mongoose.Types.ObjectId(),
-                  sourcePricePaise: unitPricePaise,
-                  claim: sourcing.emptyClaim(),
-                }
-              : {}),
-          });
-        }
-
-        const deliveryFeePaise = subtotalPaise >= FREE_DELIVERY_THRESHOLD_PAISE ? 0 : DELIVERY_FEE_PAISE;
-        const totalAmountPaise = subtotalPaise + deliveryFeePaise;
-
-        const orderNumber = `VB${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
-
-        const [created] = await Order.create(
-          [{
-            orderNumber,
-            customer: req.user._id,
-            customerName: req.user.name,
-            // Falls back to an unverified number: a courier needs someone to
-            // ring, and an account may hold a claimed-but-unproven one.
-            phone: req.user.contactPhone(),
-            address,
-            items: lines,
-            subtotalPaise,
-            deliveryFeePaise,
-            totalAmountPaise,
-            paymentMethod,
-            paymentStatus: paymentMethod === 'cod' ? 'pending' : 'pending',
-            status: 'Pending',
-            statusHistory: [{ status: 'Pending', at: new Date(), by: req.user._id }],
-
-            ...(market
-              ? {
-                  market: market._id,
-                  marketName: market.name,
-                  ...(lat !== undefined && lng !== undefined
-                    ? { deliveryLocation: { type: 'Point', coordinates: [lng, lat] } }
-                    : {}),
-                  /**
-                   * Built here rather than in a follow-up update so the order is
-                   * never briefly visible in `sourcing` with no deadline — the
-                   * sweeper would find it and have no idea what to do with it.
-                   */
-                  fulfillment: {
-                    ...sourcing.initialFulfillment(market._id),
-                    sourceSubtotalPaise: subtotalPaise,
-                  },
-                }
-              : {}),
-          }],
-          session ? { session } : {}
-        );
-
-        if (paymentMethod === 'wallet') {
-          // Throws 402 when the ledger balance is short, rolling back the
-          // transaction (and the stock claims) on a replica set.
-          await wallet.debit({
-            userId: req.user._id,
-            amountPaise: totalAmountPaise,
-            reason: 'order_payment',
-            idempotencyKey: `order:${created._id.toHexString()}`,
-            order: created._id,
-            note: `Payment for ${orderNumber}`,
-            session,
-          });
-
-          created.paymentStatus = 'paid';
-          await created.save(session ? { session } : {});
-        }
-
-        return created;
-      } catch (err) {
-        // Standalone mongod has no transaction to roll back, so undo the stock
-        // claims by hand. On a replica set this is redundant but harmless
-        // because the abort discards it.
-        if (!session) {
-          await Promise.all(
-            decremented.map(({ id, quantity }) =>
-              Product.updateOne({ _id: id }, { $inc: { stock: quantity } }).catch(() => {})
-            )
-          );
-        }
-        throw err;
-      }
-    });
-
-    /**
-     * Let the stalls that answer automatically answer now.
-     *
-     * Deliberately AFTER the transaction commits: a stall must never be shown,
-     * or be able to claim, an order that could still be rolled back. Awaited so
-     * the customer's own response already reflects any instant acceptance — a
-     * fully auto-accepted order comes back locked, with nothing to wait for.
-     */
-    if (order.market) {
-      await sourcing.runAutoAccept(order._id, req.user._id).catch((err) => {
-        // A failure here costs nothing: the order simply waits for a human, and
-        // the sweeper still owns the deadline. Never fail a paid checkout for it.
-        console.warn(`[orders] auto-accept failed for ${order.orderNumber}: ${err.message}`);
-      });
-      const settled = await Order.findById(order._id);
-      return res.status(201).json({ data: settled.toJSON() });
-    }
-
+    const order = await checkout.placeOrder({ user: req.user, ...req.valid.body });
     return res.status(201).json({ data: order.toJSON() });
   }
 );

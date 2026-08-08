@@ -6,6 +6,7 @@ const Order = require('../models/Order');
 const sourcing = require('./sourcing');
 const dispatch = require('./dispatch');
 const settlement = require('./settlement');
+const scheduler = require('./scheduler');
 
 /**
  * The clock.
@@ -184,11 +185,21 @@ async function tick() {
     const riderResult = await sweepRiderOffers();
     const settlementResult = await sweepSettlements();
     const refundResult = await sweepPendingRefunds();
+    /**
+     * Standing orders that have come due.
+     *
+     * Last, because it PLACES orders and everything above reacts to orders that
+     * already exist. Running it first would hand the same tick a brand-new
+     * order to source and dispatch before it had finished settling the previous
+     * round, for no benefit — the next tick is seconds away.
+     */
+    const scheduleResult = await scheduler.runDueSchedules({ limit: BATCH_SIZE });
     return {
       sourcing: sourcingResult,
       rider: riderResult,
       settlement: settlementResult,
       refunds: refundResult,
+      schedules: scheduleResult,
     };
   } finally {
     running = false;
