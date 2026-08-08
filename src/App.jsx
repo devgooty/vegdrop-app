@@ -23,7 +23,14 @@ import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
 import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon } from 'lucide-react';
-import { restoreSession, logout, startPhoneChange, verifyPhoneChange } from './services/auth';
+import {
+  restoreSession,
+  logout,
+  startPhoneChange,
+  verifyPhoneChange,
+  startEmailChange,
+  verifyEmailChange,
+} from './services/auth';
 import useLocalStorage from './hooks/useLocalStorage';
 import { initialCategories, sampleProducts, initialOrders, initialRegisteredUsers, initialScheduledOrders } from './data/mockData';
 import { fetchProducts, updateStock } from './services/products';
@@ -147,8 +154,25 @@ export default function App() {
   const [showProfileOTP, setShowProfileOTP] = useState(false);
   const [profileMobileOTP, setProfileMobileOTP] = useState('');
   const [profileOtpError, setProfileOtpError] = useState('');
-  // Server-issued challenge for moving the account to a new number.
-  const [phoneChallenge, setPhoneChallenge] = useState(null);
+  /**
+   * The challenge currently being answered, as `{ kind: 'email'|'phone', ... }`.
+   *
+   * Both contact changes are OTP-verified against the NEW destination, so one
+   * piece of state drives one modal. `kind` decides which verify call to make
+   * and what the modal says — the two outcomes differ enough to be worth saying
+   * plainly (a phone change signs every other device out; an email change does
+   * not).
+   */
+  const [profileChallenge, setProfileChallenge] = useState(null);
+  /**
+   * A phone change queued behind an email change, when the user edited both.
+   *
+   * They run in sequence rather than together because each proves a different
+   * destination. Email goes first deliberately: it is the harmless one, so a
+   * user who abandons the flow at the phone step keeps the address they just
+   * proved instead of losing both.
+   */
+  const [pendingPhoneChange, setPendingPhoneChange] = useState(null);
 
   const [flyingItems, setFlyingItems] = useState([]);
   const [cartBump, setCartBump] = useState(false);
@@ -504,42 +528,77 @@ export default function App() {
   }, [user]);
 
   /**
-   * Name and email are ordinary profile fields and save directly. The phone
-   * number is not — it is the sign-in credential, so moving it goes through a
-   * code sent to the NEW number and signs other devices out. That check is the
-   * server's; this only drives the UI for it.
+   * The name is an ordinary profile field and saves directly. Neither contact
+   * is.
+   *
+   * This used to send `email` alongside `name` in the profile PATCH. That
+   * stopped working when login codes began being copied to a verified address:
+   * the server dropped `email` from the schema for the same reason it never
+   * accepted `phone`, and because the schema is `.strict()` an unknown key
+   * fails the WHOLE request — so a user with an address on file (the field is
+   * pre-filled from it, so that is everyone) got a 400 and could not even
+   * rename themselves. Both contacts now take the verified route they always
+   * should have.
    */
   const handleSaveProfile = useCallback(async (e) => {
     e.preventDefault();
-    if (!editName.trim() || !editPhone.trim()) {
+
+    const name = editName.trim();
+    const email = editEmail.trim().toLowerCase();
+    const phone = editPhone.trim();
+
+    if (!name || !phone) {
       toast.error('Name and mobile number are required.');
       return;
     }
 
-    const phoneChanged = editPhone.trim() !== user.phone;
-    const fields = { name: editName.trim() };
-    if (editEmail.trim()) fields.email = editEmail.trim().toLowerCase();
+    const emailChanged = email !== (user.email || '').toLowerCase();
+    const phoneChanged = phone !== (user.phone || '');
 
     try {
-      // Save the ordinary fields first so they land even if the number change
-      // is abandoned at the code step.
-      const updated = await updateUser(user.id, fields);
-      setUser(updated);
-      setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      // The name first, so it lands even if a contact change is abandoned at
+      // the code step.
+      if (name !== user.name) {
+        const updated = await updateUser(user.id, { name });
+        setUser(updated);
+        setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      }
 
-      if (!phoneChanged) {
-        setIsEditingProfile(false);
-        toast.success('Profile updated successfully!');
+      // An address can be added or replaced, but not removed — there is no
+      // endpoint for dropping one, so say that rather than silently ignoring it.
+      if (emailChanged && !email) {
+        toast.warning('Removing an email address is not supported yet.');
+      }
+
+      if (emailChanged && email) {
+        const issued = await startEmailChange({ email });
+        setProfileChallenge({ kind: 'email', ...issued });
+        // Queued, not run in parallel: each code proves a different destination.
+        setPendingPhoneChange(phoneChanged ? phone : null);
+        setProfileMobileOTP('');
+        setProfileOtpError('');
+        setShowProfileOTP(true);
         return;
       }
 
-      const issued = await startPhoneChange({ phone: editPhone.trim() });
-      setPhoneChallenge(issued);
-      setProfileMobileOTP('');
-      setProfileOtpError('');
-      setShowProfileOTP(true);
+      if (phoneChanged) {
+        const issued = await startPhoneChange({ phone });
+        setProfileChallenge({ kind: 'phone', ...issued });
+        setPendingPhoneChange(null);
+        setProfileMobileOTP('');
+        setProfileOtpError('');
+        setShowProfileOTP(true);
+        return;
+      }
+
+      setIsEditingProfile(false);
+      if (name !== user.name) toast.success('Profile updated successfully!');
     } catch (err) {
-      toast.error(err.message || 'Could not update your profile.');
+      toast.error(
+        err.code === 'EMAIL_NOT_CONFIGURED'
+          ? 'Email is not set up on this server yet, so an address cannot be verified.'
+          : err.message || 'Could not update your profile.'
+      );
     }
   }, [user, editName, editEmail, editPhone, setUser, setRegisteredUsers, toast]);
 
@@ -551,20 +610,37 @@ export default function App() {
       setProfileOtpError('Enter the 6-digit verification code.');
       return;
     }
-    if (!phoneChallenge) {
+    if (!profileChallenge) {
       setProfileOtpError('This request expired. Please start again.');
       return;
     }
 
+    const isEmail = profileChallenge.kind === 'email';
+    const code = profileMobileOTP.trim();
+
     try {
       // The server is the only writer; adopt exactly what it returns rather
       // than optimistically assuming the edit applied.
-      const updated = await verifyPhoneChange({
-        challengeId: phoneChallenge.challengeId,
-        code: profileMobileOTP.trim(),
-      });
+      const updated = isEmail
+        ? await verifyEmailChange({ challengeId: profileChallenge.challengeId, code })
+        : await verifyPhoneChange({ challengeId: profileChallenge.challengeId, code });
+
       setUser(updated);
       setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+
+      /**
+       * The address is proved; now do the number, without closing the modal.
+       * Started only after the email leg succeeded, so abandoning here costs
+       * the user the number change and not the address they just confirmed.
+       */
+      if (isEmail && pendingPhoneChange) {
+        const issued = await startPhoneChange({ phone: pendingPhoneChange });
+        setProfileChallenge({ kind: 'phone', ...issued });
+        setPendingPhoneChange(null);
+        setProfileMobileOTP('');
+        toast.success('Email verified. Now confirm your new mobile number.');
+        return;
+      }
     } catch (err) {
       setProfileOtpError(err.message || 'Could not verify that code.');
       return;
@@ -572,9 +648,14 @@ export default function App() {
 
     setIsEditingProfile(false);
     setShowProfileOTP(false);
-    setPhoneChallenge(null);
-    toast.success('Mobile number updated. Other devices have been signed out. 🔒');
-  }, [phoneChallenge, profileMobileOTP, setUser, setRegisteredUsers, toast]);
+    setProfileChallenge(null);
+    setPendingPhoneChange(null);
+    toast.success(
+      isEmail
+        ? 'Email verified. Login codes will be copied there too. ✉️'
+        : 'Mobile number updated. Other devices have been signed out. 🔒'
+    );
+  }, [profileChallenge, pendingPhoneChange, profileMobileOTP, setUser, setRegisteredUsers, toast]);
 
   /**
    * Stock edits are optimistic, then reconciled against the server's response.
@@ -1265,8 +1346,13 @@ export default function App() {
                   {/* Reads its own data now, scoped to the markets this account
                       owns. The products/orders/categories it used to take were
                       the whole customer-side state, which is a different market
-                      entirely once there is more than one. */}
-                  <MarketOwnerPanel />
+                      entirely once there is more than one.
+
+                      `onExit` is not decoration: this tab hides the header AND
+                      the bottom navigation, so until the panel offered its own
+                      way out, opening it left no route back to the app short of
+                      reloading the page. */}
+                  <MarketOwnerPanel onExit={() => setActiveTab('account')} />
                 </Suspense>
               ) : (
                 /* ACCOUNT & ROLE SWITCHER TAB */
@@ -1472,27 +1558,43 @@ export default function App() {
                           <div className="bg-white rounded-3xl w-full max-w-sm p-5 shadow-2xl border border-gray-100 relative overflow-hidden space-y-3.5 text-left text-xs animate-scale-in max-h-[90vh] overflow-y-auto">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center font-bold text-lg border border-amber-200">
-                                🔐
+                                {profileChallenge?.kind === 'email' ? '✉️' : '🔐'}
                               </div>
                               <div>
-                                <h4 className="font-extrabold text-gray-900 text-sm">Verify New Number</h4>
+                                <h4 className="font-extrabold text-gray-900 text-sm">
+                                  {profileChallenge?.kind === 'email' ? 'Verify New Email' : 'Verify New Number'}
+                                </h4>
                                 <p className="text-[10px] text-amber-700 font-semibold">
-                                  This is your sign-in credential.
+                                  {profileChallenge?.kind === 'email'
+                                    ? 'Login codes will be copied here.'
+                                    : 'This is your sign-in credential.'}
                                 </p>
                               </div>
                             </div>
 
                             <form onSubmit={handleVerifyProfileOTP} className="space-y-3">
                               <div className="bg-blue-50/80 p-2.5 rounded-xl border border-blue-100 text-[10px] text-blue-900 font-semibold leading-relaxed">
-                                We sent a 6-digit code on WhatsApp to{' '}
-                                <span className="font-extrabold">{phoneChallenge?.destination || editPhone}</span>.
-                                Enter it to move your account to that number — every other
-                                device will be signed out.
+                                {profileChallenge?.kind === 'email' ? (
+                                  <>
+                                    We sent a 6-digit code to{' '}
+                                    <span className="font-extrabold">{profileChallenge?.destination || editEmail}</span>.
+                                    Enter it to attach that address. Sign-in codes will then arrive
+                                    there as well as on WhatsApp, so keep the mailbox secure.
+                                    {pendingPhoneChange && ' Your new number is confirmed after this.'}
+                                  </>
+                                ) : (
+                                  <>
+                                    We sent a 6-digit code on WhatsApp to{' '}
+                                    <span className="font-extrabold">{profileChallenge?.destination || editPhone}</span>.
+                                    Enter it to move your account to that number — every other
+                                    device will be signed out.
+                                  </>
+                                )}
                               </div>
 
                               <div className="space-y-2 border-t border-gray-100 pt-3">
                                 <label className="block font-bold text-gray-700 mb-2 text-[10px] uppercase tracking-wider text-center">
-                                  WhatsApp OTP
+                                  {profileChallenge?.kind === 'email' ? 'Email OTP' : 'WhatsApp OTP'}
                                 </label>
                                 <OTPBoxGroup value={profileMobileOTP} onChange={setProfileMobileOTP} />
                               </div>
@@ -1502,7 +1604,7 @@ export default function App() {
                               <div className="flex gap-2 pt-3 border-t border-gray-100">
                                 <button
                                   type="button"
-                                  onClick={() => { setShowProfileOTP(false); setPhoneChallenge(null); }}
+                                  onClick={() => { setShowProfileOTP(false); setProfileChallenge(null); setPendingPhoneChange(null); }}
                                   className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 rounded-xl text-center cursor-pointer transition-colors active:scale-95"
                                 >
                                   Cancel

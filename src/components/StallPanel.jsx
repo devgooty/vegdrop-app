@@ -2,12 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Store, Clock, Package, CheckCircle2, Zap, LogOut, RefreshCw,
   AlertTriangle, ShoppingBasket, Timer, Check, Wallet, Lock,
+  Boxes, ChevronDown,
 } from 'lucide-react';
 import { useToast } from './Toast';
 import {
   fetchStallOrders, claimLines, packOrder, updateMyStall, secondsLeft, formatPaise,
   fetchEarnings, withdrawEarnings, timeUntil,
 } from '../services/stalls';
+import StallInventoryEditor from './StallInventoryEditor';
 
 /**
  * The stall screen.
@@ -28,6 +30,8 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
   const [offers, setOffers] = useState([]);
   const [packing, setPacking] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Collapsed by default — the offer feed is what this panel is opened for.
+  const [showStock, setShowStock] = useState(false);
   const [busyOrder, setBusyOrder] = useState(null);
   const [earnings, setEarnings] = useState(null);
   const [withdrawing, setWithdrawing] = useState(false);
@@ -238,6 +242,43 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
               <strong> Closed </strong> above to reopen.
             </p>
           </div>
+        )}
+
+        {/* --- Declared stock ---------------------------------------------
+            Auto-accept fires only where the stall has declared enough stock
+            for the line, so without this screen the switch above could never
+            do anything — which is what the warning on toggling it says, with
+            nowhere to send anyone. Collapsed by default: the offer feed is
+            what a shopkeeper opens this panel for. */}
+        {!loading && (
+          <section>
+            <button
+              type="button"
+              onClick={() => setShowStock((v) => !v)}
+              className="w-full flex items-center justify-between gap-3 p-3 rounded-2xl bg-white border border-gray-200 hover:border-emerald-300 transition-colors text-left"
+            >
+              <span className="flex items-center gap-2 min-w-0">
+                <Boxes className="w-4 h-4 text-[#0B7A37] shrink-0" />
+                <span className="text-[13px] font-extrabold text-[#0F1F17] truncate">
+                  On my table
+                </span>
+                {stall?.autoAccept && (
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 shrink-0">
+                    powers auto-accept
+                  </span>
+                )}
+              </span>
+              <ChevronDown
+                className={`w-4 h-4 text-[#5B6B62] shrink-0 transition-transform ${showStock ? 'rotate-180' : ''}`}
+              />
+            </button>
+
+            {showStock && (
+              <div className="mt-3">
+                <StallInventoryEditor autoAccept={Boolean(stall?.autoAccept)} />
+              </div>
+            )}
+          </section>
         )}
 
         {/* --- Money ------------------------------------------------------- */}

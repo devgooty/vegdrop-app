@@ -157,6 +157,37 @@ export async function verifyPhoneChange({ challengeId, code }) {
 }
 
 /**
+ * Step 1 of attaching or moving an email address. The code goes to the NEW
+ * address, which is the whole point: once an address is on the account it
+ * receives copies of every login code, so it has to be proved first.
+ *
+ * Not part of the profile PATCH, and that is deliberate on the server's side —
+ * `PATCH /api/users/:id` rejects `email` exactly as it rejects `phone`, because
+ * a briefly-stolen session that could point either at itself would own the
+ * account permanently.
+ *
+ * Throws with code `EMAIL_NOT_CONFIGURED` (503) where the deployment has no
+ * mail provider, since there would be nowhere to send the code.
+ */
+export async function startEmailChange({ email }) {
+  return api.post('/auth/email/start', { email });
+}
+
+/**
+ * Step 2 of attaching an email.
+ *
+ * Unlike a phone change this does NOT sign other devices out and issues no new
+ * token: the phone remains the credential, and adding a place for copies to
+ * arrive does not invalidate a session that authenticated against the number.
+ *
+ * @returns {Promise<object>} the updated user
+ */
+export async function verifyEmailChange({ challengeId, code }) {
+  const result = await api.post('/auth/email/verify', { challengeId, code });
+  return result.user;
+}
+
+/**
  * Restore a session on app start from the httpOnly refresh cookie.
  * @returns {Promise<object|null>} the user, or null when not signed in
  */
