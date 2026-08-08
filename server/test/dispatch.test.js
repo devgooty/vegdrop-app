@@ -267,6 +267,74 @@ test('the cascade gives up after enough refusals and opens the order to anyone',
   assert.equal(accepted.accepted, true);
 });
 
+/**
+ * The thin-coverage case the open pool was actually written for.
+ *
+ * The test above forces `count` to the cap, which is the one way to reach the
+ * pool that never exercises the path a real market takes. Walk it properly with
+ * a single rider and the backstop used to be unreachable: an expiry adds that
+ * rider to `declinedBy`, so they are excluded from every later search, while
+ * `count` only advances when an offer is actually made. It froze at one, the
+ * candidate list stayed empty, and the order sat until the sourcing window
+ * expired — in exactly the sparsely covered area the pool exists to rescue.
+ */
+test('one rider who lets the offer lapse still gets it back through the open pool', async () => {
+  const market = await seedMarket();
+  const stall = await seedStall(market, 'A-1');
+  const rider = await seedRider({ market, metresEast: 100 });
+
+  const order = await seedPackingOrder({ market, stall });
+
+  // The offer already went out when the stall claimed the last line. Let it die.
+  await Order.updateOne(
+    { _id: order._id },
+    { $set: { 'fulfillment.riderOffer.expiresAt': new Date(Date.now() - 1000) } }
+  );
+  await dispatch.expireOffer(order._id);
+
+  const afterExpiry = await Order.findById(order._id).lean();
+  assert.equal(afterExpiry.fulfillment.riderOffer.declinedBy.length, 1);
+  assert.ok(
+    afterExpiry.fulfillment.riderOffer.count < config.marketplace.riderMaxOffers,
+    'the count must still be short of the cap — that is the whole trap'
+  );
+
+  // The sweeper tries again. There is nobody new to ask, so it must give up on
+  // cascading rather than spin for ever.
+  const retry = await dispatch.offerToNearestRider(order._id);
+  assert.equal(retry.reason, 'OPEN_POOL');
+
+  const pooled = await Order.findById(order._id).lean();
+  assert.equal(pooled.fulfillment.riderOffer.openPool, true);
+
+  // And the rider who missed it can now take it.
+  const accepted = await dispatch.acceptOffer({ orderId: order._id, riderId: rider._id });
+  assert.equal(accepted.accepted, true, 'the only rider in town must be able to pick it back up');
+});
+
+/**
+ * The other side of that branch: an order with nobody online yet must NOT be
+ * dumped straight into the pool, or the nearest-first ordering is thrown away
+ * before a single rider has been asked.
+ */
+test('an order waiting for the first rider to come online is not pooled', async () => {
+  const market = await seedMarket();
+  const stall = await seedStall(market, 'A-1');
+  const order = await seedPackingOrder({ market, stall });
+
+  const result = await dispatch.offerToNearestRider(order._id);
+  assert.equal(result.reason, 'NO_RIDER_AVAILABLE');
+
+  const after = await Order.findById(order._id).lean();
+  assert.equal(after.fulfillment.riderOffer.openPool, false);
+
+  // A rider arriving now gets a targeted offer, nearest first, as intended.
+  const rider = await seedRider({ market, metresEast: 100 });
+  const offered = await dispatch.offerToNearestRider(order._id);
+  assert.equal(offered.offered, true);
+  assert.equal(String(offered.rider._id), String(rider._id));
+});
+
 // ---------------------------------------------------------------------------
 // Accepting
 // ---------------------------------------------------------------------------

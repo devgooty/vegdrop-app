@@ -106,9 +106,30 @@ async function offerToNearestRider(orderId) {
   const declined = offer.declinedBy || [];
   const rider = await findNearestRider({ marketLocation: market.location, excludeIds: declined });
 
-  // Nobody within range. Not a failure — the sweeper asks again next tick, and
-  // riders come online continuously.
-  if (!rider) return { offered: false, reason: 'NO_RIDER_AVAILABLE' };
+  if (!rider) {
+    /**
+     * Nobody left to ask.
+     *
+     * Two very different situations share this branch, and telling them apart
+     * is what makes the open-pool backstop actually reachable.
+     *
+     * If somebody HAS been asked and refused, the cascade is exhausted and the
+     * pool is the fallback it was written to be. The `count >= riderMaxOffers`
+     * check above cannot get us here on its own: every rider who declines or
+     * times out is added to `declinedBy` and excluded from then on, so `count`
+     * only reaches four when four DISTINCT riders are in range. In a thinly
+     * covered area — one rider, who let the offer lapse — the count froze at
+     * one, the only candidate was excluded for ever, and the order sat until
+     * the sourcing window expired. That is precisely the case the pool exists
+     * for, and it was the one case the pool could never be reached in.
+     *
+     * If nobody has been asked at all, no rider is online yet. Opening the pool
+     * then would throw away the nearest-first ordering for nothing, so this
+     * stays a non-failure and the sweeper asks again next tick.
+     */
+    if (declined.length > 0) return openToPool(orderId);
+    return { offered: false, reason: 'NO_RIDER_AVAILABLE' };
+  }
 
   const now = new Date();
   const expiresAt = new Date(now.getTime() + config.marketplace.riderOfferTimeoutSeconds * 1000);
@@ -286,8 +307,16 @@ async function expireOffer(orderId) {
  *
  * Sorted by stall number so they walk the market once instead of criss-crossing
  * it. This is the whole reason `stallNumber` is denormalised onto the claim.
+ *
+ * `stalls` is an optional Map of id → stall document. The number alone is enough
+ * to find a pitch, but not enough to deal with a problem at one: a rider standing
+ * in front of a shuttered stall needs the trader's name and a phone number, and
+ * those live on Stall rather than on the claim. Optional rather than required
+ * because the number is what the round is *ordered* by and must keep working
+ * from the denormalised copy alone — a stall deleted after claiming still has
+ * bags with the order's name on them.
  */
-function buildPickupList(order) {
+function buildPickupList(order, stalls = null) {
   const byStall = new Map();
 
   for (const item of order.items || []) {
@@ -295,9 +324,12 @@ function buildPickupList(order) {
     if (!stall) continue;
     const key = String(stall);
     if (!byStall.has(key)) {
+      const record = stalls?.get(key) || null;
       byStall.set(key, {
         stall: key,
         stallNumber: item.claim.stallNumber,
+        stallName: record?.name || null,
+        stallPhone: record?.contactPhone || null,
         collected: true,
         lines: [],
       });

@@ -4,16 +4,22 @@ import LoginPage from './components/LoginPage';
 import SplashScreen from './components/SplashScreen';
 import { useToast } from './components/Toast';
 import { restoreSession, logout } from './services/auth';
-import { initialOrders, initialRegisteredUsers } from './data/mockData';
 import { fetchOrders, updateOrderStatus } from './services/orders';
 
 export default function DeliveryApp() {
   const toast = useToast();
 
-  // Seeded from fixtures, then replaced by the server's role-scoped list. Never
-  // read from localStorage: that key is shared with every app on the origin.
-  const [orders, setOrders] = useState(initialOrders);
-  const [registeredUsers, setRegisteredUsers] = useState(initialRegisteredUsers);
+  /**
+   * Empty until the server answers. Never read from localStorage either: that
+   * key is shared with every app on the origin.
+   *
+   * This used to be seeded from `initialOrders`, a fixture of invented customers
+   * and addresses. Those rendered as real work before the first fetch landed,
+   * and stayed on screen if it failed — so an agent's task list could be
+   * entirely fictional and never say so. An empty list is the honest state while
+   * we do not yet know.
+   */
+  const [orders, setOrders] = useState([]);
 
   /**
    * Session state lives in memory and is restored from the httpOnly refresh

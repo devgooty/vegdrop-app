@@ -72,9 +72,16 @@ export async function markDelivered(orderId) {
  * Wraps `watchPosition` and throttles the uploads — GPS fires far more often
  * than dispatch needs, and every send is a write.
  *
+ * `onPosition` receives every fix, unthrottled, because the two consumers want
+ * different rates: the server needs a heartbeat every fifteen seconds, while the
+ * map wants the rider's dot to move as smoothly as the hardware allows. Running
+ * a second `watchPosition` for the map would mean two GPS subscriptions draining
+ * the same battery to learn the same thing.
+ *
+ * @param {{intervalMs?: number, onError?: Function, onPosition?: Function}} [options]
  * @returns {() => void} call to stop watching
  */
-export function startLocationReporting({ intervalMs = 15000, onError } = {}) {
+export function startLocationReporting({ intervalMs = 15000, onError, onPosition } = {}) {
   if (!navigator.geolocation) return () => {};
 
   let lastSent = 0;
@@ -87,7 +94,10 @@ export function startLocationReporting({ intervalMs = 15000, onError } = {}) {
     if (now - lastSent < intervalMs) return;
     lastSent = now;
     try {
-      await reportLocation(latest);
+      // Only lat and lng go over the wire. The accuracy and heading kept above
+      // are for the map; POST /rider/location validates with `.strict()`, so
+      // sending them would fail the whole heartbeat with a 400.
+      await reportLocation({ lat: latest.lat, lng: latest.lng });
     } catch (err) {
       // A dropped heartbeat is not worth surfacing: the next one is seconds
       // away, and the rider can do nothing about it.
@@ -97,7 +107,13 @@ export function startLocationReporting({ intervalMs = 15000, onError } = {}) {
 
   const watchId = navigator.geolocation.watchPosition(
     (pos) => {
-      latest = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      latest = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        heading: pos.coords.heading,
+      };
+      if (onPosition) onPosition(latest);
       send();
     },
     () => {},
