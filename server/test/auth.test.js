@@ -309,6 +309,36 @@ test('logout-all invalidates outstanding access tokens immediately', async () =>
   assert.equal(after.status, 401);
 });
 
+/**
+ * The case the feature exists for.
+ *
+ * Revoking the caller's own access token proves little — it expires on its own
+ * within minutes. What "sign out on all devices" has to do is kill the long-
+ * lived refresh cookie sitting on a device the user is not holding, because
+ * with no password that is the only way to end a session someone else has.
+ */
+test('logout-all kills another device refresh cookie', async () => {
+  const { user } = await createUser({ role: 'customer' });
+
+  // Two independent sign-ins for one account: two refresh families.
+  const laptop = await signIn({ phone: user.phone });
+  const stolen = await signIn({ phone: user.phone });
+
+  // The other device can still mint access tokens before the revocation.
+  const before = await api().post('/api/auth/refresh').set('Cookie', stolen.refreshCookie);
+  assert.equal(before.status, 200, 'precondition: the second session works');
+
+  await api().post('/api/auth/logout-all').set(auth(laptop.accessToken)).expect(204);
+
+  // Its newest cookie, not the one already rotated away, so this is a
+  // revocation rather than the reuse detector firing.
+  const rotated = (before.headers['set-cookie'] || []).find((c) => c.startsWith('vb_rt='));
+  assert.ok(rotated, 'precondition: refresh issued a replacement cookie');
+
+  const after = await api().post('/api/auth/refresh').set('Cookie', rotated);
+  assert.equal(after.status, 401, 'the other device must not be able to refresh');
+});
+
 test('a suspended account cannot use an existing token', async () => {
   const { accessToken, user } = await authenticatedUser('customer');
 

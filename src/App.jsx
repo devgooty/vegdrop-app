@@ -26,6 +26,7 @@ import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coin
 import {
   restoreSession,
   logout,
+  logoutEverywhere,
   startPhoneChange,
   verifyPhoneChange,
   startEmailChange,
@@ -483,6 +484,45 @@ export default function App() {
     clearCart();
     setActiveTab('login');
     toast.info(`Signed out. See you soon, ${name}! 👋`);
+  }, [user, clearCart, setActiveTab, toast]);
+
+  /**
+   * Sign out every device, not just this one.
+   *
+   * In a system with no password this is the whole of account recovery. There
+   * is nothing to rotate when a session goes bad — no credential to change —
+   * so revoking the refresh-token family and bumping `tokenVersion` is the only
+   * lever, and `POST /auth/logout-all` was reachable by nothing.
+   *
+   * It matters more now that a verified email receives copies of login codes:
+   * account security becomes the weaker of the two channels, so "someone has
+   * been in my mailbox" needs an answer that does not depend on reaching the
+   * mailbox again.
+   *
+   * Confirmed first because it is disruptive rather than dangerous — every
+   * other phone and tab is signed out, including ones the user may not be
+   * holding.
+   */
+  const handleLogoutEverywhere = useCallback(async () => {
+    const confirmed = window.confirm(
+      'Sign out on every device?\n\n' +
+      'Every other phone, tablet and browser signed in to this account will be ' +
+      'signed out immediately, and so will this one. Use this if you think ' +
+      'someone else has access to your account.'
+    );
+    if (!confirmed) return;
+
+    const name = user?.name || 'User';
+    try {
+      await logoutEverywhere();
+    } catch {
+      // The service clears local state regardless; a failed call must not
+      // leave the user looking signed in when they asked not to be.
+    }
+    setUser(null);
+    clearCart();
+    setActiveTab('login');
+    toast.success(`All devices signed out. Sign in again to continue, ${name}. 🔒`);
   }, [user, clearCart, setActiveTab, toast]);
 
   const handleDeleteAccount = useCallback(async () => {
@@ -1716,6 +1756,20 @@ export default function App() {
                             className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] sm:text-sm font-extrabold px-2 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all cursor-pointer shadow-[inset_1px_1px_2px_rgba(255,255,255,0.8),4px_4px_8px_rgba(166,180,200,0.3),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(166,180,200,0.4),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
                           >
                             Log Out
+                          </button>
+                        </div>
+
+                        {/* Deliberately quieter than Log Out and directly below
+                            it. With no password this is the only way to end a
+                            session someone else is holding, so it has to be
+                            findable — but it signs out every device including
+                            this one, which is not what most taps here mean. */}
+                        <div className="pt-1.5 flex relative z-10 max-w-sm mx-auto">
+                          <button
+                            onClick={handleLogoutEverywhere}
+                            className="flex-1 text-rose-600/80 hover:text-rose-700 text-[10px] sm:text-xs font-bold px-2 py-1.5 rounded-xl transition-colors cursor-pointer hover:bg-rose-50/60"
+                          >
+                            Sign out on all devices
                           </button>
                         </div>
                       </div>
