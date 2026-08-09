@@ -255,7 +255,7 @@ test('a customer cancel racing the final claim resolves to one winner', async ()
     Order.findOneAndUpdate(
       { _id: order._id, customer: customer._id, 'fulfillment.status': 'sourcing' },
       { $set: { 'fulfillment.status': 'cancelled', status: 'Cancelled' } },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
   const [claimResult, cancelResult] = await Promise.all([
@@ -300,7 +300,7 @@ test('a cancel arriving after the lock is refused', async () => {
   const late = await Order.findOneAndUpdate(
     { _id: order._id, customer: customer._id, 'fulfillment.status': 'sourcing' },
     { $set: { 'fulfillment.status': 'cancelled', status: 'Cancelled' } },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   assert.equal(late, null, 'the cancel must not match a locked order');

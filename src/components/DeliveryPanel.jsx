@@ -1,7 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Truck, CheckCircle2, MapPin, Phone, PackageCheck, Bell,
-  LogOut, User, Home, Map as MapIcon, Wallet, Info, Clock,
+  LogOut, User, Home, Map as MapIcon, Wallet, Info, Clock, AlertTriangle,
 } from 'lucide-react';
 import MarketPickups from './MarketPickups';
 import { startLocationReporting, setDutyStatus } from '../services/rider';
@@ -60,6 +60,16 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
    * to learn the same fact, so the reporter now hands each fix back through
    * `onPosition` and the maps downstream read it from there.
    */
+  /**
+   * Why this rider is not reachable by dispatch, when they are not.
+   *
+   * Being online is only half of what dispatch needs — it matches on
+   * `rider.lastLocation` too, so a rider whose GPS is blocked is invisible no
+   * matter what the toggle says. That failure used to be discarded, which made
+   * "no pickups right now" indistinguishable from "you will never get one".
+   */
+  const [locationError, setLocationError] = useState(null);
+
   useEffect(() => {
     let stopReporting = null;
 
@@ -69,11 +79,24 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
     });
 
     if (isOnline) {
-      stopReporting = startLocationReporting({ onPosition: setAgentCoords });
+      setLocationError(null);
+      stopReporting = startLocationReporting({
+        onPosition: (position) => {
+          setAgentCoords(position);
+          // A fix arrived, so whatever we were warning about is over.
+          setLocationError(null);
+        },
+        onError: (err) => {
+          // A dropped heartbeat is transient and the next one is seconds away;
+          // only a missing position actually keeps offers from arriving.
+          if (err?.kind === 'geolocation') setLocationError(err.message);
+        },
+      });
     } else {
       // A stale dot on a map is worse than no dot: it claims to know where the
       // rider is when nothing has been reported since they clocked off.
       setAgentCoords(null);
+      setLocationError(null);
     }
 
     return () => {
@@ -148,6 +171,7 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
             isOnline={isOnline}
             setIsOnline={setIsOnline}
             agentCoords={agentCoords}
+            locationError={locationError}
             deliveredToday={deliveredToday.length}
             deliveredTotal={delivered.length}
             setActiveTab={setActiveTab}
@@ -192,7 +216,7 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
 // Home
 // ---------------------------------------------------------------------------
 
-function HomeTab({ user, isOnline, setIsOnline, agentCoords, deliveredToday, deliveredTotal, setActiveTab }) {
+function HomeTab({ user, isOnline, setIsOnline, agentCoords, locationError, deliveredToday, deliveredTotal, setActiveTab }) {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
@@ -220,6 +244,22 @@ function HomeTab({ user, isOnline, setIsOnline, agentCoords, deliveredToday, del
           <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-transform duration-300 ${isOnline ? 'translate-x-7' : 'translate-x-1'}`} />
         </button>
       </div>
+
+      {/*
+        Being online but unlocatable is the one state that looks like working
+        and is not: dispatch matches riders on their last reported position, so
+        without one no offer can ever arrive. Say it above the pickups list,
+        where "nothing right now" would otherwise be read as bad luck.
+      */}
+      {isOnline && locationError && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <h3 className="font-bold text-amber-900 text-sm mb-0.5">No pickups can reach you</h3>
+            <p className="text-xs text-amber-800 leading-relaxed">{locationError}</p>
+          </div>
+        </div>
+      )}
 
       {/*
         Market pickups sit above everything else on this screen.

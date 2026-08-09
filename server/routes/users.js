@@ -134,7 +134,7 @@ router.patch(
     const user = await User.findOneAndUpdate(
       { _id: targetId, status: { $ne: 'deleted' } },
       { $set: update },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
     if (!user) throw new ApiError(404, 'User not found.', 'NOT_FOUND');
 

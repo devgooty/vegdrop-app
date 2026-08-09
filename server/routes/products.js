@@ -160,7 +160,7 @@ router.patch(
     const updated = await Product.findByIdAndUpdate(
       product._id,
       { $set: { stock: req.valid.body.stock } },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
     if (!updated) throw new ApiError(404, 'Product not found.', 'NOT_FOUND');
     return res.json({ data: updated.toJSON() });
@@ -247,7 +247,7 @@ router.patch(
     const updated = await Product.findByIdAndUpdate(
       product._id,
       { $set: update },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
     if (!updated) throw new ApiError(404, 'Product not found.', 'NOT_FOUND');
     return res.json({ data: updated.toJSON() });
@@ -264,7 +264,7 @@ router.delete(
     const updated = await Product.findByIdAndUpdate(
       req.valid.params.id,
       { $set: { isActive: false } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!updated) throw new ApiError(404, 'Product not found.', 'NOT_FOUND');
     return res.status(204).end();

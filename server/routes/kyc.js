@@ -155,7 +155,7 @@ router.post(
     const kyc = await VendorKyc.findOneAndUpdate(
       { user: req.user._id },
       { $set: doc },
-      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+      { returnDocument: 'after', upsert: true, runValidators: true, setDefaultsOnInsert: true }
     ).catch((err) => {
       // Unique index on panFingerprint.
       if (err?.code === 11000) {
@@ -277,7 +277,7 @@ router.post(
         'pennyDrop.attempts': { $lt: kyc.pennyDrop.maxAttempts },
       },
       { $inc: { 'pennyDrop.attempts': 1 } },
-      { new: true }
+      { returnDocument: 'after' }
     ).select('+pennyDrop.amountHash');
 
     if (!bumped) {
@@ -321,7 +321,7 @@ router.post(
           'pennyDrop.amountHash': null,
         },
       },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!verified) {

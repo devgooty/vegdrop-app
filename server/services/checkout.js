@@ -174,7 +174,7 @@ async function placeOrder({ user, items, address, paymentMethod, marketId, shopI
         const claim = await Product.findOneAndUpdate(
           { _id: product._id, stock: { $gte: quantity }, isActive: true },
           { $inc: { stock: -quantity } },
-          { new: true, ...(session ? { session } : {}) }
+          { returnDocument: 'after', ...(session ? { session } : {}) }
         );
 
         if (!claim) {

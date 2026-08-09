@@ -67,6 +67,38 @@ export async function markDelivered(orderId) {
 }
 
 /**
+ * Why this rider is not reaching dispatch, in a form a screen can render.
+ *
+ * `kind` separates the two failures that look identical from the outside and
+ * are not: `geolocation` means we never learned where the rider is, so dispatch
+ * cannot see them at all; `report` means we know, but a heartbeat did not land,
+ * which the next one seconds later usually fixes.
+ */
+export class RiderLocationError extends Error {
+  constructor(kind, message, cause = null) {
+    super(message);
+    this.name = 'RiderLocationError';
+    this.kind = kind; // 'geolocation' | 'report'
+    this.cause = cause;
+  }
+}
+
+/** Browser geolocation failure codes, as something readable. */
+function describeGeolocationError(err) {
+  // 1 PERMISSION_DENIED, 2 POSITION_UNAVAILABLE, 3 TIMEOUT
+  switch (err?.code) {
+    case 1:
+      return 'Location permission is blocked, so no market can offer you a pickup. Allow location for this site, then go online again.';
+    case 2:
+      return 'Your device cannot get a location fix right now. Until it does, markets cannot offer you pickups.';
+    case 3:
+      return 'Still waiting for a GPS fix. Markets cannot offer you pickups until your position comes through.';
+    default:
+      return 'Your position is not reaching us, so markets cannot offer you pickups.';
+  }
+}
+
+/**
  * Start pushing this rider's position to the server.
  *
  * Wraps `watchPosition` and throttles the uploads — GPS fires far more often
@@ -78,11 +110,30 @@ export async function markDelivered(orderId) {
  * a second `watchPosition` for the map would mean two GPS subscriptions draining
  * the same battery to learn the same thing.
  *
+ * A GEOLOCATION FAILURE IS REPORTED, NOT SWALLOWED. `watchPosition`'s error
+ * callback used to be `() => {}` and the missing-API case returned a silent
+ * no-op, so a rider who had denied the permission sat "online" reading "you
+ * will be offered the nearest one as soon as a market has an order ready" —
+ * which was never going to happen, because dispatch matches on
+ * `rider.lastLocation` and theirs was never set. The panel needs to be able to
+ * say so.
+ *
  * @param {{intervalMs?: number, onError?: Function, onPosition?: Function}} [options]
+ *   `onError` receives a {@link RiderLocationError}.
  * @returns {() => void} call to stop watching
  */
 export function startLocationReporting({ intervalMs = 15000, onError, onPosition } = {}) {
-  if (!navigator.geolocation) return () => {};
+  if (!navigator.geolocation) {
+    if (onError) {
+      onError(
+        new RiderLocationError(
+          'geolocation',
+          'This browser cannot share a location, so markets cannot offer you pickups.'
+        )
+      );
+    }
+    return () => {};
+  }
 
   let lastSent = 0;
   let latest = null;
@@ -99,9 +150,12 @@ export function startLocationReporting({ intervalMs = 15000, onError, onPosition
       // sending them would fail the whole heartbeat with a 400.
       await reportLocation({ lat: latest.lat, lng: latest.lng });
     } catch (err) {
-      // A dropped heartbeat is not worth surfacing: the next one is seconds
-      // away, and the rider can do nothing about it.
-      if (onError) onError(err);
+      // A dropped heartbeat is not worth alarming anyone about: the next one is
+      // seconds away. Reported all the same, tagged so the panel can treat it
+      // more gently than a position it never had.
+      if (onError) {
+        onError(new RiderLocationError('report', 'Could not send your position just now. Retrying.', err));
+      }
     }
   };
 
@@ -116,7 +170,11 @@ export function startLocationReporting({ intervalMs = 15000, onError, onPosition
       if (onPosition) onPosition(latest);
       send();
     },
-    () => {},
+    (err) => {
+      if (onError) {
+        onError(new RiderLocationError('geolocation', describeGeolocationError(err), err));
+      }
+    },
     { enableHighAccuracy: true, maximumAge: 5000 }
   );
 

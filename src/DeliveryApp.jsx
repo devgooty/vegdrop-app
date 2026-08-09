@@ -3,8 +3,11 @@ import DeliveryPanel from './components/DeliveryPanel';
 import LoginPage from './components/LoginPage';
 import SplashScreen from './components/SplashScreen';
 import { useToast } from './components/Toast';
-import { restoreSession, logout } from './services/auth';
+import { logout } from './services/auth';
 import { fetchOrders, updateOrderStatus } from './services/orders';
+import useSessionUser from './hooks/useSessionUser';
+
+const DELIVERY_ROLES = ['delivery', 'developer'];
 
 export default function DeliveryApp() {
   const toast = useToast();
@@ -23,29 +26,20 @@ export default function DeliveryApp() {
 
   /**
    * Session state lives in memory and is restored from the httpOnly refresh
-   * cookie on mount — never from localStorage, where an attacker-editable
-   * `role` field would let anyone grant themselves this panel.
+   * cookie — never from localStorage, where an attacker-editable `role` field
+   * would let anyone grant themselves this panel.
+   *
+   * Watched rather than read once: the refresh cookie is shared with the other
+   * two apps on this origin, so signing in as a customer in another tab can
+   * hand this one a session it must not render. `useSessionUser` drops back to
+   * the login screen instead, and clears the task list on the way out so one
+   * account's deliveries never appear under another's name.
    */
-  const [user, setUser] = useState(null);
-  const [isRestoringSession, setIsRestoringSession] = useState(true);
+  const { user, setUser, isRestoringSession } = useSessionUser({
+    allowedRoles: DELIVERY_ROLES,
+    onIdentityLost: () => setOrders([]),
+  });
   const [showSplash, setShowSplash] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    restoreSession()
-      .then((restored) => {
-        if (cancelled) return;
-        if (restored && ['delivery', 'developer'].includes(restored.role)) {
-          setUser(restored);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setIsRestoringSession(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Delivery Notifications
   const [deliveryNotifications, setDeliveryNotifications] = useState([]);

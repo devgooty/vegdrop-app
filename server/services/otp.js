@@ -181,7 +181,7 @@ async function verifyChallenge({ challengeId, code, purpose }) {
   const bumped = await OtpChallenge.findOneAndUpdate(
     { _id: challenge._id, attempts: { $lt: challenge.maxAttempts }, consumedAt: null },
     { $inc: { attempts: 1 } },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!bumped) {
@@ -208,7 +208,7 @@ async function verifyChallenge({ challengeId, code, purpose }) {
   const consumed = await OtpChallenge.findOneAndUpdate(
     { _id: bumped._id, consumedAt: null },
     { $set: { consumedAt: new Date() } },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!consumed) {

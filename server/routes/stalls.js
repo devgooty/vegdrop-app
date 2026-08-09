@@ -181,7 +181,7 @@ router.patch(
     const stall = await Stall.findByIdAndUpdate(
       req.stall._id,
       { $set: update },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     const declaredLines = await StallInventory.countDocuments({ stall: stall._id, stock: { $gt: 0 } });
@@ -414,7 +414,7 @@ router.put(
           takenAt: new Date(),
         },
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
+      { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
     );
 
     return res.json({

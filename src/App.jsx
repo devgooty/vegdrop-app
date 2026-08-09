@@ -22,12 +22,12 @@ import MarketPicker from './components/MarketPicker';
 import NearbyShops from './components/NearbyShops';
 import LocationPrimer from './components/LocationPrimer';
 import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
+import { savedCustomerAddress } from './services/address';
 import { createSchedule, fetchSchedules, recurrenceFromDates, describeRecurrence } from './services/schedules';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
 import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon } from 'lucide-react';
 import {
-  restoreSession,
   logout,
   logoutEverywhere,
   startPhoneChange,
@@ -36,6 +36,7 @@ import {
   verifyEmailChange,
 } from './services/auth';
 import useLocalStorage from './hooks/useLocalStorage';
+import useSessionUser from './hooks/useSessionUser';
 import { initialCategories } from './data/mockData';
 import { fetchProducts, updateStock } from './services/products';
 import {
@@ -102,29 +103,38 @@ export default function App() {
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   
-  /**
-   * Session state is held in memory and restored from the httpOnly refresh
-   * cookie on mount. It is deliberately NOT persisted to localStorage: the user
-   * object carries a `role`, and web storage is editable from devtools, so a
-   * persisted session would let anyone hand themselves a privileged panel.
-   */
-  const [user, setUser] = useState(null);
-  const [isRestoringSession, setIsRestoringSession] = useState(true);
   const [activeTab, setActiveTab] = useLocalStorage('vegdrop_tab', 'login');
 
-  useEffect(() => {
-    let cancelled = false;
-    restoreSession()
-      .then((restored) => {
-        if (!cancelled && restored) setUser(restored);
-      })
-      .finally(() => {
-        if (!cancelled) setIsRestoringSession(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  /**
+   * Session state is held in memory and restored from the httpOnly refresh
+   * cookie. It is deliberately NOT persisted to localStorage: the user object
+   * carries a `role`, and web storage is editable from devtools, so a persisted
+   * session would let anyone hand themselves a privileged panel.
+   *
+   * Every role may render this app — `developer` and `market_owner` get their
+   * panels as tabs here — so nothing is gated on role. What IS handled is the
+   * identity changing underneath: the refresh cookie is shared with the
+   * shopkeeper and delivery apps, so signing into one of those in another tab
+   * silently replaced the session here. This screen then went on showing one
+   * person's cart, orders and wallet while authenticated as somebody else.
+   */
+  const { user, setUser, isRestoringSession } = useSessionUser({
+    onIdentityLost: (next) => {
+      // Everything below is per-account. Leaving any of it on screen after the
+      // session moved to another person is exactly the leak to avoid.
+      clearCart();
+      setOrders([]);
+      setScheduledOrders([]);
+      setRegisteredUsers([]);
+      setWalletBalance(0);
+      setWalletTransactions([]);
+      // Gone entirely: 'login' renders the sign-in screen, because `activeTab`
+      // only reaches it while there is no user. Replaced by someone else: they
+      // ARE signed in, so drop them on a clean home rather than a login screen
+      // they would fall straight through.
+      setActiveTab(next ? 'home' : 'login');
+    },
+  });
 
   /**
    * The cart starts empty. It previously shipped a demo line item whose `id` was
@@ -167,6 +177,15 @@ export default function App() {
   const [marketProducts, setMarketProducts] = useState([]);
 
   /**
+   * Bumped whenever the delivery address is saved.
+   *
+   * The address lives in localStorage, which React cannot observe, so anything
+   * derived from it needs a signal to recompute — otherwise the basket keeps
+   * showing "no delivery address" after the customer has just entered one.
+   */
+  const [addressVersion, setAddressVersion] = useState(0);
+
+  /**
    * The independent shop being bought from instead, and its own catalog.
    *
    * Mutually exclusive with `selectedMarket` — an order has one seller, and the
@@ -182,6 +201,33 @@ export default function App() {
    * the primer resolves so both nearby lists can load without a reload.
    */
   const [customerCoords, setCustomerCoords] = useState(() => savedCustomerCoords());
+
+  /**
+   * Why an order cannot be placed right now, or null when it can.
+   *
+   * AN ORDER WITH NO SELLER IS AN ORDER NOBODY CAN EVER FILL. `marketId` and
+   * `shopId` are both optional on the wire, and omitting both still creates a
+   * "legacy marketless" order — but `GET /stalls/me/orders` selects on
+   * `market: <the stall's market>` AND `fulfillment.status: 'sourcing'`, and a
+   * marketless order has neither. No stall sees it, no rider is ever dispatched
+   * for it, and it sits at Pending until someone reads the database.
+   *
+   * That used to be reachable in one very ordinary way: decline the location
+   * prompt. MarketPicker then has no coordinates, selects no market, and
+   * checkout quietly posted without one. So the basket refuses instead, and
+   * says which of the two things is missing.
+   */
+  const checkoutBlockedReason = useMemo(() => {
+    if (!selectedMarket && !selectedShop) {
+      return 'We need your delivery address before we can pick a market to fill this order. Set it from the address bar at the top of the shop.';
+    }
+    if (!savedCustomerAddress()) {
+      return 'Add the street address the rider should deliver to. Tap the address bar at the top of the shop.';
+    }
+    return null;
+    // `addressVersion` is the only signal that localStorage changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMarket, selectedShop, addressVersion]);
 
   // Profile editing, plus the verified phone-change flow
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -468,6 +514,12 @@ export default function App() {
       toast.warning('Your basket is empty!');
       return;
     }
+    // A standing order inherits the same requirement as a one-off: without a
+    // market it would mint an unfillable order every single run.
+    if (checkoutBlockedReason) {
+      toast.error(checkoutBlockedReason);
+      return;
+    }
 
     const frequency = String(scheduleFilter || 'Daily').toLowerCase();
 
@@ -489,10 +541,9 @@ export default function App() {
           productId: item.id,
           quantity: item.quantity,
         })),
-        // The same address and coordinates a manual checkout uses.
-        address:
-          localStorage.getItem('vegdrop_customer_location') ||
-          'Koramangala, Bengaluru, Karnataka - 560034',
+        // The same address and coordinates a manual checkout uses. Guaranteed
+        // non-null by the checkoutBlockedReason gate below.
+        address: savedCustomerAddress(),
         // COD keeps a standing order working without a funded wallet. The
         // server refuses razorpay outright — nobody is present to pay.
         paymentMethod: 'cod',
@@ -522,6 +573,7 @@ export default function App() {
     scheduledCartItems,
     user,
     selectedMarket,
+    checkoutBlockedReason,
     toast,
   ]);
 
@@ -1127,6 +1179,13 @@ export default function App() {
       toast.error('Please sign in to place an order.');
       return false;
     }
+    // Authoritative: the modal disables its button on the same condition, but a
+    // stale render must not be the only thing standing between a customer and
+    // an order no stall can see.
+    if (checkoutBlockedReason) {
+      toast.error(checkoutBlockedReason);
+      return false;
+    }
     if (cartItems.length === 0) {
       toast.error('Your cart is empty.');
       return false;
@@ -1185,9 +1244,8 @@ export default function App() {
 
     const paymentMethod =
       selectedPaymentMethod === 'VegWallet' || isOnlinePayment ? 'wallet' : 'cod';
-    const address =
-      localStorage.getItem('vegdrop_customer_location') ||
-      'Koramangala, Bengaluru, Karnataka - 560034';
+    // Non-null: checkoutBlockedReason above refuses when it isn't set.
+    const address = savedCustomerAddress();
 
     // Collapse variants back onto their catalog product before ordering.
     const quantities = new Map();
@@ -1290,6 +1348,7 @@ export default function App() {
     toast,
     selectedMarket,
     selectedShop,
+    checkoutBlockedReason,
     customerCoords,
     walletBalance,
     setWalletBalance,
@@ -1553,6 +1612,7 @@ export default function App() {
                     {/* 🌟 2. SKEUOMORPHIC HOME HERO BANNER */}
                     <HomeHeroBanner
                       onExplore={() => setActiveCategoryDetail(categories[0])}
+                      onAddressChange={() => setAddressVersion((v) => v + 1)}
                     />
 
                     {/*
@@ -2105,6 +2165,7 @@ export default function App() {
         onUpdateQuantity={handleUpdateQuantity}
         onCheckout={handleCheckout}
         walletBalance={walletBalance}
+        blockedReason={checkoutBlockedReason}
       />
 
       {/* SCHEDULED CART MODAL */}
@@ -2115,6 +2176,7 @@ export default function App() {
         onUpdateQuantity={handleUpdateQuantity}
         onCheckout={handleScheduleCart}
         walletBalance={walletBalance}
+        blockedReason={checkoutBlockedReason}
       />
 
     </div>

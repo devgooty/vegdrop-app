@@ -3,7 +3,8 @@ import ShopkeeperPanel from './components/ShopkeeperPanel';
 import LoginPage from './components/LoginPage';
 import SplashScreen from './components/SplashScreen';
 import { useToast } from './components/Toast';
-import { restoreSession, logout } from './services/auth';
+import { logout } from './services/auth';
+import useSessionUser from './hooks/useSessionUser';
 import { fetchKycStatus } from './services/kyc';
 import { initialCategories } from './data/mockData';
 import { fetchProducts, updateStock, createProduct, updateProduct } from './services/products';
@@ -24,6 +25,8 @@ const JoinMarket = lazy(() => import('./components/JoinMarket'));
 
 // Only ever opened by an unverified vendor, so it stays out of the main bundle.
 const VendorKycModal = lazy(() => import('./components/VendorKycModal'));
+
+const SHOPKEEPER_ROLES = ['shopkeeper', 'developer'];
 
 export default function ShopkeeperApp() {
   const toast = useToast();
@@ -46,33 +49,25 @@ export default function ShopkeeperApp() {
 
   /**
    * Session state lives in memory and is restored from the httpOnly refresh
-   * cookie on mount. It is deliberately NOT persisted to localStorage: a stored
-   * user object carries a `role`, and anything in web storage is attacker-
-   * editable, so restoring from it would let a customer grant themselves this
-   * panel by typing into devtools.
+   * cookie. It is deliberately NOT persisted to localStorage: a stored user
+   * object carries a `role`, and anything in web storage is attacker-editable,
+   * so restoring from it would let a customer grant themselves this panel by
+   * typing into devtools.
+   *
+   * Watched rather than read once, because that cookie is shared with the
+   * customer and delivery apps on this origin — a sign-in in either of those
+   * tabs lands here on the next silent refresh. The role is whatever the server
+   * says it is; this is a UX gate, and the API authorises independently.
    */
-  const [user, setUser] = useState(null);
-  const [isRestoringSession, setIsRestoringSession] = useState(true);
+  const { user, setUser, isRestoringSession } = useSessionUser({
+    allowedRoles: SHOPKEEPER_ROLES,
+    onIdentityLost: () => {
+      setOrders([]);
+      setRegisteredUsers([]);
+    },
+  });
   const [showSplash, setShowSplash] = useState(true);
   const [isAppLoading, setIsAppLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    restoreSession()
-      .then((restored) => {
-        if (cancelled) return;
-        // The role is whatever the server says it is, checked again below.
-        if (restored && ['shopkeeper', 'developer'].includes(restored.role)) {
-          setUser(restored);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setIsRestoringSession(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Delivery Notifications
   const [deliveryNotifications, setDeliveryNotifications] = useState([]);

@@ -160,7 +160,7 @@ async function offerToNearestRider(orderId) {
         }),
       },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!updated) return { offered: false, reason: 'RACED' };
@@ -185,7 +185,7 @@ async function openToPool(orderId) {
       },
       $push: { 'fulfillment.events': eventPush({ at: now, type: 'rider_open_pool' }) },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
   return { offered: false, openPool: Boolean(updated), order: updated, reason: 'OPEN_POOL' };
 }
@@ -222,7 +222,7 @@ async function acceptOffer({ orderId, riderId }) {
       },
       $push: { 'fulfillment.events': eventPush({ at: now, type: 'rider_accepted', rider }) },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!taken) return { accepted: false, reason: 'OFFER_GONE' };
@@ -236,7 +236,7 @@ async function acceptOffer({ orderId, riderId }) {
       $set: transitionTo('collecting'),
       $push: { 'fulfillment.events': eventPush({ at: now, type: 'collection_started', rider }) },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   return { accepted: true, order: collecting || taken };
@@ -257,7 +257,7 @@ async function declineOffer({ orderId, riderId }) {
       $addToSet: { 'fulfillment.riderOffer.declinedBy': rider },
       $push: { 'fulfillment.events': eventPush({ at: now, type: 'rider_declined', rider }) },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!updated) return { declined: false, reason: 'NOT_YOURS' };
@@ -293,7 +293,7 @@ async function expireOffer(orderId) {
       $addToSet: { 'fulfillment.riderOffer.declinedBy': objectId(offeree) },
       $push: { 'fulfillment.events': eventPush({ at: now, type: 'rider_offer_expired', rider: objectId(offeree) }) },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!released) return { action: 'skipped' };
@@ -373,7 +373,7 @@ async function collectStall({ orderId, riderId, stallId }) {
       arrayFilters: [
         { 'line.claim.stall': stall, 'line.claim.packedAt': { $ne: null }, 'line.claim.collectedAt': null },
       ],
-      new: true,
+      returnDocument: 'after',
     }
   );
 
@@ -416,7 +416,7 @@ async function collectStall({ orderId, riderId, stallId }) {
         'fulfillment.events': eventPush({ at: now, type: 'left_market', rider }),
       },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   return { order: dispatched || updated, dispatched: Boolean(dispatched) };
@@ -450,7 +450,7 @@ async function deliverOrder({ orderId, riderId }) {
         'fulfillment.events': eventPush({ at: now, type: 'delivered', rider }),
       },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!delivered) return { delivered: false, reason: 'NOT_DISPATCHED' };

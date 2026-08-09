@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { X, Trash2, Plus, Minus, ShoppingBasket, CheckCircle2, MapPin } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Trash2, Plus, Minus, ShoppingBasket, CheckCircle2, MapPin, AlertTriangle } from 'lucide-react';
+import { savedCustomerAddress } from '../services/address';
 
 /**
  * Delivery pricing, mirrored from server/routes/orders.js.
@@ -12,12 +13,29 @@ import { X, Trash2, Plus, Minus, ShoppingBasket, CheckCircle2, MapPin } from 'lu
 const DELIVERY_FEE = 25;
 const FREE_DELIVERY_THRESHOLD = 300;
 
-export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity, onCheckout, walletBalance = 0, onSelectProduct }) {
+export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity, onCheckout, walletBalance = 0, onSelectProduct, blockedReason = null }) {
   const [placed, setPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('COD'); // 'PhonePe' | 'Google Pay' | 'Paytm' | 'COD' | 'VegWallet'
   // Razorpay opens in a modal over this one; without this the button stays live
   // underneath it and a second tap starts a second payment.
   const [isPaying, setIsPaying] = useState(false);
+
+  /**
+   * Escape closes the basket.
+   *
+   * This overlay is `fixed inset-0`, so while it is open it covers the whole
+   * shop and swallows every tap aimed at the catalog behind it. Without a key
+   * out, a customer who opened it by accident on a keyboard had no way back
+   * except finding the one small X.
+   */
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape' && !isPaying) onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, isPaying, onClose]);
 
   // The Razorpay checkout script is NOT loaded here. This modal no longer opens
   // checkout itself — card and UPI route through the wallet top-up in
@@ -28,7 +46,7 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
   const total = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const deliveryFee = total > 0 && total < FREE_DELIVERY_THRESHOLD ? DELIVERY_FEE : 0;
   const grandTotal = total + deliveryFee;
-  const savedAddress = localStorage.getItem('vegdrop_customer_location') || 'Koramangala, Bengaluru, Karnataka - 560034';
+  const savedAddress = savedCustomerAddress();
 
   /**
    * What an online method will actually charge.
@@ -43,7 +61,7 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
   const walletCovers = isOnlinePayment && shortfall === 0;
 
   const handlePlaceOrder = async () => {
-    if (cartItems.length === 0 || isPaying) return;
+    if (cartItems.length === 0 || isPaying || blockedReason) return;
 
     // onCheckout is async and server-authoritative: it returns false when the
     // server rejects the order (insufficient funds, insufficient stock).
@@ -92,7 +110,11 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
             <ShoppingBasket className="w-5 h-5 text-emerald-600" />
             <h3 className="font-bold text-gray-900 text-base">Your Basket ({cartItems.length})</h3>
           </div>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100">
+          <button
+            onClick={onClose}
+            aria-label="Close basket"
+            className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -176,14 +198,40 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                   </div>
                 </div>
 
-                {/* Delivery address */}
-                <div className="flex items-start gap-2 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5">
-                  <MapPin className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                {/* Delivery address. Amber, not green, when there isn't one —
+                    this used to print a hardcoded Bengaluru address over an
+                    empty setting and read as confirmed. */}
+                <div
+                  className={`flex items-start gap-2 border rounded-xl p-2.5 ${
+                    savedAddress ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'
+                  }`}
+                >
+                  <MapPin className={`w-4 h-4 mt-0.5 shrink-0 ${savedAddress ? 'text-emerald-600' : 'text-amber-600'}`} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Delivering to</p>
-                    <p className="text-[11px] text-gray-700 font-medium leading-tight truncate">{savedAddress}</p>
+                    <p className={`text-[10px] font-bold uppercase tracking-wider ${savedAddress ? 'text-emerald-700' : 'text-amber-700'}`}>
+                      {savedAddress ? 'Delivering to' : 'No delivery address yet'}
+                    </p>
+                    <p className="text-[11px] text-gray-700 font-medium leading-tight truncate">
+                      {savedAddress || 'Set one from the address bar at the top of the shop.'}
+                    </p>
                   </div>
                 </div>
+
+                {/*
+                  Why this order cannot be placed.
+
+                  An order with no market behind it used to go through: the
+                  server accepted it as a legacy marketless order, and no stall
+                  could ever see it, so it sat at Pending for good. Saying so
+                  here beats a tap that appears to work and quietly strands the
+                  basket.
+                */}
+                {blockedReason && (
+                  <div className="flex items-start gap-2 bg-rose-50 border border-rose-200 rounded-xl p-2.5">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" />
+                    <p className="text-[11px] text-rose-800 font-medium leading-snug">{blockedReason}</p>
+                  </div>
+                )}
 
                 {/* Select Payment Method Options */}
                 <div className="space-y-1.5">
@@ -315,15 +363,17 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
 
                 <button
                   onClick={handlePlaceOrder}
-                  disabled={cartItems.length === 0 || isPaying}
+                  disabled={cartItems.length === 0 || isPaying || Boolean(blockedReason)}
                   className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-black py-3 rounded-xl text-sm transition-colors shadow-md flex items-center justify-center gap-2 active:scale-95"
                 >
                   <span>
-                    {isPaying
-                      ? 'Waiting for payment…'
-                      : isOnlinePayment && !walletCovers
-                        ? `Pay ₹${cardAmount} • ${paymentMethod}`
-                        : `Place Order • ₹${grandTotal} (${paymentMethod})`}
+                    {blockedReason
+                      ? 'Cannot place this order yet'
+                      : isPaying
+                        ? 'Waiting for payment…'
+                        : isOnlinePayment && !walletCovers
+                          ? `Pay ₹${cardAmount} • ${paymentMethod}`
+                          : `Place Order • ₹${grandTotal} (${paymentMethod})`}
                   </span>
                 </button>
               </div>

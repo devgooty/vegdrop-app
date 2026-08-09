@@ -288,7 +288,7 @@ async function claimLines({
           ...(enforceOffer ? { 'line.offer.stall': stall } : {}),
         },
       ],
-      new: true,
+      returnDocument: 'after',
     }
   );
 
@@ -340,7 +340,7 @@ async function promoteIfComplete(orderId, actorId = null) {
         'fulfillment.events': eventPush({ at: now, type: 'locked_all_claimed' }),
       },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (promoted && config.marketplace.riderDispatchOn === 'packing') {
@@ -608,7 +608,7 @@ async function offerRound(orderId, actorId = null) {
         }),
       },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!opened) return { offered: 0, claimed: 0, promoted: null, reason: 'RACED' };
@@ -688,7 +688,7 @@ async function openStallPool(orderId) {
       },
       $push: { 'fulfillment.events': eventPush({ at: now, type: 'stall_open_pool' }) },
     },
-    { arrayFilters: [{ 'line.claim.stall': null }], new: true }
+    { arrayFilters: [{ 'line.claim.stall': null }], returnDocument: 'after' }
   );
 
   return { offered: 0, claimed: 0, promoted: null, openPool: Boolean(updated), order: updated, reason: 'OPEN_POOL' };
@@ -709,7 +709,7 @@ async function declineRound({ orderId, stallId }) {
       $addToSet: { 'fulfillment.stallOffer.declinedBy': stall },
       $push: { 'fulfillment.events': eventPush({ at: now, type: 'stall_declined', stall }) },
     },
-    { arrayFilters: [{ 'line.offer.stall': stall }], new: true }
+    { arrayFilters: [{ 'line.offer.stall': stall }], returnDocument: 'after' }
   );
 
   if (!updated) return { declined: false, reason: 'NOT_YOURS' };
@@ -786,7 +786,7 @@ async function expireStallRound(orderId) {
         }),
       },
     },
-    { arrayFilters: [{ 'line.claim.stall': null }], new: true }
+    { arrayFilters: [{ 'line.claim.stall': null }], returnDocument: 'after' }
   );
 
   if (!released) return { action: 'skipped' };
@@ -823,7 +823,7 @@ async function packLines({ orderId, stallId, lineIds }) {
       arrayFilters: [
         { 'line.lineId': { $in: wanted }, 'line.claim.stall': stall, 'line.claim.packedAt': null },
       ],
-      new: true,
+      returnDocument: 'after',
     }
   );
 
@@ -855,7 +855,7 @@ async function advanceWhenFullyPacked(orderId) {
       $set: transitionTo('collecting'),
       $push: { 'fulfillment.events': eventPush({ at: now, type: 'packed_rider_present' }) },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
   if (toCollecting) return toCollecting;
 
@@ -865,7 +865,7 @@ async function advanceWhenFullyPacked(orderId) {
       $set: transitionTo('awaiting_rider'),
       $push: { 'fulfillment.events': eventPush({ at: now, type: 'packed_awaiting_rider' }) },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (toWaiting && config.marketplace.riderDispatchOn === 'ready') {
@@ -1024,7 +1024,7 @@ async function hopToMarket(order, market, priced) {
         }),
       },
     },
-    { arrayFilters, new: true }
+    { arrayFilters, returnDocument: 'after' }
   );
 
   if (hopped) await offerRound(hopped._id);
@@ -1105,7 +1105,7 @@ async function failOrder(order, note = 'No market could source this order.') {
         'fulfillment.events': eventPush({ at: now, type: 'sourcing_failed', note }),
       },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   // A stall took the last line between our decision and this write. The order is
@@ -1188,7 +1188,7 @@ async function openPartialReview(order) {
         }),
       },
     },
-    { arrayFilters: [{ 'line.claim.stall': null }], new: true }
+    { arrayFilters: [{ 'line.claim.stall': null }], returnDocument: 'after' }
   );
 
   return { action: 'partial', order: updated };
@@ -1278,7 +1278,7 @@ async function acceptPartial(orderId, actorId = null) {
         }),
       },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!settled) return { accepted: false, reason: 'RACED' };
@@ -1353,7 +1353,7 @@ async function retryPartial(orderId) {
       $set: transitionTo('sourcing', { 'fulfillment.partialDeadline': null }),
       $push: { 'fulfillment.events': eventPush({ at: new Date(), type: 'partial_retried' }) },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!reopened) return { retried: false, reason: 'RACED' };
@@ -1382,7 +1382,7 @@ async function expirePartialReview(orderId) {
   const leased = await Order.findOneAndUpdate(
     { _id: orderId, 'fulfillment.status': 'partial_review', 'fulfillment.partialDeadline': seen },
     { $set: { 'fulfillment.partialDeadline': new Date(Date.now() + SWEEP_LEASE_MS) } },
-    { new: true }
+    { returnDocument: 'after' }
   );
   if (!leased) return { action: 'skipped' };
 
@@ -1412,7 +1412,7 @@ async function expireSourcing(orderId) {
   const leased = await Order.findOneAndUpdate(
     { _id: orderId, 'fulfillment.status': 'sourcing', 'fulfillment.sourcingDeadline': seenDeadline },
     { $set: { 'fulfillment.sourcingDeadline': new Date(Date.now() + SWEEP_LEASE_MS) } },
-    { new: true }
+    { returnDocument: 'after' }
   );
   if (!leased) return { action: 'skipped' };
 

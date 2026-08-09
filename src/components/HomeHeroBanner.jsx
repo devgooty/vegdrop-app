@@ -1,14 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Tag, ChevronRight, Clock, MapPin, LocateFixed, Loader2, CheckCircle2, Navigation, X, Check, Building2 } from 'lucide-react';
 import MapLocationPicker from './MapLocationPicker';
+import { savedCustomerAddress, saveCustomerAddress } from '../services/address';
 
-export default function HomeHeroBanner({ onExplore }) {
+export default function HomeHeroBanner({ onExplore, onAddressChange }) {
   const [currentSlide, setCurrentSlide] = useState(0);
+  /**
+   * Null until the customer has actually told us where they are.
+   *
+   * This used to fall back to a hardcoded Bengaluru address, so someone who had
+   * never entered one saw "Deliver to: Koramangala … 560034" in the header while
+   * MarketPicker — which needs coordinates, and had none — said "Set your
+   * delivery address" directly below it. The two are now the same fact.
+   */
   const [location, setLocation] = useState(() => {
-    let saved = localStorage.getItem('vegdrop_customer_location') || 'Koramangala, Bengaluru, Karnataka - 560034';
-    if (saved.includes('516439') || saved.includes('516227')) {
+    let saved = savedCustomerAddress();
+    if (saved && (saved.includes('516439') || saved.includes('516227'))) {
       saved = saved.replace(/516439|516227/g, '521230');
-      localStorage.setItem('vegdrop_customer_location', saved);
+      saveCustomerAddress(saved);
     }
     return saved;
   });
@@ -80,7 +89,7 @@ export default function HomeHeroBanner({ onExplore }) {
    * only tops up the address afterwards.
    */
   useEffect(() => {
-    const saved = localStorage.getItem('vegdrop_customer_location');
+    const saved = savedCustomerAddress();
     const primerAnswered = localStorage.getItem('vegdrop_location_primer');
     if (primerAnswered && (!saved || saved.includes('516439')) && navigator.geolocation) {
       handleDetectLocationSilent();
@@ -90,10 +99,10 @@ export default function HomeHeroBanner({ onExplore }) {
   const saveLocation = (newLoc, details = null, coords = null) => {
     setLocation(newLoc);
     if (details) setLocationDetails(details);
-    localStorage.setItem('vegdrop_customer_location', newLoc);
-    if (coords) {
-      localStorage.setItem('vegdrop_customer_coords', JSON.stringify(coords));
-    }
+    saveCustomerAddress(newLoc, coords);
+    // Lets the shop re-resolve which markets can reach the new address without
+    // waiting for a reload — MarketPicker keys its lookup off the saved coords.
+    if (onAddressChange) onAddressChange(newLoc, coords);
     setLocationSuccess(true);
     setTimeout(() => setLocationSuccess(false), 3000);
   };
@@ -353,11 +362,12 @@ export default function HomeHeroBanner({ onExplore }) {
 
   const banner = banners[currentSlide];
 
-  // Extract pincode to display it prominently so it doesn't get truncated
-  const pincodeMatch = location.match(/(?:- |Pincode: )?(\d{6})$/);
+  // Extract pincode to display it prominently so it doesn't get truncated.
+  // `location` is null until the customer sets one, which is a prompt, not text.
+  const pincodeMatch = location ? location.match(/(?:- |Pincode: )?(\d{6})$/) : null;
   const displayPincode = pincodeMatch ? pincodeMatch[1] : null;
-  const displayLocationText = pincodeMatch 
-    ? location.replace(pincodeMatch[0], '').trim().replace(/,$/, '') 
+  const displayLocationText = pincodeMatch
+    ? location.replace(pincodeMatch[0], '').trim().replace(/,$/, '')
     : location;
 
   return (
@@ -373,14 +383,22 @@ export default function HomeHeroBanner({ onExplore }) {
             <MapPin className="w-4 h-4 text-emerald-700 animate-pulse" />
             <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full ring-1 ring-white" />
           </div>
-          <span className="text-[10px] text-[#8A7E6B] font-semibold uppercase tracking-wider shrink-0">Deliver to:</span>
+          <span className="text-[10px] text-[#8A7E6B] font-semibold uppercase tracking-wider shrink-0">
+            {location ? 'Deliver to:' : 'Delivery to:'}
+          </span>
           {displayPincode && (
             <span className="text-[10px] bg-emerald-100 text-emerald-800 font-black px-1.5 py-0.5 rounded-md shrink-0">
               {displayPincode}
             </span>
           )}
-          <span className="text-xs font-black truncate text-[#1B4D3E] underline decoration-emerald-500/40 decoration-wavy">
-            {displayLocationText}
+          <span
+            className={`text-xs font-black truncate underline decoration-wavy ${
+              location
+                ? 'text-[#1B4D3E] decoration-emerald-500/40'
+                : 'text-amber-700 decoration-amber-500/60'
+            }`}
+          >
+            {displayLocationText || 'Set your delivery address'}
           </span>
         </button>
 
@@ -468,7 +486,7 @@ export default function HomeHeroBanner({ onExplore }) {
                 {banner.offer}
               </span>
               <span className="text-[10px] text-emerald-200 font-semibold flex items-center gap-0.5">
-                <Clock className="w-3 h-3" /> 15m to {location.split(',')[0]}
+                <Clock className="w-3 h-3" /> 15m to {location ? location.split(',')[0] : 'your door'}
               </span>
             </div>
 

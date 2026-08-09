@@ -346,7 +346,7 @@ async function cancelMarketOrder({ req, res, order }) {
         },
       },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!cancelled) {
@@ -634,7 +634,7 @@ router.post(
         status: { $in: ['Preparing', 'Out for Delivery'] },
       },
       { $set: { assignedTo: req.user._id } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!order) throw new ApiError(409, 'That order is no longer available to claim.', 'ALREADY_CLAIMED');
     return res.json({ data: order.toJSON() });

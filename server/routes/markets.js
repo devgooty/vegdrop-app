@@ -543,7 +543,7 @@ router.patch(
     const market = await Market.findByIdAndUpdate(
       req.valid.params.id,
       { $set: update },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
     if (!market) throw new ApiError(404, 'Market not found.', 'NOT_FOUND');
     return res.json({ data: market.toJSON() });
