@@ -10,6 +10,8 @@ import { fetchProducts, updateStock, createProduct, updateProduct } from './serv
 import { fetchOrders, updateOrderStatus } from './services/orders';
 import { fetchMyStall } from './services/stalls';
 import { fetchMyJoinRequest } from './services/markets';
+import { fetchMyShop } from './services/shops';
+import ShopLocationBanner from './components/ShopLocationBanner';
 
 /**
  * Only shopkeepers who run a stall in a market load this, so it stays out of
@@ -184,10 +186,49 @@ export default function ShopkeeperApp() {
     };
   }, [user]);
 
+  /**
+   * The caller's own shop, for the "add your location" prompt.
+   *
+   * Loaded in its own effect and deliberately NOT part of the hold below that
+   * waits on `stall`/`joinRequest`: that gate exists to stop the wrong panel
+   * painting and then swapping, and blocking the whole dashboard on a banner
+   * would trade a real problem for a slower one. Null until it arrives, which
+   * simply renders no banner.
+   */
+  const [shopProfile, setShopProfile] = useState(null);
+
+  const refreshShopProfile = useCallback(() => {
+    return fetchMyShop()
+      .then(setShopProfile)
+      .catch((err) => console.warn('shop profile unavailable:', err.message));
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    fetchMyShop()
+      .then((found) => !cancelled && setShopProfile(found))
+      .catch((err) => console.warn('shop profile unavailable:', err.message));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const handleShopLocationSaved = useCallback(async () => {
+    await refreshShopProfile();
+    toast.success('Shop location saved. Customers nearby can find you now. 📍');
+  }, [refreshShopProfile, toast]);
+
   const handleKycVerified = useCallback((updated) => {
     setKyc(updated);
     toast.success('Account verified! You can now update stock. ✅');
-  }, [toast]);
+    // The shop card carries its own copy of the KYC state, to explain why a shop
+    // is not listed yet. Without this it keeps saying verification is pending
+    // for the rest of the session, having been fetched before it completed.
+    refreshShopProfile();
+  }, [toast, refreshShopProfile]);
   /** Load catalog and orders once a shopkeeper session exists. */
   useEffect(() => {
     if (!user) return;
@@ -195,7 +236,16 @@ export default function ShopkeeperApp() {
 
     async function loadInitialData() {
       await Promise.allSettled([
-        fetchProducts({ limit: 200 })
+        /**
+         * Scoped to what this account actually created — never the shared
+         * platform catalog, which stays market_owner/developer-only precisely
+         * because self-registration lets any stranger clear KYC and reach this
+         * screen (see routes/products.js's loadWritableProduct). Unscoped, the
+         * panel listed every vendor's products as "your catalog" and editing
+         * one 403s; scoped to the shared catalog too, it would let a brand new
+         * account reprice inventory nobody here added.
+         */
+        fetchProducts({ limit: 200, mine: true })
           .then((items) => {
             if (!cancelled && items.length > 0) setProducts(items);
           })
@@ -413,19 +463,33 @@ export default function ShopkeeperApp() {
   }
 
   // No stall and no application: the original single-shop panel, plus a way in.
+  /**
+   * One banner at a time, and never a second modal.
+   *
+   * The KYC modal already opens unprompted above this. Asking for a shop
+   * location first is the more useful question of the two on screen — it is what
+   * makes this account findable at all — so it takes the slot, and the
+   * join-a-market invitation waits until there is a pin.
+   */
+  const needsShopLocation = shopProfile && !shopProfile.hasLocation;
+
   return (
     <>
-      <div className="bg-[#0B7A37] text-white px-4 py-3 flex items-center justify-between gap-3">
-        <p className="text-xs font-medium leading-snug">
-          Trading at a vegetable market? Join it to receive orders from customers nearby.
-        </p>
-        <button
-          onClick={() => setShowJoin(true)}
-          className="shrink-0 bg-white text-[#0B7A37] text-xs font-bold px-3 py-1.5 rounded-lg"
-        >
-          Join a market
-        </button>
-      </div>
+      {needsShopLocation ? (
+        <ShopLocationBanner shop={shopProfile} onSaved={handleShopLocationSaved} />
+      ) : (
+        <div className="bg-[#0B7A37] text-white px-4 py-3 flex items-center justify-between gap-3">
+          <p className="text-xs font-medium leading-snug">
+            Trading at a vegetable market? Join it to receive orders from customers nearby.
+          </p>
+          <button
+            onClick={() => setShowJoin(true)}
+            className="shrink-0 bg-white text-[#0B7A37] text-xs font-bold px-3 py-1.5 rounded-lg"
+          >
+            Join a market
+          </button>
+        </div>
+      )}
       <ShopkeeperPanel
         user={user}
         orders={orders}

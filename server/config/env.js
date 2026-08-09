@@ -89,8 +89,6 @@ const whatsappAccessToken = optional('WHATSAPP_ACCESS_TOKEN', '');
 const whatsappTemplateName = optional('WHATSAPP_OTP_TEMPLATE_NAME', '');
 const whatsappConfigured = Boolean(whatsappPhoneNumberId && whatsappAccessToken && whatsappTemplateName);
 
-const whatsappBotBridgeToken = optional('WHATSAPP_BOT_BRIDGE_TOKEN', '');
-
 /**
  * SMTP, for copying a login code to a verified email address.
  *
@@ -171,12 +169,16 @@ if (smtpHost && !smtpFrom && emailProviders.length === 0) {
 }
 
 /**
- * console      — dev stub, prints codes to stdout
- * whatsapp     — official WhatsApp Cloud API (approved template, paid per message)
- * whatsapp_bot — UNOFFICIAL WhatsApp Web client via server/bot (free, against
- *                WhatsApp's Terms of Service, the number can be banned)
+ * console  — dev stub, prints codes to stdout
+ * whatsapp — official WhatsApp Cloud API (approved template, paid per message)
+ *
+ * An unofficial WhatsApp Web client used to be a third option. It was removed:
+ * sign-in here is passwordless, so the OTP transport IS the authentication
+ * system, and resting that on a client that violates WhatsApp's Terms of
+ * Service means a ban locks every user out at once with no way back in. That
+ * is not a risk a payments app gets to take to save on message fees.
  */
-const VALID_TRANSPORTS = ['console', 'whatsapp', 'whatsapp_bot'];
+const VALID_TRANSPORTS = ['console', 'whatsapp'];
 
 /**
  * Which transport delivers codes to phone numbers.
@@ -197,11 +199,6 @@ if (notifyTransport === 'whatsapp' && !whatsappConfigured) {
   );
 }
 
-if (notifyTransport === 'whatsapp_bot' && whatsappBotBridgeToken.length < 16) {
-  fatal.push(
-    'NOTIFY_TRANSPORT=whatsapp_bot requires WHATSAPP_BOT_BRIDGE_TOKEN (at least 16 characters). Generate one with: node -e "console.log(require(\'crypto\').randomBytes(24).toString(\'base64url\'))"'
-  );
-}
 
 // Shipping the console stub to production means verification codes are written
 // to server logs instead of being delivered. Fail at boot, not at first send.
@@ -219,6 +216,30 @@ const razorpayConfigured = Boolean(razorpayKeyId && razorpayKeySecret);
 if (isProduction && (!razorpayConfigured || !/^rzp_(live|test)_/.test(razorpayKeyId))) {
   fatal.push('RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET must be real credentials in production. Payments cannot run in mock mode.');
 }
+
+/**
+ * The webhook secret, which is a THIRD credential — not the key secret above.
+ * Razorpay signs webhook bodies with a value you choose in their dashboard when
+ * you register the endpoint, and verifying with the key secret simply never
+ * matches.
+ *
+ * WARNED ABOUT, NOT FATAL — and the distinction is the same one RAZORPAYX_*
+ * settled earlier in this file's history.
+ *
+ * Every boot-time failure above gates something that is actively WRONG without
+ * it: no CORS origins and the client cannot reach the API, no JWT secret and
+ * auth is broken, mock Razorpay and payments are theatre. Missing this one
+ * leaves the app behaving exactly as it did before the webhook existed —
+ * `/topup/verify` still credits, and routes/wallet.js answers the webhook with
+ * a 503 and a loud log rather than trusting an unverifiable body. That is a
+ * missing recovery path, not a broken system, and refusing to start the whole
+ * app over it would take checkout down to protect a fallback.
+ *
+ * It still matters: without it, a tab closed in the seconds after paying means
+ * the money was captured and never credited, with nothing to reconcile it. The
+ * warning below is deliberately blunt about that.
+ */
+const razorpayWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || '';
 
 /**
  * Vendor KYC.
@@ -248,6 +269,23 @@ const payoutKeyId = process.env.RAZORPAYX_KEY_ID || '';
 const payoutKeySecret = process.env.RAZORPAYX_KEY_SECRET || '';
 const payoutAccountNumber = process.env.RAZORPAYX_ACCOUNT_NUMBER || '';
 const payoutConfigured = Boolean(payoutKeyId && payoutKeySecret && payoutAccountNumber);
+
+/**
+ * The stall cascade's clocks, resolved before the config object so the ceiling
+ * can be derived from the rounds it has to contain.
+ *
+ * `sourcingWindowSeconds` used to BE the sourcing clock. It is now only a
+ * backstop, and a backstop shorter than one round would fire mid-cascade and
+ * hop an order that nobody had finished considering — so the configured value
+ * is a floor, not the answer. The `+1` round is the open pool, which gets a
+ * window of its own after the ranked rounds are spent.
+ */
+const stallOfferWindowSeconds = int('MARKET_STALL_OFFER_WINDOW_SECONDS', 120);
+const maxStallRounds = int('MARKET_MAX_STALL_ROUNDS', 3);
+const sourcingCeilingSeconds = Math.max(
+  int('MARKET_SOURCING_WINDOW_SECONDS', 90),
+  (maxStallRounds + 1) * stallOfferWindowSeconds + 60
+);
 
 const config = Object.freeze({
   NODE_ENV,
@@ -310,30 +348,6 @@ const config = Object.freeze({
     webhookVerifyToken: optional('WHATSAPP_WEBHOOK_VERIFY_TOKEN', ''),
   }),
 
-  /**
-   * Unofficial WhatsApp bot (server/bot). Free, and against WhatsApp's Terms of
-   * Service — the number can be banned without warning.
-   */
-  whatsappBot: Object.freeze({
-    bridgeHost: optional('WHATSAPP_BOT_BRIDGE_HOST', '127.0.0.1'),
-    bridgePort: int('WHATSAPP_BOT_BRIDGE_PORT', 5055),
-    bridgeUrl: optional('WHATSAPP_BOT_BRIDGE_URL', `http://127.0.0.1:${int('WHATSAPP_BOT_BRIDGE_PORT', 5055)}`),
-    bridgeToken: whatsappBotBridgeToken,
-    // Generous: the bot paces sends on purpose, so a queued message waits.
-    bridgeTimeoutMs: int('WHATSAPP_BOT_BRIDGE_TIMEOUT_MS', 30000),
-
-    authDir: optional('WHATSAPP_BOT_AUTH_DIR', '.auth'),
-    countryCode: optional('WHATSAPP_BOT_COUNTRY_CODE', '91').replace(/\D/g, ''),
-
-    // Ban-avoidance pacing. Raising these raises the risk.
-    minIntervalMs: int('WHATSAPP_BOT_MIN_INTERVAL_MS', 3000),
-    jitterMs: int('WHATSAPP_BOT_JITTER_MS', 2000),
-    dailyCap: int('WHATSAPP_BOT_DAILY_CAP', 200),
-    perRecipientCooldownMs: int('WHATSAPP_BOT_RECIPIENT_COOLDOWN_MS', 60000),
-
-    verbose: optional('WHATSAPP_BOT_VERBOSE', 'false') === 'true',
-  }),
-
   email: Object.freeze({
     configured: emailConfigured,
     from: emailFrom,
@@ -368,6 +382,7 @@ const config = Object.freeze({
   razorpay: Object.freeze({
     keyId: razorpayKeyId,
     keySecret: razorpayKeySecret,
+    webhookSecret: razorpayWebhookSecret,
     configured: razorpayConfigured,
     // Mock order creation is a development affordance only; prod is blocked above.
     allowMock: !isProduction && !razorpayConfigured,
@@ -400,9 +415,44 @@ const config = Object.freeze({
    * that takes and how far it is allowed to travel looking for one.
    */
   marketplace: Object.freeze({
-    // How long stalls have to accept before the order moves on. Stalls with
-    // auto-accept answer in milliseconds; this window is for the humans.
-    sourcingWindowSeconds: int('MARKET_SOURCING_WINDOW_SECONDS', 90),
+    /**
+     * How long ONE round of stall offers stays live. This is the real sourcing
+     * clock — the window a shopkeeper actually has to look at their phone and
+     * answer. Stalls with auto-accept answer in milliseconds and never use it.
+     */
+    stallOfferWindowSeconds,
+    /**
+     * Rounds of ranked offers before a market falls back to its open pool.
+     *
+     * Each round costs a full window, so this bounds how long one market can
+     * hold an order: rounds x window, then one more window in the pool.
+     */
+    maxStallRounds,
+    /**
+     * Most stalls one order may be split across.
+     *
+     * Not a correctness limit — a cap on the rider's walk. Six stalls for one
+     * order is a long collection round and a lot of ways for it to go wrong.
+     */
+    maxStallsPerOrder: int('MARKET_MAX_STALLS_PER_ORDER', 4),
+    /**
+     * How long the customer has to answer "3 of your 5 items are available".
+     *
+     * Silence is taken as "send what you have" — they have already waited
+     * through a full sourcing attempt, and cancelling on them would turn a
+     * mostly-successful order into nothing at all.
+     */
+    partialDecisionWindowSeconds: int('MARKET_PARTIAL_DECISION_WINDOW_SECONDS', 300),
+    /**
+     * Absolute ceiling on one market, as a backstop only.
+     *
+     * `stallOffer.expiresAt` drives the cascade; this exists so an order can
+     * never be stranded if round bookkeeping goes wrong, and because the
+     * sweeper already indexes it. Derived from the round budget above and
+     * floored by MARKET_SOURCING_WINDOW_SECONDS, so it can never be shorter
+     * than the cascade it is supposed to outlive.
+     */
+    sourcingWindowSeconds: sourcingCeilingSeconds,
     // Total markets an order may be offered to, including the first. Each hop
     // costs the customer another full window, so this is deliberately small.
     maxSourcingAttempts: int('MARKET_MAX_SOURCING_ATTEMPTS', 3),
@@ -471,6 +521,33 @@ const config = Object.freeze({
     commissionBps: int('STALL_COMMISSION_BPS', 0),
   }),
 
+  /**
+   * Photographs of the actual produce, taken by the stall holding it.
+   *
+   * Stored inline rather than in object storage, so the cap is doing real work:
+   * it bounds a Mongo document, an API response, and a customer's mobile data
+   * all at once. The client downscales before uploading, but the client cannot
+   * be trusted, so the same limit is enforced at the route.
+   */
+  freshPhoto: Object.freeze({
+    /** Decoded bytes. ~120 KB is a legible 800px photo at JPEG quality 0.6. */
+    maxBytes: int('MARKET_FRESH_PHOTO_MAX_BYTES', 120_000),
+
+    /**
+     * How long a photo counts as "today's".
+     *
+     * Deliberately shorter than the retention below: a stale photo stops being
+     * shown to customers long before it is deleted, so a shopkeeper who
+     * re-photographs on day three overwrites their row rather than creating a
+     * second one. Showing a four-day-old photograph as evidence of freshness
+     * would be worse than showing the stock image.
+     */
+    freshForHours: int('MARKET_FRESH_PHOTO_FRESH_HOURS', 24),
+
+    /** When the TTL index removes it. See models/StallPhoto.js. */
+    retentionDays: int('MARKET_FRESH_PHOTO_RETENTION_DAYS', 7),
+  }),
+
   cookies: Object.freeze({
     refreshName: 'vb_rt',
     secure: isProduction,
@@ -488,6 +565,22 @@ if (ephemeral.length > 0 && !isTest) {
   console.warn(
     `[config] ${ephemeral.join(', ')} not set — generated ephemeral secret(s) for this process.\n` +
     '[config] Sessions will not survive a restart. Set real values in .env before deploying.'
+  );
+}
+
+/**
+ * Collecting money with no way to recover a payment the browser never confirmed.
+ *
+ * Only worth saying when Razorpay is actually live — in development there is
+ * nothing to reconcile, and a warning printed on every local boot is a warning
+ * nobody reads.
+ */
+if (razorpayConfigured && !razorpayWebhookSecret && !isTest) {
+  console.warn(
+    '[config] RAZORPAY_WEBHOOK_SECRET is not set, so POST /api/wallet/webhook answers 503.\n' +
+    '[config] Payments still work, but a customer whose browser closes between paying and\n' +
+    '[config] returning will have been charged without being credited, and nothing will fix it.\n' +
+    '[config] Register the endpoint in the Razorpay dashboard and set the secret it gives you.'
   );
 }
 

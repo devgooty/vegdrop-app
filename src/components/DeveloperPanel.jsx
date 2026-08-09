@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Code,
   Terminal,
-  Database,
+  Database,
   Copy,
   Check,
   UserPlus,
@@ -281,9 +281,7 @@ export default function DeveloperPanel({
         </div>
       )}
 
-      {/* TAB 3: FEATURE FLAGS */}
-      {/* TAB 4: WALLET MANAGEMENT */}
-      {/* TAB 4: WALLET MANAGEMENT */}
+      {/* TAB 3: WALLET MANAGEMENT */}
       {activeSubTab === 'wallet' && (
         <div className="space-y-5">
           {/* Stats Cards */}
@@ -298,7 +296,15 @@ export default function DeveloperPanel({
             <div className="bg-slate-900 border border-emerald-500/20 rounded-2xl p-4 text-center">
               <CheckCircle2 className="w-5 h-5 text-emerald-400 mx-auto mb-1" />
               <div className="text-2xl font-black text-emerald-400">
-                ₹{walletTransactions.filter(r => r.type === 'credit' && r.status === 'success').reduce((s, r) => s + r.amount, 0)}
+                {/* Filtered on `reason`, not on a `status` field the API has
+                    never sent — that comparison matched nothing, so this read
+                    ₹0 no matter how many top-ups had landed. Narrowed to
+                    top-ups too: refunds and payouts are credits as well, and
+                    counting them as "recharged" overstated it. */}
+                ₹{walletTransactions
+                  .filter(r => r.reason === 'razorpay_topup')
+                  .reduce((s, r) => s + r.amount, 0)
+                  .toLocaleString('en-IN')}
               </div>
               <div className="text-[10px] text-slate-400 font-bold uppercase">Total Recharged</div>
             </div>
@@ -311,21 +317,22 @@ export default function DeveloperPanel({
               <p className="text-slate-500 text-xs italic text-center py-4">No wallet transactions yet.</p>
             ) : (
               walletTransactions.map(req => (
-                <div key={req.id} className="flex items-center justify-between py-2 border-b border-slate-800 last:border-0">
-                  <div>
-                    <p className="text-white text-xs font-bold">{req.label} <span className="text-slate-500">• {req.method}</span></p>
-                    <p className="text-slate-500 text-[10px] font-mono">{new Date(req.timestamp).toLocaleString()}</p>
-                    {req.refId && req.refId !== 'cancelled' && <p className="text-slate-600 text-[9px] font-mono">ID: {req.refId}</p>}
-                  </div>
-                  <div className="text-right">
-                    <p className={`font-black text-sm ${req.type === 'credit' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {req.type === 'credit' ? '+' : '-'}₹{req.amount}
+                <div key={req.id} className="flex items-start justify-between gap-3 py-2 border-b border-slate-800 last:border-0">
+                  <div className="min-w-0">
+                    <p className="text-white text-xs font-bold">{req.label}</p>
+                    {req.note && <p className="text-slate-500 text-[10px] truncate">{req.note}</p>}
+                    <p className="text-slate-500 text-[10px] font-mono">
+                      {req.timestamp ? new Date(req.timestamp).toLocaleString() : '—'}
                     </p>
-                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full border ${
-                      req.status === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
-                      req.status === 'failed' ? 'bg-red-500/10 text-red-400 border-red-500/30' :
-                      'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                    }`}>{req.status}</span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className={`font-black text-sm ${req.type === 'credit' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {req.type === 'credit' ? '+' : '−'}₹{req.amount.toLocaleString('en-IN')}
+                    </p>
+                    {/* The running balance. A status chip here was always
+                        "undefined": the ledger only records money that moved,
+                        so there is no pending or failed row to distinguish. */}
+                    <p className="text-slate-500 text-[9px] font-mono">bal ₹{req.balanceAfter.toLocaleString('en-IN')}</p>
                   </div>
                 </div>
               ))

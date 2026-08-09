@@ -23,9 +23,15 @@ export async function updateMyStall(changes) {
 /**
  * Everything this stall should be looking at right now.
  *
- * `offers` are live in this market with lines still going; `packing` is work
- * already committed to. Poll this on the same 5s cycle the apps already use —
- * a new offer surfaces within five seconds with no push infrastructure at all.
+ * `offers` are the orders this stall has actually been ASKED about, not every
+ * order in the market: the server ranks stalls by how much of an order they can
+ * cover and addresses each one only its own slice. `openPool` on an offer means
+ * the ranking was exhausted and it is now first-come for the whole market.
+ *
+ * `packing` is work already committed to. Poll this on the same 5s cycle the
+ * apps already use — an offer surfaces within five seconds of the round
+ * opening, comfortably inside the two-minute window, with no push
+ * infrastructure at all.
  *
  * @returns {Promise<{offers: Array, packing: Array, stall: object}>}
  */
@@ -45,6 +51,21 @@ export async function fetchStallOrders() {
  */
 export async function claimLines(orderId, lineIds) {
   const result = await api.post(`/stalls/orders/${orderId}/claim`, { lineIds });
+  return result.data;
+}
+
+/**
+ * Turn an offer down.
+ *
+ * Worth doing rather than just ignoring it: the lines move to the next-ranked
+ * stall immediately instead of sitting out the rest of the two-minute window,
+ * so the customer waits less. The refusal is remembered, so this stall is not
+ * asked about this order again while it stays in this market.
+ *
+ * @throws {ApiRequestError} 409 NOT_YOURS when the offer already moved on
+ */
+export async function declineOffer(orderId) {
+  const result = await api.post(`/stalls/orders/${orderId}/decline`);
   return result.data;
 }
 
@@ -70,6 +91,45 @@ export async function fetchStallInventory() {
  */
 export async function saveStallInventory(items) {
   const result = await api.put('/stalls/me/inventory', { items });
+  return result.data;
+}
+
+/**
+ * Everything the stock screen renders, in one request.
+ *
+ * Every product this market prices, with the market owner's price, this stall's
+ * declared stock (0 when none), and when this stall last photographed it. The
+ * picker and the stock list are two filters over this one list — `stock === 0`
+ * is what you could add, `stock > 0` is what you are holding — so the two can
+ * never disagree about what exists.
+ *
+ * `price` here is READ-ONLY. One price per product per market, set by the
+ * market owner; a stall sells at it and cannot change it.
+ *
+ * @returns {Promise<Array<{id, name, weight, image, pricePaise, price, stock, photoTakenAt}>>}
+ */
+export async function fetchStallStock() {
+  const result = await api.get('/stalls/me/stock');
+  return result.data;
+}
+
+/**
+ * Post today's photo of the real produce.
+ *
+ * Optional throughout — a stall that never does this shows the catalog image,
+ * exactly as before. Pass a data URI from services/imageCapture.js, which is
+ * what gets a phone camera file under the size limit.
+ *
+ * @throws {ApiRequestError} 413 PHOTO_TOO_LARGE, 400 UNSUPPORTED_IMAGE,
+ *   400 PRODUCT_UNAVAILABLE when the market is not selling that product
+ */
+export async function saveFreshPhoto(productId, dataUri) {
+  const result = await api.put(`/stalls/me/photos/${productId}`, { image: dataUri });
+  return result.data;
+}
+
+export async function removeFreshPhoto(productId) {
+  const result = await api.delete(`/stalls/me/photos/${productId}`);
   return result.data;
 }
 

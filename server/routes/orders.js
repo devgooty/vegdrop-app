@@ -1,8 +1,6 @@
 'use strict';
 
 const express = require('express');
-const crypto = require('crypto');
-const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Market = require('../models/Market');
@@ -10,10 +8,10 @@ const Stall = require('../models/Stall');
 const { ApiError } = require('../middleware/errors');
 const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { withTransaction } = require('../db/connect');
 const wallet = require('../services/wallet');
 const sourcing = require('../services/sourcing');
 const checkout = require('../services/checkout');
+const settlement = require('../services/settlement');
 const { CANCELLABLE_BY_CUSTOMER, CANCELLABLE_BY_STAFF, transitionTo } = require('../utils/orderStatus');
 
 const router = express.Router();
@@ -33,9 +31,6 @@ const TRANSITION_PERMISSIONS = {
   Delivered: ['delivery', 'market_owner', 'developer'],
   Cancelled: ['customer', 'shopkeeper', 'market_owner', 'developer'],
 };
-
-const DELIVERY_FEE_PAISE = 2500; // ₹25
-const FREE_DELIVERY_THRESHOLD_PAISE = 30000; // ₹300
 
 /** Matches no document. Used when a caller has no scope at all. */
 const MATCH_NOTHING = { _id: null };
@@ -82,12 +77,49 @@ async function visibilityFilter(user) {
     const stall = await Stall.findOne({ owner: user._id, isActive: true, status: 'approved' })
       .select('_id market')
       .lean();
-    if (!stall) return { market: null };
+
+    /**
+     * `{ market: null, shop: null }` is the legacy pool: orders placed before a
+     * customer could name a seller. It stays shared by every shopkeeper because
+     * that is what the original single-shop flow depends on, and `{ shop: null }`
+     * matches documents written before the field existed, so nothing needs a
+     * backfill.
+     *
+     * Narrowing it from a bare `{ market: null }` is what stops one independent
+     * shop reading another's orders: without the extra clause, every order
+     * addressed to a specific shop would also land in every other stall-less
+     * shopkeeper's list.
+     *
+     * This clause can be dropped entirely once every client path sends either a
+     * marketId or a shopId and any remaining legacy orders are closed out.
+     */
+    const legacyPool = { market: null, shop: null };
+
+    // No stall: their own shop's orders, plus the legacy pool.
+    if (!stall) return { $or: [{ shop: user._id }, legacyPool] };
+
     return {
       $or: [
-        { market: stall.market, 'fulfillment.status': 'sourcing' },
+        /**
+         * Live sourcing in my market — but only what is actually addressed to
+         * me, or has fallen through to the market-wide pool.
+         *
+         * This used to be every sourcing order in the market. Narrowing it is
+         * what makes the ranked cascade real rather than advisory: a stall that
+         * can see an order can also claim from it, so an unscoped clause here
+         * would let any stall take lines that were offered to a better-ranked
+         * one, and the ranking would decide nothing.
+         */
+        {
+          market: stall.market,
+          'fulfillment.status': 'sourcing',
+          $or: [
+            { 'items.offer.stall': stall._id },
+            { 'fulfillment.stallOffer.openPool': true },
+          ],
+        },
         { 'items.claim.stall': stall._id },
-        { market: null },
+        legacyPool,
       ],
     };
   }
@@ -113,13 +145,55 @@ async function visibilityFilter(user) {
           'fulfillment.riderOffer.expiresAt': { $gt: new Date() },
         },
         { assignedTo: null, 'fulfillment.riderOffer.openPool': true },
-        // Legacy marketless orders keep the original unclaimed-pool behaviour.
+        /**
+         * Legacy marketless orders keep the original unclaimed-pool behaviour.
+         *
+         * Deliberately NOT narrowed by `shop`, unlike the shopkeeper branch
+         * above: an independent shop has no market, so the dispatch cascade —
+         * which picks the rider nearest a market — has no origin to work from.
+         * The open pool is how a shop order reaches a rider at all.
+         */
         { assignedTo: null, market: null, status: { $in: ['Preparing', 'Out for Delivery'] } },
       ],
     };
   }
 
   return { customer: user._id };
+}
+
+/**
+ * Strip the customer's identity from an order before a shopkeeper sees it.
+ *
+ * `visibilityFilter` above decides WHICH orders each role may read; this decides
+ * which FIELDS. A shopkeeper passed the filter and then received the whole
+ * document — name, phone, delivery address, and the delivery coordinates.
+ *
+ * The market stall side never had this problem, because routes/stalls.js
+ * projects a narrow shape by hand and deliberately never includes the customer:
+ * a stall is being asked "can you supply 2kg of tomatoes", and the name, phone
+ * and address belong to the rider's job. An independent shop is in exactly the
+ * same position — it packs, and a rider carries — so the same rule applies. It
+ * simply reached the customer through a different route, which is why it was
+ * missed.
+ *
+ * Only `shopkeeper` is redacted. A delivery agent needs all of it to find the
+ * door; a customer is reading their own order; `market_owner` and `developer`
+ * are operator roles already scoped by the filter above.
+ */
+function redactForViewer(order, user) {
+  if (user.role !== 'shopkeeper') return order;
+
+  const {
+    customerName: _name,
+    phone: _phone,
+    address: _address,
+    // The customer's home as a coordinate pair — identifying on its own, and a
+    // shopkeeper has no use for it.
+    deliveryLocation: _location,
+    ...rest
+  } = order;
+
+  return rest;
 }
 
 router.get(
@@ -140,7 +214,7 @@ router.get(
     if (status) filter.status = status;
 
     const orders = await Order.find(filter).sort({ createdAt: -1 }).limit(limit);
-    return res.json({ data: orders.map((o) => o.toJSON()) });
+    return res.json({ data: orders.map((o) => redactForViewer(o.toJSON(), req.user)) });
   }
 );
 
@@ -152,7 +226,7 @@ router.get(
     const order = await Order.findOne({ _id: req.valid.params.id, ...(await visibilityFilter(req.user)) });
     // 404 rather than 403 so order ids are not probeable.
     if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
-    return res.json({ data: order.toJSON() });
+    return res.json({ data: redactForViewer(order.toJSON(), req.user) });
   }
 );
 
@@ -189,6 +263,16 @@ router.post(
          * accepts. Supply it and the order is offered to that market's stalls.
          */
         marketId: fields.objectId.optional(),
+
+        /**
+         * Which independent shop to buy from — a shopkeeper's own user id, since
+         * a shop outside any market cannot be a stall.
+         *
+         * Mutually exclusive with marketId: an order has one seller. Omit both
+         * and this is still the legacy marketless order, unchanged.
+         */
+        shopId: fields.objectId.optional(),
+
         // Where it is going. Used to find the next nearest market if the first
         // one cannot fill the order. The customer app has had these in local
         // storage all along and simply never sent them.
@@ -199,7 +283,9 @@ router.post(
   }),
   async (req, res) => {
     /**
-     * The whole of this handler now lives in services/checkout.js.
+     * The whole of this handler lives in services/checkout.js — including the
+     * independent-shop resolution, the market price-sheet lookup, the stock
+     * claims, and the first round of stall offers.
      *
      * Recurring deliveries place the same order without a request to carry
      * it, and a second implementation of pricing, stock claiming, delivery
@@ -281,9 +367,96 @@ async function cancelMarketOrder({ req, res, order }) {
     )
   );
 
-  const settled = await Order.findById(cancelled._id);
-  return res.json({ data: settled.toJSON() });
+  return res.json({ data: redactForViewer(cancelled.toJSON(), req.user) });
 }
+
+// ---------------------------------------------------------------------------
+// "Only some of your items are available"
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve an order parked in `partial_review` for the customer who placed it.
+ *
+ * Staff are deliberately excluded. This is a question about whether a smaller
+ * basket is still worth buying, and only the person paying can answer it — a
+ * market owner tapping "continue" on someone else's behalf would be committing
+ * them to a purchase they did not agree to.
+ */
+async function loadPartialOrder(req) {
+  const order = await Order.findOne({
+    _id: req.valid.params.id,
+    customer: req.user._id,
+  }).select('_id fulfillment.status');
+
+  if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+
+  if (order.fulfillment?.status !== 'partial_review') {
+    throw new ApiError(
+      409,
+      'This order is no longer waiting on your decision.',
+      'NOT_PARTIAL'
+    );
+  }
+
+  return order;
+}
+
+/**
+ * Send what is available. The rest is dropped and refunded.
+ *
+ * The same call the sweeper makes when the customer never answers, so there is
+ * exactly one implementation of "settle a partial order" and no chance of the
+ * timeout path and the button path disagreeing about the money.
+ */
+router.post(
+  '/:id/partial/accept',
+  requireAuth,
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const order = await loadPartialOrder(req);
+    const result = await sourcing.acceptPartial(order._id, req.user._id);
+
+    if (!result.accepted) {
+      throw new ApiError(409, 'This order is no longer waiting on your decision.', result.reason);
+    }
+
+    return res.json({
+      data: {
+        ...result.order.toJSON(),
+        refundPaise: result.refundPaise,
+        droppedCount: result.dropped,
+      },
+    });
+  }
+);
+
+/**
+ * Look somewhere else instead.
+ *
+ * Everything claimed here is handed back, so the stalls holding produce for
+ * this order are released rather than left waiting on a customer who has moved
+ * on. Fails cleanly when there is no other market to try — the honest answer at
+ * that point is that continuing or cancelling are the only options left.
+ */
+router.post(
+  '/:id/partial/retry',
+  requireAuth,
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const order = await loadPartialOrder(req);
+    const result = await sourcing.retryPartial(order._id);
+
+    if (!result.retried) {
+      const message =
+        result.reason === 'NO_MARKET' || result.reason === 'NO_ATTEMPTS_LEFT'
+          ? 'No other market nearby can fill the rest of this order.'
+          : 'This order is no longer waiting on your decision.';
+      throw new ApiError(409, message, result.reason);
+    }
+
+    return res.json({ data: result.order.toJSON() });
+  }
+);
 
 router.patch(
   '/:id/status',
@@ -327,6 +500,21 @@ router.patch(
 
     if (order.market && status === 'Cancelled') {
       return cancelMarketOrder({ req, res, order });
+    }
+
+    /**
+     * A shopkeeper may only drive an order addressed to their own shop.
+     *
+     * Same shape and same reasoning as the delivery check below: the visibility
+     * filter already hides a competitor's order, but the consequence of getting
+     * it wrong is one shopkeeper running another's order and, for a COD one,
+     * flipping it to paid. Orders with no shop are the legacy pool, which every
+     * shopkeeper is still allowed to work.
+     */
+    if (req.user.role === 'shopkeeper' && order.shop) {
+      if (order.shop.toString() !== req.user._id.toHexString()) {
+        throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+      }
     }
 
     /**
@@ -395,7 +583,27 @@ router.patch(
     order.statusHistory.push({ status, at: new Date(), by: req.user._id });
     await order.save();
 
-    return res.json({ data: order.toJSON() });
+    /**
+     * The customer has the goods, so the shop has earned its money.
+     *
+     * The market equivalent lives in services/dispatch.js, on the rider's
+     * completion. This branch had no equivalent at all, so an independent shop
+     * was paid for nothing it sold through the app — the customer's wallet was
+     * debited and no obligation was ever written.
+     *
+     * Same shape as the dispatch call deliberately: awaited because it is
+     * money, but never allowed to fail a delivery that genuinely happened. The
+     * sweeper's backfill picks up anything left with `settledAt` unset.
+     */
+    if (status === 'Delivered' && order.shop) {
+      try {
+        await settlement.recordDelivery(order._id);
+      } catch (err) {
+        console.warn(`[orders] settlement for ${order.orderNumber} deferred: ${err.message}`);
+      }
+    }
+
+    return res.json({ data: redactForViewer(order.toJSON(), req.user) });
   }
 );
 
@@ -409,11 +617,14 @@ router.post(
      * Conditional update: only an unassigned order can be claimed, so two agents
      * racing for the same order cannot both win.
      *
-     * Scoped to `market: null` — legacy orders only. A market order is offered
-     * to one rider at a time, nearest first, and letting anyone grab it here
-     * would undercut that cascade and hand the job to a rider who happened to
-     * be watching the list rather than the one standing closest to the market.
-     * Riders take those through POST /api/rider/orders/:id/accept.
+     * Scoped to `market: null` — legacy and independent-shop orders. A market
+     * order is offered to one rider at a time, nearest first, and letting anyone
+     * grab it here would undercut that cascade and hand the job to a rider who
+     * happened to be watching the list rather than the one standing closest to
+     * the market. Riders take those through POST /api/rider/orders/:id/accept.
+     *
+     * An independent shop belongs on this side on purpose: it has no market, so
+     * there is no origin for the cascade to measure from.
      */
     const order = await Order.findOneAndUpdate(
       {

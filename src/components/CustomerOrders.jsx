@@ -11,6 +11,7 @@ import { Package, Clock, IndianRupee, MapPin, ArrowRight, ShoppingBag, CalendarR
  */
 const MARKET_STAGE = {
   sourcing: 'Finding a stall',
+  partial_review: 'Needs your answer',
   packing: 'Being packed',
   awaiting_rider: 'Ready for pickup',
   collecting: 'Rider collecting',
@@ -72,6 +73,15 @@ export default function CustomerOrders({
   onGoHome,
   /** Only offered while stalls are still deciding — see the card below. */
   onCancelOrder,
+  /**
+   * Answers to "only some of your items are available".
+   *
+   * Both optional: if neither is wired the card still explains the situation,
+   * and the server settles it on the customer's behalf when the decision window
+   * lapses. A missing handler must never leave someone stuck.
+   */
+  onAcceptPartial,
+  onRetryPartial,
 }) {
   const [activeTab, setActiveTab] = useState('recent');
   const [trackingModalOrder, setTrackingModalOrder] = useState(null);
@@ -367,11 +377,81 @@ export default function CustomerOrders({
                     </div>
                   )}
 
+                  {/*
+                    The market found some of the order but not all of it.
+
+                    Both options are offered plainly, with the money spelled
+                    out, because this is a decision about what they pay for. If
+                    they say nothing, the server sends what it has and refunds
+                    the rest — so the copy must not imply the order is stuck.
+                  */}
+                  {order.awaitingPartialChoice && (
+                    <div className="mt-3 space-y-2">
+                      <div className="text-[11px] font-semibold text-amber-900 bg-amber-50 p-3 rounded-xl border border-amber-200">
+                        <div className="flex items-start gap-2">
+                          <PauseCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                          <p className="leading-snug">
+                            {order.availableItems.length} of{' '}
+                            {order.availableItems.length + order.unavailableItems.length} items are
+                            available here.
+                          </p>
+                        </div>
+
+                        {order.unavailableItems.length > 0 && (
+                          <p className="mt-2 leading-snug font-medium text-amber-800">
+                            Not available:{' '}
+                            {order.unavailableItems
+                              .map((i) => `${i.name}${i.quantity > 1 ? ` ×${i.quantity}` : ''}`)
+                              .join(', ')}
+                            .
+                          </p>
+                        )}
+                      </div>
+
+                      {onAcceptPartial && (
+                        <button
+                          onClick={() => onAcceptPartial(order)}
+                          className="w-full py-2.5 bg-[#0B7A37] text-white font-black text-xs rounded-xl active:scale-95 transition-transform"
+                        >
+                          Send the {order.availableItems.length} available
+                          {order.unavailableValue > 0 &&
+                            (order.alreadyPaid
+                              ? ` · ₹${order.unavailableValue} back`
+                              : ` · pay ₹${order.unavailableValue} less`)}
+                        </button>
+                      )}
+
+                      {onRetryPartial && (
+                        <button
+                          onClick={() => onRetryPartial(order)}
+                          className="w-full py-2.5 border border-[#0B7A37] text-[#0B7A37] font-black text-xs rounded-xl active:scale-95 transition-transform"
+                        >
+                          Try another market for everything
+                        </button>
+                      )}
+
+                      {onCancelOrder && (
+                        <button
+                          onClick={() => onCancelOrder(order)}
+                          className="w-full py-2.5 border border-rose-200 text-rose-700 font-black text-xs rounded-xl active:scale-95 transition-transform"
+                        >
+                          Cancel order
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {order.fulfillmentStatus === 'packing' && (
                     <div className="mt-3 flex items-start gap-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
                       <Package className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                       <p className="leading-snug">
                         Accepted — your order is being packed and can no longer be cancelled.
+                        {order.droppedItems.length > 0 &&
+                          ` ${order.droppedItems.map((i) => i.name).join(', ')} could not be sourced and ${
+                            order.droppedItems.length === 1 ? 'was' : 'were'
+                          } ${
+                            order.droppedItems.some((i) => i.refunded > 0) ? 'refunded' : 'removed'
+                          }.`}
                       </p>
                     </div>
                   )}

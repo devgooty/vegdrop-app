@@ -25,6 +25,7 @@
 
 const FULFILLMENT_STATUSES = Object.freeze([
   'sourcing',       // offered to the market's stalls, nobody committed yet
+  'partial_review', // some lines taken, market exhausted, waiting on the customer
   'packing',        // every line claimed; locked; stalls are bagging
   'awaiting_rider', // everything packed, nobody to carry it yet
   'collecting',     // rider at the market walking stall to stall
@@ -43,6 +44,15 @@ const FULFILLMENT_STATUSES = Object.freeze([
  */
 const FULFILLMENT_TO_STATUS = Object.freeze({
   sourcing: 'Pending',
+  /**
+   * Still Pending, deliberately.
+   *
+   * Nothing has been committed to the customer yet — they are being asked
+   * whether a smaller order is acceptable, and may still cancel outright. The
+   * coarse status is what the delivery app filters on, and a rider must not see
+   * an order whose contents are not yet settled.
+   */
+  partial_review: 'Pending',
   packing: 'Preparing',
   ready: 'Preparing',
   awaiting_rider: 'Preparing',
@@ -53,12 +63,21 @@ const FULFILLMENT_TO_STATUS = Object.freeze({
   cancelled: 'Cancelled',
 });
 
-/** States a customer may still walk away from. Beyond these, stalls have committed. */
-const CANCELLABLE_BY_CUSTOMER = Object.freeze(['sourcing']);
+/**
+ * States a customer may still walk away from. Beyond these, stalls have committed.
+ *
+ * `partial_review` is cancellable precisely because it is the moment we admit we
+ * cannot supply what was ordered. Offering "continue with 3 of 5" without also
+ * offering "forget it" would be trapping someone in a purchase they did not
+ * make. The claimed lines are released and refunded in full, as with any other
+ * cancellation from `sourcing`.
+ */
+const CANCELLABLE_BY_CUSTOMER = Object.freeze(['sourcing', 'partial_review']);
 
 /** States staff may still call off, refunding the customer. */
 const CANCELLABLE_BY_STAFF = Object.freeze([
   'sourcing',
+  'partial_review',
   'packing',
   'ready',
   'awaiting_rider',

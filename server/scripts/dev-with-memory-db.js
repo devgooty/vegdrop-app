@@ -13,6 +13,13 @@
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
 
+// Lets a second instance run alongside the default one on a free port, e.g.
+// `npm run server:demo -- --port 5001`, for side-by-side local preview.
+const portFlagIndex = process.argv.indexOf('--port');
+if (portFlagIndex !== -1 && process.argv[portFlagIndex + 1]) {
+  process.env.PORT = process.argv[portFlagIndex + 1];
+}
+
 const { MongoMemoryReplSet } = require('mongodb-memory-server');
 
 async function main() {

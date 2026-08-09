@@ -2,11 +2,31 @@ import React, { useState, useEffect } from 'react';
 import {
   Store, Package, ShoppingBag, CheckCircle2, Clock, Truck,
   MapPin, LogOut, User, LayoutDashboard, Plus, Edit, Trash2,
-  AlertTriangle, Navigation, Check, Camera, MessageSquare, TrendingUp, BarChart3, Star, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert
+  AlertTriangle, Navigation, Check, Camera, TrendingUp, BarChart3, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert
 } from 'lucide-react';
 import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../services/auth';
+import { fetchShopEarnings, withdrawShopEarnings } from '../services/shops';
 import { ApiRequestError } from '../services/apiClient';
 import OTPBoxGroup from './OTPBoxGroup';
+
+/** Server amounts are integer paise; ₹1,250.00 is what a shopkeeper reads. */
+const formatPaise = (paise) =>
+  `₹${((paise ?? 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** "in about 4 hours" for the next automatic payout. */
+function timeUntilRelease(when) {
+  const ms = new Date(when).getTime() - Date.now();
+  if (ms <= 0) return 'any moment now';
+
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 60) return `in ${minutes} minute${minutes === 1 ? '' : 's'}`;
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `in about ${hours} hour${hours === 1 ? '' : 's'}`;
+
+  const days = Math.round(hours / 24);
+  return `in about ${days} day${days === 1 ? '' : 's'}`;
+}
 
 /**
  * Prompt shown while the vendor's settlement account is unverified.
@@ -48,10 +68,9 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
   // Navigation & State
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isStoreOnline, setIsStoreOnline] = useState(true);
-  const [activeScreen, setActiveScreen] = useState('list'); // 'list', 'add-product', 'edit-product', 'inventory', 'reviews', 'settings'
+  const [activeScreen, setActiveScreen] = useState('list'); // 'list' | 'add-product' | 'edit-product' | 'inventory' | 'hours' | 'bank'
   
   // Modals & deep dive
-  const [selectedOrder, setSelectedOrder] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   
@@ -70,25 +89,78 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
   });
 
   /**
-   * There is deliberately no bank state here any more.
+   * Real money owed to this shop, read from the server.
    *
-   * This component used to hold a full settlement-account form — bank name,
-   * account number, IFSC, PAN, GSTIN — seeded from `localStorage` and written
-   * back to it on save. Two things made that worse than merely redundant:
+   * WHAT THIS REPLACED
    *
-   *  - It defaulted to `verificationStatus: 'verified'` with a hardcoded
-   *    account number, so an untouched account displayed "✓ Verified" to a
-   *    vendor who had submitted nothing.
-   *  - Its penny drop was a 2.5s `setTimeout` that called no endpoint, then set
-   *    the same flag. A vendor could reach "verified" without a rupee moving.
+   * A `bankDetails` object seeded with a hardcoded "₹4,850.00 pending", a fake
+   * SBI account number, a fake account-holder name, and `verificationStatus:
+   * 'verified'` — none of which the server had ever heard of. Its form saved a
+   * bank account number into localStorage, readable by any script on the
+   * origin, and its "penny drop" flipped itself to verified on a 2.5-second
+   * setTimeout. That last one inverted the entire point of a penny drop: the
+   * real one lands a RANDOM sub-rupee amount that the vendor has to read off
+   * their own statement, precisely so that clicking a button proves nothing.
    *
-   * None of it was ever sent to the server, so it competed with the real KYC
-   * record rather than feeding it. Settlement details now live only in
-   * VendorKycModal and GET /api/kyc/me, where the PAN and account number are
-   * encrypted at rest, returned masked, and the amount a vendor must confirm is
-   * randomised and held as an HMAC. `renderBankDetails` below just reports that
-   * status and opens the real flow.
+   * Identity and bank verification live in VendorKycModal, against
+   * /api/kyc — `onOpenKyc` is how this screen hands over to it.
    */
+  const [earnings, setEarnings] = useState(null);
+  const [earningsError, setEarningsError] = useState('');
+  const [withdrawing, setWithdrawing] = useState(false);
+
+  /**
+   * Purge the bank account number the old screen persisted.
+   *
+   * Removing the code that wrote it does not remove it from the browsers of
+   * everyone who already opened that screen — an account number and IFSC are
+   * sitting in localStorage on those devices, readable by any script that
+   * achieves XSS on this origin. Same reasoning as keeping the access token out
+   * of web storage.
+   */
+  useEffect(() => {
+    try {
+      localStorage.removeItem('vegdrop_shopkeeper_bank');
+    } catch {
+      /* Private mode or a full quota — nothing was readable there anyway. */
+    }
+  }, []);
+
+  /**
+   * Loaded when a screen that shows money opens, rather than on mount: money
+   * owed does not change on the timescale of a dashboard poll.
+   */
+  const needsEarnings = activeScreen === 'bank' || activeTab === 'analytics';
+
+  useEffect(() => {
+    if (!needsEarnings) return undefined;
+
+    let cancelled = false;
+    fetchShopEarnings()
+      .then((data) => {
+        if (!cancelled) setEarnings(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setEarningsError(err?.message || 'Could not load your earnings.');
+      });
+
+    return () => { cancelled = true; };
+  }, [needsEarnings]);
+
+  const handleWithdraw = async () => {
+    setWithdrawing(true);
+    setEarningsError('');
+    try {
+      // Returns the fresh summary alongside what it moved, so there is no
+      // second round trip and no moment where the screen shows a stale total.
+      const result = await withdrawShopEarnings();
+      setEarnings((prev) => ({ ...prev, ...result }));
+    } catch (err) {
+      setEarningsError(err?.message || 'Could not withdraw right now.');
+    } finally {
+      setWithdrawing(false);
+    }
+  };
   const [profileData, setProfileData] = useState(() => {
     try {
       const savedKey = `vegdrop_shopkeeper_profile_${user?.phone || 'default'}`;
@@ -224,41 +296,35 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
   const pendingOrders = orders.filter((o) => o.status === 'Pending');
   const preparingOrders = orders.filter((o) => o.status === 'Preparing');
   const deliveredOrders = orders.filter((o) => o.status === 'Delivered');
+  const lowStockItems = products ? products.filter((p) => p.isOutofStock) : [];
 
   /**
-   * Revenue, over windows that mean what they say.
+   * Takings for the calendar day, which is what "Today's Revenue" claimed to be.
    *
-   * `revenueToday` used to sum EVERY delivered order ever and label the result
-   * "Today's Revenue", and the week figure beside it was that number multiplied
-   * by four. Orders carry `timestamp`, so both are measurable rather than
-   * guessed.
+   * It summed every delivered order the panel had ever loaded, so the figure
+   * only ever climbed and a quiet day still showed a month of trading.
    */
   const startOfToday = new Date().setHours(0, 0, 0, 0);
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-
-  const sumOf = (list) => list.reduce((sum, o) => sum + o.totalAmount, 0);
-  const revenueToday = sumOf(deliveredOrders.filter((o) => o.timestamp >= startOfToday));
-  const revenueWeek = sumOf(deliveredOrders.filter((o) => o.timestamp >= weekAgo));
+  const todaysDelivered = deliveredOrders.filter((o) => (o.timestamp ?? 0) >= startOfToday);
+  const revenueToday = todaysDelivered.reduce((sum, o) => sum + o.totalAmount, 0);
 
   /**
-   * What actually sold, by quantity, from the order lines themselves.
+   * What actually sold, counted from delivered orders rather than asserted.
    *
-   * This replaced two lines typed into the source — "Organic Onions 124 Kg" and
-   * "Fresh Tomatoes 89 Kg" — which were the same for every shop and every day.
+   * The list this replaces was two fixed rows — "Organic Onions 124 Kg" and
+   * "Fresh Tomatoes 89 Kg" — printed identically for every shop in the system,
+   * including one that had never sold either.
    */
-  const topSellers = Object.values(
-    deliveredOrders
-      .flatMap((o) => o.items || [])
-      .reduce((acc, item) => {
-        const key = item.name;
-        if (!acc[key]) acc[key] = { name: key, quantity: 0 };
-        acc[key].quantity += item.quantity || 0;
-        return acc;
-      }, {})
+  const topSellers = Object.entries(
+    deliveredOrders.reduce((tally, order) => {
+      for (const item of order.items || []) {
+        tally[item.name] = (tally[item.name] || 0) + item.quantity;
+      }
+      return tally;
+    }, {})
   )
-    .sort((a, b) => b.quantity - a.quantity)
+    .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
-  const lowStockItems = products ? products.filter((p) => p.isOutofStock) : [];
 
   // Handlers
   const handleAddProduct = async () => {
@@ -319,27 +385,45 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
   };
 
   /**
-   * Accept an order and let it into the delivery pool.
+   * Take the order on. A rider picks it up from the open pool afterwards.
    *
-   * This used to be called `handleAssignDelivery`, reached through a screen
-   * offering a choice between "Rahul K. — 4.9 ⭐, 0.5 km away" and "Suresh M. —
-   * busy", complete with stock photographs. Neither existed. Whichever was
-   * tapped, the code below ran unchanged and assigned nobody.
-   *
-   * A shopkeeper does not choose the rider and never did: moving the order to
-   * `Preparing` is what puts it in front of delivery agents, and for market
-   * orders the dispatch engine picks the nearest one automatically (see
-   * services/dispatch.js). Presenting that as a roster the shopkeeper picks from
-   * described a system that does not exist.
+   * This replaces an "Assign Delivery" screen that offered a choice between two
+   * hardcoded couriers — "Rahul K., 4.9 stars, 0.5 km away" and a permanently
+   * busy "Suresh M." — neither of whom existed. Whichever you tapped, the same
+   * thing happened: the order moved to Preparing. There is no endpoint for
+   * listing riders, and a shopkeeper does not pick one in this system; riders
+   * claim marketless orders themselves.
    */
-  const handleAcceptOrder = (orderId) => {
-    const order = orders.find(o => o.id === orderId);
-    onUpdateOrderStatus(orderId, 'Preparing');
-    if (order && onOrderAccepted) {
-      onOrderAccepted(order);
-    }
-    setSelectedOrder(null);
-    setActiveScreen('list');
+  const handleAcceptOrder = (order) => {
+    onUpdateOrderStatus(order.id, 'Preparing');
+    if (onOrderAccepted) onOrderAccepted(order);
+  };
+
+  const handleRejectOrder = (orderId) => {
+    // The server refunds a wallet-paid order and restocks it on cancellation.
+    onUpdateOrderStatus(orderId, 'Cancelled');
+  };
+
+  /**
+   * Open the edit form for one product.
+   *
+   * Shared so the inventory list's "Update" button lands somewhere — it had no
+   * handler at all, and was the only way that screen offered to fix a stock
+   * count it had just flagged as low.
+   */
+  const openProductEditor = (product) => {
+    setSelectedProduct(product);
+    setImagePreviewError(false);
+    setProductFormError('');
+    setProductForm({
+      name: product.name,
+      categoryId: product.categoryId,
+      price: product.price,
+      weight: product.weight || '',
+      stock: product.stock || 0,
+      image: product.image || '',
+    });
+    setActiveScreen('edit-product');
   };
 
   // Render Screens
@@ -542,20 +626,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
             </div>
             <div className="flex flex-col gap-2">
               <button
-                onClick={() => {
-                  setSelectedProduct(product);
-                  setImagePreviewError(false);
-                  setProductFormError('');
-                  setProductForm({
-                    name: product.name,
-                    categoryId: product.categoryId,
-                    price: product.price,
-                    weight: product.weight || '',
-                    stock: product.stock || 0,
-                    image: product.image || ''
-                  });
-                  setActiveScreen('edit-product');
-                }}
+                onClick={() => openProductEditor(product)}
                 className="p-2 bg-gray-100 text-gray-600 rounded-lg active:scale-90 transition-transform"
               >
                 <Edit className="w-4 h-4" />
@@ -593,21 +664,30 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
                     <span className="font-bold text-gray-900">Order #{order.id}</span>
                     <span className="text-green-600 font-black">₹{order.totalAmount}</span>
                   </div>
-                  <p className="text-xs text-gray-500 mb-1">{order.customerName} • {order.items?.length} items</p>
-                  {/* Customer delivery address */}
-                  {(order.deliveryAddress || order.address) && (
-                    <div className="flex items-start gap-1.5 mb-2 bg-orange-50 border border-orange-100 rounded-lg px-2 py-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-orange-500 mt-0.5 shrink-0" />
-                      <p className="text-[11px] text-gray-600 leading-tight">{order.deliveryAddress || order.address}</p>
-                    </div>
-                  )}
-                  {/* Item list */}
+                  {/*
+                    The customer's name and delivery address used to sit here.
+                    The server no longer sends either to a shopkeeper: you pack
+                    the order, a rider carries it, and the address is the
+                    rider's business — the same rule the market stall screen has
+                    always followed.
+                  */}
+                  <p className="text-xs text-gray-500 mb-1">
+                    {order.items?.length} item{order.items?.length === 1 ? '' : 's'}
+                  </p>
                   <p className="text-[11px] text-gray-400 mb-3 line-clamp-2">{order.items?.map(i => `${i.quantity}x ${i.name}`).join(', ')}</p>
                   <div className="flex gap-2">
-                    <button className="flex-1 py-2 bg-gray-100 text-gray-600 rounded-lg font-bold text-xs">Reject</button>
-                    {/* One tap, because there is one decision: take the order.
-                        Choosing the rider is not the shopkeeper's to make. */}
-                    <button onClick={() => handleAcceptOrder(order.id)} className="flex-1 py-2 bg-orange-500 text-white rounded-lg font-bold text-xs shadow-sm active:scale-95 transition-transform">Accept order</button>
+                    <button
+                      onClick={() => handleRejectOrder(order.id)}
+                      className="flex-1 py-2 bg-gray-100 text-gray-600 rounded-lg font-bold text-xs active:scale-95 transition-transform"
+                    >
+                      Reject
+                    </button>
+                    <button
+                      onClick={() => handleAcceptOrder(order)}
+                      className="flex-1 py-2 bg-orange-500 text-white rounded-lg font-bold text-xs shadow-sm active:scale-95 transition-transform"
+                    >
+                      Accept order
+                    </button>
                   </div>
                 </div>
               ))}
@@ -629,7 +709,12 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
                     <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md text-[10px] font-bold">Waiting for Agent</span>
                   </div>
                   <p className="text-xs text-gray-500 mb-3 line-clamp-1">{order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</p>
-                  <button className="w-full py-2 bg-gray-100 text-gray-600 rounded-lg font-bold text-xs border border-gray-200 pointer-events-none">Waiting for pickup scan...</button>
+                  {/* A status line, not a control — it was marked up as a
+                      button with pointer-events disabled, so assistive tech
+                      announced a button that could never be pressed. */}
+                  <p className="w-full py-2 bg-gray-100 text-gray-500 rounded-lg font-bold text-xs border border-gray-200 text-center">
+                    Waiting for a rider to collect it
+                  </p>
                 </div>
               ))}
             </div>
@@ -639,19 +724,52 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
     );
   };
 
+  /**
+   * Trading, on figures that come from somewhere.
+   *
+   * What this replaced: a "This Week" that was literally today's number times
+   * four, a "Conversion 12.4%" that was a string in the markup, and a top-seller
+   * list of two fixed rows shown to every shop regardless of what it sold. The
+   * only honest number on the screen was the order count.
+   *
+   * Money owed is the real settlement summary — the same data the payout screen
+   * reads — so "Withdraw" now moves actual money instead of doing nothing.
+   */
   const renderAnalytics = () => (
     <div className="space-y-6 animate-fade-in pb-20">
       <div className="bg-gradient-to-br from-green-800 to-green-600 p-6 rounded-3xl shadow-xl text-white">
-        <span className="block text-green-200 text-sm font-bold uppercase tracking-wider mb-1">Today's Revenue</span>
-        <h2 className="text-5xl font-black mb-4">₹{revenueToday}</h2>
-        <div className="border-t border-green-700/50 pt-4 mt-2">
-          {/* The "Withdraw" button that sat here had no handler at all, and this
-              account has no settlement wallet to withdraw from — that belongs to
-              a stall in a market (see StallPanel). */}
-          <span className="block text-xs text-green-200">Last 7 days</span>
-          <span className="font-bold text-lg">₹{revenueWeek.toFixed(2).replace(/\.00$/, '')}</span>
+        <span className="block text-green-200 text-sm font-bold uppercase tracking-wider mb-1">Delivered today</span>
+        <h2 className="text-5xl font-black mb-1">₹{revenueToday.toLocaleString('en-IN')}</h2>
+        <p className="text-green-200 text-xs mb-4">
+          {todaysDelivered.length} order{todaysDelivered.length === 1 ? '' : 's'} · what customers paid, before our commission
+        </p>
+
+        <div className="flex justify-between items-center border-t border-green-700/50 pt-4 mt-2 gap-3">
+          <div className="min-w-0">
+            <span className="block text-xs text-green-200">Yours to withdraw</span>
+            <span className="font-bold text-lg">
+              {earnings ? formatPaise(earnings.pendingPaise) : '—'}
+            </span>
+          </div>
+          <button
+            onClick={handleWithdraw}
+            disabled={!earnings || withdrawing || !earnings.canWithdrawNow}
+            className="bg-white disabled:bg-white/40 disabled:text-green-900/50 text-green-900 px-4 py-2 rounded-xl font-black text-xs shadow-md active:scale-95 transition-transform shrink-0"
+          >
+            {withdrawing ? 'Moving…' : 'Withdraw'}
+          </button>
         </div>
+        {earnings && !earnings.canWithdrawNow && earnings.pendingPaise > 0 && (
+          <p className="text-[10px] text-green-200/80 mt-2">
+            Reaches your wallet on its own within {earnings.holdHours} hours, or withdraw early from{' '}
+            {formatPaise(earnings.minEarlyPayoutPaise)}.
+          </p>
+        )}
       </div>
+
+      {earningsError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 text-xs text-red-700 font-bold">{earningsError}</div>
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
@@ -659,11 +777,10 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
           <p className="text-xs font-bold text-gray-500 mb-1">Orders</p>
           <p className="font-black text-xl text-gray-900">{orders.length}</p>
         </div>
-        {/* "Conversion 12.4%" stood here, typed into the source. A conversion
-            rate needs traffic — how many people looked without buying — which
-            nothing in this system records. Delivered orders is the real figure
-            that was available all along. */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+          {/* Replaces a hardcoded "Conversion 12.4%". Nothing in this system
+              tracks how many people looked without buying, so a conversion rate
+              cannot be computed — this counts what actually completed. */}
           <TrendingUp className="w-6 h-6 text-green-500 mb-2" />
           <p className="text-xs font-bold text-gray-500 mb-1">Delivered</p>
           <p className="font-black text-xl text-gray-900">{deliveredOrders.length}</p>
@@ -673,17 +790,13 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
         <h3 className="font-black text-gray-900 mb-4 border-b pb-2">Top Selling Items</h3>
         {topSellers.length === 0 ? (
-          <p className="text-xs text-gray-400 italic">
-            Nothing delivered yet. This fills in from your own order lines.
-          </p>
+          <p className="text-xs text-gray-400 italic">Nothing delivered yet — this fills in as orders complete.</p>
         ) : (
           <div className="space-y-4">
-            {topSellers.map((item) => (
-              <div key={item.name} className="flex justify-between items-center gap-3">
-                <span className="font-bold text-gray-700 text-sm truncate">{item.name}</span>
-                <span className="text-green-600 font-black text-sm shrink-0">
-                  {item.quantity} sold
-                </span>
+            {topSellers.map(([name, quantity]) => (
+              <div key={name} className="flex justify-between items-center gap-3">
+                <span className="font-bold text-gray-700 text-sm truncate">{name}</span>
+                <span className="text-green-600 font-black text-sm shrink-0">{quantity} sold</span>
               </div>
             ))}
           </div>
@@ -710,23 +823,16 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
         <h2 className="text-2xl font-black text-gray-900">{profileData.shopName}</h2>
         <p className="text-emerald-700 font-bold mb-1 text-sm">Shop No: {profileData.shopNo || 'Not Set'}</p>
         <p className="text-xs text-gray-400 mb-4 font-mono">{profileData.phone}</p>
-        {/* "Super Seller 🏆" was shown here to every account unconditionally.
-            There is no seller tier, ranking or rating in this system, so the
-            badge awarded nothing and meant nothing. The delivered count is the
-            standing this shop actually has. */}
+        {/* "Super Seller 🏆" stood here for every account unconditionally —
+            there is no seller tier or rating in this system, so the badge
+            awarded nothing and meant nothing. Delivered count is the standing
+            this shop actually has. */}
         <div className="inline-flex bg-green-50 text-green-700 px-4 py-1.5 rounded-full font-bold text-sm border border-green-200">
           {deliveredOrders.length} order{deliveredOrders.length === 1 ? '' : 's'} delivered
         </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <button onClick={() => setActiveScreen('reviews')} className="w-full p-4 flex justify-between items-center border-b border-gray-50 hover:bg-gray-50 active:bg-gray-100 transition-colors text-left cursor-pointer">
-          <div className="flex items-center gap-3">
-            <Star className="w-5 h-5 text-orange-500" />
-            <span className="font-bold text-gray-700">Customer Reviews</span>
-          </div>
-          <span className="text-gray-400 font-bold">›</span>
-        </button>
         <button onClick={() => setActiveScreen('hours')} className="w-full p-4 flex justify-between items-center border-b border-gray-50 hover:bg-gray-50 active:bg-gray-100 transition-colors text-left cursor-pointer">
           <div className="flex items-center gap-3">
             <Clock className="w-5 h-5 text-blue-500" />
@@ -776,51 +882,23 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
           <div key={p.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center">
             <div>
               <h4 className="font-bold text-gray-900 text-sm">{p.name}</h4>
-              <p className="text-xs text-gray-500">{p.isOutofStock ? '0' : (p.stock || 50)} {p.unit} remaining</p>
+              {/* `p.stock || 50` invented a stock count whenever the real one
+                  was zero or absent, on the one screen whose job is to report
+                  stock. */}
+              <p className="text-xs text-gray-500">{p.stock ?? 0} {p.unit || 'units'} remaining</p>
             </div>
-            <button className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-bold active:scale-95">Update</button>
+            <button
+              onClick={() => openProductEditor(p)}
+              className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-bold active:scale-95"
+            >
+              Update
+            </button>
           </div>
         ))}
       </div>
     </div>
   );
 
-  const renderReviews = () => (
-    <div className="space-y-6 pb-20 animate-fade-in absolute inset-0 bg-gray-50 z-50 p-4 overflow-y-auto">
-      <div className="flex items-center gap-3 mb-4 sticky top-0 bg-gray-50 py-2">
-        <button onClick={() => setActiveScreen('list')} className="p-2 rounded-full bg-gray-200"><ArrowLeft className="w-5 h-5" /></button>
-        <h2 className="font-black text-xl text-gray-900">Customer Reviews</h2>
-      </div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 text-center mb-6">
-        <div className="text-5xl font-black text-gray-900 mb-2">4.8</div>
-        <div className="flex justify-center gap-1 text-orange-500 mb-2">
-          <Star className="w-5 h-5 fill-current" /><Star className="w-5 h-5 fill-current" /><Star className="w-5 h-5 fill-current" /><Star className="w-5 h-5 fill-current" /><Star className="w-5 h-5 fill-current" />
-        </div>
-        <p className="text-sm text-gray-500 font-bold">Based on 1,204 reviews</p>
-      </div>
-
-      <div className="space-y-4">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-            <div className="flex justify-between mb-2">
-              <span className="font-bold text-sm text-gray-900">{i === 0 ? 'Rahul Sharma' : i === 1 ? 'Priya Verma' : 'Srinivas Rao'}</span>
-              <span className="text-xs text-gray-400">{i === 0 ? '2 days ago' : i === 1 ? '4 days ago' : '1 week ago'}</span>
-            </div>
-            <div className="flex gap-1 text-orange-500 mb-2">
-              <Star className="w-3 h-3 fill-current" /><Star className="w-3 h-3 fill-current" /><Star className="w-3 h-3 fill-current" /><Star className="w-3 h-3 fill-current" /><Star className="w-3 h-3 fill-current" />
-            </div>
-            <p className="text-sm text-gray-600 mb-3">
-              {i === 0 && '"Fresh vegetables and super fast delivery. The tomatoes were excellent!"'}
-              {i === 1 && '"Always high quality organic produce. Packaged very cleanly."'}
-              {i === 2 && '"Best vegetable shop in Mylavaram area. Highly recommended!"'}
-            </p>
-            <button className="text-green-600 text-xs font-bold bg-green-50 px-3 py-1.5 rounded-lg active:scale-95 cursor-pointer">Reply to Customer</button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 
   const renderBusinessHours = () => (
     <div className="space-y-6 pb-20 animate-fade-in absolute inset-0 bg-gray-50 z-50 p-4 overflow-y-auto">
@@ -901,97 +979,192 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
   );
 
   /**
-   * Bank and payout details.
+   * Bank & payouts, on real data.
    *
-   * This screen used to be a self-contained imitation of vendor onboarding: it
-   * collected an account number, IFSC and PAN, wrote all three to localStorage
-   * in the clear, and 'verified' the account with a 2.5s setTimeout that
-   * reached no server at all. Nothing it produced was ever sent anywhere, so a
-   * vendor who filled it in was told they were verified while remaining
-   * unverified everywhere that matters.
-   *
-   * Two things were wrong beyond the theatre. Financial identifiers in web
-   * storage are readable by any script that achieves XSS — the same reason the
-   * access token lives in a module variable and the wallet balance is no longer
-   * mirrored client-side. And a second, softer 'verified' state competing with
-   * the real one is how a vendor ends up trusting the wrong answer.
-   *
-   * The genuine flow already exists and is wired into this component: KYC
-   * status comes from GET /api/kyc/me, and VendorKycModal drives the real
-   * penny drop, whose amount is randomised, stored only as an HMAC, and must
-   * be read off an actual bank statement. This defers to it.
+   * Three things, in the order a shopkeeper cares about them: what is owed,
+   * where it will be sent, and how to change that. Everything here comes from
+   * the server — the screen this replaced invented all three.
    */
   const renderBankDetails = () => {
-    const status = kyc?.status || 'missing';
-    const isVerified = Boolean(kyc?.canUpdateStock);
-    const inProgress = status === 'penny_sent';
+    const kycStatus = kyc?.status || 'missing';
+    const verified = Boolean(kyc?.isVerified);
+    const pendingPaise = earnings?.pendingPaise ?? 0;
+    const releasedPaise = earnings?.releasedPaise ?? 0;
 
-    const tone = isVerified
-      ? 'bg-emerald-400/20 text-emerald-300 border-emerald-400/30'
-      : inProgress
-        ? 'bg-yellow-400/20 text-yellow-300 border-yellow-400/30'
-        : 'bg-red-400/20 text-red-300 border-red-400/30';
-
-    const label = isVerified
-      ? '✓ Verified'
-      : inProgress
-        ? '⏳ Awaiting confirmation'
-        : '✗ Not verified';
+    const STATUS_CHIP = {
+      verified: { text: '✓ Verified', cls: 'bg-emerald-400/20 text-emerald-300 border-emerald-400/30' },
+      penny_sent: { text: '⏳ Awaiting confirmation', cls: 'bg-yellow-400/20 text-yellow-300 border-yellow-400/30' },
+      pending: { text: '⏳ In review', cls: 'bg-yellow-400/20 text-yellow-300 border-yellow-400/30' },
+      rejected: { text: '✗ Rejected', cls: 'bg-red-400/20 text-red-300 border-red-400/30' },
+      missing: { text: '✗ Not set up', cls: 'bg-red-400/20 text-red-300 border-red-400/30' },
+    };
+    const chip = STATUS_CHIP[kycStatus] || STATUS_CHIP.missing;
 
     return (
       <div className="space-y-4 pb-20 animate-fade-in absolute inset-0 bg-gray-50 z-50 p-4 overflow-y-auto">
+        {/* Header */}
         <div className="flex items-center gap-3 sticky top-0 bg-gray-50 py-2 z-10">
-          <button onClick={() => setActiveScreen('list')} className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors">
+          <button onClick={() => { setActiveScreen('list'); setEarningsError(''); }} className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors">
             <ArrowLeft className="w-5 h-5 text-gray-700" />
           </button>
-          <h2 className="font-black text-xl text-gray-900">Bank & Payout Details</h2>
+          <h2 className="font-black text-xl text-gray-900">Bank & Payouts</h2>
         </div>
 
+        {/* What is actually owed */}
         <div className="bg-gradient-to-r from-[#1B4D3E] to-[#276652] p-5 rounded-2xl text-white shadow-md">
           <div className="flex justify-between items-center mb-1">
             <span className="text-[10px] text-emerald-200 font-bold uppercase tracking-wider">Settlement account</span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${tone}`}>{label}</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${chip.cls}`}>{chip.text}</span>
           </div>
-          {kyc?.upiVpa ? (
-            <p className="text-lg font-black font-mono tracking-wider">{kyc.upiVpa}</p>
+
+          {earnings === null ? (
+            <p className="text-2xl font-black font-mono tracking-wider opacity-40">₹—</p>
           ) : (
-            <p className="text-sm font-bold text-emerald-100">No settlement account on file yet.</p>
-          )}
-          {kyc?.bankAccountLast4 && (
-            <p className="text-[11px] text-emerald-100 mt-1">Account ending {kyc.bankAccountLast4}</p>
+            <>
+              <p className="text-2xl font-black font-mono tracking-wider">{formatPaise(pendingPaise)}</p>
+              <p className="text-[11px] text-emerald-100 mt-1">
+                {pendingPaise === 0
+                  ? 'Nothing waiting. Earnings appear here once an order is delivered.'
+                  : earnings.nextReleaseAt
+                    ? `Reaches your wallet ${timeUntilRelease(earnings.nextReleaseAt)}, on its own.`
+                    : 'Reaching your wallet shortly.'}
+              </p>
+              {releasedPaise > 0 && (
+                <p className="text-[10px] text-emerald-200/80 mt-1">
+                  {formatPaise(releasedPaise)} already paid out
+                </p>
+              )}
+            </>
           )}
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm space-y-3">
-          <p className="text-[11px] font-black text-gray-900">How verification works</p>
-          <p className="text-[10px] text-gray-600 leading-relaxed">
-            We send a small, random amount — somewhere between 1 and 100 paise — to your UPI ID.
-            You then tell us exactly what arrived. Only someone who can see that account can read
-            the amount, which is what proves the account is yours.
-          </p>
-          <p className="text-[10px] text-gray-600 leading-relaxed">
-            Your PAN and account number are encrypted before they are stored and are only ever
-            shown back to you masked. They are never kept on this device.
-          </p>
+        {earningsError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 text-xs text-red-700 font-bold">{earningsError}</div>
+        )}
 
+        {/* Take it early */}
+        {earnings && pendingPaise > 0 && (
           <button
             type="button"
-            onClick={onOpenKyc}
-            className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl transition-all shadow-md cursor-pointer active:scale-95"
+            onClick={handleWithdraw}
+            disabled={withdrawing || !earnings.canWithdrawNow}
+            className="w-full py-3 rounded-2xl font-black text-xs bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-500 text-white transition-all active:scale-95"
           >
-            {isVerified
-              ? 'View verification details'
-              : inProgress
-                ? 'Enter the amount you received'
-                : 'Set up your settlement account'}
+            {withdrawing
+              ? 'Moving money…'
+              : earnings.canWithdrawNow
+                ? `Withdraw ${formatPaise(pendingPaise)} now`
+                : `${formatPaise(earnings.minEarlyPayoutPaise - pendingPaise)} more to withdraw early`}
           </button>
+        )}
 
-          {!isVerified && (
-            <p className="text-[10px] text-amber-700 font-semibold">
-              Until this is verified you cannot list stock or change prices.
+        {/* How the money actually moves. Replaces a "48-72 hour security hold"
+            and a weekly disbursement schedule, neither of which existed. */}
+        <div className="bg-white border border-gray-100 rounded-2xl p-4 flex gap-3 shadow-sm">
+          <Wallet className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[11px] font-black text-gray-900">How you get paid</p>
+            <p className="text-[10px] text-gray-500 mt-0.5 leading-relaxed">
+              An order earns you money the moment the customer takes delivery — not when it
+              is accepted, and not when it is packed. It is then held for{' '}
+              {earnings?.holdHours ?? 24} hours and moves into your VegDrop wallet by itself.
+              You can take it sooner once there is at least{' '}
+              {formatPaise(earnings?.minEarlyPayoutPaise ?? 20000)} waiting.
             </p>
+          </div>
+        </div>
+
+        {/* Where it goes */}
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+          <div className="flex items-center gap-3 pb-3 border-b border-gray-100">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center">
+              <Lock className="w-5 h-5 text-emerald-700" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-gray-900 text-sm">Your bank details</h3>
+              <p className="text-[10px] text-gray-400">Verified once, then never shown in full</p>
+            </div>
+          </div>
+
+          {verified ? (
+            <dl className="space-y-2 text-xs">
+              <div className="flex justify-between gap-3">
+                <dt className="text-gray-500 font-semibold">Account holder</dt>
+                <dd className="font-bold text-gray-900 text-right">{kyc.legalName}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-gray-500 font-semibold">Account</dt>
+                <dd className="font-bold text-gray-900 font-mono">{kyc.bankAccount}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-gray-500 font-semibold">IFSC</dt>
+                <dd className="font-bold text-gray-900 font-mono">{kyc.ifsc}</dd>
+              </div>
+              {kyc.upiVpa && (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-gray-500 font-semibold">UPI</dt>
+                  <dd className="font-bold text-gray-900 font-mono truncate">{kyc.upiVpa}</dd>
+                </div>
+              )}
+              <div className="flex justify-between gap-3">
+                <dt className="text-gray-500 font-semibold">PAN</dt>
+                <dd className="font-bold text-gray-900 font-mono">{kyc.pan}</dd>
+              </div>
+            </dl>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                {kycStatus === 'penny_sent'
+                  ? 'We have sent a small amount to your UPI ID. Enter the exact figure you received to finish verifying — we deliberately do not tell you what it was.'
+                  : kycStatus === 'rejected'
+                    ? kyc?.rejectionReason || 'Your last submission was rejected. You can submit again.'
+                    : 'Add your PAN and settlement account so we have somewhere to send your earnings.'}
+              </p>
+              <button
+                type="button"
+                onClick={onOpenKyc}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3 rounded-xl transition-all shadow-md text-xs active:scale-95"
+              >
+                {kycStatus === 'penny_sent' ? 'Confirm the amount you received' : 'Set up payouts'}
+              </button>
+            </div>
+          )}
+
+          {verified && (
+            <button
+              type="button"
+              onClick={onOpenKyc}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-extrabold py-2.5 rounded-xl transition-all text-xs active:scale-95"
+            >
+              Change bank details
+            </button>
           )}
         </div>
+
+        {/* Recent payouts */}
+        {earnings?.recent?.length > 0 && (
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+            <h3 className="font-extrabold text-gray-900 text-sm mb-3">Recent orders</h3>
+            <div className="space-y-2">
+              {earnings.recent.slice(0, 10).map((row) => (
+                <div key={row.id} className="flex items-center justify-between gap-3 py-1.5 border-b border-gray-50 last:border-0">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-gray-900 font-mono truncate">{row.orderNumber}</p>
+                    <p className="text-[10px] text-gray-400">
+                      {row.itemCount} item{row.itemCount === 1 ? '' : 's'} · {new Date(row.earnedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs font-black text-emerald-700">{formatPaise(row.netPaise)}</p>
+                    <p className={`text-[9px] font-bold ${row.status === 'released' ? 'text-gray-400' : 'text-amber-600'}`}>
+                      {row.status === 'released' ? 'Paid' : 'Held'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -1033,7 +1206,6 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
         {activeTab === 'profile' && renderProfile()}
 
         {activeScreen === 'inventory' && renderInventory()}
-        {activeScreen === 'reviews' && renderReviews()}
         {activeScreen === 'hours' && renderBusinessHours()}
         {activeScreen === 'bank' && renderBankDetails()}
       </main>

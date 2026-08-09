@@ -100,6 +100,38 @@ const userSchema = new mongoose.Schema(
     },
 
     /**
+     * Independent-shop state. Only meaningful for `role: 'shopkeeper'`.
+     *
+     * A shopkeeper who trades at a market is reached THROUGH that market and is
+     * never listed as a shop — see the exclusion in routes/shops.js. This is for
+     * the ones who sell from their own premises, who until now had nowhere to
+     * exist: Stall.market is required, so a market-less stall is impossible, and
+     * Stall carries no coordinates of its own.
+     */
+    shop: {
+      /**
+       * What customers see. Copied from `name` when the pin is first set, and
+       * never read through to `user.name` at response time — that keeps a
+       * person's own name out of a public list by construction rather than by
+       * remembering to project it out.
+       */
+      name: { type: String, default: '', trim: true, maxlength: 160 },
+      address: { type: String, default: '', trim: true, maxlength: 500 },
+
+      // `default: undefined` is load-bearing — see the comment in geoPoint.js.
+      // A materialised empty coordinate array fails the 2dsphere build for the
+      // whole collection, which would take rider dispatch down with it.
+      location: { type: geoPointSchema, default: undefined },
+      locationUpdatedAt: { type: Date, default: null },
+
+      /** How far this shop will deliver. Mirrors Market.serviceRadiusMeters. */
+      serviceRadiusMeters: { type: Number, default: 6000, min: 100, max: 50000 },
+
+      /** Shutter switch. A closed shop is listed as closed, not hidden. */
+      isOpen: { type: Boolean, default: true },
+    },
+
+    /**
      * Bumped to invalidate every outstanding access token for this user
      * (forced logout, role change, suspension).
      */
@@ -130,6 +162,18 @@ function stripSensitive(_doc, ret) {
 userSchema.index({ 'rider.lastLocation': '2dsphere' });
 /** Narrows the geo search to agents who are actually on duty. */
 userSchema.index({ role: 1, 'rider.dutyStatus': 1 });
+
+/**
+ * Required by the $geoNear that finds shops near a customer.
+ *
+ * This is the SECOND 2dsphere index on this collection. MongoDB will not guess
+ * between two of them: every $geoNear on User must now name its `key`
+ * explicitly, or it fails outright at query time — not at index build, so it
+ * surfaces as a broken feature rather than a failed deploy. services/dispatch.js
+ * already passes `key: 'rider.lastLocation'`; routes/shops.js passes
+ * `key: 'shop.location'`. Adding a third caller means doing the same.
+ */
+userSchema.index({ 'shop.location': '2dsphere' });
 
 userSchema.virtual('id').get(function getId() {
   return this._id.toHexString();

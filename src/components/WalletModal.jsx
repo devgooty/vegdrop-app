@@ -1,42 +1,53 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  X, Wallet, Plus, ArrowUpRight, ArrowDownRight, CheckCircle,
-  Copy, Check, Building2, Smartphone, ChevronLeft, Clock, AlertCircle, RefreshCw,
-  ShieldCheck, CreditCard, Loader2
+  X, Wallet, Plus, ArrowUpRight, ArrowDownRight,
+  ChevronLeft, Clock, AlertCircle, ShieldCheck, Loader2
 } from 'lucide-react';
 import { topUpWallet } from '../services/wallet';
 
+// === BRANDED UPI LOGO COMPONENTS ===
+const PhonePeLogo = () => (
+  <div className="w-9 h-9 rounded-xl bg-[#5F259F] flex items-center justify-center text-white font-black text-xs shadow-sm shrink-0">
+    पे
+  </div>
+);
 
+const GPayLogo = () => (
+  <div className="w-9 h-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center shadow-sm shrink-0 overflow-hidden">
+    <span className="font-black text-xs tracking-tighter">
+      <span className="text-[#4285F4]">G</span>
+      <span className="text-[#EA4335]">P</span>
+      <span className="text-[#FBBC05]">a</span>
+      <span className="text-[#34A853]">y</span>
+    </span>
+  </div>
+);
 
-// === WALLET MODAL ===
+const PaytmLogo = () => (
+  <div className="w-9 h-9 rounded-xl bg-[#002E6E] flex items-center justify-center shadow-sm shrink-0">
+    <span className="text-[#00BAF2] font-black text-[11px] tracking-tighter">Paytm</span>
+  </div>
+);
+
 /**
- * What each ledger entry is, in words.
+ * The UPI apps checkout can be told to open directly.
  *
- * The list used to render `t.label`, which the server has never sent — every
- * row showed a blank name. It also read `t.status` through a STATUS_CONFIG map
- * that fell back to "Success", so every entry wore a green Success badge
- * whatever it was.
- *
- * The badge is gone rather than corrected: `WalletTransaction` has no status
- * field, because it cannot have one. The ledger is append-only and an entry is
- * written only once the money has actually moved — a failed top-up produces no
- * row at all. A "Success" badge on every line was decoration standing in for a
- * distinction the data does not make.
+ * `method` is the key services/wallet.js maps to an Android package name, so a
+ * label here and the app that actually opens cannot drift apart. The "1-Click"
+ * badges that used to sit under these are gone: they promised a shortcut that
+ * did not exist, since all three buttons opened the same generic sheet.
  */
-const REASON_LABEL = {
-  razorpay_topup: 'Money added',
-  order_payment: 'Order payment',
-  order_refund: 'Refund',
-  promotional_credit: 'Promotional credit',
-  admin_adjustment: 'Adjustment',
-  stall_settlement: 'Payout for goods supplied',
-};
-
-function describeEntry(entry) {
-  return entry.note || REASON_LABEL[entry.reason] || (entry.type === 'credit' ? 'Credit' : 'Debit');
-}
+const UPI_BUTTONS = [
+  { method: 'PhonePe', Logo: PhonePeLogo, hoverBorder: 'hover:border-[#5F259F]', hoverText: 'group-hover:text-[#5F259F]' },
+  { method: 'Google Pay', Logo: GPayLogo, hoverBorder: 'hover:border-blue-500', hoverText: 'group-hover:text-blue-600' },
+  { method: 'Paytm', Logo: PaytmLogo, hoverBorder: 'hover:border-sky-500', hoverText: 'group-hover:text-sky-600' },
+];
 
 const QUICK_AMOUNTS = [100, 200, 500, 1000, 2000];
+
+/** ₹1,250 rather than ₹1250 — a statement is read at a glance. */
+const rupees = (value) =>
+  (value ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 
 /**
  * Wallet balance and top-up.
@@ -45,23 +56,27 @@ const QUICK_AMOUNTS = [100, 200, 500, 1000, 2000];
  * this component never computes or adjusts a balance itself.
  */
 export default function WalletModal({ isOpen, onClose, balance, onRazorpayPayment, transactions = [], user = null }) {
-  const [isProcessing, setIsProcessing] = useState(false);
+  // Holds the method being paid with, so the right button shows the spinner.
+  const [payingWith, setPayingWith] = useState(null);
   const [payError, setPayError] = useState('');
   // Screen state: 'home' | 'add' | 'history'
   const [screen, setScreen] = useState('home');
   const [amountStr, setAmountStr] = useState('');
-  // `showRazorpay` and `selectedMethod` lived here and were never read: the
-  // mock checkout they drove is gone, and the brand tiles that set the method
-  // discarded it. Razorpay's own sheet owns both concerns now.
+
+  const isProcessing = payingWith !== null;
+  const amount = Number.parseInt(amountStr, 10);
+  const amountValid = Number.isInteger(amount) && amount >= 10 && amount <= 50000;
 
 
   /**
-   * The server sends `createdAt`. This read `t.timestamp`, which no wallet
-   * response has ever carried, so every row rendered 'Invalid Date'.
+   * `timestamp` was read off a field the API does not send, so every row said
+   * "Invalid Date". It is guarded now as well as fixed — a statement line with
+   * no date is worth showing without one, not worth breaking the list over.
    */
   const formatTs = (ts) => {
     if (!ts) return '';
     const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return '';
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', ' + d.toLocaleDateString([], { day: 'numeric', month: 'short' });
   };
 
@@ -70,15 +85,20 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
 
   if (!isOpen) return null;
 
-  const handleProceedToPay = async () => {
-    const amt = parseInt(amountStr, 10);
-    // Reported inline, beside the field, rather than through a browser alert:
-    // this modal already has somewhere to say what went wrong, and an alert()
-    // thrown over a payment sheet gets dismissed without being read.
-    if (!amt || Number.isNaN(amt)) return setPayError('Enter an amount to add.');
-    if (amt < 10) return setPayError('The smallest top-up is ₹10.');
-    if (amt > 50000) return setPayError('The largest top-up is ₹50,000.');
-    
+  /**
+   * @param {string|null} method the payment label chosen, e.g. 'PhonePe'.
+   *   Passed through to Razorpay so a branded button opens that app rather than
+   *   the generic sheet — it used to be accepted here and then ignored, which
+   *   made all four buttons the same button.
+   */
+  const handleProceedToPay = async (method = null) => {
+    // Inline, not alert(): a blocking dialog over a payment sheet is the wrong
+    // place to interrupt someone, and the button is already disabled for these.
+    if (!Number.isInteger(amount)) return setPayError('Enter an amount to add.');
+    if (amount < 10) return setPayError('The smallest top-up is ₹10.');
+    if (amount > 50000) return setPayError('The largest top-up is ₹50,000.');
+    if (isProcessing) return undefined;
+
     /**
      * Hand the whole top-up to the wallet service.
      *
@@ -92,10 +112,10 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
      * its own catch block. Any error, including a declined card, credited the
      * wallet.
      */
-    setIsProcessing(true);
+    setPayingWith(method || 'all');
     setPayError('');
     try {
-      const result = await topUpWallet(amt, user);
+      const result = await topUpWallet(amount, user, { method });
       setAmountStr('');
       setScreen('home');
       onRazorpayPayment && onRazorpayPayment(result);
@@ -103,12 +123,14 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
       // A failure is reported as a failure. Never credit on an error path.
       setPayError(
         error?.message === 'Payment cancelled.'
-          ? 'Payment was cancelled.'
-          : error?.message || 'Top-up failed. If you were charged, it will be reconciled.'
+          ? 'Payment was cancelled. Nothing was charged.'
+          : error?.message ||
+              'We could not confirm the payment. If you were charged it will appear in your balance shortly.'
       );
     } finally {
-      setIsProcessing(false);
+      setPayingWith(null);
     }
+    return undefined;
   };
 
   // ---- SCREENS ----
@@ -122,7 +144,7 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
         <p className="text-emerald-200 text-xs font-bold uppercase tracking-widest mb-1 relative">Available Balance</p>
         <div className="flex items-baseline gap-1 relative mb-4">
           <span className="text-2xl font-black">₹</span>
-          <span className="text-5xl font-black tracking-tight">{(balance || 0).toFixed(0)}</span>
+          <span className="text-5xl font-black tracking-tight">{rupees(balance)}</span>
         </div>
         <div className="flex gap-3 relative">
           <button onClick={() => setScreen('add')} className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur text-white font-black py-2.5 rounded-2xl text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 border border-white/20">
@@ -144,29 +166,28 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
           <p className="text-xs text-gray-400 text-center py-4">No transactions yet.</p>
         ) : (
           <div className="space-y-2">
-            {transactions.slice(0, 4).map(t => {
-              return (
-                <div key={t.id} className="flex items-center gap-3 bg-white rounded-2xl p-3 border border-gray-100 shadow-sm">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${t.type === 'credit' ? 'bg-emerald-100' : 'bg-rose-100'}`}>
-                    {t.type === 'credit'
-                      ? <ArrowUpRight className="w-4 h-4 text-emerald-700" />
-                      : <ArrowDownRight className="w-4 h-4 text-rose-700" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-gray-900 text-sm truncate">{describeEntry(t)}</p>
-                    <p className="text-[10px] text-gray-400 font-mono">{formatTs(t.createdAt)}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className={`font-black text-sm ${t.type === 'credit' ? 'text-emerald-700' : 'text-rose-700'}`}>
-                      {t.type === 'credit' ? '+' : '-'}₹{t.amount}
-                    </p>
-                    <span className="text-[9px] text-gray-400 font-bold">
-                      bal ₹{t.balanceAfter}
-                    </span>
-                  </div>
+            {transactions.slice(0, 4).map(t => (
+              <div key={t.id} className="flex items-center gap-3 bg-white rounded-2xl p-3 border border-gray-100 shadow-sm">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${t.type === 'credit' ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                  {t.type === 'credit'
+                    ? <ArrowUpRight className="w-4 h-4 text-emerald-700" />
+                    : <ArrowDownRight className="w-4 h-4 text-rose-700" />}
                 </div>
-              );
-            })}
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-gray-900 text-sm truncate">{t.label}</p>
+                  <p className="text-[10px] text-gray-400">{formatTs(t.timestamp)}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className={`font-black text-sm ${t.type === 'credit' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {t.type === 'credit' ? '+' : '−'}₹{rupees(t.amount)}
+                  </p>
+                  {/* The running balance, in place of a chip that could only
+                      ever read "Success" — every ledger row is money that
+                      already moved. */}
+                  <p className="text-[9px] text-gray-400 font-semibold">Bal ₹{rupees(t.balanceAfter)}</p>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -218,23 +239,33 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
           ))}
         </div>
 
-        {/*
-          The PhonePe / Google Pay / Paytm buttons that stood here are gone.
+        {/* Instant UPI App Options (PhonePe, GPay, Paytm) */}
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Pay via UPI app</p>
+        <div className="grid grid-cols-3 gap-2.5 mb-6">
+          {UPI_BUTTONS.map(({ method, Logo, hoverBorder, hoverText }) => (
+            <button
+              key={method}
+              onClick={() => handleProceedToPay(method)}
+              // Disabled during a payment as well as on a bad amount: without
+              // this a second tap opened a second checkout over the first.
+              disabled={!amountValid || isProcessing}
+              className={`bg-white border-2 border-gray-100 ${hoverBorder} rounded-2xl p-3 flex flex-col items-center gap-1.5 shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none group`}
+            >
+              {payingWith === method ? (
+                <div className="w-9 h-9 flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                </div>
+              ) : (
+                <Logo />
+              )}
+              <span className={`font-extrabold text-xs text-gray-900 ${hoverText}`}>{method}</span>
+            </button>
+          ))}
+        </div>
 
-          All three called `handleProceedToPay('PhonePe' | 'Google Pay' |
-          'Paytm')`, and that argument was never read — every one of them opened
-          the same generic Razorpay checkout as the button below. Three branded
-          tiles, one of them badged "1-Click", offering a choice that was
-          discarded the moment it was made.
-
-          Razorpay's own checkout lists the UPI apps installed on the device and
-          selects between them properly, which is the thing those tiles were
-          pretending to do. Sending people straight there is both honest and
-          fewer taps.
-        */}
-        <div className="flex items-center gap-2 text-[10px] text-gray-400 font-bold justify-center bg-gray-100/50 py-3 rounded-xl border border-gray-100 mb-2">
+        <div className="flex items-center gap-2 text-[10px] text-gray-400 font-bold justify-center bg-gray-100/50 py-3 rounded-xl border border-gray-100">
           <ShieldCheck className="w-4 h-4 text-emerald-500" />
-          UPI, cards and net banking • Min ₹10 • Max ₹50,000
+          Secured by Razorpay • Min ₹10 • Max ₹50,000
         </div>
       </div>
 
@@ -248,11 +279,15 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
         )}
         <button
           onClick={() => handleProceedToPay()}
-          disabled={isProcessing || !amountStr || parseInt(amountStr, 10) < 10}
+          disabled={!amountValid || isProcessing}
           className="w-full py-4 bg-emerald-600 disabled:bg-gray-300 text-white rounded-2xl font-black text-lg shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
         >
-          {isProcessing && <Loader2 className="w-5 h-5 animate-spin" />}
-          {isProcessing ? 'Processing…' : 'Pay securely'}
+          {payingWith === 'all' && <Loader2 className="w-5 h-5 animate-spin" />}
+          {payingWith === 'all'
+            ? 'Waiting for payment…'
+            : amountValid
+              ? `Add ₹${rupees(amount)}`
+              : 'Card, netbanking & more'}
         </button>
       </div>
     </div>
@@ -268,70 +303,59 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
         <p className="text-xs text-gray-400 text-center py-8">No transactions yet.</p>
       ) : (
         <div className="space-y-2 flex-1 overflow-y-auto pr-1 pb-10">
-          {transactions.map(t => {
-            return (
-              <div key={t.id} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${t.type === 'credit' ? 'bg-emerald-100' : 'bg-rose-100'}`}>
-                      {t.type === 'credit' ? <ArrowUpRight className="w-4 h-4 text-emerald-700" /> : <ArrowDownRight className="w-4 h-4 text-rose-700" />}
-                    </div>
-                    <div>
-                      <p className="font-bold text-gray-900 text-sm">{describeEntry(t)}</p>
-                      <p className="text-[10px] text-gray-400 font-mono">{t.method || 'Wallet'}</p>
-                    </div>
+          {transactions.map(t => (
+            <div key={t.id} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${t.type === 'credit' ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                    {t.type === 'credit' ? <ArrowUpRight className="w-4 h-4 text-emerald-700" /> : <ArrowDownRight className="w-4 h-4 text-rose-700" />}
                   </div>
-                  <div className="text-right">
-                    <p className={`font-black text-sm ${t.type === 'credit' ? 'text-emerald-700' : 'text-rose-700'}`}>
-                      {t.type === 'credit' ? '+' : '-'}₹{t.amount}
-                    </p>
-                    <span className="text-[9px] text-gray-400 font-bold">
-                      bal ₹{t.balanceAfter}
-                    </span>
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-900 text-sm">{t.label}</p>
+                    {/* The server's own note, which carries the order number.
+                        This slot used to print a `method` field the API has
+                        never sent, so it always read "Wallet". */}
+                    {t.note && <p className="text-[10px] text-gray-400 truncate">{t.note}</p>}
                   </div>
                 </div>
-                <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
-                  {/* `t.refId` was rendered here and the server has never sent
-                      it, so the guard meant it simply never appeared. Removed
-                      rather than left as a field somebody later tries to
-                      populate believing it was once wired. */}
-                  <p className="text-[10px] text-gray-400 font-mono">{formatTs(t.createdAt)}</p>
-                </div>
+                <p className={`font-black text-sm shrink-0 ${t.type === 'credit' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  {t.type === 'credit' ? '+' : '−'}₹{rupees(t.amount)}
+                </p>
               </div>
-            );
-          })}
+              <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
+                <p className="text-[10px] text-gray-400">{formatTs(t.timestamp)}</p>
+                <p className="text-[10px] text-gray-500 font-semibold">Balance ₹{rupees(t.balanceAfter)}</p>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 
   return (
-    <>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-[200] animate-fade-in">
-        <div className="bg-[#FAFAF8] w-full max-w-md h-[100dvh] flex flex-col shadow-2xl overflow-hidden relative animate-slide-up">
-          {/* Handle */}
-          <div className="flex-shrink-0 pt-4 pb-3 px-6 flex items-center justify-between border-b border-gray-100 bg-white z-10">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-emerald-100 rounded-xl flex items-center justify-center">
-                <Wallet className="w-4 h-4 text-[#1B4D3E]" />
-              </div>
-              <span className="font-black text-gray-900 text-base">VegWallet</span>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-[200] animate-fade-in">
+      <div className="bg-[#FAFAF8] w-full max-w-md h-[100dvh] flex flex-col shadow-2xl overflow-hidden relative animate-slide-up">
+        {/* Handle */}
+        <div className="flex-shrink-0 pt-4 pb-3 px-6 flex items-center justify-between border-b border-gray-100 bg-white z-10">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-emerald-100 rounded-xl flex items-center justify-center">
+              <Wallet className="w-4 h-4 text-[#1B4D3E]" />
             </div>
-            <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-200 transition-colors">
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
+            <span className="font-black text-gray-900 text-base">VegWallet</span>
           </div>
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-200 transition-colors">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
 
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto">
-            {screen === 'home' && renderHome()}
-            {screen === 'add' && renderAddMoney()}
-            {screen === 'history' && renderHistory()}
-          </div>
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto">
+          {screen === 'home' && renderHome()}
+          {screen === 'add' && renderAddMoney()}
+          {screen === 'history' && renderHistory()}
         </div>
       </div>
-
-      {/* MOCK RAZORPAY REMOVED - NOW USING OFFICIAL SDK */}
-    </>
+    </div>
   );
 }

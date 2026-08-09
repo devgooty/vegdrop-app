@@ -26,8 +26,20 @@ const whatsappRoutes = require('./routes/whatsapp');
 const marketRoutes = require('./routes/markets');
 const stallRoutes = require('./routes/stalls');
 const riderRoutes = require('./routes/rider');
+const shopRoutes = require('./routes/shops');
 
 const WHATSAPP_WEBHOOK_PATH = '/api/whatsapp';
+/**
+ * Razorpay's payment webhook. Needs the raw bytes for the same reason WhatsApp
+ * does — its HMAC covers exactly what was sent, and re-serialising the parsed
+ * body does not reproduce those bytes.
+ *
+ * Unlike WhatsApp's, this one is mounted BELOW the database gate, on purpose:
+ * it has to write to the ledger, so answering 503 while Mongo is down is
+ * correct. Razorpay retries a failed webhook, which is exactly what should
+ * happen to a credit we could not record.
+ */
+const RAZORPAY_WEBHOOK_PATH = '/api/wallet/webhook';
 
 /**
  * The built client, when there is one.
@@ -193,24 +205,42 @@ function createApp() {
 
   // --- Parsing -------------------------------------------------------------
   // An explicit cap: without one, a single large body can exhaust memory.
-  app.use(
-    express.json({
-      limit: '100kb',
-      /**
-       * Retain the raw bytes for the WhatsApp webhook only.
-       *
-       * Its X-Hub-Signature-256 HMAC covers exactly what Meta sent, and
-       * re-serialising the parsed object does not reproduce those bytes (key
-       * order and number formatting are not preserved). Scoped to the one path
-       * that needs it rather than buffering a second copy of every request body.
-       */
-      verify(req, _res, buf) {
-        if (req.originalUrl && req.originalUrl.startsWith(WHATSAPP_WEBHOOK_PATH)) {
-          req.rawBody = buf;
-        }
-      },
-    })
-  );
+  const jsonParser = express.json({
+    limit: '100kb',
+    /**
+     * Retain the raw bytes for the signed webhooks only.
+     *
+     * Their HMACs cover exactly what the sender transmitted, and
+     * re-serialising the parsed object does not reproduce those bytes (key
+     * order and number formatting are not preserved). Scoped to the paths
+     * that need it rather than buffering a second copy of every request body.
+     */
+    verify(req, _res, buf) {
+      const url = req.originalUrl || '';
+      if (url.startsWith(WHATSAPP_WEBHOOK_PATH) || url.startsWith(RAZORPAY_WEBHOOK_PATH)) {
+        req.rawBody = buf;
+      }
+    },
+  });
+
+  /**
+   * Routes that carry an image, and so need a bigger body than 100 KB.
+   *
+   * The limit itself is not raised here — these paths are simply left unparsed
+   * so the route can mount its own parser with its own ceiling. Doing it the
+   * other way round does not work: this middleware runs first, rejects the body
+   * with "request entity too large", and the route-level parser never sees it.
+   *
+   * Keeping the default tight matters. Every other endpoint takes small JSON,
+   * and one route needing more is not a reason to let all of them accept a
+   * megabyte.
+   */
+  const LARGE_BODY_PATHS = [/^\/api\/stalls\/me\/photos\//];
+
+  app.use((req, res, next) => {
+    if (LARGE_BODY_PATHS.some((pattern) => pattern.test(req.path))) return next();
+    return jsonParser(req, res, next);
+  });
   app.use(cookieParser());
 
   // --- Request correlation -------------------------------------------------
@@ -283,6 +313,8 @@ function createApp() {
   app.use('/api/markets', marketRoutes);
   app.use('/api/stalls', stallRoutes);
   app.use('/api/rider', riderRoutes);
+  // Shopkeepers who trade from their own premises rather than a market stall.
+  app.use('/api/shops', shopRoutes);
 
   /**
    * The client, served from this same origin.

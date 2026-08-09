@@ -69,27 +69,64 @@ router.get(
         categoryId: z.coerce.number().int().optional(),
         search: z.string().trim().max(120).optional(),
         limit: z.coerce.number().int().min(1).max(200).default(100),
+        /**
+         * One independent shop's own catalog. Omit it and the response is the
+         * whole catalog exactly as before, which is what the market and legacy
+         * paths still read.
+         */
+        shopId: fields.objectId.optional(),
+
+        /**
+         * The listings the caller may actually manage. Mirrors
+         * loadWritableProduct below — scoped to `createdBy`, not `owner` — so
+         * the shopkeeper panel never shows a row that then 403s on edit.
+         *
+         * Deliberately excludes the null-`createdBy` shared/seeded catalog: per
+         * loadWritableProduct, that stays admin-only, so a shopkeeper's own
+         * "mine" list would be lying if it included rows they cannot save.
+         *
+         * Distinct from `shopId`, which is a public view of one shop's catalog
+         * (by `owner`, for browsing) rather than the caller's write scope.
+         */
+        mine: z.coerce.boolean().optional(),
       })
       .strict(),
   }),
   async (req, res) => {
-    const { categoryId, search, limit } = req.valid.query;
+    const { categoryId, search, limit, shopId, mine } = req.valid.query;
 
     const filter = { isActive: true };
     if (categoryId !== undefined) filter.categoryId = categoryId;
+    if (shopId !== undefined) filter.owner = shopId;
     if (search) {
       // Escape regex metacharacters: an unescaped user string is a ReDoS vector.
       filter.name = { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
     }
 
+    /**
+     * `mine` needs a session; without one it would silently widen to the whole
+     * catalog, which is the opposite of what the caller asked for.
+     */
+    const scopedToCaller = Boolean(mine) && Boolean(req.user);
+    if (scopedToCaller && req.user.role === 'shopkeeper') {
+      filter.createdBy = req.user._id;
+    }
+
     const products = await Product.find(filter).sort({ categoryId: 1, name: 1 }).limit(limit);
 
-    // The catalog is identical for every visitor, so it is safe to cache in
-    // shared caches and CDNs. Kept short because stock moves; stale-while-
-    // revalidate lets a returning client paint instantly from cache while a
-    // fresh copy is fetched in the background.
-    // Express's ETag then turns most of these into a 304 with no body at all.
-    res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+    if (scopedToCaller) {
+      // Identity-scoped: two shopkeepers get different lists from the same URL,
+      // so this must never reach a shared cache. Falls back to the API-wide
+      // no-store default.
+      res.set('Cache-Control', 'no-store');
+    } else {
+      // The catalog is identical for every visitor, so it is safe to cache in
+      // shared caches and CDNs. Kept short because stock moves; stale-while-
+      // revalidate lets a returning client paint instantly from cache while a
+      // fresh copy is fetched in the background.
+      // Express's ETag then turns most of these into a 304 with no body at all.
+      res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+    }
 
     return res.json({ data: products.map((p) => p.toJSON()) });
   }
@@ -156,6 +193,13 @@ router.post(
     const { price, oldPrice, ...rest } = req.valid.body;
     const product = await Product.create({
       ...rest,
+      /**
+       * A shopkeeper's listing belongs to their own shop; a market_owner or
+       * developer is curating the shared platform catalog, which markets sell
+       * from, so theirs stays unowned. Read from the authenticated session, never
+       * from the body.
+       */
+      owner: req.user.role === 'shopkeeper' ? req.user._id : null,
       pricePaise: price,
       oldPricePaise: oldPrice ?? null,
       // Stamped from the session, never the body — .strict() rejects an attempt

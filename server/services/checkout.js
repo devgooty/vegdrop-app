@@ -5,6 +5,9 @@ const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Market = require('../models/Market');
+const Stall = require('../models/Stall');
+const User = require('../models/User');
+const VendorKyc = require('../models/VendorKyc');
 const { ApiError } = require('../middleware/errors');
 const { withTransaction } = require('../db/connect');
 const wallet = require('./wallet');
@@ -21,8 +24,9 @@ const sourcing = require('./sourcing');
  * here and both callers go through it.
  *
  * Everything the caller supplies is an intent: which products, how many, where
- * to. Every amount is computed here from the catalog or the market's own price
- * sheet, exactly as before — a caller cannot influence a total.
+ * to, and from whom. Every amount is computed here from the catalog or the
+ * seller's own price sheet, exactly as before — a caller cannot influence a
+ * total.
  */
 
 const DELIVERY_FEE_PAISE = 2500; // ₹25
@@ -35,11 +39,21 @@ const FREE_DELIVERY_THRESHOLD_PAISE = 30000; // ₹300
  * @param {string} params.address
  * @param {'wallet'|'cod'} params.paymentMethod
  * @param {string} [params.marketId]  buy from this market's sheet
+ * @param {string} [params.shopId]    buy from this independent shop — mutually
+ *   exclusive with marketId; an order has one seller
  * @param {number} [params.lat]
  * @param {number} [params.lng]
  * @returns {Promise<object>} the created Order document
  */
-async function placeOrder({ user, items, address, paymentMethod, marketId, lat, lng }) {
+async function placeOrder({ user, items, address, paymentMethod, marketId, shopId, lat, lng }) {
+  if (marketId && shopId) {
+    throw new ApiError(
+      400,
+      'An order is placed with one seller: a market or a shop, not both.',
+      'VALIDATION_ERROR'
+    );
+  }
+
   // Collapse duplicate lines so quantity limits cannot be bypassed by repetition.
   const quantities = new Map();
   for (const { productId, quantity } of items) {
@@ -61,11 +75,64 @@ async function placeOrder({ user, items, address, paymentMethod, marketId, lat, 
   }
 
   /**
+   * Resolve the independent shop, and re-check everything that made it
+   * listable.
+   *
+   * The customer's list could be minutes old, and each of these can change in
+   * that window: the shopkeeper can pull the shutter down, be suspended, or —
+   * the interesting one — be approved into a market, at which point they are
+   * reached through that market and must stop taking direct orders. Trusting
+   * the caller's shopId without re-checking would let a stale card keep
+   * selling.
+   */
+  let shopkeeper = null;
+  if (shopId) {
+    shopkeeper = await User.findOne({
+      _id: shopId,
+      role: 'shopkeeper',
+      status: 'active',
+      'shop.isOpen': true,
+      'shop.location': { $exists: true },
+    });
+    if (!shopkeeper) {
+      throw new ApiError(400, 'That shop is not open right now.', 'SHOP_UNAVAILABLE');
+    }
+
+    const kyc = await VendorKyc.findOne({ user: shopkeeper._id }).select('status').lean();
+    if (kyc?.status !== 'verified') {
+      throw new ApiError(400, 'That shop is not open right now.', 'SHOP_UNAVAILABLE');
+    }
+
+    if (await Stall.exists({ owner: shopkeeper._id, status: 'approved' })) {
+      throw new ApiError(
+        409,
+        'That shop now trades at a market. Pick the market instead.',
+        'SHOP_JOINED_MARKET'
+      );
+    }
+
+    /**
+     * Every line must belong to this shop. The shared platform catalog
+     * (`owner: null`) is not theirs to sell, and a cart spanning two shops has
+     * no single seller — the same reasoning as the mixed-market guard.
+     */
+    const foreign = products.find((p) => String(p.owner) !== String(shopkeeper._id));
+    if (foreign) {
+      throw new ApiError(
+        400,
+        'Your basket has items this shop does not sell.',
+        'MIXED_SELLERS',
+        [{ field: 'items', message: `${foreign.name} is not sold by this shop.` }]
+      );
+    }
+  }
+
+  /**
    * Resolve the market and its price sheet up front.
    *
    * A market order is priced from the market's own sheet, not the platform
    * catalog — that is what "one price per market" means. The catalog price is
-   * only the fallback for a marketless order.
+   * only the fallback for a marketless or shop order.
    */
   let market = null;
   let marketPrices = null;
@@ -130,13 +197,15 @@ async function placeOrder({ user, items, address, paymentMethod, marketId, lat, 
           lineTotalPaise,
           // Market orders get a stable per-line handle so a stall can claim
           // "these two" without depending on array position, plus an
-          // explicitly-empty claim so `claim.stall: null` unambiguously means
-          // unclaimed. Legacy orders leave both null and nothing reads them.
+          // explicitly-empty claim and offer so `claim.stall: null` and
+          // `offer.stall: null` unambiguously mean unclaimed and unoffered.
+          // Legacy and shop orders leave them null and nothing reads them.
           ...(market
             ? {
                 lineId: new mongoose.Types.ObjectId(),
                 sourcePricePaise: unitPricePaise,
                 claim: sourcing.emptyClaim(),
+                offer: sourcing.emptyOffer(),
               }
             : {}),
         });
@@ -165,13 +234,27 @@ async function placeOrder({ user, items, address, paymentMethod, marketId, lat, 
           status: 'Pending',
           statusHistory: [{ status: 'Pending', at: new Date(), by: user._id }],
 
+          /**
+           * Stored for every order that supplies coordinates, not only market
+           * ones. A marketless or shop order simply gains it, which is strictly
+           * more for the rider to go on and costs nothing when absent.
+           */
+          ...(lat !== undefined && lng !== undefined
+            ? { deliveryLocation: { type: 'Point', coordinates: [lng, lat] } }
+            : {}),
+
+          /**
+           * An independent shop order stays marketless: no sourcing window, no
+           * stall broadcast, no sweeper. It is the legacy single-shop path with
+           * a named seller, so `status` stays Pending until that shopkeeper
+           * accepts it by hand.
+           */
+          ...(shopkeeper ? { shop: shopkeeper._id, shopName: shopkeeper.shop.name } : {}),
+
           ...(market
             ? {
                 market: market._id,
                 marketName: market.name,
-                ...(lat !== undefined && lng !== undefined
-                  ? { deliveryLocation: { type: 'Point', coordinates: [lng, lat] } }
-                  : {}),
                 /**
                  * Built here rather than in a follow-up update so the order is
                  * never briefly visible in `sourcing` with no deadline — the
@@ -221,18 +304,18 @@ async function placeOrder({ user, items, address, paymentMethod, marketId, lat, 
   });
 
   /**
-   * Let the stalls that answer automatically answer now.
+   * Open the first round of stall offers.
    *
-   * Deliberately AFTER the transaction commits: a stall must never be shown, or
-   * be able to claim, an order that could still be rolled back. Awaited so the
-   * caller's own response already reflects any instant acceptance — a fully
-   * auto-accepted order comes back locked, with nothing to wait for.
+   * Deliberately AFTER the transaction commits: a stall must never be shown,
+   * or be able to claim, an order that could still be rolled back. Awaited so
+   * the caller's own response already reflects any instant acceptance — an
+   * order every stall auto-accepts comes back locked, with nothing to wait for.
    */
   if (order.market) {
-    await sourcing.runAutoAccept(order._id, user._id).catch((err) => {
-      // A failure here costs nothing: the order simply waits for a human, and
-      // the sweeper still owns the deadline. Never fail a paid checkout for it.
-      console.warn(`[checkout] auto-accept failed for ${order.orderNumber}: ${err.message}`);
+    await sourcing.offerRound(order._id, user._id).catch((err) => {
+      // A failure here costs nothing: the sweeper still owns the deadline and
+      // opens the round on its next tick. Never fail a paid checkout for it.
+      console.warn(`[checkout] first stall round failed for ${order.orderNumber}: ${err.message}`);
     });
     return Order.findById(order._id);
   }

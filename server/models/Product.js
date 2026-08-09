@@ -6,6 +6,17 @@ const productSchema = new mongoose.Schema(
   {
     sku: { type: String, required: true, unique: true, index: true, trim: true },
 
+    /**
+     * The shopkeeper who listed this, for products belonging to an independent
+     * shop's own catalog.
+     *
+     * Null means the shared platform catalog: the seeded rows, and anything a
+     * market_owner or developer adds. Markets sell from that shared catalog and
+     * override price through MarketPrice, so leaving this null is what keeps the
+     * market path unchanged.
+     */
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+
     categoryId: { type: Number, required: true, index: true },
     name: { type: String, required: true, trim: true, maxlength: 200 },
     weight: { type: String, default: '', maxlength: 60 },

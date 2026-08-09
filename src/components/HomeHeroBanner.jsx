@@ -70,10 +70,19 @@ export default function HomeHeroBanner({ onExplore }) {
     return () => clearInterval(timer);
   }, [banners.length]);
 
-  // Attempt automatic high precision GPS detection on mount if not saved
+  /**
+   * Attempt automatic high precision GPS detection on mount if not saved.
+   *
+   * Gated on the primer having been answered. This used to fire unconditionally,
+   * which meant the browser's permission dialog appeared with no explanation of
+   * what it was for — and a denial there is permanent, so a badly-timed prompt
+   * costs every distance-based feature for good. LocationPrimer asks first; this
+   * only tops up the address afterwards.
+   */
   useEffect(() => {
     const saved = localStorage.getItem('vegdrop_customer_location');
-    if ((!saved || saved.includes('516439')) && navigator.geolocation) {
+    const primerAnswered = localStorage.getItem('vegdrop_location_primer');
+    if (primerAnswered && (!saved || saved.includes('516439')) && navigator.geolocation) {
       handleDetectLocationSilent();
     }
   }, []);
@@ -506,8 +515,11 @@ export default function HomeHeroBanner({ onExplore }) {
       {isModalOpen && (
         <MapLocationPicker
           onClose={() => setIsModalOpen(false)}
-          onConfirm={(address, details) => {
-            saveLocation(address, details);
+          onConfirm={(address, details, coords) => {
+            // `coords` is the picker's GPS fix. Without it this path saved an
+            // address with no coordinates, and everything distance-based had to
+            // ask the browser all over again.
+            saveLocation(address, details, coords);
             setIsModalOpen(false);
           }}
           reverseGeocodeGPS={reverseGeocodeGPS}

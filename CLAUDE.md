@@ -119,7 +119,6 @@ Phone transports, via `NOTIFY_TRANSPORT`:
 |---|---|
 | `console` | dev stub, prints codes; **production refuses to boot on it** |
 | `whatsapp` | official Cloud API; approved template, paid per message |
-| `whatsapp_bot` | unofficial WhatsApp Web client (`server/bot`); free, against WhatsApp's ToS, bannable |
 
 There is no `OTP_CHANNEL` setting — it was removed rather than left as a knob
 that can no longer change anything.
@@ -128,13 +127,21 @@ WhatsApp is a **transport, not a channel**. `OtpChallenge.channel` stays
 `sms`/`email`, so the `phoneVerifiedAt` logic in `routes/auth.js` is untouched —
 a code delivered over WhatsApp still verifies the phone.
 
-**Because sign-in is passwordless, the transport is now a hard dependency**: if
-codes cannot be delivered, nobody can sign in at all. That raises the stakes on
-`whatsapp_bot` specifically, whose number can be banned.
+**Because sign-in is passwordless, the transport is a hard dependency**: if codes
+cannot be delivered, nobody can sign in at all.
 
-The unofficial bot (`server/bot/`, ESM, separate process — see its README) exists
-because it was asked for, and is deliberately **not** the default. If that number
-is banned, `NOTIFY_TRANSPORT=whatsapp_bot` means nobody can sign in at all.
+That is why there is no longer a `whatsapp_bot` option. An unofficial WhatsApp
+Web client (`server/bot/`, baileys, a second process behind a loopback bridge)
+used to be a third choice — free, no Meta account, no template approval, and in
+breach of WhatsApp's Terms of Service. It was removed rather than left available
+with a warning: the transport IS the authentication system here, so a banned
+number is not a degraded notification path, it is every user locked out at once
+with no way back in. Cheap message delivery is not worth putting sign-in on an
+account someone else can revoke without notice.
+
+**Don't reintroduce it.** If Cloud API templates are too slow to approve for a
+given environment, add an SMS provider — not a client that impersonates a
+person's WhatsApp.
 
 Things that are easy to get wrong here:
 

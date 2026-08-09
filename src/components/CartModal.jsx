@@ -257,7 +257,10 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-[11px] font-extrabold leading-tight">VegWallet</p>
-                        <p className="text-[8px] text-orange-600 font-semibold">Bal: ₹{walletBalance}</p>
+                        {/* Rounded to paise: the balance is a float derived
+                            from the server's integer paise, so a refund can
+                            leave it reading "Bal: ₹212.30000000000001". */}
+                        <p className="text-[8px] text-orange-600 font-semibold">Bal: ₹{walletBalance.toFixed(2)}</p>
                       </div>
                     </button>
 

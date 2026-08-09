@@ -82,6 +82,26 @@ const orderItemSchema = new mongoose.Schema(
       packedAt: { type: Date, default: null },
       collectedAt: { type: Date, default: null },
     },
+
+    /**
+     * Which stall is currently being ASKED for this line.
+     *
+     * Distinct from `claim`, which is who committed. A line is offered to
+     * exactly one stall at a time; the offer is cleared when that stall claims
+     * it, declines, or the round's clock runs out.
+     *
+     * This is what makes the cascade targeted rather than a broadcast. Before
+     * it existed, every stall in the market saw every unclaimed line, so the
+     * fastest tapper won and a shopkeeper had no window in which the order was
+     * meaningfully theirs to answer.
+     *
+     * Same warning as `claim` above: every path must be declared, or Mongoose
+     * strict mode discards the `$set` and the offer silently never happens.
+     */
+    offer: {
+      stall: { type: mongoose.Schema.Types.ObjectId, ref: 'Stall', default: null },
+      offeredAt: { type: Date, default: null },
+    },
   },
   { _id: false }
 );
@@ -155,6 +175,20 @@ const orderSchema = new mongoose.Schema(
     marketName: { type: String, default: null, maxlength: 160 },
 
     /**
+     * The independent shop this order was placed with.
+     *
+     * A User id, because in this model the shop IS the shopkeeper: Stall.market
+     * is required, so a shop outside any market cannot be a stall.
+     *
+     * Mutually exclusive with `market` — an order has one seller. Both null is
+     * the legacy marketless order, which every shopkeeper still sees, exactly as
+     * before. Note that `{ shop: null }` also matches documents written before
+     * this field existed, which is what makes that filter need no backfill.
+     */
+    shop: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+    shopName: { type: String, default: null, maxlength: 160 },
+
+    /**
      * Fine-grained fulfillment state. Authoritative for market orders; `status`
      * above is its derived mirror, written in the same atomic update.
      */
@@ -189,6 +223,72 @@ const orderSchema = new mongoose.Schema(
        * this order.
        */
       settledAt: { type: Date, default: null },
+
+      /**
+       * The live stall offer round.
+       *
+       * Deliberately the same shape as `riderOffer` below, because it is the
+       * same cascade: ask the best candidates, give them a clock, treat silence
+       * as a refusal, and fall through to an open pool rather than looping for
+       * ever. The difference is that a round asks SEVERAL stalls at once — one
+       * order can need four stalls to fill it, and asking them one at a time
+       * would multiply the customer's wait by four.
+       *
+       * Which lines went to which stall lives on `items[].offer`, not here, so
+       * the assignment can be updated with the same arrayFilters machinery that
+       * makes claiming race-free.
+       */
+      stallOffer: {
+        /** Rounds opened in the CURRENT market. Bounded by `maxStallRounds`. */
+        round: { type: Number, default: 0, min: 0 },
+        /** When this round's offers go stale. The real sourcing clock. */
+        expiresAt: { type: Date, default: null },
+        /**
+         * Stalls that declined or let the clock run out. Never offered to again
+         * while the order is in this market — asking a second time just burns
+         * another window on an unattended phone.
+         *
+         * Reset on a hop: a refusal in market A says nothing about market B.
+         */
+        declinedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Stall' }],
+        /**
+         * The cascade ran out of ranked candidates. Any approved, open stall in
+         * the market may now take any unclaimed line.
+         *
+         * This is the old broadcast behaviour, kept as the LAST tier inside a
+         * market. It is what makes hopping to another market genuinely rare
+         * rather than the routine outcome of one quiet round.
+         */
+        openPool: { type: Boolean, default: false },
+      },
+
+      /**
+       * Lines nobody in any market would take, moved aside when the customer
+       * accepted a partial fill.
+       *
+       * Kept rather than deleted so the order can always be reconciled against
+       * what was originally asked for — the customer paid for these at
+       * checkout, and `refundedPaise` records what came back.
+       *
+       * They are moved OUT of `items` rather than flagged in place because
+       * every promotion guard in the engine is written as "no element is still
+       * unclaimed" (`$not: { $elemMatch: ... }`). A dropped line left in the
+       * array would hold the order in `sourcing` for ever.
+       */
+      droppedItems: [
+        {
+          product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+          name: { type: String, maxlength: 200 },
+          quantity: { type: Number, min: 0 },
+          lineTotalPaise: { type: Number, min: 0 },
+          refundedPaise: { type: Number, min: 0, default: 0 },
+          at: { type: Date, default: Date.now },
+          _id: false,
+        },
+      ],
+
+      /** How long the customer has to answer "3 of your 5 items are available". */
+      partialDeadline: { type: Date, default: null },
 
       /** The live rider offer. Cascades to the next nearest on decline or expiry. */
       riderOffer: {
@@ -241,6 +341,8 @@ const orderSchema = new mongoose.Schema(
 
 orderSchema.index({ customer: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
+/** An independent shop's own order list. */
+orderSchema.index({ shop: 1, createdAt: -1 });
 
 /**
  * The sweeper's query, run every few seconds: which sourcing windows have
@@ -249,12 +351,25 @@ orderSchema.index({ status: 1, createdAt: -1 });
 orderSchema.index({ 'fulfillment.status': 1, 'fulfillment.sourcingDeadline': 1 });
 /** The stall broadcast feed: live orders in my market. */
 orderSchema.index({ market: 1, 'fulfillment.status': 1 });
+/** The round sweeper: which offer rounds have run out of time? */
+orderSchema.index({ 'fulfillment.stallOffer.expiresAt': 1, 'fulfillment.status': 1 });
+/** A stall's own feed: what am I being asked for right now? */
+orderSchema.index({ 'items.offer.stall': 1, 'fulfillment.status': 1 });
+/** The partial sweeper: customers who never answered. */
+orderSchema.index({ 'fulfillment.partialDeadline': 1, 'fulfillment.status': 1 });
 /** The rider's pending offer, and the sweeper's offer-expiry query. */
 orderSchema.index({ 'fulfillment.riderOffer.rider': 1, 'fulfillment.riderOffer.expiresAt': 1 });
 /** Stall-scoped views: my claimed lines, my packing queue. */
 orderSchema.index({ 'items.claim.stall': 1, 'fulfillment.status': 1 });
 /** The settlement backfill: delivered, but the stalls' payouts never recorded. */
 orderSchema.index({ 'fulfillment.status': 1, 'fulfillment.settledAt': 1 });
+/**
+ * The same backfill for an independent shop, which needs its own index because
+ * it needs its own query: a shop order has no sourcing engine, so
+ * `fulfillment.status` is null for its whole life and the coarse `status` is
+ * the only record that it was delivered.
+ */
+orderSchema.index({ shop: 1, status: 1, 'fulfillment.settledAt': 1 });
 
 orderSchema.virtual('id').get(function getId() {
   return this._id.toHexString();

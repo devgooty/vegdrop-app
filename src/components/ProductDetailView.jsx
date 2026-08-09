@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Star, ShieldCheck, Truck, Sparkles, Plus, Minus, Check, Heart, Share2 } from 'lucide-react';
+import { ArrowLeft, Star, ShieldCheck, Truck, Sparkles, Plus, Minus, Check, Heart, Share2, Camera } from 'lucide-react';
 import RelatedProducts from './RelatedProducts';
 
 export default function ProductDetailView({
@@ -129,6 +129,19 @@ export default function ProductDetailView({
         </div>
       </div>
 
+      {/*
+        What is actually on the table, photographed by a stall in this market.
+
+        Shown alongside the catalog image rather than replacing it, and captioned
+        with when it was taken — the point is that the customer can tell the
+        difference between a stock photograph and the real produce, which means
+        both have to be visible. Hidden entirely if the image fails to load, so a
+        missing photo leaves no empty frame behind.
+      */}
+      {product.freshPhotoUrl && (
+        <FreshPhoto url={product.freshPhotoUrl} takenAt={product.freshPhotoAt} />
+      )}
+
       {/* 3. Product Info Card */}
       <div className="p-4 space-y-4 flex-1">
         <div className="skeuo-card rounded-2xl p-4 space-y-3">
@@ -257,4 +270,49 @@ export default function ProductDetailView({
       </div>
     </div>
   );
+}
+
+/**
+ * The photograph a stall took of the produce it is actually holding.
+ *
+ * Self-hiding on error: the image is served from a route that 404s once the
+ * photo is older than a day, and a race between the catalog saying "there is
+ * one" and the photo expiring would otherwise leave a broken frame on the page.
+ */
+function FreshPhoto({ url, takenAt }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+
+  return (
+    <div className="mx-4 mt-3 rounded-3xl overflow-hidden bg-[#FAF7F2] border border-[#DCD5C6] shadow-md p-3">
+      <div className="flex items-center gap-1.5 mb-2 px-0.5">
+        <Camera className="w-3.5 h-3.5 text-[#1B4D3E]" />
+        <p className="text-[11px] font-black text-[#1B4D3E] uppercase tracking-wider">
+          Photographed at the market
+        </p>
+      </div>
+      <div className="relative h-56 w-full rounded-2xl overflow-hidden bg-[#F0EBE1]">
+        <img
+          src={url}
+          alt="The produce currently on the stall"
+          loading="lazy"
+          className="w-full h-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      </div>
+      <p className="text-[10px] text-[#7A736A] mt-2 px-0.5">
+        Taken {describeAge(takenAt)} by a stall in this market — not a catalogue picture.
+      </p>
+    </div>
+  );
+}
+
+/** "3 hours ago", for a photo caption. */
+function describeAge(when) {
+  if (!when) return 'today';
+  const minutes = Math.round((Date.now() - new Date(when).getTime()) / 60000);
+  if (minutes < 60) return `${Math.max(1, minutes)} minutes ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  return 'yesterday';
 }
