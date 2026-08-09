@@ -8,6 +8,8 @@ import {
   verifyRegistration,
   startVendorRegistration,
   verifyVendorRegistration,
+  startRiderRegistration,
+  verifyRiderRegistration,
   describeIdentifierProblem,
   describePhoneProblem,
   describeEmailProblem,
@@ -99,19 +101,54 @@ const COPY = {
  * wordmark, so it must not wait on a third party.
  *
  * Shared by every app. A separate shopkeeper photo was tried and reverted —
- * the brand is one photo, and the shopkeeper screen tells itself apart through
- * its heading instead (see the `isVendor` check on the h1 below), not through
- * a second asset to keep in sync with the first.
+ * the brand is one photo, and each screen tells itself apart through its
+ * heading instead (see `SIGN_UP` below), not through a second asset to keep in
+ * sync with the first.
  */
 const HERO_SRC = '/hero.webp';
 
+/**
+ * How each app signs a NEW account up.
+ *
+ * Every role registers through the same dual-OTP flow — this app has no
+ * passwords, so there is no extra step to insert for a privileged one. The only
+ * thing that varies is which endpoint is called, and that is what selects the
+ * role, on the server, in routes/auth.js. Nothing here chooses it: this table
+ * picks a function and some wording, and a tampered client can only ever reach
+ * an endpoint that hardcodes its own role.
+ *
+ * A table rather than the chain of `isVendor ? … : …` ternaries this replaces —
+ * that shape needed a new branch in four places for every role added, which is
+ * how the delivery app ended up with no sign-up at all.
+ */
+const SIGN_UP = {
+  customer: {
+    start: startRegistration,
+    verify: verifyRegistration,
+  },
+  shopkeeper: {
+    start: startVendorRegistration,
+    // Also returns `nextStep: 'kyc'`, but the shopkeeper app already checks KYC
+    // status on mount for every sign-in, not just a fresh signup, so there is
+    // nothing extra to thread through here.
+    verify: async (payload) => (await verifyVendorRegistration(payload)).user,
+    heading: 'Shopkeeper',
+    title: 'Register your stall',
+    sub: "You're new here. We need both contacts, then a quick account check.",
+    codesSub: "Type the code from each one below. You'll verify your bank account next.",
+  },
+  delivery: {
+    start: startRiderRegistration,
+    verify: verifyRiderRegistration,
+    heading: 'Delivery Agent',
+    title: 'Sign up to deliver',
+    sub: 'We need both contacts. Each gets its own code.',
+    codesSub: 'Type the code from each one below, and you can go on duty straight away.',
+  },
+};
+
 export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegdrop_' }) {
-  // Shopkeepers register through the SAME dual-OTP flow as customers — this app
-  // has no passwords, so there is no extra step to insert — but the account
-  // that comes out the other end holds the `shopkeeper` role. That is a server
-  // decision made by which endpoint is called (routes/auth.js), never by
-  // anything chosen here.
-  const isVendor = appType === 'shopkeeper';
+  const signUp = SIGN_UP[appType] || SIGN_UP.customer;
 
   const [step, setStep] = useState(STEP.IDENTIFIER);
 
@@ -261,8 +298,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     setIsSubmitting(true);
 
     try {
-      const startFn = isVendor ? startVendorRegistration : startRegistration;
-      const issued = await startFn({
+      const issued = await signUp.start({
         phone: phone.trim(),
         email: email.trim(),
         name: name.trim() || undefined,
@@ -306,11 +342,9 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
         phoneChallengeId: phoneWasDelivered ? registration.phone.challengeId : undefined,
         phoneCode: phoneWasDelivered ? phoneCode.trim() : undefined,
       };
-      // verifyVendorRegistration also returns `nextStep: 'kyc'`, but the
-      // shopkeeper app already checks KYC status on mount for every sign-in
-      // (not just a fresh signup), so there is nothing extra to thread through
-      // here — `user` is all onLogin needs.
-      const user = isVendor ? (await verifyVendorRegistration(payload)).user : await verifyRegistration(payload);
+      // Each entry resolves to the user, whatever else its endpoint returns —
+      // `user` is all onLogin needs.
+      const user = await signUp.verify(payload);
       onLogin(user);
     } catch (err) {
       setError(describeError(err, 'That did not work. Check the codes and try again.'));
@@ -324,11 +358,11 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
   };
 
   let { title, sub } = COPY[step];
-  if (isVendor && step === STEP.REGISTER) {
-    title = 'Register your stall';
-    sub = "You're new here. We need both contacts, then a quick account check.";
-  } else if (isVendor && step === STEP.REGISTER_CODES) {
-    sub = "Type the code from each one below. You'll verify your bank account next.";
+  if (step === STEP.REGISTER) {
+    title = signUp.title || title;
+    sub = signUp.sub || sub;
+  } else if (step === STEP.REGISTER_CODES) {
+    sub = signUp.codesSub || sub;
   }
 
   const fieldClass =
@@ -387,11 +421,11 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
         <div className="mx-auto w-full max-w-[26rem]">
 
           {/* The photo is shared with the customer app, so this heading is the
-              one place a shopkeeper is told this screen is theirs. Prefixed
-              rather than swapped outright, so "Login" and "Sign up" still say
-              what step this is — "Shopkeeper" alone would not. */}
+              one place a shopkeeper or rider is told this screen is theirs.
+              Prefixed rather than swapped outright, so "Login" and "Sign up"
+              still say what step this is — "Shopkeeper" alone would not. */}
           <h1 className="mb-2 px-1 text-[1.6rem] sm:text-[1.75rem] font-extrabold text-[#0F1F17]">
-            {isVendor ? `Shopkeeper ${PAGE_TITLE[step]}` : PAGE_TITLE[step]}
+            {signUp.heading ? `${signUp.heading} ${PAGE_TITLE[step]}` : PAGE_TITLE[step]}
           </h1>
 
           <section className="si-sheet p-5 sm:p-6">

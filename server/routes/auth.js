@@ -565,6 +565,74 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
+// Delivery agent registration — same dual-OTP flow, a different role and purpose
+// ---------------------------------------------------------------------------
+
+/**
+ * Unlike the vendor equivalent above, an account created here can work
+ * immediately: `findNearestRider` in services/dispatch.js selects on
+ * `role: 'delivery'` plus a fresh location and an `online` duty status, and
+ * there is no verification record standing between those two facts.
+ *
+ * That is a deliberate product decision, not an oversight, and it is worth
+ * stating plainly because of what an offer carries: the customer's name, phone
+ * number and home address, and — on a COD order — their cash. Anyone who can
+ * receive one code by email and one over WhatsApp can reach all of it. If that
+ * ever needs tightening, the gate belongs in `findNearestRider` and on the
+ * duty-status write in routes/rider.js, NOT here: refusing at registration
+ * would leave the applicant with an account they cannot use and no way to see
+ * why, and `User.status` cannot express "pending" because middleware/auth.js
+ * rejects any non-active user before they could read such a screen.
+ */
+router.post(
+  '/delivery/register/start',
+  otpRequestLimiter,
+  otpStartIpLimiter,
+  validate({
+    body: z
+      .object({
+        phone: fields.phone,
+        email: fields.email,
+        name: fields.nonEmptyString(120).optional(),
+      })
+      .strict(),
+  }),
+  async (req, res) => {
+    if (!config.email.configured) {
+      throw new ApiError(503, 'Registration is temporarily unavailable.', 'EMAIL_NOT_CONFIGURED');
+    }
+
+    const result = await startRegistrationChallenge({ ...req.valid.body, purpose: 'delivery_registration' });
+    return res.status(202).json(result);
+  }
+);
+
+router.post(
+  '/delivery/register/verify',
+  otpVerifyLimiter,
+  validate({
+    body: z
+      .object({
+        emailChallengeId: fields.nonEmptyString(80),
+        emailCode: fields.otpCode,
+        phoneChallengeId: fields.nonEmptyString(80).optional(),
+        phoneCode: fields.otpCode.optional(),
+      })
+      .strict()
+      .refine((data) => !data.phoneChallengeId === !data.phoneCode, {
+        message: 'A phone challenge id and code must be supplied together.',
+        path: ['phoneCode'],
+      }),
+  }),
+  async (req, res) => {
+    // Hardcoded, not derived from input — the route path is what selects this
+    // role, never a request body field.
+    const user = await completeRegistration({ ...req.valid.body, purpose: 'delivery_registration', role: 'delivery' });
+    return res.status(201).json(await establishSession(user, req, res));
+  }
+);
+
+// ---------------------------------------------------------------------------
 // Session lifecycle
 // ---------------------------------------------------------------------------
 

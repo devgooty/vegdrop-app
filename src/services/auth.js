@@ -125,6 +125,41 @@ export async function verifyVendorRegistration({ emailChallengeId, emailCode, ph
   return { user: result.user, nextStep: result.nextStep };
 }
 
+// --- Delivery agent registration ---------------------------------------------
+//
+// Same dual-OTP shape again, and again the endpoint is the only thing that
+// selects the role. Unlike a vendor, a rider created here can go on duty right
+// away — there is no KYC equivalent standing between the new account and a
+// real pickup, so there is no `nextStep` to hand back.
+
+/**
+ * Step 1 of delivery agent registration. Both contacts are required, each
+ * proved with its own code.
+ * @returns {Promise<{email: {challengeId: string, destination: string, delivered: boolean},
+ *                    phone: {challengeId: string|null, destination: string, delivered: boolean}}>}
+ */
+export async function startRiderRegistration({ phone, email, name }) {
+  const payload = { phone, email };
+  if (name) payload.name = name;
+  return api.post('/auth/delivery/register/start', payload, { auth: false });
+}
+
+/**
+ * Step 2 of delivery agent registration. Creates a `delivery` account and
+ * establishes the session.
+ * @returns {Promise<object>} the authenticated user
+ */
+export async function verifyRiderRegistration({ emailChallengeId, emailCode, phoneChallengeId, phoneCode }) {
+  const payload = { emailChallengeId, emailCode };
+  if (phoneChallengeId && phoneCode) {
+    payload.phoneChallengeId = phoneChallengeId;
+    payload.phoneCode = phoneCode;
+  }
+  const result = await api.post('/auth/delivery/register/verify', payload, { auth: false });
+  setAccessToken(result.accessToken);
+  return result.user;
+}
+
 /**
  * Step 2. Exchanges the code for a session, creating the account if the number
  * is new.

@@ -21,9 +21,13 @@ const otpChallengeSchema = new mongoose.Schema(
      * becomes the account's credential. `email_change` does the same for an
      * address before login codes are ever copied to it — an address nobody
      * proved control of would be a way in, not a convenience. `vendor_registration`
-     * is kept separate from `registration` rather than reusing it with a payload
-     * flag, so a code issued for a customer sign-up can never be redeemed to
-     * mint a `shopkeeper` account and vice versa.
+     * and `delivery_registration` are kept separate from `registration` rather
+     * than reusing it with a payload flag, so a code issued for a customer
+     * sign-up can never be redeemed to mint a `shopkeeper` or `delivery`
+     * account, and neither privileged sign-up can be redeemed as the other.
+     * One purpose per role that can be self-created is the whole mechanism:
+     * the route picks the purpose AND the role together, so they cannot drift
+     * apart the way a role field in a request body could.
      *
      * Deliberately only the purposes that actually exist: a `password_reset`
      * value here would describe a flow that cannot exist, since there are no
@@ -33,7 +37,14 @@ const otpChallengeSchema = new mongoose.Schema(
     purpose: {
       type: String,
       required: true,
-      enum: ['login', 'registration', 'vendor_registration', 'phone_change', 'email_change'],
+      enum: [
+        'login',
+        'registration',
+        'vendor_registration',
+        'delivery_registration',
+        'phone_change',
+        'email_change',
+      ],
       index: true,
     },
 
