@@ -80,6 +80,29 @@ function isEmailIdentifier(identifier) {
 }
 
 /**
+ * Which accounts a given app is willing to sign in.
+ *
+ * One phone or email can now back several accounts — one per role, since
+ * `User`'s uniqueness moved from `(email)` to `(email, role)` (see the long
+ * comment on models/User.js). That makes "find the account for this
+ * identifier" ambiguous unless the caller also says which app is asking: the
+ * shopkeeper app must never resolve to the customer account of someone who
+ * also shops here, and the customer app must never hand a stranger's session
+ * to their shopkeeper identity by accident.
+ *
+ * `market_owner` and `developer` are never self-registered — they only ever
+ * arrive by promoting one of these three accounts via PATCH /api/users/:id/role
+ * — and neither has a dedicated app of its own; both sign in through the
+ * customer app, where `App.jsx` renders their extra panels inline. So they are
+ * folded into the customer scope rather than given their own.
+ */
+const APP_ROLE_SCOPE = Object.freeze({
+  customer: ['customer', 'market_owner', 'developer'],
+  shopkeeper: ['shopkeeper', 'developer'],
+  delivery: ['delivery', 'developer'],
+});
+
+/**
  * Resolve an account from whatever was typed into the single sign-in box.
  *
  * `pendingPhone` is matched too. Someone who registered while WhatsApp was down
@@ -87,14 +110,24 @@ function isEmailIdentifier(identifier) {
  * exists, send them back through registration, and fail on the email already
  * being taken. They are found here and signed in through their verified email —
  * the unproven number still receives nothing.
+ *
+ * `roles`, when given, narrows the match to `APP_ROLE_SCOPE` for the calling
+ * app — see there for why. Omitted entirely rather than defaulted to "every
+ * role", because every caller in this file is updated to pass it; a caller
+ * that forgets would otherwise resolve across apps exactly as before this
+ * change, silently, which is the one failure mode worth refusing to default
+ * away.
  */
-async function findByIdentifier(identifier) {
+async function findByIdentifier(identifier, roles) {
+  const scope = roles ? { role: { $in: roles } } : {};
+
   if (isEmailIdentifier(identifier)) {
-    return User.findOne({ email: identifier, status: { $ne: 'deleted' } });
+    return User.findOne({ email: identifier, status: { $ne: 'deleted' }, ...scope });
   }
   return User.findOne({
     $or: [{ phone: identifier }, { pendingPhone: identifier }],
     status: { $ne: 'deleted' },
+    ...scope,
   });
 }
 
@@ -122,10 +155,23 @@ async function findByIdentifier(identifier) {
 router.post(
   '/lookup',
   lookupLimiter,
-  validate({ body: z.object({ identifier: fields.identifier }).strict() }),
+  validate({
+    body: z
+      .object({
+        identifier: fields.identifier,
+        /**
+         * Which app is asking, so "exists" means the account THAT app can sign
+         * in — see `APP_ROLE_SCOPE`. Optional and unrestricted when omitted, so
+         * a caller that predates app-scoping (or calls this directly) keeps the
+         * old one-account-per-identifier behaviour rather than failing closed.
+         */
+        app: z.enum(['customer', 'shopkeeper', 'delivery']).optional(),
+      })
+      .strict(),
+  }),
   async (req, res) => {
-    const { identifier } = req.valid.body;
-    const user = await findByIdentifier(identifier);
+    const { identifier, app } = req.valid.body;
+    const user = await findByIdentifier(identifier, app ? APP_ROLE_SCOPE[app] : undefined);
 
     return res.json({
       exists: Boolean(user),
@@ -173,6 +219,9 @@ router.post(
         // existing account is ignored, so it cannot be used to overwrite the
         // name on someone else's account.
         name: fields.nonEmptyString(120).optional(),
+        // Which app is asking — see `APP_ROLE_SCOPE`. Optional for the same
+        // back-compat reason as on /lookup.
+        app: z.enum(['customer', 'shopkeeper', 'delivery']).optional(),
         // `role` is intentionally absent. .strict() rejects it if supplied,
         // which turns a privilege-escalation attempt into a 400.
       })
@@ -183,10 +232,10 @@ router.post(
       }),
   }),
   async (req, res) => {
-    const { name } = req.valid.body;
+    const { name, app } = req.valid.body;
     const identifier = req.valid.body.identifier ?? req.valid.body.phone;
 
-    const user = await findByIdentifier(identifier);
+    const user = await findByIdentifier(identifier, app ? APP_ROLE_SCOPE[app] : undefined);
 
     /**
      * Where the code goes.
@@ -225,6 +274,32 @@ router.post(
       return res.status(202).json({
         challengeId: null,
         channel: 'email',
+        destination: otp.maskDestination(identifier),
+        expiresAt: null,
+        next: 'verify',
+      });
+    } else if (app === 'shopkeeper' || app === 'delivery') {
+      /**
+       * A phone with no scoped match, on an app that never mints an account
+       * from one.
+       *
+       * Falling through to the code below would still issue a challenge whose
+       * verify step creates a plain `customer` account (see `SELF_SERVICE_ROLES`
+       * in /otp/verify) — regardless of which app's login screen asked for it.
+       * That auto-create path exists for exactly one case: a bare phone number
+       * on the CUSTOMER app. A shopkeeper or delivery account is only ever
+       * created through its own dual-OTP /register endpoint, which proves an
+       * email as well as a phone. Without this branch, someone typing their
+       * number on the delivery app's sign-in screen for the first time would
+       * silently get a customer account they can never see from that app —
+       * the exact confusion self-registration was built to avoid.
+       *
+       * Answered the same non-committal way the branches above are: nothing
+       * here reveals whether that was the reason.
+       */
+      return res.status(202).json({
+        challengeId: null,
+        channel: null,
         destination: otp.maskDestination(identifier),
         expiresAt: null,
         next: 'verify',
@@ -293,10 +368,14 @@ router.post(
       });
     } catch (err) {
       // Two challenges for the same new number can be verified concurrently.
-      // The unique index on `phone` settles it; the loser adopts the winner's
-      // account rather than failing a sign-in that legitimately succeeded.
+      // The unique index on `(phone, role)` settles it; the loser adopts the
+      // winner's account rather than failing a sign-in that legitimately
+      // succeeded. Scoped by role too now: this phone may also legitimately
+      // back a `shopkeeper` or `delivery` account, and a bare `{ phone }`
+      // lookup could resolve to one of those instead of the customer account
+      // this race was actually over.
       if (err?.code !== 11000) throw err;
-      user = await User.findOne({ phone });
+      user = await User.findOne({ phone, role: SELF_SERVICE_ROLES[0] });
       if (!user) throw err;
     }
 
@@ -332,21 +411,32 @@ router.post(
  * purpose plus a payload flag, so a code issued for a customer sign-up can
  * never be redeemed to mint a `shopkeeper` account.
  */
-async function startRegistrationChallenge({ phone, email, name, purpose }) {
+async function startRegistrationChallenge({ phone, email, name, purpose, role }) {
   /**
-   * Taken means *verified* by someone else. A number sitting in another
-   * account's `pendingPhone` is unproven and therefore still available —
-   * whoever verifies it first gets it.
+   * Taken means *verified*, by someone else, AS THIS ROLE.
+   *
+   * Scoped by `role` because a contact is no longer unique across the whole
+   * User collection — it is unique per `(contact, role)`, see the comment on
+   * models/User.js. The same phone or email may already back a `customer`
+   * account and that is fine: registering a `shopkeeper` account for it is a
+   * DIFFERENT (phone, role) / (email, role) pair, and the compound index below
+   * has no objection. What is still refused is exactly what was always
+   * refused: a second account of the SAME role for a contact that already has
+   * one.
+   *
+   * A number sitting in another account's `pendingPhone` is unproven and
+   * therefore still available regardless of role — whoever verifies it first
+   * gets it — so `pendingPhone` is deliberately not checked here.
    */
   const [phoneTaken, emailTaken] = await Promise.all([
-    User.findOne({ phone, status: { $ne: 'deleted' } }).select('_id').lean(),
-    User.findOne({ email, status: { $ne: 'deleted' } }).select('_id').lean(),
+    User.findOne({ phone, role, status: { $ne: 'deleted' } }).select('_id').lean(),
+    User.findOne({ email, role, status: { $ne: 'deleted' } }).select('_id').lean(),
   ]);
 
   if (phoneTaken || emailTaken) {
     throw new ApiError(
       409,
-      'An account already exists for those details. Try signing in instead.',
+      'You already have an account with that role. Try signing in instead.',
       'ALREADY_REGISTERED'
     );
   }
@@ -464,7 +554,11 @@ router.post(
       throw new ApiError(503, 'Registration is temporarily unavailable.', 'EMAIL_NOT_CONFIGURED');
     }
 
-    const result = await startRegistrationChallenge({ ...req.valid.body, purpose: 'registration' });
+    const result = await startRegistrationChallenge({
+      ...req.valid.body,
+      purpose: 'registration',
+      role: SELF_SERVICE_ROLES[0],
+    });
     return res.status(202).json(result);
   }
 );
@@ -530,7 +624,11 @@ router.post(
       throw new ApiError(503, 'Registration is temporarily unavailable.', 'EMAIL_NOT_CONFIGURED');
     }
 
-    const result = await startRegistrationChallenge({ ...req.valid.body, purpose: 'vendor_registration' });
+    const result = await startRegistrationChallenge({
+      ...req.valid.body,
+      purpose: 'vendor_registration',
+      role: 'shopkeeper',
+    });
     return res.status(202).json(result);
   }
 );
@@ -602,7 +700,11 @@ router.post(
       throw new ApiError(503, 'Registration is temporarily unavailable.', 'EMAIL_NOT_CONFIGURED');
     }
 
-    const result = await startRegistrationChallenge({ ...req.valid.body, purpose: 'delivery_registration' });
+    const result = await startRegistrationChallenge({
+      ...req.valid.body,
+      purpose: 'delivery_registration',
+      role: 'delivery',
+    });
     return res.status(202).json(result);
   }
 );
@@ -706,9 +808,18 @@ router.post(
       throw new ApiError(400, 'That is already your number.', 'PHONE_UNCHANGED');
     }
 
-    const taken = await User.findOne({ phone }).select('_id').lean();
+    /**
+     * Scoped to THIS account's own role, matching the compound `(phone, role)`
+     * index this write will actually be checked against — not a global
+     * lookup. The same number may already be somebody's `customer` account,
+     * quite possibly this same person's; moving a `shopkeeper` account onto
+     * it is a different (phone, role) pair entirely and the database has no
+     * objection. An unscoped check here would refuse a move the write itself
+     * would have allowed.
+     */
+    const taken = await User.findOne({ phone, role: req.user.role }).select('_id').lean();
     if (taken) {
-      throw new ApiError(409, 'That number is already in use.', 'DUPLICATE');
+      throw new ApiError(409, 'That number is already in use by an account with your role.', 'DUPLICATE');
     }
 
     // Addressed to the NEW number: the point is to prove the account holder can
@@ -808,9 +919,11 @@ router.post(
       throw new ApiError(400, 'That is already your verified email.', 'EMAIL_UNCHANGED');
     }
 
-    const taken = await User.findOne({ email }).select('_id').lean();
+    // Scoped to this account's own role — see the identical note on
+    // /phone/start above.
+    const taken = await User.findOne({ email, role: req.user.role }).select('_id').lean();
     if (taken && !taken._id.equals(req.user._id)) {
-      throw new ApiError(409, 'That email is already in use.', 'DUPLICATE');
+      throw new ApiError(409, 'That email is already in use by an account with your role.', 'DUPLICATE');
     }
 
     // Addressed to the NEW address, which is the entire point.

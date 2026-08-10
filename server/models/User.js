@@ -14,8 +14,8 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true, maxlength: 120 },
 
     /**
-     * VERIFIED contacts. Both are sparse-unique, and a value only ever lands
-     * here once someone has proved they receive codes at it.
+     * VERIFIED contacts. A value only ever lands here once someone has proved
+     * they receive codes at it.
      *
      * That is the whole reason `phone` is no longer required. Registration has to
      * survive WhatsApp being unavailable, and the alternative — writing an
@@ -23,6 +23,30 @@ const userSchema = new mongoose.Schema(
      * number, take it out of circulation, and stop its real owner from ever
      * registering. An unproven number goes to `pendingPhone` below, which
      * reserves nothing.
+     *
+     * UNIQUE PER ROLE, NOT GLOBALLY — see the compound indexes below.
+     *
+     * One phone or email used to identify at most one account, full stop. That
+     * meant a person could hold exactly one role in the whole system: a customer
+     * who wanted to also run a stall or ride for the platform had to invent a
+     * second phone number and a second inbox, because the vendor and delivery
+     * self-registration routes refused any contact already claimed by ANY
+     * account, including their own customer one.
+     *
+     * The identity that matters here is the contact, not the account — a phone
+     * number is a person, and a person plausibly wants to shop, sell, and
+     * deliver through the same one. So the uniqueness constraint moved from
+     * `(email)` / `(phone)` to `(email, role)` / `(phone, role)`: one contact may
+     * back at most one `customer` account, at most one `shopkeeper` account, at
+     * most one `delivery` account — one per role, never two of the same role
+     * fighting over one identity. `market_owner` and `developer` are never
+     * self-registered, so this only ever bites the three self-service roles in
+     * practice; it costs those two nothing.
+     *
+     * Each such account is a fully separate document with its own `_id`, own
+     * order history, own duty status — there is no shared "profile" object above
+     * them. Which one a sign-in resolves to is decided by which app asked (see
+     * `APP_ROLE_SCOPE` in routes/auth.js), not by anything stored here.
      *
      * An account must end up with at least one of these; `hasVerifiedContact()`
      * is the check, and routes/auth.js refuses to create an account without one.
@@ -32,14 +56,14 @@ const userSchema = new mongoose.Schema(
       required: false,
       trim: true,
       lowercase: true,
-      index: { unique: true, sparse: true },
+      index: true,
       maxlength: 254,
     },
     phone: {
       type: String,
       required: false,
       trim: true,
-      index: { unique: true, sparse: true },
+      index: true,
       maxlength: 20,
     },
 
@@ -154,6 +178,36 @@ function stripSensitive(_doc, ret) {
   delete ret.passwordHash;
   return ret;
 }
+
+/**
+ * One contact, one account per role — see the long comment on `email` above.
+ *
+ * A PARTIAL filter rather than `sparse: true`, and the difference matters here.
+ * `sparse` on a COMPOUND index only excludes a document when EVERY indexed
+ * field is missing; a document with `email: null, role: 'customer'` would still
+ * be indexed, and Mongo would then enforce uniqueness on `(null, 'customer')`
+ * — silently blocking a second phone-only customer account from ever being
+ * created, because to the index they'd look identical. The partial filter
+ * excludes on `email` specifically, regardless of what `role` holds, which is
+ * the exclusion actually wanted: no email, don't enforce, full stop.
+ *
+ * MIGRATION NOTE: this replaces the old single-field unique indexes on `email`
+ * and `phone`. `db/connect.js` builds indexes with `createIndexes()`, not
+ * `syncIndexes()`, specifically so a rollback cannot delete an index a newer
+ * release added — which also means it will NOT drop the old ones on its own.
+ * A deployment already carrying the old global-unique `email_1` / `phone_1`
+ * indexes must have them dropped by hand before this can take effect; until
+ * then the old indexes keep enforcing one-account-per-contact regardless of
+ * what this schema now declares.
+ */
+userSchema.index(
+  { email: 1, role: 1 },
+  { unique: true, partialFilterExpression: { email: { $type: 'string' } } }
+);
+userSchema.index(
+  { phone: 1, role: 1 },
+  { unique: true, partialFilterExpression: { phone: { $type: 'string' } } }
+);
 
 /**
  * Required by the $geoNear stage that finds the rider nearest a market. Without

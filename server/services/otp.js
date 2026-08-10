@@ -46,10 +46,35 @@ async function issueChallenge({ purpose, destination, user = null, payload = nul
   const normalized = String(destination).trim().toLowerCase();
   const channel = channelFor(normalized);
 
-  // Cooldown: block rapid re-issue for the same destination and purpose.
+  /**
+   * Scoped by account too, when one is known.
+   *
+   * One phone or email can now back several accounts — a customer, a
+   * shopkeeper, a delivery agent, each a separate User document sharing a
+   * contact (see models/User.js). All three sign in through the SAME `login`
+   * purpose, to the SAME destination. Without this, requesting a login code
+   * for one account would set the cooldown and then supersede — invalidate —
+   * a still-pending code for a DIFFERENT account that merely happens to share
+   * an email, purely because both queries matched on `(destination, purpose)`
+   * alone. That is not a security hole — `verifyChallenge` still checks the
+   * exact `challengeId`, which is account-specific from the moment it is
+   * minted — but it would make switching between one's own apps back to back
+   * feel randomly broken.
+   *
+   * `null` when no account is known yet (registration, or a login attempt for
+   * an identifier with no match at all), which is exactly when the OLD
+   * destination-only scoping is still the right one: there is no account to
+   * scope to, and the invariant being protected — one live code per
+   * destination per purpose — is about the destination itself.
+   */
+  const accountScope = user ? { user: user._id } : {};
+
+  // Cooldown: block rapid re-issue for the same destination, purpose and
+  // (when known) account.
   const recent = await OtpChallenge.findOne({
     destination: normalized,
     purpose,
+    ...accountScope,
     consumedAt: null,
     lastSentAt: { $gt: new Date(Date.now() - config.otp.resendCooldownSeconds * 1000) },
   }).lean();
@@ -107,9 +132,12 @@ async function issueChallenge({ purpose, destination, user = null, payload = nul
     throw err;
   }
 
-  // Exactly one live code per destination and purpose, from here on.
+  // Exactly one live code per destination, purpose and (when known) account,
+  // from here on — same scoping as the cooldown check above, and for the same
+  // reason: a code for one account sharing this destination must not retire a
+  // still-valid code for another.
   await OtpChallenge.updateMany(
-    { destination: normalized, purpose, consumedAt: null, _id: { $ne: created._id } },
+    { destination: normalized, purpose, ...accountScope, consumedAt: null, _id: { $ne: created._id } },
     { $set: { consumedAt: new Date() } }
   );
 

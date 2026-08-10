@@ -367,20 +367,71 @@ test('a customer registration code cannot be redeemed as a vendor registration',
   assert.equal(created, null);
 });
 
-test('vendor registration refuses a verified email already on another account', async () => {
+test('vendor registration is not blocked by a customer account on the same email', async () => {
+  // One contact, several roles: uniqueness on User is per (contact, role), not
+  // per contact — see the long comment on models/User.js. A customer account
+  // must not stand in the way of the SAME email registering as a shopkeeper;
+  // that is the entire point of the change.
   const { user } = await createUser({ role: 'customer' });
 
-  // Matches the existing customer /register/start behaviour this shares an
-  // implementation with: "taken" means verified by someone else, and that is
-  // surfaced immediately rather than hidden until verify — registration's own
-  // decoy tolerance is for a *phone* pending-but-unverified elsewhere, not for
-  // a contact someone has already proved.
+  const res = await api()
+    .post('/api/auth/vendor/register/start')
+    .send({ phone: '9876543213', email: user.email });
+
+  assert.equal(res.status, 202);
+  assert.equal(res.body.email.delivered, true);
+
+  // Still exactly one customer account, and the vendor registration has not
+  // created a shopkeeper account yet either — /start only issues codes.
+  const accounts = await User.find({ email: user.email }).select('role').lean();
+  assert.deepEqual(
+    accounts.map((a) => a.role).sort(),
+    ['customer']
+  );
+});
+
+test('vendor registration still refuses a second shopkeeper account for the same email', async () => {
+  // The part of the old behaviour that must survive: a contact may back at
+  // most ONE account per role. Two shopkeeper accounts fighting over the same
+  // email is still nonsense, even though a customer account with that email
+  // sharing it is not.
+  const { user } = await createUser({ role: 'shopkeeper' });
+
   const res = await api()
     .post('/api/auth/vendor/register/start')
     .send({ phone: '9876543213', email: user.email });
 
   assert.equal(res.status, 409);
   assert.equal(res.body.error.code, 'ALREADY_REGISTERED');
+});
+
+test('the same email can complete registration as a customer and a shopkeeper independently', async () => {
+  const email = 'multi-role@example.com';
+  const { user: customer } = await createUser({ role: 'customer', email });
+
+  const start = await api()
+    .post('/api/auth/vendor/register/start')
+    .send({ phone: '9876543215', email });
+  assert.equal(start.status, 202);
+
+  const verify = await api()
+    .post('/api/auth/vendor/register/verify')
+    .send({
+      emailChallengeId: start.body.email.challengeId,
+      emailCode: start.body.devCodes.email,
+      phoneChallengeId: start.body.phone.challengeId,
+      phoneCode: start.body.devCodes.phone,
+    });
+
+  assert.equal(verify.status, 201);
+  assert.equal(verify.body.user.role, 'shopkeeper');
+  assert.notEqual(verify.body.user.id, customer.id);
+
+  const accounts = await User.find({ email }).select('role').lean();
+  assert.deepEqual(
+    accounts.map((a) => a.role).sort(),
+    ['customer', 'shopkeeper']
+  );
 });
 
 test('vendor registration cannot smuggle a privileged role through the body', async () => {
