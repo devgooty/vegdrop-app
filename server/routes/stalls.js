@@ -14,6 +14,8 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { stallActionLimiter } = require('../middleware/rateLimit');
 const sourcing = require('../services/sourcing');
 const settlement = require('../services/settlement');
+const dispatch = require('../services/dispatch');
+const pickupCode = require('../services/pickupCode');
 
 const router = express.Router();
 
@@ -141,6 +143,36 @@ function forStall(order, stallId) {
       collectedAt: i.claim.collectedAt,
     })),
     myTotalPaise: mine.reduce((sum, i) => sum + (i.sourcePricePaise || 0) * i.quantity, 0),
+
+    /**
+     * The handover code for THIS stall's bags, to be read aloud to the rider.
+     *
+     * Present from the moment the stall claims a line, because that is when the
+     * shopkeeper starts needing it — not when the rider arrives, by which point
+     * they are standing at the counter waiting for a screen to load.
+     *
+     * Only ever computed for the stall making the request, and only for lines it
+     * actually holds. A stall with nothing on this order gets null, which is
+     * what keeps the offers list — where every stall in the market can see the
+     * same order — from handing out a code for somebody else's pickup.
+     *
+     * Dropped once everything here has been collected: a spent code left on
+     * screen is just a number waiting to be overheard.
+     */
+    pickupCode:
+      mine.length > 0 && mine.some((i) => !i.claim.collectedAt)
+        ? pickupCode.codeFor(order._id, stallId)
+        : null,
+
+    /**
+     * How many wrong guesses the rider has left at this stall, so the shopkeeper
+     * can see a lock coming rather than discover it.
+     */
+    pickupAttemptsRemaining: Math.max(
+      0,
+      pickupCode.MAX_ATTEMPTS -
+        ((order.fulfillment?.pickupAttempts || []).find((a) => String(a.stall) === key)?.count ?? 0)
+    ),
   };
 }
 
@@ -470,7 +502,7 @@ router.get('/me/orders', ...stallGate, async (req, res) => {
       ],
     })
       .select(
-        'orderNumber marketName items fulfillment.status fulfillment.sourcingDeadline fulfillment.stallOffer createdAt'
+        'orderNumber marketName items fulfillment.status fulfillment.sourcingDeadline fulfillment.stallOffer fulfillment.pickupAttempts createdAt'
       )
       .sort({ createdAt: 1 })
       .limit(50)
@@ -481,7 +513,7 @@ router.get('/me/orders', ...stallGate, async (req, res) => {
       'fulfillment.status': { $in: ['packing', 'awaiting_rider', 'collecting'] },
     })
       .select(
-        'orderNumber marketName items fulfillment.status fulfillment.sourcingDeadline fulfillment.stallOffer createdAt'
+        'orderNumber marketName items fulfillment.status fulfillment.sourcingDeadline fulfillment.stallOffer fulfillment.pickupAttempts createdAt'
       )
       .sort({ createdAt: 1 })
       .limit(50)
@@ -657,6 +689,51 @@ router.post(
     }
 
     return res.json({ data: forStall(result.order.toJSON ? result.order.toJSON() : result.order, req.stall._id) });
+  }
+);
+
+/**
+ * Unlock a handover the rider has locked with wrong codes.
+ *
+ * The cap on `POST /rider/orders/:id/collect` is what stops a four-digit code
+ * being brute-forced over the API by somebody who never left home. That cap has
+ * to be low, and a low cap will occasionally catch a rider who simply misheard
+ * a number across a noisy market — at which point real bags are stuck in a real
+ * stall with no way forward.
+ *
+ * This is the way forward, and it is deliberately given to the shopkeeper
+ * rather than to the rider: the point of the code is that one party can see
+ * something the other must be told, so letting the rider clear their own lock
+ * would hand them unlimited guesses and delete the mechanism. The shopkeeper is
+ * already face to face with them and can simply read the number out again.
+ *
+ * Scoped to lines this stall holds — `resetPickupAttempts` matches on
+ * `items.claim.stall`, so a stall cannot clear a lock on a pickup it has no
+ * part in.
+ */
+router.post(
+  '/orders/:id/pickup/reset',
+  ...stallGate,
+  stallActionLimiter,
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const result = await dispatch.resetPickupAttempts({
+      orderId: req.valid.params.id,
+      stallId: req.stall._id,
+    });
+
+    // 404 rather than 403, matching claim and decline above: a stall must not
+    // be able to probe for orders it has nothing to do with.
+    if (!result.reset) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+
+    return res.json({
+      data: {
+        reset: true,
+        attemptsRemaining: result.attemptsRemaining,
+        // Re-sent so the shopkeeper can read it out without hunting for it.
+        pickupCode: pickupCode.codeFor(req.valid.params.id, req.stall._id),
+      },
+    });
   }
 );
 

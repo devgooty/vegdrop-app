@@ -44,6 +44,22 @@ export default function DeliveryApp() {
   // Delivery Notifications
   const [deliveryNotifications, setDeliveryNotifications] = useState([]);
 
+  /**
+   * Pull the order list now, rather than waiting out the poll.
+   *
+   * Handed to the panel so an action that changes an order — claiming one,
+   * entering a handover code — reflects immediately instead of leaving the
+   * agent looking at a stale card for up to five seconds and wondering whether
+   * the tap registered.
+   */
+  const syncOrders = useCallback(async () => {
+    try {
+      setOrders(await fetchOrders({ limit: 100 }));
+    } catch (e) {
+      /* Transient; the poll below retries. */
+    }
+  }, []);
+
   /** Load assigned and available orders once a delivery session exists. */
   useEffect(() => {
     if (!user) return;
@@ -160,6 +176,7 @@ export default function DeliveryApp() {
     <DeliveryPanel
       orders={orders}
       onUpdateOrderStatus={handleUpdateOrderStatus}
+      onSyncOrders={syncOrders}
       user={user}
       notifications={deliveryNotifications}
       onClearNotification={clearDeliveryNotification}

@@ -14,6 +14,7 @@ const Stall = require('../models/Stall');
 const User = require('../models/User');
 const sourcing = require('../services/sourcing');
 const dispatch = require('../services/dispatch');
+const pickupCode = require('../services/pickupCode');
 const sweeper = require('../services/sweeper');
 
 test.before(startTestServer);
@@ -475,7 +476,12 @@ test('collecting the last stall sends the order out for delivery', async () => {
 
   assert.equal((await Order.findById(order._id)).fulfillment.status, 'collecting');
 
-  const result = await dispatch.collectStall({ orderId: order._id, riderId: rider._id, stallId: stall._id });
+  const result = await dispatch.collectStall({
+    orderId: order._id,
+    riderId: rider._id,
+    stallId: stall._id,
+    code: pickupCode.codeFor(order._id, stall._id),
+  });
   assert.equal(result.dispatched, true);
 
   const after = await Order.findById(order._id);
@@ -498,7 +504,13 @@ test('a rider cannot collect from a stall on someone else\'s order', async () =>
     lineIds: order.items.map((i) => i.lineId),
   });
 
-  const result = await dispatch.collectStall({ orderId: order._id, riderId: other._id, stallId: stall._id });
+  const result = await dispatch.collectStall({
+    orderId: order._id,
+    riderId: other._id,
+    stallId: stall._id,
+    // The RIGHT code: being assigned is checked first, so knowing it buys nothing.
+    code: pickupCode.codeFor(order._id, stall._id),
+  });
   assert.equal(result.order, null);
   assert.equal(result.reason, 'NOT_COLLECTING');
 });
@@ -515,7 +527,12 @@ test('unpacked lines cannot be collected', async () => {
   await sourcing.packLines({ orderId: order._id, stallId: stall._id, lineIds: [order.items[0].lineId] });
 
   // Still `packing`, so there is nothing to collect yet.
-  const result = await dispatch.collectStall({ orderId: order._id, riderId: rider._id, stallId: stall._id });
+  const result = await dispatch.collectStall({
+    orderId: order._id,
+    riderId: rider._id,
+    stallId: stall._id,
+    code: pickupCode.codeFor(order._id, stall._id),
+  });
   assert.equal(result.order, null);
 });
 

@@ -1,9 +1,11 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Truck, CheckCircle2, MapPin, Phone, PackageCheck, Bell,
-  LogOut, User, Home, Map as MapIcon, Wallet, Info, Clock, AlertTriangle,
+  LogOut, User, Home, Map as MapIcon, Wallet, Info, Clock, AlertTriangle, Lock,
 } from 'lucide-react';
 import MarketPickups from './MarketPickups';
+import { useToast } from './Toast';
+import { claimOrder, confirmPickup } from '../services/orders';
 import { startLocationReporting, setDutyStatus } from '../services/rider';
 import useRiderJobs from '../hooks/useRiderJobs';
 
@@ -23,9 +25,16 @@ const DeliveryRouteMap = lazy(() => import('./DeliveryRouteMap'));
  * - "Mark Picked Up" sent `Out for Delivery`, which `TRANSITION_PERMISSIONS` in
  *   routes/orders.js grants to shopkeeper/market_owner/developer and NOT to
  *   delivery — a guaranteed 403 for the only role that could press it.
- * - A four-digit OTP gated completion. There is no delivery OTP anywhere in the
- *   system; the endpoint takes no code, and any four digits passed. A check
- *   that always succeeds is worse than none, because it is trusted.
+ * - A four-digit OTP gated completion, compared in the browser against nothing:
+ *   the endpoint took no code and any four digits passed. A check that always
+ *   succeeds is worse than none, because it is trusted.
+ *
+ *   There IS a four-digit code here now, and it is worth being clear about what
+ *   changed, because the screen looks similar. It is derived server-side from
+ *   the order and seller ids, shown only on the shopkeeper's screen, never sent
+ *   to this app, verified by the server, and attempt-capped. The old one was
+ *   theatre; this one is the reason the customer's address is on the card at
+ *   all.
  * - Earnings were `deliveries × 45`, and the weekly payout was that same number
  *   × 3. There is no rider payout model in this codebase at all — `User.rider`
  *   holds duty status and a position, nothing more.
@@ -35,9 +44,28 @@ const DeliveryRouteMap = lazy(() => import('./DeliveryRouteMap'));
  * underneath to repair them to. What remains is driven by real endpoints, and
  * where the data genuinely does not exist the screen says so.
  */
-export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLogout, notifications = [], onClearNotification }) {
+export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onSyncOrders, onLogout, notifications = [], onClearNotification }) {
   const [activeTab, setActiveTab] = useState('home');
-  const [isOnline, setIsOnline] = useState(false);
+  /**
+   * Duty status comes from the server, not from an assumption.
+   *
+   * This used to be `useState(false)`, which was a claim rather than a reading:
+   * the panel asserted the rider was off duty every time it mounted, then
+   * pushed that assertion to `PATCH /api/rider/duty`. Two things went wrong.
+   *
+   * A rider holding a live order got a 409 back — the server refuses to take
+   * someone off duty mid-delivery, correctly — and the failure was swallowed,
+   * so the screen sat there reading "You are currently offline / GO ONLINE"
+   * directly beneath a card showing their in-progress round. Both statements
+   * were on screen at once and the loud one was false.
+   *
+   * A rider without an active order was worse off, because there the PATCH
+   * SUCCEEDED: simply opening the app clocked them out, and they would sit
+   * waiting for offers that dispatch was never going to send.
+   *
+   * `dutyStatus` is already on `toPublicJSON()`, so nothing new is exposed here.
+   */
+  const [isOnline, setIsOnline] = useState(user?.dutyStatus === 'online');
 
   /**
    * The rider's real position, from the one GPS watch this panel runs.
@@ -70,13 +98,39 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
    */
   const [locationError, setLocationError] = useState(null);
 
+  /** Set when the server refuses to change duty, so the screen can say why. */
+  const [dutyError, setDutyError] = useState(null);
+  const [dutyBusy, setDutyBusy] = useState(false);
+
+  /**
+   * Going on or off duty, as a request rather than an announcement.
+   *
+   * The server is the authority on this — it refuses to clock a rider off with
+   * an order in hand — so local state moves only after the server agrees. The
+   * previous arrangement flipped the toggle first and fired the PATCH from an
+   * effect, which meant a refusal left the UI showing a state the server had
+   * explicitly rejected.
+   */
+  const toggleDuty = async () => {
+    const next = isOnline ? 'offline' : 'online';
+    setDutyBusy(true);
+    setDutyError(null);
+    try {
+      await setDutyStatus(next);
+      setIsOnline(next === 'online');
+    } catch (err) {
+      setDutyError(
+        err?.code === 'DELIVERY_IN_PROGRESS'
+          ? 'Finish your current delivery before going offline.'
+          : err?.message || 'Could not change your duty status.'
+      );
+    } finally {
+      setDutyBusy(false);
+    }
+  };
+
   useEffect(() => {
     let stopReporting = null;
-
-    setDutyStatus(isOnline ? 'online' : 'offline').catch(() => {
-      // Refusing to go offline mid-delivery is a legitimate answer from the
-      // server, and the panel's own toggle already reflects the rider's intent.
-    });
 
     if (isOnline) {
       setLocationError(null);
@@ -116,12 +170,18 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
   const deliveredToday = delivered.filter((o) => isToday(o.timestamp));
 
   /**
-   * Legacy marketless orders.
+   * Orders with no market — the pre-market flow and independent shops.
    *
-   * The pre-market flow still exists — `marketId` is optional at checkout — and
-   * its orders reach a rider through the unclaimed pool. The one transition a
-   * delivery role may perform on them is `Delivered`; the shop is the one that
-   * moves an order to Out for Delivery. So that is the only control offered.
+   * `marketId` is optional at checkout, so these still exist, and they reach a
+   * rider through the unclaimed pool rather than the dispatch cascade (an
+   * independent shop has no market, so there is no origin to measure "nearest"
+   * from).
+   *
+   * A delivery role now drives three transitions on one of these rather than
+   * one: claim it, prove the pickup with the shop's code — which is what moves
+   * it to Out for Delivery — and mark it delivered. The middle step used not to
+   * exist, and its absence is why every agent on duty could read the customer's
+   * address off every order sitting in the pool.
    */
   const legacyJobs = orders.filter(
     (o) => !o.marketName && ['Preparing', 'Out for Delivery'].includes(o.status)
@@ -169,7 +229,9 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
           <HomeTab
             user={user}
             isOnline={isOnline}
-            setIsOnline={setIsOnline}
+            onToggleDuty={toggleDuty}
+            dutyBusy={dutyBusy}
+            dutyError={dutyError}
             agentCoords={agentCoords}
             locationError={locationError}
             deliveredToday={deliveredToday.length}
@@ -184,6 +246,7 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
             agentCoords={agentCoords}
             legacyJobs={legacyJobs}
             onUpdateOrderStatus={onUpdateOrderStatus}
+            onSyncOrders={onSyncOrders}
           />
         )}
 
@@ -216,7 +279,7 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
 // Home
 // ---------------------------------------------------------------------------
 
-function HomeTab({ user, isOnline, setIsOnline, agentCoords, locationError, deliveredToday, deliveredTotal, setActiveTab }) {
+function HomeTab({ user, isOnline, onToggleDuty, dutyBusy, dutyError, agentCoords, locationError, deliveredToday, deliveredTotal, setActiveTab }) {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
@@ -238,12 +301,26 @@ function HomeTab({ user, isOnline, setIsOnline, agentCoords, locationError, deli
         <button
           type="button"
           aria-label={isOnline ? 'Go offline' : 'Go online'}
-          onClick={() => setIsOnline(!isOnline)}
-          className={`relative w-14 h-8 rounded-full shrink-0 transition-colors duration-300 ${isOnline ? 'bg-emerald-500' : 'bg-gray-300'}`}
+          aria-busy={dutyBusy}
+          disabled={dutyBusy}
+          onClick={onToggleDuty}
+          className={`relative w-14 h-8 rounded-full shrink-0 transition-colors duration-300 disabled:opacity-60 ${isOnline ? 'bg-emerald-500' : 'bg-gray-300'}`}
         >
           <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-transform duration-300 ${isOnline ? 'translate-x-7' : 'translate-x-1'}`} />
         </button>
       </div>
+
+      {/*
+        The server said no. Shown rather than swallowed: the commonest reason is
+        that the rider still has an order in hand, which is worth telling them
+        plainly instead of leaving a toggle that appears not to respond.
+      */}
+      {dutyError && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-[13px] text-amber-900 font-semibold leading-snug">{dutyError}</p>
+        </div>
+      )}
 
       {/*
         Being online but unlocatable is the one state that looks like working
@@ -281,7 +358,8 @@ function HomeTab({ user, isOnline, setIsOnline, agentCoords, locationError, deli
           </p>
           <button
             type="button"
-            onClick={() => setIsOnline(true)}
+            onClick={onToggleDuty}
+            disabled={dutyBusy}
             className="bg-emerald-600 text-white font-black px-6 py-3 rounded-xl w-full shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
           >
             <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
@@ -323,7 +401,34 @@ function HomeTab({ user, isOnline, setIsOnline, agentCoords, locationError, deli
 // Orders
 // ---------------------------------------------------------------------------
 
-function OrdersTab({ isOnline, agentCoords, legacyJobs, onUpdateOrderStatus }) {
+function OrdersTab({ isOnline, agentCoords, legacyJobs, onUpdateOrderStatus, onSyncOrders }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(null);
+
+  /**
+   * @returns {Promise<boolean>} whether it worked, so a caller holding an open
+   *   code input knows whether to clear it or leave it up for another try.
+   */
+  const run = async (id, action, successMessage) => {
+    setBusy(id);
+    try {
+      await action();
+      if (successMessage) toast.success(successMessage);
+      await onSyncOrders?.();
+      return true;
+    } catch (err) {
+      toast.error(
+        err?.code === 'ALREADY_CLAIMED'
+          ? 'Another agent took that one.'
+          : err?.message || 'That did not work.'
+      );
+      await onSyncOrders?.();
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
   if (!isOnline) {
     return (
       <div className="text-center py-20 px-4">
@@ -353,6 +458,21 @@ function OrdersTab({ isOnline, agentCoords, legacyJobs, onUpdateOrderStatus }) {
             <LegacyJobCard
               key={order.serverId || order.id}
               order={order}
+              busy={busy === (order.serverId || order.id)}
+              onClaim={() =>
+                run(
+                  order.serverId || order.id,
+                  () => claimOrder(order.serverId || order.id),
+                  'Delivery claimed'
+                )
+              }
+              onPickup={(code) =>
+                run(
+                  order.serverId || order.id,
+                  () => confirmPickup(order.serverId || order.id, code),
+                  'Collected — the address is now on the card'
+                )
+              }
               onDeliver={() => onUpdateOrderStatus(order.serverId || order.id, 'Delivered')}
             />
           ))}
@@ -363,25 +483,40 @@ function OrdersTab({ isOnline, agentCoords, legacyJobs, onUpdateOrderStatus }) {
 }
 
 /**
- * An order from the pre-market flow.
+ * An order from the pre-market flow, or from an independent shop.
  *
- * Deliberately spare. A delivery role may only move one of these to
- * `Delivered`; the shop is what moves it to Out for Delivery, so an order still
- * in Preparing gets a status line rather than a button that would 403.
+ * Three states, in the order the rider actually moves through them: claim it,
+ * prove you collected it, deliver it.
+ *
+ * The middle step is new and is the point of the card. It used to go straight
+ * from "in the pool" to "mark delivered", with the customer's name, phone and
+ * door printed on every card in the pool — including the ones this agent was
+ * never going to carry. Now the shop reads out a four-digit code, and entering
+ * it is what reveals the customer and enables delivery.
  */
-function LegacyJobCard({ order, onDeliver }) {
-  const readyToDeliver = order.status === 'Out for Delivery';
+function LegacyJobCard({ order, onClaim, onPickup, onDeliver, busy }) {
+  const mine = Boolean(order.assignedTo);
+  const pickedUp = Boolean(order.pickedUpAt) || !order.customerLocked;
+  const [code, setCode] = useState('');
+
+  const submit = async () => {
+    const ok = await onPickup(code);
+    setCode('');
+    return ok;
+  };
 
   return (
     <article className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[13.5px] font-bold text-gray-900 truncate">{order.customerName}</p>
+          <p className="text-[13.5px] font-bold text-gray-900 truncate">
+            {pickedUp ? order.customerName : order.shopName || 'Direct order'}
+          </p>
           <p className="text-[11.5px] text-gray-500">{order.id}</p>
         </div>
         <span
           className={`text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0 ${
-            readyToDeliver ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+            pickedUp ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
           }`}
         >
           {order.status}
@@ -389,25 +524,73 @@ function LegacyJobCard({ order, onDeliver }) {
       </div>
 
       <div className="px-4 py-3 space-y-2">
-        <div className="flex items-start gap-2.5">
-          <MapPin className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
-          <p className="text-[12.5px] text-gray-700 leading-snug">{order.address}</p>
-        </div>
+        {pickedUp ? (
+          <div className="flex items-start gap-2.5">
+            <MapPin className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
+            <p className="text-[12.5px] text-gray-700 leading-snug">
+              {order.address || 'No address recorded for this order.'}
+            </p>
+          </div>
+        ) : (
+          <div className="flex items-start gap-2.5">
+            <Lock className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
+            <p className="text-[12.5px] text-gray-600 leading-snug">
+              {mine
+                ? 'Enter the shop’s handover code and the address, phone and route appear here.'
+                : 'Claim this delivery to start. The address stays hidden until you collect from the shop.'}
+            </p>
+          </div>
+        )}
+
         {order.paymentMethod === 'cod' && (
           <p className="text-[12px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
             Collect ₹{order.totalAmount} in cash on handover
           </p>
         )}
-        {!readyToDeliver && (
-          <p className="text-[11.5px] text-gray-500 flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 shrink-0" />
-            The shop has not handed this over yet.
-          </p>
+
+        {/*
+          The code entry, shown only once the order is actually this agent's.
+          Offering it on an unclaimed card would invite five wasted guesses
+          against a pickup somebody else is about to take.
+        */}
+        {mine && !pickedUp && (
+          <div className="rounded-xl bg-gray-50 border border-gray-200 p-3">
+            <label
+              htmlFor={`pickup-${order.serverId || order.id}`}
+              className="block text-[12px] font-bold text-gray-700"
+            >
+              Ask the shop for the 4-digit code
+            </label>
+            <div className="mt-2 flex gap-2">
+              <input
+                id={`pickup-${order.serverId || order.id}`}
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={4}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && code.length === 4) submit();
+                }}
+                placeholder="0000"
+                className="flex-1 min-w-0 h-11 px-3 text-[18px] font-black tabular-nums tracking-[0.35em] text-center text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/30"
+              />
+              <button
+                type="button"
+                onClick={submit}
+                disabled={code.length !== 4 || busy}
+                className="px-4 rounded-lg bg-emerald-600 text-white text-[13px] font-bold shrink-0 disabled:bg-gray-200 disabled:text-gray-400"
+              >
+                {busy ? '…' : 'Collect'}
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
       <div className="p-3 bg-gray-50 flex gap-2">
-        {order.phone && (
+        {pickedUp && order.phone && (
           <a
             href={`tel:${order.phone}`}
             className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center"
@@ -416,26 +599,40 @@ function LegacyJobCard({ order, onDeliver }) {
             <Phone className="w-4 h-4" />
           </a>
         )}
-        <a
-          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.address)}`}
-          target="_blank"
-          rel="noreferrer"
-          className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[12.5px] font-bold"
-        >
-          <MapPin className="w-4 h-4" />
-          Navigate
-        </a>
-        <button
-          type="button"
-          onClick={onDeliver}
-          disabled={!readyToDeliver}
-          className="flex-1 bg-gray-900 hover:bg-black text-white text-[14px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:bg-gray-200 disabled:text-gray-400"
-        >
-          <span className="flex items-center justify-center gap-2">
-            <PackageCheck className="w-4 h-4" />
-            Mark delivered
-          </span>
-        </button>
+        {pickedUp && order.address && (
+          <a
+            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.address)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[12.5px] font-bold"
+          >
+            <MapPin className="w-4 h-4" />
+            Navigate
+          </a>
+        )}
+
+        {!mine ? (
+          <button
+            type="button"
+            onClick={onClaim}
+            disabled={busy}
+            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[14px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:bg-gray-200 disabled:text-gray-400"
+          >
+            {busy ? 'Claiming…' : 'Claim this delivery'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onDeliver}
+            disabled={!pickedUp || busy}
+            className="flex-1 bg-gray-900 hover:bg-black text-white text-[14px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:bg-gray-200 disabled:text-gray-400"
+          >
+            <span className="flex items-center justify-center gap-2">
+              <PackageCheck className="w-4 h-4" />
+              {pickedUp ? 'Mark delivered' : 'Collect from the shop first'}
+            </span>
+          </button>
+        )}
       </div>
     </article>
   );

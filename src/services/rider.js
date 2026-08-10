@@ -50,13 +50,21 @@ export async function declinePickup(orderId) {
 }
 
 /**
- * Bags collected from one stall.
+ * Bags collected from one stall, proved by the code on the shopkeeper's screen.
  *
  * Ticking the last stall is what sends the order out for delivery — there is no
  * separate "I'm leaving" step to forget.
+ *
+ * The code is not a formality. It is the only evidence the rider is actually at
+ * the stall, and entering the first one correctly is what unlocks the
+ * customer's name, phone and pin on the returned job — see `customerUnlocked`.
+ * There is no client-side check of it anywhere, deliberately: the expected value
+ * is never sent to this app.
+ *
+ * @throws {ApiRequestError} 400 `PICKUP_CODE_INVALID`, 429 `PICKUP_ATTEMPTS_EXCEEDED`
  */
-export async function collectFromStall(orderId, stallId) {
-  const result = await api.post(`/rider/orders/${orderId}/collect`, { stallId });
+export async function collectFromStall(orderId, stallId, code) {
+  const result = await api.post(`/rider/orders/${orderId}/collect`, { stallId, code });
   return result.data;
 }
 

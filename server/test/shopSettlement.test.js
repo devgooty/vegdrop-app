@@ -33,6 +33,7 @@ const StallEarning = require('../models/StallEarning');
 const settlement = require('../services/settlement');
 const sweeper = require('../services/sweeper');
 const wallet = require('../services/wallet');
+const pickupCode = require('../services/pickupCode');
 
 test.before(startTestServer);
 test.after(stopTestServer);
@@ -110,6 +111,17 @@ async function buyAndDeliver({ paymentMethod = 'wallet', pricePaise = 9900, quan
     .set(auth(shop.accessToken))
     .send({ status: 'Out for Delivery' });
   await api().post(`/api/orders/${orderId}/claim`).set(auth(rider.accessToken));
+
+  // The rider proves the pickup at the shop before they can close it. Without
+  // this the Delivered transition is refused with PICKUP_NOT_VERIFIED — you
+  // cannot deliver what you never collected. See shopHandover.test.js.
+  const stored = await Order.findById(orderId).lean();
+  const pickedUp = await api()
+    .post(`/api/orders/${orderId}/pickup`)
+    .set(auth(rider.accessToken))
+    .send({ code: pickupCode.codeFor(orderId, pickupCode.sellerKeyFor(stored)) });
+  assert.equal(pickedUp.status, 200, JSON.stringify(pickedUp.body));
+
   const delivered = await api()
     .patch(`/api/orders/${orderId}/status`)
     .set(auth(rider.accessToken))

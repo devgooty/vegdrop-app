@@ -7,8 +7,14 @@
  * and door — but an offer cascades through up to four riders and can then sit in
  * an open pool every on-duty rider can see. Returning the full record on an
  * offer therefore handed a customer's home address and phone number to a queue
- * of people, most of whom decline. These pin the line: coarse until accepted,
- * complete afterwards.
+ * of people, most of whom decline. These pin the line.
+ *
+ * That line now sits in two places rather than one. An offer is coarse. An
+ * ACCEPTED job adds the round — which stalls, holding what, and their phone
+ * numbers — but still not the customer, because accepting only proves someone
+ * was willing. The customer's name, phone and door arrive at the third step,
+ * once a stall's handover code has been entered and the rider is provably at
+ * the market. That last step is covered in pickupHandover.test.js.
  */
 
 const test = require('node:test');
@@ -268,7 +274,21 @@ test('an order in the open pool still withholds the customer details', async () 
 // After accepting
 // ---------------------------------------------------------------------------
 
-test('accepting hands over the full record', async () => {
+/**
+ * Accepting used to hand over the customer's name, phone and door.
+ *
+ * It no longer does, and the reason is that accepting is a tap. The cascade
+ * offers a job to up to four riders and then pools it to every rider on duty,
+ * so "accepted" identified somebody willing, not somebody present — and a rider
+ * who accepted and vanished kept a stranger's home address. The proof moved to
+ * the stall's handover code (see pickupHandover.test.js), which cannot be
+ * produced without standing at the stall.
+ *
+ * What accepting DOES hand over is the round: which stalls, in what order,
+ * holding what, and how to phone them. That is what the market leg needs, and
+ * none of it identifies the customer.
+ */
+test('accepting hands over the round but still withholds the customer', async () => {
   const market = await seedMarket();
   const stall = await seedStall(market, 'A-1');
   const rider = await seedRider(market);
@@ -281,15 +301,24 @@ test('accepting hands over the full record', async () => {
   assert.equal(res.status, 200);
   const job = res.body.data;
 
-  assert.equal(job.customerName, customer.name);
-  assert.equal(job.phone, customer.phone);
-  assert.equal(job.address, '12 Banjara Hills, Hyderabad');
-  assert.equal(job.deliveryLat, 17.385, 'lat and lng must not be swapped on the way out');
-  assert.ok(job.deliveryLng > 78, 'the exact pin is now theirs to navigate to');
-  assert.equal(job.marketLat, 17.385);
+  assert.equal(job.customerUnlocked, false, 'nothing has been collected yet');
+  assert.equal(job.customerName, null);
+  assert.equal(job.phone, null);
+  assert.equal(job.address, null);
+  assert.equal(job.deliveryLat, null, 'the exact pin is not theirs until they turn up');
+  assert.equal(job.deliveryLng, null);
+
+  // The market leg is fully navigable regardless — that is where they are going.
+  assert.equal(job.marketLat, 17.385, 'lat and lng must not be swapped on the way out');
+  assert.equal(job.stallCount, 1);
+  assert.ok(job.dropoffDistanceMeters > 0, 'how far the second leg runs is not identifying');
+
+  const serialised = JSON.stringify(job);
+  assert.ok(!serialised.includes(customer.phone), 'the phone leaked under another field');
+  assert.ok(!serialised.includes('12 Banjara Hills'), 'the door leaked under another field');
 });
 
-test('the accepted job stays complete on the next poll', async () => {
+test('the accepted job stays withheld on the next poll', async () => {
   const market = await seedMarket();
   const stall = await seedStall(market, 'A-1');
   const rider = await seedRider(market);
@@ -301,8 +330,13 @@ test('the accepted job stays complete on the next poll', async () => {
 
   assert.equal(res.body.data.offers.length, 0);
   assert.equal(res.body.data.assigned.length, 1);
-  assert.equal(res.body.data.assigned[0].customerName, customer.name);
-  assert.equal(res.body.data.assigned[0].phone, customer.phone);
+  assert.equal(res.body.data.assigned[0].customerUnlocked, false);
+  assert.equal(res.body.data.assigned[0].customerName, null);
+  assert.equal(res.body.data.assigned[0].phone, null);
+  assert.ok(
+    !JSON.stringify(res.body.data.assigned[0]).includes(customer.phone),
+    'polling must not be a way around the gate'
+  );
 });
 
 /**

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../services/auth';
 import { fetchShopEarnings, withdrawShopEarnings } from '../services/shops';
+import { resetHandover } from '../services/orders';
 import { ApiRequestError } from '../services/apiClient';
 import OTPBoxGroup from './OTPBoxGroup';
 
@@ -64,6 +65,9 @@ function KycGateBanner({ kyc, onOpenKyc }) {
 export default function ShopkeeperPanel({ user, orders, products, setProducts, categories = [], onAddProduct, onEditProduct, onUpdateOrderStatus, onOrderAccepted, onLogout, onSyncOrders, kyc = null, onOpenKyc, onUserUpdated }) {
   // UX gate only. Every catalog write is authorized again by the API.
   const canUpdateStock = kyc ? kyc.canUpdateStock : true;
+
+  /** Which order's handover reset is in flight, so only that button spins. */
+  const [busyHandover, setBusyHandover] = useState(null);
 
   // Navigation & State
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -405,6 +409,29 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
   };
 
   /**
+   * The rider mistyped their way into a lock and is standing at the counter.
+   *
+   * The cap on the pickup endpoint is what stops a four-digit code being
+   * brute-forced by somebody who never came to the shop, so it has to be low —
+   * low enough to occasionally catch a rider who misheard a number. Clearing it
+   * belongs to the shopkeeper rather than the rider for the obvious reason: if
+   * the person being checked could reset their own failures, the cap would be
+   * unlimited guesses with extra steps.
+   */
+  const handleResetHandover = async (order) => {
+    const id = order.serverId || order.id;
+    setBusyHandover(id);
+    try {
+      await resetHandover(id);
+      if (onSyncOrders) await onSyncOrders();
+    } catch (err) {
+      console.warn('[shopkeeper] handover reset failed:', err.message);
+    } finally {
+      setBusyHandover(null);
+    }
+  };
+
+  /**
    * Open the edit form for one product.
    *
    * Shared so the inventory list's "Update" button lands somewhere — it had no
@@ -709,12 +736,68 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
                     <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md text-[10px] font-bold">Waiting for Agent</span>
                   </div>
                   <p className="text-xs text-gray-500 mb-3 line-clamp-1">{order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</p>
-                  {/* A status line, not a control — it was marked up as a
-                      button with pointer-events disabled, so assistive tech
-                      announced a button that could never be pressed. */}
-                  <p className="w-full py-2 bg-gray-100 text-gray-500 rounded-lg font-bold text-xs border border-gray-200 text-center">
-                    Waiting for a rider to collect it
-                  </p>
+
+                  {/*
+                    The handover code, to be read aloud to the rider.
+
+                    Sized to be read across a counter rather than glanced at, and
+                    tabular so 6 and 8 are not confusable at arm's length. It is
+                    the rider's proof they collected these bags, and until they
+                    enter it they cannot see the customer's address — so give it
+                    to nobody else.
+
+                    Absent once the pickup is done, and absent entirely on market
+                    orders, whose codes are per stall and live on the stall
+                    screen instead.
+                  */}
+                  {order.pickupCode ? (
+                    <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black text-emerald-700 uppercase tracking-wide">
+                            Handover code
+                          </p>
+                          <p className="text-[11px] text-gray-600 mt-0.5">
+                            Read this to the rider when they collect.
+                          </p>
+                        </div>
+                        <p className="text-[24px] leading-none font-black text-gray-900 tabular-nums tracking-[0.2em] shrink-0">
+                          {order.pickupCode}
+                        </p>
+                      </div>
+
+                      {order.pickupAttemptsRemaining === 0 ? (
+                        <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                          <p className="flex-1 min-w-[9rem] text-[11.5px] font-bold text-amber-800">
+                            Locked — too many wrong codes.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => handleResetHandover(order)}
+                            disabled={busyHandover === (order.serverId || order.id)}
+                            className="text-[12px] font-bold text-white bg-emerald-600 px-3 py-1.5 rounded-lg disabled:opacity-50"
+                          >
+                            {busyHandover === (order.serverId || order.id) ? 'Unlocking…' : 'Unlock'}
+                          </button>
+                        </div>
+                      ) : (
+                        order.pickupAttemptsRemaining != null &&
+                        order.pickupAttemptsRemaining < 3 && (
+                          <p className="mt-1.5 text-[11px] text-amber-700">
+                            {order.pickupAttemptsRemaining} attempt
+                            {order.pickupAttemptsRemaining === 1 ? '' : 's'} left before it locks.
+                          </p>
+                        )
+                      )}
+                    </div>
+                  ) : (
+                    /* A status line, not a control — it was marked up as a
+                       button with pointer-events disabled, so assistive tech
+                       announced a button that could never be pressed. */
+                    <p className="w-full py-2 bg-gray-100 text-gray-500 rounded-lg font-bold text-xs border border-gray-200 text-center">
+                      Waiting for a rider to collect it
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

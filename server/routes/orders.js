@@ -12,6 +12,7 @@ const wallet = require('../services/wallet');
 const sourcing = require('../services/sourcing');
 const checkout = require('../services/checkout');
 const settlement = require('../services/settlement');
+const pickupCode = require('../services/pickupCode');
 const { CANCELLABLE_BY_CUSTOMER, CANCELLABLE_BY_STAFF, transitionTo } = require('../utils/orderStatus');
 
 const router = express.Router();
@@ -176,24 +177,92 @@ async function visibilityFilter(user) {
  * simply reached the customer through a different route, which is why it was
  * missed.
  *
- * Only `shopkeeper` is redacted. A delivery agent needs all of it to find the
- * door; a customer is reading their own order; `market_owner` and `developer`
- * are operator roles already scoped by the filter above.
+ * A customer is reading their own order; `market_owner` and `developer` are
+ * operator roles already scoped by the filter above. The two roles that get
+ * reshaped here are `shopkeeper`, which never sees the customer, and
+ * `delivery`, which sees them only after proving it turned up.
  */
 function redactForViewer(order, user) {
-  if (user.role !== 'shopkeeper') return order;
+  if (user.role === 'shopkeeper') {
+    const {
+      customerName: _name,
+      phone: _phone,
+      address: _address,
+      // The customer's home as a coordinate pair — identifying on its own, and a
+      // shopkeeper has no use for it.
+      deliveryLocation: _location,
+      ...rest
+    } = order;
 
-  const {
-    customerName: _name,
-    phone: _phone,
-    address: _address,
-    // The customer's home as a coordinate pair — identifying on its own, and a
-    // shopkeeper has no use for it.
-    deliveryLocation: _location,
-    ...rest
-  } = order;
+    /**
+     * The handover code, for the shopkeeper to read out to the rider.
+     *
+     * Market orders are not shaped here at all — a stall gets its code from
+     * routes/stalls.js, per stall, because a market order is collected from
+     * several. This is the single-seller equivalent.
+     *
+     * Dropped once the rider has proved pickup: a spent code left on screen is
+     * a number waiting to be overheard.
+     */
+    if (!rest.market && !rest.handover?.pickedUpAt) {
+      rest.pickupCode = pickupCode.codeFor(rest.id || rest._id, pickupCode.sellerKeyFor(rest));
+      rest.pickupAttemptsRemaining = Math.max(
+        0,
+        pickupCode.MAX_ATTEMPTS - (rest.handover?.attempts || 0)
+      );
+    }
 
-  return rest;
+    return rest;
+  }
+
+  if (user.role === 'delivery') {
+    /**
+     * A delivery agent used to receive the customer's name, phone and door on
+     * every order the filter let through — which, for a shop order, is the
+     * whole unclaimed pool. Any agent on duty could read the addresses of
+     * orders they had not claimed and were never going to carry.
+     *
+     * Now it takes the same proof the market side takes: the handover code from
+     * the shop. Until that is entered, an agent gets everything they need to
+     * decide and find the shop, and nothing that identifies the customer.
+     *
+     * Market orders pass through untouched — they are shaped by routes/rider.js,
+     * which applies its own equivalent gate, and this list view is not where a
+     * rider works one.
+     */
+    /**
+     * Deliberately NOT unlocked by `status === 'Delivered'`.
+     *
+     * That would have been a way straight through the gate rather than a
+     * sensible allowance for history: an agent can reach an unclaimed order in
+     * the pool, and the Delivered branch of PATCH /:id/status claims it for
+     * whoever closes it. So "mark it delivered, then read the address" would
+     * have worked, and it is exactly the move this gate exists to stop.
+     *
+     * History still reads correctly, because an order that was genuinely
+     * carried has `pickedUpAt` set — the rider proved it at the shop door. One
+     * that does not was never picked up by this agent, and there is nothing to
+     * show them.
+     */
+    const unlocked = Boolean(order.market) || Boolean(order.handover?.pickedUpAt);
+
+    if (unlocked) return order;
+
+    const {
+      customerName: _name,
+      phone: _phone,
+      address: _address,
+      deliveryLocation: _location,
+      ...rest
+    } = order;
+
+    // Named so the screen can tell "withheld" from "never recorded". Those are
+    // the same blank otherwise, and one of them looks like a broken app.
+    rest.customerLocked = true;
+    return rest;
+  }
+
+  return order;
 }
 
 router.get(
@@ -530,6 +599,27 @@ router.patch(
       if (assignee && assignee !== req.user._id.toHexString()) {
         throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
       }
+      /**
+       * You cannot deliver what you never picked up.
+       *
+       * Without this the pickup code would be skippable rather than required:
+       * an agent could reach an unclaimed order in the pool and close it
+       * outright, which both falsifies the record and — before the gate in
+       * `redactForViewer` above stopped honouring `Delivered` — was a way to
+       * unlock the customer's address without ever visiting the shop.
+       *
+       * Market orders are exempt because they do not come through here at all:
+       * their status is derived, PATCH refuses to touch them, and their
+       * equivalent proof is the per-stall code in POST /rider/orders/:id/collect.
+       */
+      if (status === 'Delivered' && !order.market && !order.handover?.pickedUpAt) {
+        throw new ApiError(
+          409,
+          'Enter the shop’s handover code before marking this delivered.',
+          'PICKUP_NOT_VERIFIED'
+        );
+      }
+
       // Completing an unclaimed order claims it, so the record shows who did.
       if (!assignee) order.assignedTo = req.user._id;
     }
@@ -637,7 +727,149 @@ router.post(
       { returnDocument: 'after' }
     );
     if (!order) throw new ApiError(409, 'That order is no longer available to claim.', 'ALREADY_CLAIMED');
-    return res.json({ data: order.toJSON() });
+    return res.json({ data: redactForViewer(order.toJSON(), req.user) });
+  }
+);
+
+/**
+ * Picked up from the shop, proved by the code on the shopkeeper's screen.
+ *
+ * The single-seller counterpart to `POST /api/rider/orders/:id/collect`. Same
+ * bargain: the code is only visible to the shop holding the bags, so entering
+ * it is evidence the rider is standing there, and it is what unlocks the
+ * customer's name, phone and door.
+ *
+ * It also moves the order to `Out for Delivery`, which is a small correction on
+ * its own. That transition was the shopkeeper's to make, so the record said the
+ * order had left when the shop said so rather than when it actually left. The
+ * shopkeeper keeps the permission — this does not take it away — but the rider
+ * pushing it is the truer signal, and now the two agree.
+ */
+router.post(
+  '/:id/pickup',
+  requireAuth,
+  requireRole('delivery'),
+  validate({
+    params: z.object({ id: fields.objectId }).strict(),
+    body: z
+      .object({
+        code: z
+          .string()
+          .trim()
+          .regex(
+            new RegExp(`^\\d{${pickupCode.CODE_LENGTH}}$`),
+            `Enter the ${pickupCode.CODE_LENGTH}-digit code from the shop.`
+          ),
+      })
+      .strict(),
+  }),
+  async (req, res) => {
+    const { id } = req.valid.params;
+
+    /**
+     * Establish this rider owns the pickup BEFORE spending an attempt, exactly
+     * as `dispatch.collectStall` does. Otherwise any agent could burn another's
+     * allowance on an order they have nothing to do with and lock the handover.
+     */
+    const held = await Order.findOne({
+      _id: id,
+      assignedTo: req.user._id,
+      market: null,
+      status: { $in: ['Preparing', 'Out for Delivery'] },
+    });
+
+    if (!held) {
+      throw new ApiError(404, 'That order is not yours to pick up.', 'NOT_YOURS');
+    }
+
+    if (held.handover?.pickedUpAt) {
+      return res.json({ data: redactForViewer(held.toJSON(), req.user) });
+    }
+
+    // Counted before the comparison: a crash in between must cost the guesser
+    // an attempt, not hand them a free one.
+    const bumped = await Order.findOneAndUpdate(
+      { _id: held._id, 'handover.attempts': { $lt: pickupCode.MAX_ATTEMPTS } },
+      { $inc: { 'handover.attempts': 1 } },
+      { returnDocument: 'after' }
+    );
+
+    if (!bumped) {
+      throw new ApiError(
+        429,
+        'Too many incorrect codes. Ask the shop to reset the handover.',
+        'PICKUP_ATTEMPTS_EXCEEDED'
+      );
+    }
+
+    if (!pickupCode.matches(held._id, pickupCode.sellerKeyFor(held), req.valid.body.code)) {
+      const remaining = Math.max(0, pickupCode.MAX_ATTEMPTS - bumped.handover.attempts);
+      throw new ApiError(
+        400,
+        remaining > 0
+          ? `Incorrect code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+          : 'Incorrect code. Ask the shop to reset it.',
+        'PICKUP_CODE_INVALID'
+      );
+    }
+
+    const now = new Date();
+    const picked = await Order.findOneAndUpdate(
+      { _id: held._id, assignedTo: req.user._id, 'handover.pickedUpAt': null },
+      {
+        $set: {
+          'handover.pickedUpAt': now,
+          'handover.attempts': 0,
+          status: 'Out for Delivery',
+        },
+        $push: { statusHistory: { status: 'Out for Delivery', at: now, by: req.user._id } },
+      },
+      { returnDocument: 'after' }
+    );
+
+    if (!picked) {
+      throw new ApiError(409, 'That pickup was already recorded.', 'ALREADY_PICKED_UP');
+    }
+
+    return res.json({ data: redactForViewer(picked.toJSON(), req.user) });
+  }
+);
+
+/**
+ * Clear a handover the rider has locked with wrong codes.
+ *
+ * Given to the shop rather than the rider for the reason the code exists at
+ * all: if the person being checked could clear their own failures, the check
+ * would be unlimited guesses wearing a hat. The shopkeeper is already face to
+ * face with them and can read the number out again.
+ *
+ * Scoped through `visibilityFilter`, so a shopkeeper can only reset a handover
+ * on an order they can see.
+ */
+router.post(
+  '/:id/handover/reset',
+  requireAuth,
+  requireRole('shopkeeper', 'market_owner', 'developer'),
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const order = await Order.findOne({
+      _id: req.valid.params.id,
+      market: null,
+      ...(await visibilityFilter(req.user)),
+    });
+
+    if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+
+    await Order.updateOne({ _id: order._id }, { $set: { 'handover.attempts': 0 } });
+
+    return res.json({
+      data: {
+        reset: true,
+        attemptsRemaining: pickupCode.MAX_ATTEMPTS,
+        // Re-sent so the shopkeeper can read it out without hunting for it.
+        pickupCode: pickupCode.codeFor(order._id, pickupCode.sellerKeyFor(order)),
+      },
+    });
   }
 );
 

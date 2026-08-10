@@ -7,7 +7,7 @@ import {
 import { useToast } from './Toast';
 import {
   fetchStallOrders, claimLines, declineOffer, packOrder, updateMyStall, secondsLeft, formatPaise,
-  fetchEarnings, withdrawEarnings, timeUntil,
+  fetchEarnings, withdrawEarnings, timeUntil, resetPickupCode,
   fetchStallStock, saveStallInventory, saveFreshPhoto, removeFreshPhoto,
 } from '../services/stalls';
 import StallInventoryEditor from './StallInventoryEditor';
@@ -236,6 +236,27 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
       await refresh();
     } catch (err) {
       toast.error(err.message || 'Could not mark as packed.');
+      await refresh();
+    } finally {
+      setBusyOrder(null);
+    }
+  };
+
+  /**
+   * The rider mistyped their way into a lock and is standing right here.
+   *
+   * The reset lives on this screen rather than the rider's for the reason the
+   * whole code exists: if the person being checked could clear their own
+   * failures, the check would be unlimited guesses wearing a hat.
+   */
+  const handleResetPickup = async (order) => {
+    setBusyOrder(order.id);
+    try {
+      await resetPickupCode(order.id);
+      toast.success('Handover unlocked. Read the code out again.');
+      await refresh();
+    } catch (err) {
+      toast.error(err.message || 'Could not unlock the handover.');
       await refresh();
     } finally {
       setBusyOrder(null);
@@ -556,6 +577,65 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
                       </li>
                     ))}
                   </ul>
+
+                  {/*
+                    The handover code.
+
+                    Sized to be read aloud across a counter rather than glanced
+                    at — tracking-widest and tabular so 6 and 8 cannot be
+                    confused at arm's length. It appears as soon as the stall
+                    claims a line, not when the rider arrives, so the shopkeeper
+                    is never waiting on a screen with somebody standing there.
+
+                    Never give this number to anyone but the rider collecting
+                    the bags: it is the only thing standing between the order
+                    and a stranger.
+                  */}
+                  {order.pickupCode && (
+                    <div className="px-4 py-3.5 bg-[#0B7A37]/[0.06] border-t border-[#0B7A37]/15">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold text-[#0B7A37] uppercase tracking-wide">
+                            Handover code
+                          </p>
+                          <p className="text-[11.5px] text-[#5B6B62] mt-0.5">
+                            Read this to the rider when they collect.
+                          </p>
+                        </div>
+                        <p className="text-[26px] leading-none font-black text-[#0F1F17] tabular-nums tracking-[0.2em] shrink-0">
+                          {order.pickupCode}
+                        </p>
+                      </div>
+
+                      {/*
+                        Only worth saying once it is nearly spent. Showing "5 of
+                        5 left" on every card would train the shopkeeper to stop
+                        reading the strip that eventually matters.
+                      */}
+                      {order.pickupAttemptsRemaining === 0 ? (
+                        <div className="mt-3 flex items-center gap-2 flex-wrap">
+                          <p className="flex-1 min-w-[10rem] text-[12px] text-amber-800 font-semibold">
+                            Locked — too many wrong codes.
+                          </p>
+                          <button
+                            onClick={() => handleResetPickup(order)}
+                            disabled={busyOrder === order.id}
+                            className="text-[12.5px] font-bold text-white bg-[#0B7A37] px-3.5 py-2 rounded-lg disabled:opacity-50"
+                          >
+                            {busyOrder === order.id ? 'Unlocking…' : 'Unlock'}
+                          </button>
+                        </div>
+                      ) : (
+                        order.pickupAttemptsRemaining < 3 && (
+                          <p className="mt-2 text-[11.5px] text-amber-700">
+                            {order.pickupAttemptsRemaining} attempt
+                            {order.pickupAttemptsRemaining === 1 ? '' : 's'} left before the handover
+                            locks.
+                          </p>
+                        )
+                      )}
+                    </div>
+                  )}
 
                   {unpacked.length > 0 && (
                     <div className="p-3 bg-gray-50">

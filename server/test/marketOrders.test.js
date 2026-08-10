@@ -19,6 +19,7 @@ const MarketPrice = require('../models/MarketPrice');
 const Stall = require('../models/Stall');
 const StallInventory = require('../models/StallInventory');
 const sourcing = require('../services/sourcing');
+const pickupCode = require('../services/pickupCode');
 
 test.before(startTestServer);
 test.after(stopTestServer);
@@ -592,7 +593,10 @@ test('a rider walks the stalls and the last one sends the order out', async () =
   const collected = await api()
     .post(`/api/rider/orders/${orderId}/collect`)
     .set(auth(rider.accessToken))
-    .send({ stallId: shop.stall._id.toHexString() });
+    .send({
+      stallId: shop.stall._id.toHexString(),
+      code: pickupCode.codeFor(orderId, shop.stall._id),
+    });
 
   assert.equal(collected.status, 200);
   assert.equal(collected.body.data.dispatched, true);
@@ -649,7 +653,10 @@ test('only the assigned rider can mark a market order delivered', async () => {
   await api()
     .post(`/api/rider/orders/${orderId}/collect`)
     .set(auth(rider.accessToken))
-    .send({ stallId: shop.stall._id.toHexString() });
+    .send({
+      stallId: shop.stall._id.toHexString(),
+      code: pickupCode.codeFor(orderId, shop.stall._id),
+    });
 
   const stolen = await api().post(`/api/rider/orders/${orderId}/deliver`).set(auth(other.accessToken));
   assert.equal(stolen.status, 404, 'another agent must not be able to close this delivery');

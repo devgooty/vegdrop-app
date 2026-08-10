@@ -75,6 +75,21 @@ export async function packOrder(orderId, lineIds) {
   return result.data;
 }
 
+/**
+ * Unlock a handover the rider has locked with wrong codes.
+ *
+ * The cap exists so a four-digit code cannot be brute-forced over the API by
+ * somebody who never came to the market. It will occasionally catch a rider who
+ * simply misheard a number across a noisy one — and the shopkeeper, already
+ * face to face with them, is the right person to say so.
+ *
+ * @returns {Promise<{reset: boolean, attemptsRemaining: number, pickupCode: string}>}
+ */
+export async function resetPickupCode(orderId) {
+  const result = await api.post(`/stalls/orders/${orderId}/pickup/reset`);
+  return result.data;
+}
+
 export async function fetchStallInventory() {
   const result = await api.get('/stalls/me/inventory');
   return result.data;

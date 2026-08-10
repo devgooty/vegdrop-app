@@ -303,6 +303,28 @@ const orderSchema = new mongoose.Schema(
       },
 
       /**
+       * Wrong handover-code guesses, per stall.
+       *
+       * The code itself is nowhere in this document — it is derived from the
+       * order and stall ids under the OTP pepper (see `services/pickupCode.js`),
+       * so there is nothing here for a database read to steal. Only the failure
+       * count needs persisting, and it needs to be per stall rather than per
+       * order: one rider fumbling the code at stall 12 must not lock the
+       * handover at stall 4, which a different rider may be standing at.
+       *
+       * Absent until the first wrong guess at a given stall, and reset to zero
+       * on success, so a rider who mistypes once at every stall of a long round
+       * never accumulates their way into a lock.
+       */
+      pickupAttempts: [
+        {
+          stall: { type: mongoose.Schema.Types.ObjectId, ref: 'Stall', required: true },
+          count: { type: Number, default: 0, min: 0 },
+          _id: false,
+        },
+      ],
+
+      /**
        * Fine-grained audit trail. `statusHistory` below stays coarse so nothing
        * that reads it has to change; this carries the detail (which stall took
        * which line, which market was tried, which rider refused).
@@ -321,6 +343,32 @@ const orderSchema = new mongoose.Schema(
           _id: false,
         },
       ],
+    },
+
+    /**
+     * The rider's proof of pickup, for orders that DO NOT run the sourcing
+     * engine — independent shops and the legacy marketless pool.
+     *
+     * Separate from `fulfillment.pickupAttempts` above, and deliberately so.
+     * A market order is collected stall by stall, so its counter has to be an
+     * array keyed by stall; one of these has a single seller and a single
+     * handover, so a scalar is the honest shape. Forcing one field to cover
+     * both would mean an array that is always length one on this side, and a
+     * `stall` field holding something that is not a stall.
+     *
+     * The code itself is not here for the same reason it is not there: it is
+     * derived from the order and seller ids under the OTP pepper (see
+     * `services/pickupCode.js`), so there is nothing to steal from a database
+     * read.
+     */
+    handover: {
+      /**
+       * When the rider proved they were at the shop. Null means the customer's
+       * name, phone and address are still withheld from them — see
+       * `redactForViewer` in routes/orders.js.
+       */
+      pickedUpAt: { type: Date, default: null },
+      attempts: { type: Number, default: 0, min: 0 },
     },
 
     statusHistory: [

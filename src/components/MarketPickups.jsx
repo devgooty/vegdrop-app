@@ -1,7 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Store, MapPin, Navigation, Check, Package, Clock, X, PackageCheck, Phone,
-  Banknote, Boxes, User, ChevronDown, ChevronUp,
+  Banknote, Boxes, User, ChevronDown, ChevronUp, Lock,
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { acceptPickup, declinePickup, collectFromStall, markDelivered } from '../services/rider';
@@ -41,12 +41,18 @@ export default function MarketPickups({ isOnline, riderPosition }) {
   const { offers, assigned, loaded, refresh } = useRiderJobs();
   const [busy, setBusy] = useState(null);
 
+  /**
+   * @returns {Promise<boolean>} whether it worked, so a caller holding an open
+   *   input (the handover code) knows whether to clear it or leave it up for
+   *   another try. Everything else ignores the result, as before.
+   */
   const run = async (id, action, successMessage) => {
     setBusy(id);
     try {
       await action();
       if (successMessage) toast.success(successMessage);
       await refresh();
+      return true;
     } catch (err) {
       toast.error(
         err.code === 'OFFER_GONE'
@@ -54,6 +60,7 @@ export default function MarketPickups({ isOnline, riderPosition }) {
           : err.message || 'That did not work.'
       );
       await refresh();
+      return false;
     } finally {
       setBusy(null);
     }
@@ -94,10 +101,10 @@ export default function MarketPickups({ isOnline, riderPosition }) {
           order={order}
           riderPosition={riderPosition}
           busy={busy === order.id}
-          onCollect={(pickup) =>
+          onCollect={(pickup, code) =>
             run(
               order.id,
-              () => collectFromStall(order.id, pickup.stall),
+              () => collectFromStall(order.id, pickup.stall, code),
               `Collected from stall ${pickup.stallNumber}`
             )
           }
@@ -225,6 +232,30 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
   const readyToLeave = order.status === 'dispatched';
   const [showRound, setShowRound] = useState(true);
 
+  /**
+   * Which stall's code is being typed, and what has been typed so far.
+   *
+   * One at a time: a rider is standing at one counter, and four open inputs
+   * would be four chances to enter the right code against the wrong stall.
+   */
+  const [entering, setEntering] = useState(null);
+  const [code, setCode] = useState('');
+
+  /**
+   * The input clears and stays open on a rejection rather than closing.
+   *
+   * A wrong code usually means the number was misheard across a noisy market,
+   * and the fix is to ask again — which is a worse experience if the panel has
+   * shut and the rider has to find the button a second time. The server's
+   * message already carries how many attempts are left, and `run` has toasted
+   * it by the time this resolves.
+   */
+  const submitCode = async (pickup) => {
+    const ok = await onCollect(pickup, code);
+    setCode('');
+    if (ok) setEntering(null);
+  };
+
   const market =
     order.marketLat != null ? { lat: order.marketLat, lng: order.marketLng } : null;
   const customer =
@@ -261,18 +292,39 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
         />
       </Suspense>
 
-      {/* WHO IT IS FOR. Withheld on the offer, and the first thing worth
-          knowing once the job is actually theirs. */}
+      {/*
+        WHO IT IS FOR.
+
+        Withheld until the first stall's handover code has been entered, so this
+        block has two states and says which one it is in. "No address" and
+        "address not yet earned" are the same blank otherwise, and a rider
+        staring at an empty line reasonably concludes the app is broken.
+      */}
       <div className="px-4 py-3 border-b border-gray-100 space-y-2">
-        <div className="flex items-start gap-2.5">
-          <User className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
-          <div className="min-w-0 flex-1">
-            <p className="text-[13.5px] font-bold text-gray-900 truncate">
-              {order.customerName || 'Customer'}
-            </p>
-            <p className="text-[12.5px] text-gray-600 leading-snug">{order.address}</p>
+        {order.customerUnlocked ? (
+          <div className="flex items-start gap-2.5">
+            <User className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13.5px] font-bold text-gray-900 truncate">
+                {order.customerName || 'Customer'}
+              </p>
+              <p className="text-[12.5px] text-gray-600 leading-snug">
+                {order.address || 'No address recorded for this order.'}
+              </p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-start gap-2.5">
+            <Lock className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13.5px] font-bold text-gray-900">Delivery address locked</p>
+              <p className="text-[12.5px] text-gray-600 leading-snug">
+                Enter the handover code from your first stall and the address, phone and route
+                appear here.
+              </p>
+            </div>
+          </div>
+        )}
 
         {order.paymentMethod === 'cod' && (
           <p className="flex items-center gap-1.5 text-[12px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
@@ -298,7 +350,8 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
               {order.pickups.map((pickup) => {
                 const packed = pickup.lines.every((l) => l.packedAt);
                 return (
-                  <li key={pickup.stall} className="px-4 py-3 flex items-center gap-3">
+                  <li key={pickup.stall} className="px-4 py-3">
+                    <div className="flex items-center gap-3">
                     <span
                       className={`w-9 h-9 rounded-xl flex items-center justify-center text-[12px] font-extrabold shrink-0 ${
                         pickup.collected
@@ -345,13 +398,56 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
                       <Check className="w-5 h-5 text-emerald-600 shrink-0" strokeWidth={3} />
                     ) : (
                       <button
-                        onClick={() => onCollect(pickup)}
+                        onClick={() => setEntering(entering === pickup.stall ? null : pickup.stall)}
                         disabled={!packed || busy}
-                        aria-label={`Collected from stall ${pickup.stallNumber}`}
+                        aria-label={`Enter the handover code for stall ${pickup.stallNumber}`}
+                        aria-expanded={entering === pickup.stall}
                         className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-[12px] font-bold shrink-0 disabled:bg-gray-200 disabled:text-gray-400"
                       >
                         <Package className="w-4 h-4" />
                       </button>
+                    )}
+                    </div>
+
+                    {/*
+                      The handover code, entered where the stall it belongs to
+                      is still on screen. A modal would cover the stall number
+                      and the item list at exactly the moment the rider is
+                      checking the bags against them.
+                    */}
+                    {entering === pickup.stall && !pickup.collected && (
+                      <div className="mt-3 rounded-xl bg-gray-50 border border-gray-200 p-3">
+                        <label
+                          htmlFor={`code-${pickup.stall}`}
+                          className="block text-[12px] font-bold text-gray-700"
+                        >
+                          Ask stall {pickup.stallNumber} for the 4-digit code
+                        </label>
+                        <div className="mt-2 flex gap-2">
+                          <input
+                            id={`code-${pickup.stall}`}
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            maxLength={4}
+                            autoFocus
+                            value={code}
+                            onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && code.length === 4) submitCode(pickup);
+                            }}
+                            placeholder="0000"
+                            className="flex-1 min-w-0 h-11 px-3 text-[18px] font-black tabular-nums tracking-[0.35em] text-center text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/30"
+                          />
+                          <button
+                            onClick={() => submitCode(pickup)}
+                            disabled={code.length !== 4 || busy}
+                            className="px-4 rounded-lg bg-emerald-600 text-white text-[13px] font-bold shrink-0 disabled:bg-gray-200 disabled:text-gray-400"
+                          >
+                            {busy ? '…' : 'Collect'}
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </li>
                 );

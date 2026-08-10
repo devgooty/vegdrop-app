@@ -32,6 +32,7 @@ const {
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
+const pickupCode = require('../services/pickupCode');
 
 test.before(startTestServer);
 test.after(stopTestServer);
@@ -166,25 +167,43 @@ test('cancelling does not hand the details back either', async () => {
 // Everyone else is unaffected
 // ---------------------------------------------------------------------------
 
-test('the rider gets the address, because that is the job', async () => {
+/**
+ * The rider still gets the address — but on collection, not on claiming.
+ *
+ * This test used to stop at `claim`, because that was where the details
+ * arrived. It no longer is: `visibilityFilter` shows every on-duty agent the
+ * whole unclaimed pool, so returning the customer on a claim meant anyone could
+ * take an order, read the door, and hand it straight back. The handover code
+ * from the shop is the evidence that replaced the tap. See shopHandover.test.js.
+ */
+test('the rider gets the address once they prove the pickup, because that is the job', async () => {
   const { shop, orderId, stored } = await placeShopOrder();
   const rider = await authenticatedUser('delivery');
 
-  for (const status of ['Preparing', 'Out for Delivery']) {
-    await api()
-      .patch(`/api/orders/${orderId}/status`)
-      .set(auth(shop.accessToken))
-      .send({ status });
-  }
+  await api()
+    .patch(`/api/orders/${orderId}/status`)
+    .set(auth(shop.accessToken))
+    .send({ status: 'Preparing' });
   await api().post(`/api/orders/${orderId}/claim`).set(auth(rider.accessToken));
 
-  const res = await api().get('/api/orders').set(auth(rider.accessToken));
-  const order = res.body.data.find((o) => o.id === orderId);
+  const claimed = await api().get('/api/orders').set(auth(rider.accessToken));
+  const beforePickup = claimed.body.data.find((o) => o.id === orderId);
+  assert.equal(beforePickup.address, undefined, 'claiming is not turning up');
+  assert.equal(beforePickup.customerLocked, true);
 
-  assert.ok(order, 'the rider must see their own assignment');
-  assert.equal(order.address, ADDRESS, 'a courier cannot deliver to a redacted address');
-  assert.equal(order.customerName, 'Wilhelmina Featherstone');
-  assert.equal(order.phone, stored.phone ?? order.phone);
+  const order = await Order.findById(orderId).lean();
+  await api()
+    .post(`/api/orders/${orderId}/pickup`)
+    .set(auth(rider.accessToken))
+    .send({ code: pickupCode.codeFor(orderId, pickupCode.sellerKeyFor(order)) });
+
+  const res = await api().get('/api/orders').set(auth(rider.accessToken));
+  const after = res.body.data.find((o) => o.id === orderId);
+
+  assert.ok(after, 'the rider must see their own assignment');
+  assert.equal(after.address, ADDRESS, 'a courier cannot deliver to a redacted address');
+  assert.equal(after.customerName, 'Wilhelmina Featherstone');
+  assert.equal(after.phone, stored.phone ?? after.phone);
 });
 
 test('the customer still sees their own order in full', async () => {

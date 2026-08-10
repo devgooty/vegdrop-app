@@ -10,6 +10,7 @@ const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { riderLocationLimiter } = require('../middleware/rateLimit');
 const dispatch = require('../services/dispatch');
+const pickupCode = require('../services/pickupCode');
 
 const router = express.Router();
 
@@ -141,16 +142,49 @@ function forRider(order, { market, stalls, scope = 'assigned' } = {}) {
     };
   }
 
+  /**
+   * Has this rider proved they actually turned up?
+   *
+   * Accepting an offer used to be enough to unlock the customer's name, number
+   * and door. It is a weak proof: accepting costs a tap, and the cascade offers
+   * the job to up to four riders before dropping it in a pool every on-duty
+   * rider can see. Anyone who accepted and then vanished walked away with a
+   * stranger's home address.
+   *
+   * Entering a stall's handover code is a much better one, because the code is
+   * only visible on the screen of the stall holding the bags. So the customer's
+   * details unlock on the FIRST verified collection rather than on acceptance —
+   * at which point the rider is provably at the market, holding goods for this
+   * order.
+   *
+   * The first, not the last: a rider walking a four-stall round needs to know
+   * where they are heading before they finish it, and by then the proof has
+   * already been given. `dispatched` and `delivered` are included because an
+   * order past the market has necessarily satisfied this, and history must not
+   * blank out the address it was carried to.
+   */
+  const unlocked =
+    ['dispatched', 'delivered'].includes(order.fulfillment?.status) ||
+    (order.items || []).some((item) => item.claim?.collectedAt);
+
   return {
     ...base,
     // The round, already in walking order by stall number.
     pickups,
     allPacked: pickups.every((p) => p.lines.every((l) => l.packedAt)),
-    customerName: order.customerName,
-    phone: order.phone,
-    address: order.address,
-    deliveryLat: order.deliveryLocation?.coordinates?.[1] ?? null,
-    deliveryLng: order.deliveryLocation?.coordinates?.[0] ?? null,
+    /**
+     * Whether the fields below are populated. The screen needs to tell "no
+     * address because it is withheld" apart from "no address recorded", which
+     * are the same `null` and mean opposite things.
+     */
+    customerUnlocked: unlocked,
+    customerName: unlocked ? order.customerName : null,
+    phone: unlocked ? order.phone : null,
+    address: unlocked ? order.address : null,
+    deliveryLat: unlocked ? (order.deliveryLocation?.coordinates?.[1] ?? null) : null,
+    deliveryLng: unlocked ? (order.deliveryLocation?.coordinates?.[0] ?? null) : null,
+    // Distance is not identifying — the offer card already shows it — so it
+    // stays visible throughout. A rider judging a job needs it either way.
     dropoffDistanceMeters: metresBetween(marketPoint, order.deliveryLocation),
   };
 }
@@ -323,26 +357,68 @@ router.post(
 );
 
 /**
- * Bags collected from one stall.
+ * Bags collected from one stall, proved by the stall's handover code.
  *
  * Ticking the last stall is what sends the order out for delivery — the rider
  * never has to remember a separate "I'm leaving" step.
+ *
+ * The code is not optional and there is no path around it. It is what makes
+ * this an observation rather than an assertion, and it is what unlocks the
+ * customer's address in `forRider` above.
  */
 router.post(
   '/orders/:id/collect',
   ...riderGate,
   validate({
     params: z.object({ id: fields.objectId }).strict(),
-    body: z.object({ stallId: fields.objectId }).strict(),
+    body: z
+      .object({
+        stallId: fields.objectId,
+        // Digits only, exact length. Anything else is a typo, not a guess worth
+        // spending one of the five attempts on.
+        code: z
+          .string()
+          .trim()
+          .regex(
+            new RegExp(`^\\d{${pickupCode.CODE_LENGTH}}$`),
+            `Enter the ${pickupCode.CODE_LENGTH}-digit code from the stall.`
+          ),
+      })
+      .strict(),
   }),
   async (req, res) => {
     const result = await dispatch.collectStall({
       orderId: req.valid.params.id,
       riderId: req.user._id,
       stallId: req.valid.body.stallId,
+      code: req.valid.body.code,
     });
 
     if (!result.order) {
+      /**
+       * A wrong code is the caller's mistake and says so, with what is left.
+       * Everything else is a state problem and stays deliberately vague — a
+       * rider poking at an order that is not theirs learns only that it is not
+       * collectable, not whether it exists or which stall packed what.
+       */
+      if (result.reason === 'PICKUP_CODE_INVALID') {
+        throw new ApiError(
+          400,
+          result.attemptsRemaining > 0
+            ? `Incorrect code. ${result.attemptsRemaining} attempt${result.attemptsRemaining === 1 ? '' : 's'} remaining.`
+            : 'Incorrect code. Ask the stall to reset it.',
+          'PICKUP_CODE_INVALID'
+        );
+      }
+
+      if (result.reason === 'PICKUP_ATTEMPTS_EXCEEDED') {
+        throw new ApiError(
+          429,
+          'Too many incorrect codes. Ask the shopkeeper to reset the handover.',
+          'PICKUP_ATTEMPTS_EXCEEDED'
+        );
+      }
+
       throw new ApiError(
         409,
         'Those items are not ready to collect yet.',

@@ -37,6 +37,30 @@ export function toUiOrder(order) {
     marketName: order.marketName || null,
     // The independent shop it was placed with, when it was not a market.
     shopName: order.shopName || null,
+
+    /**
+     * The shop-order handover, both sides of it.
+     *
+     * `pickupCode` reaches the shopkeeper only; `customerLocked` reaches the
+     * rider only. The server decides which — see `redactForViewer` — and this
+     * just carries whichever arrived. A screen must never infer one from the
+     * other's absence.
+     */
+    pickupCode: order.pickupCode || null,
+    pickupAttemptsRemaining: order.pickupAttemptsRemaining ?? null,
+    customerLocked: Boolean(order.customerLocked),
+    pickedUpAt: order.handover?.pickedUpAt || null,
+
+    /**
+     * Whether anyone has claimed this yet.
+     *
+     * Only ever null or the viewer's own id in practice: `visibilityFilter`
+     * shows a delivery agent their own assignments plus an unclaimed pool, so
+     * "assigned to someone" and "assigned to me" are the same thing by the time
+     * an order reaches this client. Carried as the id rather than a boolean so
+     * a future screen that legitimately sees both does not have to guess.
+     */
+    assignedTo: order.assignedTo || null,
     fulfillmentStatus: order.fulfillment?.status || null,
     sourcingDeadline: order.fulfillment?.sourcingDeadline || null,
     // The moment the stalls committed. Past this the cancel button should go.
@@ -210,4 +234,28 @@ export async function updateOrderStatus(orderId, status) {
 export async function claimOrder(orderId) {
   const result = await api.post(`/orders/${orderId}/claim`);
   return toUiOrder(result.data);
+}
+
+/**
+ * Picked up from the shop, proved by the code on the shopkeeper's screen.
+ *
+ * The single-seller counterpart to `collectFromStall` in services/rider.js.
+ * Entering it correctly moves the order to Out for Delivery and is what unlocks
+ * the customer's name, phone and door — there is no client-side check of the
+ * code anywhere, because the expected value is never sent to this app.
+ *
+ * @throws {ApiRequestError} 400 `PICKUP_CODE_INVALID`, 429 `PICKUP_ATTEMPTS_EXCEEDED`
+ */
+export async function confirmPickup(orderId, code) {
+  const result = await api.post(`/orders/${orderId}/pickup`, { code });
+  return toUiOrder(result.data);
+}
+
+/**
+ * Clear a handover the rider has locked with wrong codes. Shopkeeper only —
+ * letting the rider clear their own failures would make the cap meaningless.
+ */
+export async function resetHandover(orderId) {
+  const result = await api.post(`/orders/${orderId}/handover/reset`);
+  return result.data;
 }

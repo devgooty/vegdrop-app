@@ -23,6 +23,7 @@ const StallEarning = require('../models/StallEarning');
 const User = require('../models/User');
 const WalletTransaction = require('../models/WalletTransaction');
 const sourcing = require('../services/sourcing');
+const pickupCode = require('../services/pickupCode');
 const settlement = require('../services/settlement');
 const sweeper = require('../services/sweeper');
 const wallet = require('../services/wallet');
@@ -126,7 +127,10 @@ async function completeDelivery({ unitPricePaise = 4000, quantity = 2, stallCoun
     await api()
       .post(`/api/rider/orders/${orderId}/collect`)
       .set(auth(rider.accessToken))
-      .send({ stallId: shop.stall._id.toHexString() });
+      .send({
+      stallId: shop.stall._id.toHexString(),
+      code: pickupCode.codeFor(orderId, shop.stall._id),
+    });
   }
   await api().post(`/api/rider/orders/${orderId}/deliver`).set(auth(rider.accessToken));
 

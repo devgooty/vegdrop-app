@@ -14,10 +14,12 @@ const {
   auth,
 } = require('./helpers');
 
+const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const WalletTransaction = require('../models/WalletTransaction');
 const PaymentIntent = require('../models/PaymentIntent');
+const pickupCode = require('../services/pickupCode');
 
 test.before(startTestServer);
 test.after(stopTestServer);
@@ -377,6 +379,16 @@ async function orderOutForDelivery({ customer, staff, product, claimedBy = null 
 
   if (claimedBy) {
     await api().post(`/api/orders/${id}/claim`).set(auth(claimedBy.accessToken)).expect(200);
+
+    // Claiming is not collecting. The rider proves the pickup with the shop's
+    // handover code, and only then may they close the order — see
+    // shopHandover.test.js for why that step exists.
+    const stored = await Order.findById(id).lean();
+    await api()
+      .post(`/api/orders/${id}/pickup`)
+      .set(auth(claimedBy.accessToken))
+      .send({ code: pickupCode.codeFor(id, pickupCode.sellerKeyFor(stored)) })
+      .expect(200);
   }
 
   return id;
@@ -440,7 +452,20 @@ test('the assigned delivery agent can complete their own order', async () => {
   assert.equal(res.body.data.paymentStatus, 'paid');
 });
 
-test('completing an unclaimed order records the agent who delivered it', async () => {
+/**
+ * An unclaimed order used to be closeable by any agent who could see it, and
+ * closing it assigned it to them retroactively.
+ *
+ * That is no longer allowed, and the reason is not bookkeeping. The unassigned
+ * pool is visible to EVERY agent on duty, and `redactForViewer` once treated a
+ * delivered order as unlocked — so "mark it delivered" was a way to read a
+ * stranger's address without going anywhere near the shop. The pickup code
+ * closes that, and it only closes it if closing the order requires it.
+ *
+ * The record still ends up naming whoever did the work; they just have to
+ * actually do it first.
+ */
+test('an unclaimed order cannot be closed without collecting it', async () => {
   const product = await seedProduct({ stock: 10 });
   const customer = await authenticatedUser('customer');
   const staff = await authenticatedUser('shopkeeper');
@@ -448,6 +473,23 @@ test('completing an unclaimed order records the agent who delivered it', async (
 
   // No claim step: the unassigned pool is visible to every agent.
   const id = await orderOutForDelivery({ customer, staff, product });
+
+  const refused = await api()
+    .patch(`/api/orders/${id}/status`)
+    .set(auth(agent.accessToken))
+    .send({ status: 'Delivered' });
+
+  assert.equal(refused.status, 409);
+  assert.equal(refused.body.error.code, 'PICKUP_NOT_VERIFIED');
+
+  // Doing it properly still records the agent who delivered it.
+  await api().post(`/api/orders/${id}/claim`).set(auth(agent.accessToken)).expect(200);
+  const stored = await Order.findById(id).lean();
+  await api()
+    .post(`/api/orders/${id}/pickup`)
+    .set(auth(agent.accessToken))
+    .send({ code: pickupCode.codeFor(id, pickupCode.sellerKeyFor(stored)) })
+    .expect(200);
 
   const res = await api()
     .patch(`/api/orders/${id}/status`)

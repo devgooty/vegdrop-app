@@ -6,6 +6,7 @@ const Order = require('../models/Order');
 const Market = require('../models/Market');
 const Stall = require('../models/Stall');
 const User = require('../models/User');
+const pickupCode = require('./pickupCode');
 const { transitionTo } = require('../utils/orderStatus');
 
 /**
@@ -351,15 +352,103 @@ function buildPickupList(order, stalls = null) {
 }
 
 /**
+ * Count one wrong guess at a stall's handover code, atomically.
+ *
+ * Two writes rather than one because the counter is a per-stall element that
+ * may not exist yet, and `$inc` cannot create one. The `$ne` guard makes the
+ * push idempotent, so two riders — or one rider double-tapping — cannot end up
+ * with two counters for the same stall, which would double the allowance.
+ *
+ * Counted BEFORE the code is compared, exactly as `services/otp.js` does it: a
+ * crash between the two must cost the guesser an attempt, not hand them a free
+ * one.
+ *
+ * @returns {Promise<number>} attempts used so far, including this one
+ */
+async function countPickupAttempt(orderId, stall) {
+  await Order.updateOne(
+    { _id: orderId, 'fulfillment.pickupAttempts.stall': { $ne: stall } },
+    { $push: { 'fulfillment.pickupAttempts': { stall, count: 0 } } }
+  );
+
+  const bumped = await Order.findOneAndUpdate(
+    { _id: orderId, 'fulfillment.pickupAttempts.stall': stall },
+    { $inc: { 'fulfillment.pickupAttempts.$.count': 1 } },
+    { returnDocument: 'after', projection: { 'fulfillment.pickupAttempts': 1 } }
+  );
+
+  const entry = (bumped?.fulfillment?.pickupAttempts || []).find(
+    (a) => String(a.stall) === String(stall)
+  );
+  return entry?.count ?? 1;
+}
+
+/**
  * The rider has the bags from one stall.
  *
  * Only the assigned rider can tick a stall off, and only lines that stall
  * actually packed. When the last stall is ticked the order leaves the market.
+ *
+ * `code` is the four-digit handover code from the shopkeeper's screen. It is
+ * what turns this from a claim into evidence — see `services/pickupCode.js` for
+ * why it is derived rather than stored, and why the attempt cap it carries is
+ * load-bearing rather than defensive.
  */
-async function collectStall({ orderId, riderId, stallId }) {
+async function collectStall({ orderId, riderId, stallId, code }) {
   const rider = objectId(riderId);
   const stall = objectId(stallId);
   const now = new Date();
+
+  /**
+   * Establish the rider owns this pickup BEFORE spending an attempt on it.
+   *
+   * Otherwise any rider could burn another's allowance at a stall they have
+   * nothing to do with, and lock a handover they are not part of.
+   */
+  const held = await Order.findOne({
+    _id: orderId,
+    assignedTo: rider,
+    'fulfillment.status': 'collecting',
+  })
+    .select('_id items.claim')
+    .lean();
+
+  if (!held) return { order: null, reason: 'NOT_COLLECTING' };
+
+  const hasLines = (held.items || []).some(
+    (item) =>
+      String(item.claim?.stall) === String(stall) &&
+      item.claim?.packedAt &&
+      !item.claim?.collectedAt
+  );
+
+  if (!hasLines) return { order: null, reason: 'NOTHING_TO_COLLECT' };
+
+  const used = await countPickupAttempt(orderId, stall);
+
+  if (used > pickupCode.MAX_ATTEMPTS) {
+    return { order: null, reason: 'PICKUP_ATTEMPTS_EXCEEDED', attemptsRemaining: 0 };
+  }
+
+  if (!pickupCode.matches(orderId, stall, code)) {
+    return {
+      order: null,
+      reason: 'PICKUP_CODE_INVALID',
+      attemptsRemaining: Math.max(0, pickupCode.MAX_ATTEMPTS - used),
+    };
+  }
+
+  /**
+   * Clear the counter on success.
+   *
+   * A round of eight stalls where the rider mishears one number at each would
+   * otherwise creep toward the cap across the whole round, and lock at a stall
+   * where nothing had gone wrong at all.
+   */
+  await Order.updateOne(
+    { _id: orderId, 'fulfillment.pickupAttempts.stall': stall },
+    { $set: { 'fulfillment.pickupAttempts.$.count': 0 } }
+  );
 
   const updated = await Order.findOneAndUpdate(
     { _id: orderId, assignedTo: rider, 'fulfillment.status': 'collecting' },
@@ -485,9 +574,38 @@ async function deliverOrder({ orderId, riderId }) {
   return { delivered: true, order: delivered };
 }
 
+/**
+ * Clear a locked handover, on the shopkeeper's say-so.
+ *
+ * The cap has to exist or the code is a four-digit lock with unlimited turns of
+ * the handle. But a cap with no way past it strands real bags in a real stall
+ * until somebody edits the database, so the person best placed to judge — the
+ * one already looking at the rider across the counter — can lift it.
+ *
+ * Scoped to the caller's own stall. A shopkeeper clearing another stall's lock
+ * would be vouching for a handover they cannot see.
+ */
+async function resetPickupAttempts({ orderId, stallId }) {
+  const stall = objectId(stallId);
+
+  const order = await Order.findOne({ _id: orderId, 'items.claim.stall': stall })
+    .select('_id')
+    .lean();
+
+  if (!order) return { reset: false, reason: 'NOT_FOUND' };
+
+  await Order.updateOne(
+    { _id: order._id, 'fulfillment.pickupAttempts.stall': stall },
+    { $set: { 'fulfillment.pickupAttempts.$.count': 0 } }
+  );
+
+  return { reset: true, attemptsRemaining: pickupCode.MAX_ATTEMPTS };
+}
+
 module.exports = {
   OFFERABLE,
   deliverOrder,
+  resetPickupAttempts,
   findNearestRider,
   offerToNearestRider,
   openToPool,
