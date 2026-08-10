@@ -14,10 +14,20 @@ const {
 } = require('./helpers');
 
 const User = require('../models/User');
+const notify = require('../services/notify');
 
 test.before(startTestServer);
 test.after(stopTestServer);
 test.beforeEach(resetDatabase);
+
+// The dual-OTP registration tests below need BOTH legs to deliver — mirroring
+// kyc.test.js's own setup — because the default test transport reports
+// `reachesRecipient: false`, which is what makes the "WhatsApp unavailable"
+// branch testable elsewhere but would silently skip the phone leg here.
+test.beforeEach(() => {
+  notify.setTransport({ name: 'recording', async send() {} });
+});
+test.afterEach(() => notify.setTransport(null));
 
 /**
  * One contact can now back a separate customer, shopkeeper and delivery
@@ -50,6 +60,79 @@ test('registering a second delivery account for an email that already has one is
 
   assert.equal(res.status, 409);
   assert.equal(res.body.error.code, 'ALREADY_REGISTERED');
+});
+
+/**
+ * The full symmetric matrix, proved rather than inferred.
+ *
+ * `startRegistrationChallenge` is one shared function scoped by a `role`
+ * parameter — customer, shopkeeper and delivery registration are the same
+ * code path with a different role and OTP purpose, not three separate
+ * implementations. That is WHY every pairing here behaves the same way, but
+ * "the mechanism is generic" is a claim about the code, not a test result.
+ * Only two of the six directed pairs (customer→shopkeeper, both ways of the
+ * same-role block) had actually been exercised through the real routes
+ * elsewhere; this fills in the rest so the symmetry is demonstrated, not
+ * assumed.
+ */
+const REGISTER_START_ENDPOINT = {
+  customer: '/api/auth/register/start',
+  shopkeeper: '/api/auth/vendor/register/start',
+  delivery: '/api/auth/delivery/register/start',
+};
+
+const SELF_SERVICE_ROLES_UNDER_TEST = ['customer', 'shopkeeper', 'delivery'];
+
+let phoneCounter = 0;
+function nextTestPhone() {
+  phoneCounter += 1;
+  return `98765${String(10000 + phoneCounter)}`;
+}
+
+for (const existingRole of SELF_SERVICE_ROLES_UNDER_TEST) {
+  for (const registeringRole of SELF_SERVICE_ROLES_UNDER_TEST) {
+    if (existingRole === registeringRole) continue; // the same-role block is covered separately, per role
+
+    test(`an existing ${existingRole} account does not block registering a ${registeringRole} account for the same email`, async () => {
+      const { user } = await createUser({ role: existingRole });
+
+      const res = await api()
+        .post(REGISTER_START_ENDPOINT[registeringRole])
+        .send({ phone: nextTestPhone(), email: user.email });
+
+      assert.equal(
+        res.status,
+        202,
+        `registering ${registeringRole} should succeed when only a ${existingRole} account holds this email`
+      );
+    });
+  }
+}
+
+test('a delivery account can be completed for an email that already has a shopkeeper account, and lands as a separate document', async () => {
+  const email = 'shop-then-rider@example.com';
+  const { user: shopkeeper } = await createUser({ role: 'shopkeeper', email });
+
+  const start = await api()
+    .post('/api/auth/delivery/register/start')
+    .send({ phone: '9876500099', email });
+  assert.equal(start.status, 202);
+
+  const verify = await api()
+    .post('/api/auth/delivery/register/verify')
+    .send({
+      emailChallengeId: start.body.email.challengeId,
+      emailCode: start.body.devCodes.email,
+      phoneChallengeId: start.body.phone.challengeId,
+      phoneCode: start.body.devCodes.phone,
+    });
+
+  assert.equal(verify.status, 201);
+  assert.equal(verify.body.user.role, 'delivery');
+  assert.notEqual(verify.body.user.id, shopkeeper.id);
+
+  const accounts = await User.find({ email }).select('role').lean();
+  assert.deepEqual(accounts.map((a) => a.role).sort(), ['delivery', 'shopkeeper']);
 });
 
 // ---------------------------------------------------------------------------
