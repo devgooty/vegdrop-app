@@ -195,10 +195,20 @@ function stripSensitive(_doc, ret) {
  * and `phone`. `db/connect.js` builds indexes with `createIndexes()`, not
  * `syncIndexes()`, specifically so a rollback cannot delete an index a newer
  * release added — which also means it will NOT drop the old ones on its own.
- * A deployment already carrying the old global-unique `email_1` / `phone_1`
- * indexes must have them dropped by hand before this can take effect; until
- * then the old indexes keep enforcing one-account-per-contact regardless of
- * what this schema now declares.
+ * Declaring these compound indexes therefore changes NOTHING on a database that
+ * still carries `email_1` / `phone_1`: both sets of indexes coexist, and the old
+ * global-unique pair keeps vetoing a second-role registration with E11000 no
+ * matter what this schema says.
+ *
+ * `db/migrations.js` → `migrateUserContactIndexes()` drops them, on every boot,
+ * before `ensureIndexes()` runs. That is the ONLY thing that makes this
+ * declaration take effect on an existing deployment; it is not an optimisation
+ * and it must not be removed while any database predating this change survives.
+ *
+ * Do not "tidy up" the plain `index: true` on the two fields above either. Once
+ * the legacy pair is gone, `createIndexes()` rebuilds them as NON-unique lookup
+ * indexes, and that non-uniqueness is exactly what makes the migration
+ * idempotent rather than a drop/recreate loop on every restart.
  */
 userSchema.index(
   { email: 1, role: 1 },

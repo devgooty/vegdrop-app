@@ -21,8 +21,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { startTestServer, stopTestServer, resetDatabase } = require('./helpers');
+const { startTestServer, stopTestServer, resetDatabase, api, createUser } = require('./helpers');
 const User = require('../models/User');
+const notify = require('../services/notify');
 const { migrateUserContactIndexes } = require('../db/migrations');
 
 test.before(startTestServer);
@@ -149,4 +150,65 @@ test('per-role uniqueness actually holds once the migration and rebuild have run
     () => User.create({ name: 'Second customer', email, phone: '9000000012', role: 'customer' }),
     /duplicate key|E11000/
   );
+});
+
+/**
+ * The same thing again, but through the HTTP routes a person actually touches.
+ *
+ * Everything above proves the constraint at the model layer. What was reported
+ * from production was not a constraint — it was a sentence: "An account already
+ * exists for those details. Try signing in instead.", on the shopkeeper app,
+ * for an email whose only account was a customer one. That message is raised in
+ * routes/auth.js from an E11000 on `User.create`, i.e. AFTER the role-scoped
+ * application pre-check has already passed. So the failure only exists end to
+ * end, and only a request that goes all the way to the insert can demonstrate
+ * it is gone.
+ *
+ * Both legs of the dual-OTP flow have to deliver for this, so the transport is
+ * stubbed the way kyc.test.js does it — the default test transport reports
+ * `reachesRecipient: false`, which would silently skip the phone leg.
+ */
+test('the shopkeeper app can register an email that already has a customer account', async () => {
+  notify.setTransport({ name: 'recording', async send() {} });
+
+  try {
+    await installStaleContactIndex('email');
+    const { user } = await createUser({ role: 'customer' });
+
+    async function registerVendor(phone) {
+      const start = await api()
+        .post('/api/auth/vendor/register/start')
+        .send({ phone, email: user.email });
+
+      // The pre-check IS role-scoped, so this step succeeds either way. That is
+      // exactly why the bug reached the second step before showing itself.
+      assert.equal(start.status, 202, JSON.stringify(start.body));
+
+      return api()
+        .post('/api/auth/vendor/register/verify')
+        .send({
+          emailChallengeId: start.body.email.challengeId,
+          emailCode: start.body.devCodes.email,
+          phoneChallengeId: start.body.phone.challengeId,
+          phoneCode: start.body.devCodes.phone,
+        });
+    }
+
+    const blocked = await registerVendor('9000000020');
+    assert.equal(blocked.status, 409, 'the stale index must still turn the insert into a 409');
+    assert.equal(blocked.body.error.code, 'ALREADY_REGISTERED');
+
+    await migrateUserContactIndexes();
+    await User.createIndexes();
+
+    const allowed = await registerVendor('9000000021');
+    assert.equal(allowed.status, 201, JSON.stringify(allowed.body));
+    assert.equal(allowed.body.user.role, 'shopkeeper');
+    assert.equal(allowed.body.user.email, user.email);
+
+    const roles = await User.find({ email: user.email }).select('role').lean();
+    assert.deepEqual(roles.map((r) => r.role).sort(), ['customer', 'shopkeeper']);
+  } finally {
+    notify.setTransport(null);
+  }
 });
