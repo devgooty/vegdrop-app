@@ -80,6 +80,62 @@ async function migrateStallApproval() {
 }
 
 /**
+ * User gained per-role identity: one contact may now back a customer, a
+ * shopkeeper AND a delivery account, instead of exactly one account globally.
+ * See the MIGRATION NOTE above the `{ email: 1, role: 1 }` / `{ phone: 1,
+ * role: 1 }` indexes in models/User.js.
+ *
+ * Two indexes are stale, and they fail in different ways.
+ *
+ * The unique single-field index — `{ email: 1 }` with `unique: true` — is the
+ * old global constraint. It cannot be rebuilt as the new compound one merely
+ * by adding `role`, because its NAME does not collide with anything (compound
+ * indexes get their own auto-generated name), so `createIndexes()` builds the
+ * new compound index successfully alongside it. The two then coexist, and the
+ * old one goes on enforcing one-account-per-contact regardless of what the
+ * current schema declares — silently, because nothing failed.
+ *
+ * A second, easier-to-miss failure is what actually surfaced in production:
+ * `email`/`phone` still carry `index: true` at the field level for plain
+ * lookups (unrelated to uniqueness), which Mongoose auto-names `email_1` —
+ * the SAME auto-generated name the old unique index already holds. Same name,
+ * different options (unique/sparse vs plain), so `createIndexes()` throws
+ * IndexOptionsConflict for that one specifically. The error is logged and
+ * swallowed by `ensureIndexes()`, so boot continues, but neither the lookup
+ * index nor (independently) the compound unique index this migration exists
+ * to unblock gets built until the stale one is gone.
+ *
+ * Matched by key shape and `unique: true`, the same test `migrateStallApproval`
+ * uses for `owner` above — a single-field unique index on exactly `email` or
+ * `phone` is, by construction, the retired global constraint. The new rule
+ * lives on a two-key index (`email`+`role` or `phone`+`role`), so this can
+ * never match it.
+ */
+async function migrateUserContactIndexes() {
+  const User = mongoose.models.User;
+  if (!User) return { droppedIndexes: [] };
+
+  const droppedIndexes = [];
+  const existing = await User.collection.indexes().catch(() => []);
+
+  for (const index of existing) {
+    const keys = Object.keys(index.key);
+
+    const staleContact =
+      keys.length === 1 && (keys[0] === 'email' || keys[0] === 'phone') && index.unique === true;
+
+    if (staleContact) {
+      // A concurrent boot may have dropped it a moment ago; that is success,
+      // not a failure, so the error is swallowed rather than surfaced.
+      await User.collection.dropIndex(index.name).catch(() => {});
+      droppedIndexes.push(index.name);
+    }
+  }
+
+  return { droppedIndexes };
+}
+
+/**
  * Repair a wallet ledger whose (user, seq) positions collided.
  *
  * `seq` exists to serialise concurrent writes: two racing appends both read the
@@ -224,6 +280,17 @@ async function runMigrations() {
   }
 
   try {
+    const { droppedIndexes } = await migrateUserContactIndexes();
+
+    if (droppedIndexes.length > 0) {
+      console.info(`[db] migration: dropped superseded user contact index(es) ${droppedIndexes.join(', ')}`);
+    }
+  } catch (err) {
+    console.error(`[db] migration (user contact indexes) failed: ${err?.message}`);
+    ok = false;
+  }
+
+  try {
     const { usersFixed, entriesFixed, overdraftsFound } = await migrateWalletLedgerSequence();
 
     if (entriesFixed > 0) {
@@ -248,4 +315,9 @@ async function runMigrations() {
   return { ok };
 }
 
-module.exports = { runMigrations, migrateStallApproval, migrateWalletLedgerSequence };
+module.exports = {
+  runMigrations,
+  migrateStallApproval,
+  migrateUserContactIndexes,
+  migrateWalletLedgerSequence,
+};
