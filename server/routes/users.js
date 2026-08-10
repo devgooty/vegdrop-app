@@ -172,7 +172,33 @@ router.patch(
     // Invalidate every session so the old role cannot be used for its remaining
     // access-token lifetime.
     user.tokenVersion += 1;
-    await user.save();
+
+    try {
+      await user.save();
+    } catch (err) {
+      /**
+       * This identity already holds the target role, on a DIFFERENT account.
+       *
+       * Uniqueness on User is per `(contact, role)` now, not per contact — see
+       * models/User.js — because one phone or email may back a customer, a
+       * shopkeeper and a delivery account at once. Promoting THIS document into
+       * a role its own phone or email already owns elsewhere would collide with
+       * that other account rather than merge into it; there is no merge here,
+       * only two documents that cannot both claim the same (contact, role) pair.
+       * Surfaced plainly rather than as a raw 500, since it is a legitimate
+       * outcome an admin needs to know: pick the other account instead, or
+       * change this one's role to something not already spoken for.
+       */
+      if (err?.code === 11000) {
+        throw new ApiError(
+          409,
+          'This phone or email already has an account with that role.',
+          'ROLE_ALREADY_HELD'
+        );
+      }
+      throw err;
+    }
+
     await revokeAllForUser(user._id);
 
     console.warn('[audit] role changed', {

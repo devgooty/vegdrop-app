@@ -40,10 +40,17 @@ export async function startPhoneAuth({ phone, name }) {
  * the app — 20 per hour — so treat a `LOOKUP_RATE_LIMITED` error as expected
  * rather than exceptional, and never call this on keystroke.
  *
+ * `app` scopes which account "exists" means. One contact can now back a
+ * separate customer, shopkeeper and delivery account, so a bare identifier is
+ * ambiguous — the shopkeeper app asking must not learn about a customer
+ * account with the same email and route into signing in as it. Pass the
+ * `appType` this LoginPage was rendered with; the three values match the
+ * server's `APP_ROLE_SCOPE` exactly, so nothing here decides anything.
+ *
  * @returns {Promise<{exists: boolean, type: 'phone'|'email'}>}
  */
-export async function lookupIdentifier({ identifier }) {
-  return api.post('/auth/lookup', { identifier }, { auth: false });
+export async function lookupIdentifier({ identifier, app }) {
+  return api.post('/auth/lookup', { identifier, ...(app ? { app } : {}) }, { auth: false });
 }
 
 /**
@@ -51,9 +58,13 @@ export async function lookupIdentifier({ identifier }) {
  *
  * One code is issued and delivered to every verified contact the account has, so
  * whichever the user typed, the same code arrives on WhatsApp and by email.
+ *
+ * `app` scopes the resolved account exactly as it does on `lookupIdentifier` —
+ * see there. Always pass the same one used for the lookup that preceded this,
+ * or the two can disagree about which account is being signed into.
  */
-export async function startIdentifierAuth({ identifier }) {
-  return api.post('/auth/otp/start', { identifier }, { auth: false });
+export async function startIdentifierAuth({ identifier, app }) {
+  return api.post('/auth/otp/start', { identifier, ...(app ? { app } : {}) }, { auth: false });
 }
 
 /**

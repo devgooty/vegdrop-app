@@ -223,10 +223,10 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     }
 
     try {
-      const { exists, type } = await lookupIdentifier({ identifier: typed });
+      const { exists, type } = await lookupIdentifier({ identifier: typed, app: appType });
 
       if (exists) {
-        const issued = await startIdentifierAuth({ identifier: typed });
+        const issued = await startIdentifierAuth({ identifier: typed, app: appType });
         setChallenge(issued);
         setCode('');
         setStep(STEP.LOGIN_CODE);
