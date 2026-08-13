@@ -383,6 +383,21 @@
   padding-top: 0;
 }
 
+/* Shopkeeper-only: was full bleed to the screen edges like the other two
+   heroes, but this artwork already has its own signage and border built
+   in, so touching the screen edges read as a banner rather than a mark.
+   Framing it with the page's own cream on all but the bottom edge (which
+   stays flush into the heading above) plus rounded corners and a lifted
+   shadow makes it read as a contained logo card instead. */
+.si-scope-shopkeeper header {
+  padding: 1rem 1rem 0;
+}
+
+.si-hero-img-shopkeeper {
+  border-radius: 1.1rem;
+  box-shadow: 0 14px 30px -16px rgba(15, 31, 23, 0.4);
+}
+
 /* Shopkeeper-only: a warm cream instead of the shared white, picking up the
    wood tones in the stall artwork above it rather than cutting hard to a
    stark white the moment the photo ends. Customer and delivery keep --si-bg
