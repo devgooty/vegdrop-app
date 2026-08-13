@@ -433,16 +433,15 @@
   width: 100%;
   max-width: 26rem;
   margin-inline: auto;
-  height: clamp(13rem, 34vh, 18rem);
-  min-height: 13rem;
+  height: clamp(14.5rem, 37vh, 20rem);
+  min-height: 14.5rem;
   max-height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 1rem;
+  gap: 1.2rem;
   overflow: hidden;
   background: var(--si-bg);
-  border-bottom: 1px solid var(--si-line);
 }
 
 .si-veg-row {
@@ -453,7 +452,7 @@
 .si-veg-track {
   display: flex;
   width: max-content;
-  gap: 0.85rem;
+  gap: 1rem;
   padding-inline: 0.6rem;
   will-change: transform;
 }
@@ -482,19 +481,19 @@
 .si-veg-chip {
   display: block;
   flex-shrink: 0;
-  width: clamp(3.4rem, 13vw, 4.25rem);
-  height: clamp(3.4rem, 13vw, 4.25rem);
-  border-radius: 1rem;
-  padding: 2px;
+  width: clamp(4.1rem, 15.5vw, 5.25rem);
+  height: clamp(4.1rem, 15.5vw, 5.25rem);
+  border-radius: 1.15rem;
+  padding: 3px;
   background: linear-gradient(180deg, #fffdf9, #f3efe6);
   border: 1px solid #dcd5c6;
-  box-shadow: 0 4px 10px -6px rgba(15, 31, 23, 0.25);
+  box-shadow: 0 6px 14px -7px rgba(15, 31, 23, 0.28);
 }
 .si-veg-chip img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 0.8rem;
+  border-radius: 0.95rem;
 }
 
 .si-hero-wordmark {
@@ -606,7 +605,7 @@
   background: #fff;
   border: 1px solid var(--si-line);
   border-radius: 26px;
-  box-shadow: 0 14px 32px -20px rgba(15, 31, 23, 0.3);
+  box-shadow: 0 20px 44px -22px rgba(15, 31, 23, 0.38);
 }
 
 /* Code entry — the moment the whole flow exists for, so it is the one control

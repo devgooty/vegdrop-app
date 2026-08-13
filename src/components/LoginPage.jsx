@@ -475,14 +475,14 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
         )}
       </header>
 
-      <main className="shrink-0 px-4 pt-1 pb-2 sm:px-5">
+      <main className="shrink-0 px-4 pt-6 pb-2 sm:px-5 sm:pt-8">
         <div className="mx-auto w-full max-w-[26rem]">
 
           {/* The photo is shared with the customer app, so this heading is the
               one place a shopkeeper or rider is told this screen is theirs.
               Prefixed rather than swapped outright, so "Login" and "Sign up"
               still say what step this is — "Shopkeeper" alone would not. */}
-          <h1 className="mb-2 px-1 text-[1.6rem] sm:text-[1.75rem] font-extrabold text-[#0F1F17]">
+          <h1 className="mb-3 px-1 text-[1.6rem] sm:text-[1.75rem] font-extrabold text-[#0F1F17]">
             {signUp.heading ? `${signUp.heading} ${PAGE_TITLE[step]}` : PAGE_TITLE[step]}
           </h1>
 
