@@ -110,7 +110,7 @@ const COPY = {
 const DELIVERY_HERO_SRC = '/delivery-hero.webp';
 const DELIVERY_HERO_DIMENSIONS = { width: 1024, height: 1024 };
 const SHOPKEEPER_HERO_SRC = '/shopkeeper-hero.jpg';
-const SHOPKEEPER_HERO_DIMENSIONS = { width: 1024, height: 1024 };
+const SHOPKEEPER_HERO_DIMENSIONS = { width: 980, height: 784 };
 
 /**
  * The customer-only hero: two rows of real vegetable photos scrolling
@@ -455,12 +455,8 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               width={SHOPKEEPER_HERO_DIMENSIONS.width}
               height={SHOPKEEPER_HERO_DIMENSIONS.height}
               fetchPriority="high"
-              className="si-hero-img"
+              className="si-hero-img si-hero-img-shopkeeper"
             />
-            <span className="si-hero-shopkeeper-scrim" aria-hidden="true" />
-            <span className="si-hero-wordmark-overlay" aria-hidden="true">
-              <span className="si-hero-wordmark-overlay-accent">V</span>eg<span className="si-hero-wordmark-overlay-accent">D</span>rop
-            </span>
           </div>
         ) : (
           <div className="si-hero-veg">

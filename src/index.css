@@ -604,70 +604,28 @@
   }
 }
 
-/* Shopkeeper-only: the wordmark used to be painted into hero.webp itself, but
-   a real photo can't carry brand text the way an illustration could, so it's
-   a separate element laid over the bottom of the photo instead — same trick
-   SplashScreen.jsx uses over the intro video. White + a heavy shadow rather
-   than the marquee's green/red pairing, because that pairing is tuned for
-   sitting on plain white, not on a busy photo of variable brightness. */
+/* Shopkeeper-only: hero.jpg is a generated stall-front illustration with
+   "VegDrop" signage painted into the artwork itself (top and bottom), so
+   unlike the earlier real-photo version this needs no text overlay or
+   legibility scrim on top — the image carries its own brand mark. */
 .si-hero-shopkeeper-wrap {
   position: relative;
   width: 100%;
   max-width: 26rem;
   /* See the matching comment on si-hero-delivery-wrap — same fix, same
      reason, but visible here rather than merely theoretical: a full-bleed
-     photo has no blank margin for the overflow to hide in, so without this
-     the heading below renders straight under the photo. */
+     image has no blank margin for the overflow to hide in, so without this
+     the heading below renders straight under it. */
   height: 100%;
   margin-inline: auto;
 }
 
-/* A dedicated scrim rather than relying on text-shadow alone: text-shadow
-   degrades unpredictably against a busy, high-contrast photo (a market
-   stall's produce, price tags and all, is a much noisier backdrop than the
-   splash video it was borrowed from). Requested layout moved the wordmark
-   into the middle of the photo (was bottom-anchored) so the produce reads
-   as a full frame around it — the scrim follows it there as a horizontal
-   band, fading to nothing at top and bottom, rather than the old
-   bottom-up wash, so the rest of the stall stays fully visible. */
-.si-hero-shopkeeper-scrim {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 30%;
-  transform: translateY(-50%);
-  background: linear-gradient(
-    to bottom,
-    rgba(6, 20, 12, 0) 0%,
-    rgba(6, 20, 12, 0.68) 30%,
-    rgba(6, 20, 12, 0.68) 70%,
-    rgba(6, 20, 12, 0) 100%
-  );
-  pointer-events: none;
-}
-
-.si-hero-wordmark-overlay {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  text-align: center;
-  font-family: 'Baloo 2', 'Plus Jakarta Sans', ui-sans-serif, sans-serif;
-  font-weight: 800;
-  font-size: clamp(2rem, 8vw, 2.8rem);
-  letter-spacing: 0.01em;
-  color: #fff;
-  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55), 0 1px 4px rgba(0, 0, 0, 0.5);
-  pointer-events: none;
-}
-
-/* Same red the marquee wordmark uses for "Drop" (.si-hero-wordmark-drop) —
-   just the two capitals here rather than the whole second half, since white
-   is what actually needs the contrast boost from the scrim underneath. */
-.si-hero-wordmark-overlay-accent {
-  color: #C8372D;
+/* Overrides the shared .si-hero-img ratio (tuned for the delivery badge) to
+   match this artwork's native 980x784, so cover crops nothing — both the
+   top and bottom "VegDrop" signage stay fully in frame. */
+.si-hero-img-shopkeeper {
+  aspect-ratio: 5 / 4;
+  object-position: center;
 }
 
 /* A short green rule under the heading — the card is white on white, and this
