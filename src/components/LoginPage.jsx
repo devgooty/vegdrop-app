@@ -416,12 +416,19 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
   // this fit a screen of any height. overflow-y-auto is the safety net for the
   // taller registration step.
   return (
-    <div
-      className={
-        'si-scope flex h-[100dvh] flex-col overflow-y-auto' +
-        (appType === 'shopkeeper' ? ' si-scope-shopkeeper' : '')
-      }
-    >
+    // Same mobile-frame convention as every logged-in screen (App.jsx,
+    // ShopkeeperPanel, SplashScreen): a max-w-md column centered on the
+    // page's own background, bordered on both sides. Without this wrapper,
+    // .si-scope's white background and the hero's full-bleed rows stretched
+    // to the real edges of a desktop browser window instead of stopping at
+    // a phone-width frame.
+    <div className="flex min-h-[100dvh] justify-center bg-[#F8F5EF]">
+      <div
+        className={
+          'si-scope relative flex h-[100dvh] w-full max-w-md flex-col overflow-y-auto border-x border-gray-200/60 shadow-xl' +
+          (appType === 'shopkeeper' ? ' si-scope-shopkeeper' : '')
+        }
+      >
 
       {/* Full bleed to the screen edges — the artwork's own white margin is the
           only padding it needs, and the page continues in the same white where
@@ -701,6 +708,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
         </div>
       </main>
+      </div>
     </div>
   );
 }
