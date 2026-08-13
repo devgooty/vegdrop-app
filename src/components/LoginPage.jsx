@@ -507,13 +507,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               one place a shopkeeper or rider is told this screen is theirs.
               Prefixed rather than swapped outright, so "Login" and "Sign up"
               still say what step this is — "Shopkeeper" alone would not. */}
-          <h1
-            className={
-              appType === 'shopkeeper'
-                ? 'si-heading-shopkeeper mb-3 text-[1.15rem] sm:text-[1.3rem] font-extrabold'
-                : 'mb-3 px-1 text-[1.6rem] sm:text-[1.75rem] font-extrabold text-[#0F1F17]'
-            }
-          >
+          <h1 className="mb-3 px-1 text-[1.6rem] sm:text-[1.75rem] font-extrabold text-[#0F1F17]">
             {signUp.heading ? `${signUp.heading} ${PAGE_TITLE[step]}` : PAGE_TITLE[step]}
           </h1>
 
