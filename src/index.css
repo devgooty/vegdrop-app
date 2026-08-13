@@ -419,6 +419,77 @@
      the seam straight back, and the mask above is the fix to restore. */
 }
 
+/* Delivery-only: the scooter icon is a static badge, and this is the cheap
+   way to read as "in motion" without a video asset — a gentle bob on the
+   whole badge plus a few speed-line marks that slide out and fade behind it.
+   prefers-reduced-motion turns both off, since the effect is decorative and
+   contributes nothing to what the screen is for. */
+.si-hero-delivery-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 26rem;
+  margin-inline: auto;
+}
+
+.si-hero-img-bob {
+  animation: si-hero-bob 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes si-hero-bob {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-5px);
+  }
+}
+
+.si-speed-line {
+  position: absolute;
+  left: 6%;
+  height: 3px;
+  border-radius: 999px;
+  background: #16A34A;
+  opacity: 0;
+  animation: si-speed-slide 1.1s ease-out infinite;
+}
+.si-speed-line-1 {
+  top: 60%;
+  width: 16%;
+  animation-delay: 0s;
+}
+.si-speed-line-2 {
+  top: 66%;
+  width: 11%;
+  animation-delay: 0.15s;
+}
+.si-speed-line-3 {
+  top: 72%;
+  width: 20%;
+  animation-delay: 0.3s;
+}
+
+@keyframes si-speed-slide {
+  0% {
+    opacity: 0;
+    transform: translateX(6px);
+  }
+  20% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .si-hero-img-bob,
+  .si-speed-line {
+    animation: none;
+  }
+}
+
 /* A short green rule under the heading — the card is white on white, and this
    is the one mark that says which brand's form it is. */
 .si-underline::after {

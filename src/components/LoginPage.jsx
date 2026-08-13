@@ -100,12 +100,21 @@ const COPY = {
  * fetch — this is the first paint of the first screen, and it carries the
  * wordmark, so it must not wait on a third party.
  *
- * Shared by every app. A separate shopkeeper photo was tried and reverted —
- * the brand is one photo, and each screen tells itself apart through its
- * heading instead (see `SIGN_UP` below), not through a second asset to keep in
- * sync with the first.
+ * Shared by customer and shopkeeper — a shopkeeper-specific photo was tried
+ * and reverted there, since those two screens told themselves apart through
+ * their heading anyway (see `SIGN_UP` below). Delivery gets its own asset
+ * because a rider is a visually distinct persona (helmet, scooter) rather
+ * than a variation on the same produce photography, so there's no shared
+ * original for it to drift out of sync with.
  */
 const HERO_SRC = '/hero.webp';
+const HERO_SRC_BY_APP = {
+  delivery: '/delivery-hero.webp',
+};
+const HERO_DIMENSIONS_BY_APP = {
+  delivery: { width: 1024, height: 1024 },
+};
+const DEFAULT_HERO_DIMENSIONS = { width: 768, height: 790 };
 
 /**
  * How each app signs a NEW account up.
@@ -149,6 +158,8 @@ const SIGN_UP = {
 
 export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegdrop_' }) {
   const signUp = SIGN_UP[appType] || SIGN_UP.customer;
+  const heroSrc = HERO_SRC_BY_APP[appType] || HERO_SRC;
+  const heroDimensions = HERO_DIMENSIONS_BY_APP[appType] || DEFAULT_HERO_DIMENSIONS;
 
   const [step, setStep] = useState(STEP.IDENTIFIER);
 
@@ -407,14 +418,30 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
           shrinking has to stop before the wordmark itself starts getting
           clipped by the box. */}
       <header className="min-h-[15rem] shrink">
-        <img
-          src={HERO_SRC}
-          alt="VegDrop"
-          width="768"
-          height="790"
-          fetchPriority="high"
-          className="si-hero-img"
-        />
+        {appType === 'delivery' ? (
+          <div className="si-hero-delivery-wrap">
+            <span className="si-speed-line si-speed-line-1" aria-hidden="true" />
+            <span className="si-speed-line si-speed-line-2" aria-hidden="true" />
+            <span className="si-speed-line si-speed-line-3" aria-hidden="true" />
+            <img
+              src={heroSrc}
+              alt="VegDrop"
+              width={heroDimensions.width}
+              height={heroDimensions.height}
+              fetchPriority="high"
+              className="si-hero-img si-hero-img-bob"
+            />
+          </div>
+        ) : (
+          <img
+            src={heroSrc}
+            alt="VegDrop"
+            width={heroDimensions.width}
+            height={heroDimensions.height}
+            fetchPriority="high"
+            className="si-hero-img"
+          />
+        )}
       </header>
 
       <main className="shrink-0 px-4 pt-1 pb-2 sm:px-5">
