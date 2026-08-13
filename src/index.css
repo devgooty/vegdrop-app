@@ -374,6 +374,39 @@
   font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Shopkeeper-only: closes the gap the shared <main> padding (pt-6/sm:pt-8)
+   leaves between the hero image and the heading below it. Needs the extra
+   class-plus-element specificity to beat those Tailwind utilities, which
+   customer and delivery still rely on since their art doesn't fill the
+   frame edge-to-edge the way this one does. */
+.si-scope-shopkeeper > main {
+  padding-top: 0;
+}
+
+/* Shopkeeper-only: a warm cream instead of the shared white, picking up the
+   wood tones in the stall artwork above it rather than cutting hard to a
+   stark white the moment the photo ends. Customer and delivery keep --si-bg
+   at white — their artwork was tuned to blend into white, not cream. */
+.si-scope-shopkeeper {
+  --si-bg: #F7F1E4;
+}
+
+/* Shopkeeper-only: the heading as a small badge rather than plain ink
+   text — the cream page background left it reading flat, and this is the
+   one heading that only has cream around it (customer and delivery sit on
+   white, where dark text already carries enough weight on its own). Red
+   rather than the green used elsewhere on this screen (button, underline):
+   it's the same #C8372D already picked for the V/D in the hero artwork,
+   so the badge echoes the image instead of competing with the button. */
+.si-heading-shopkeeper {
+  display: inline-block;
+  color: #fff;
+  background: linear-gradient(135deg, #A62E23, #C8372D);
+  padding: 0.3rem 0.7rem;
+  border-radius: 0.55rem;
+  box-shadow: 0 8px 16px -9px rgba(168, 46, 35, 0.6);
+}
+
 /* The hero photograph, full bleed across the top.
 
    The wordmark is painted into the artwork, so there is no text VegDrop on
@@ -530,6 +563,17 @@
   position: relative;
   width: 100%;
   max-width: 26rem;
+  /* si-hero-img's max-height:100% needs an ancestor with a DEFINITE height to
+     resolve against. Before this wrap existed, that ancestor was <header>
+     itself, a flex item whose used height comes out of the flex algorithm.
+     Inserting this div between them broke the chain — an auto-height div
+     makes the percentage basis indeterminate, so max-height:100% resolves to
+     none and the img falls back to its full, unshrunk aspect-ratio height,
+     overflowing the (still flex-shrunk) header and covering the heading
+     below it. height:100% here re-establishes the chain. Harmless-looking on
+     the badge icon (the overlap landed on the icon's own blank margin) but a
+     real bug on a full-bleed photo — see si-hero-shopkeeper-wrap. */
+  height: 100%;
   margin-inline: auto;
 }
 
@@ -591,6 +635,30 @@
   .si-veg-track {
     animation: none;
   }
+}
+
+/* Shopkeeper-only: hero.jpg is a generated stall-front illustration with
+   "VegDrop" signage painted into the artwork itself (top and bottom), so
+   unlike the earlier real-photo version this needs no text overlay or
+   legibility scrim on top — the image carries its own brand mark. */
+.si-hero-shopkeeper-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 26rem;
+  /* See the matching comment on si-hero-delivery-wrap — same fix, same
+     reason, but visible here rather than merely theoretical: a full-bleed
+     image has no blank margin for the overflow to hide in, so without this
+     the heading below renders straight under it. */
+  height: 100%;
+  margin-inline: auto;
+}
+
+/* Overrides the shared .si-hero-img ratio (tuned for the delivery badge) to
+   match this artwork's native 980x784, so cover crops nothing — both the
+   top and bottom "VegDrop" signage stay fully in frame. */
+.si-hero-img-shopkeeper {
+  aspect-ratio: 5 / 4;
+  object-position: center;
 }
 
 /* A short green rule under the heading — the card is white on white, and this

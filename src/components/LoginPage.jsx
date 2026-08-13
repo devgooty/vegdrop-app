@@ -103,15 +103,17 @@ const COPY = {
  * `public/`, so it's a same-origin file rather than a remote fetch: this is
  * the first paint of the first screen.
  *
- * Customer and shopkeeper no longer use a static photo at all — see the
- * scrolling produce marquee below (`VEG_ROW_A`/`VEG_ROW_B`), which replaced
- * the shared `hero.webp` wreath.
+ * Shopkeeper keeps its own static hero for the same reason — a stallholder
+ * behind a counter is a distinct persona too, not a variation on the same
+ * produce photography the customer marquee below is built from.
  */
 const DELIVERY_HERO_SRC = '/delivery-hero.webp';
 const DELIVERY_HERO_DIMENSIONS = { width: 1024, height: 1024 };
+const SHOPKEEPER_HERO_SRC = '/shopkeeper-hero.jpg';
+const SHOPKEEPER_HERO_DIMENSIONS = { width: 980, height: 784 };
 
 /**
- * The customer/shopkeeper hero: two rows of real vegetable photos scrolling
+ * The customer-only hero: two rows of real vegetable photos scrolling
  * in opposite directions around the wordmark, each in its own square box —
  * replaced a plain emoji version. Earlier attempts (the four
  * `initialCategories` cover photos, then narrower vegetable lists) got
@@ -421,7 +423,12 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     // to the real edges of a desktop browser window instead of stopping at
     // a phone-width frame.
     <div className="flex min-h-[100dvh] justify-center bg-[#F8F5EF]">
-      <div className="si-scope relative flex h-[100dvh] w-full max-w-md flex-col overflow-y-auto border-x border-gray-200/60 shadow-xl">
+      <div
+        className={
+          'si-scope relative flex h-[100dvh] w-full max-w-md flex-col overflow-y-auto border-x border-gray-200/60 shadow-xl' +
+          (appType === 'shopkeeper' ? ' si-scope-shopkeeper' : '')
+        }
+      >
 
       {/* Full bleed to the screen edges — the artwork's own white margin is the
           only padding it needs, and the page continues in the same white where
@@ -450,6 +457,17 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               height={DELIVERY_HERO_DIMENSIONS.height}
               fetchPriority="high"
               className="si-hero-img si-hero-img-bob"
+            />
+          </div>
+        ) : appType === 'shopkeeper' ? (
+          <div className="si-hero-shopkeeper-wrap">
+            <img
+              src={SHOPKEEPER_HERO_SRC}
+              alt="VegDrop"
+              width={SHOPKEEPER_HERO_DIMENSIONS.width}
+              height={SHOPKEEPER_HERO_DIMENSIONS.height}
+              fetchPriority="high"
+              className="si-hero-img si-hero-img-shopkeeper"
             />
           </div>
         ) : (
@@ -489,7 +507,13 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               one place a shopkeeper or rider is told this screen is theirs.
               Prefixed rather than swapped outright, so "Login" and "Sign up"
               still say what step this is — "Shopkeeper" alone would not. */}
-          <h1 className="mb-3 px-1 text-[1.6rem] sm:text-[1.75rem] font-extrabold text-[#0F1F17]">
+          <h1
+            className={
+              appType === 'shopkeeper'
+                ? 'si-heading-shopkeeper mb-3 text-[1.15rem] sm:text-[1.3rem] font-extrabold'
+                : 'mb-3 px-1 text-[1.6rem] sm:text-[1.75rem] font-extrabold text-[#0F1F17]'
+            }
+          >
             {signUp.heading ? `${signUp.heading} ${PAGE_TITLE[step]}` : PAGE_TITLE[step]}
           </h1>
 
