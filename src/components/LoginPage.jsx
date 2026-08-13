@@ -448,14 +448,17 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
             />
           </div>
         ) : appType === 'shopkeeper' ? (
-          <img
-            src={SHOPKEEPER_HERO_SRC}
-            alt="VegDrop"
-            width={SHOPKEEPER_HERO_DIMENSIONS.width}
-            height={SHOPKEEPER_HERO_DIMENSIONS.height}
-            fetchPriority="high"
-            className="si-hero-img"
-          />
+          <div className="si-hero-shopkeeper-wrap">
+            <img
+              src={SHOPKEEPER_HERO_SRC}
+              alt="VegDrop"
+              width={SHOPKEEPER_HERO_DIMENSIONS.width}
+              height={SHOPKEEPER_HERO_DIMENSIONS.height}
+              fetchPriority="high"
+              className="si-hero-img"
+            />
+            <span className="si-hero-wordmark-overlay" aria-hidden="true">VegDrop</span>
+          </div>
         ) : (
           <div className="si-hero-veg">
             <div className="si-veg-row" aria-hidden="true">

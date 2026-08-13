@@ -530,6 +530,17 @@
   position: relative;
   width: 100%;
   max-width: 26rem;
+  /* si-hero-img's max-height:100% needs an ancestor with a DEFINITE height to
+     resolve against. Before this wrap existed, that ancestor was <header>
+     itself, a flex item whose used height comes out of the flex algorithm.
+     Inserting this div between them broke the chain — an auto-height div
+     makes the percentage basis indeterminate, so max-height:100% resolves to
+     none and the img falls back to its full, unshrunk aspect-ratio height,
+     overflowing the (still flex-shrunk) header and covering the heading
+     below it. height:100% here re-establishes the chain. Harmless-looking on
+     the badge icon (the overlap landed on the icon's own blank margin) but a
+     real bug on a full-bleed photo — see si-hero-shopkeeper-wrap. */
+  height: 100%;
   margin-inline: auto;
 }
 
@@ -591,6 +602,39 @@
   .si-veg-track {
     animation: none;
   }
+}
+
+/* Shopkeeper-only: the wordmark used to be painted into hero.webp itself, but
+   a real photo can't carry brand text the way an illustration could, so it's
+   a separate element laid over the bottom of the photo instead — same trick
+   SplashScreen.jsx uses over the intro video. White + a heavy shadow rather
+   than the marquee's green/red pairing, because that pairing is tuned for
+   sitting on plain white, not on a busy photo of variable brightness. */
+.si-hero-shopkeeper-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 26rem;
+  /* See the matching comment on si-hero-delivery-wrap — same fix, same
+     reason, but visible here rather than merely theoretical: a full-bleed
+     photo has no blank margin for the overflow to hide in, so without this
+     the heading below renders straight under the photo. */
+  height: 100%;
+  margin-inline: auto;
+}
+
+.si-hero-wordmark-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 1rem;
+  text-align: center;
+  font-family: 'Baloo 2', 'Plus Jakarta Sans', ui-sans-serif, sans-serif;
+  font-weight: 800;
+  font-size: clamp(1.8rem, 7vw, 2.4rem);
+  letter-spacing: 0.01em;
+  color: #fff;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55), 0 1px 4px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
 }
 
 /* A short green rule under the heading — the card is white on white, and this
