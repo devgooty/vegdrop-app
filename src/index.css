@@ -374,6 +374,15 @@
   font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Shopkeeper-only: closes the gap the shared <main> padding (pt-6/sm:pt-8)
+   leaves between the hero image and the heading below it. Needs the extra
+   class-plus-element specificity to beat those Tailwind utilities, which
+   customer and delivery still rely on since their art doesn't fill the
+   frame edge-to-edge the way this one does. */
+.si-scope-shopkeeper > main {
+  padding-top: 0;
+}
+
 /* Shopkeeper-only: a warm cream instead of the shared white, picking up the
    wood tones in the stall artwork above it rather than cutting hard to a
    stark white the moment the photo ends. Customer and delivery keep --si-bg
