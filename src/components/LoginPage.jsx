@@ -503,7 +503,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
           <h1
             className={
               appType === 'shopkeeper'
-                ? 'si-heading-shopkeeper mb-3 text-[1.6rem] sm:text-[1.75rem] font-extrabold'
+                ? 'si-heading-shopkeeper mb-3 text-[1.15rem] sm:text-[1.3rem] font-extrabold'
                 : 'mb-3 px-1 text-[1.6rem] sm:text-[1.75rem] font-extrabold text-[#0F1F17]'
             }
           >
