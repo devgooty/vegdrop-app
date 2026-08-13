@@ -15,6 +15,7 @@ import {
   describeEmailProblem,
 } from '../services/auth';
 import { ApiRequestError, NetworkError } from '../services/apiClient';
+import { marketVegetables } from '../data/mockData';
 
 import OTPBoxGroup from './OTPBoxGroup';
 
@@ -96,25 +97,39 @@ const COPY = {
 };
 
 /**
- * Served from `public/`, so it is a same-origin file rather than a remote
- * fetch — this is the first paint of the first screen, and it carries the
- * wordmark, so it must not wait on a third party.
+ * Delivery keeps its own static hero — a rider is a visually distinct
+ * persona (helmet, scooter) rather than a variation on produce photography,
+ * so it has no shared original to drift out of sync with. Served from
+ * `public/`, so it's a same-origin file rather than a remote fetch: this is
+ * the first paint of the first screen.
  *
- * Shared by customer and shopkeeper — a shopkeeper-specific photo was tried
- * and reverted there, since those two screens told themselves apart through
- * their heading anyway (see `SIGN_UP` below). Delivery gets its own asset
- * because a rider is a visually distinct persona (helmet, scooter) rather
- * than a variation on the same produce photography, so there's no shared
- * original for it to drift out of sync with.
+ * Customer and shopkeeper no longer use a static photo at all — see the
+ * scrolling produce marquee below (`VEG_ROW_A`/`VEG_ROW_B`), which replaced
+ * the shared `hero.webp` wreath.
  */
-const HERO_SRC = '/hero.webp';
-const HERO_SRC_BY_APP = {
-  delivery: '/delivery-hero.webp',
-};
-const HERO_DIMENSIONS_BY_APP = {
-  delivery: { width: 1024, height: 1024 },
-};
-const DEFAULT_HERO_DIMENSIONS = { width: 768, height: 790 };
+const DELIVERY_HERO_SRC = '/delivery-hero.webp';
+const DELIVERY_HERO_DIMENSIONS = { width: 1024, height: 1024 };
+
+/**
+ * The customer/shopkeeper hero: two rows of real vegetable photos scrolling
+ * in opposite directions around the wordmark, each in its own square box —
+ * replaced a plain emoji version. Earlier attempts (the four
+ * `initialCategories` cover photos, then narrower vegetable lists) got
+ * reverted for either reading as blurry abstract crops or not covering
+ * enough of the aisle.
+ *
+ * `marketVegetables` is shared with `data/mockData.js`, where the same items
+ * back their own tappable category tiles on the home screen — a visitor sees
+ * the same produce before and after signing in. Split down the middle so
+ * both rows carry roughly equal weight regardless of how many items
+ * `marketVegetables` grows to.
+ *
+ * Each row is rendered twice back to back (see the header markup below) so a
+ * `translateX(-50%)` loop has no visible seam — the CSS only has to animate
+ * exactly one set-width's worth of motion.
+ */
+const VEG_ROW_A = marketVegetables.slice(0, Math.ceil(marketVegetables.length / 2));
+const VEG_ROW_B = marketVegetables.slice(Math.ceil(marketVegetables.length / 2));
 
 /**
  * How each app signs a NEW account up.
@@ -158,8 +173,6 @@ const SIGN_UP = {
 
 export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegdrop_' }) {
   const signUp = SIGN_UP[appType] || SIGN_UP.customer;
-  const heroSrc = HERO_SRC_BY_APP[appType] || HERO_SRC;
-  const heroDimensions = HERO_DIMENSIONS_BY_APP[appType] || DEFAULT_HERO_DIMENSIONS;
 
   const [step, setStep] = useState(STEP.IDENTIFIER);
 
@@ -424,23 +437,41 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
             <span className="si-speed-line si-speed-line-2" aria-hidden="true" />
             <span className="si-speed-line si-speed-line-3" aria-hidden="true" />
             <img
-              src={heroSrc}
+              src={DELIVERY_HERO_SRC}
               alt="VegDrop"
-              width={heroDimensions.width}
-              height={heroDimensions.height}
+              width={DELIVERY_HERO_DIMENSIONS.width}
+              height={DELIVERY_HERO_DIMENSIONS.height}
               fetchPriority="high"
               className="si-hero-img si-hero-img-bob"
             />
           </div>
         ) : (
-          <img
-            src={heroSrc}
-            alt="VegDrop"
-            width={heroDimensions.width}
-            height={heroDimensions.height}
-            fetchPriority="high"
-            className="si-hero-img"
-          />
+          <div className="si-hero-veg">
+            <div className="si-veg-row" aria-hidden="true">
+              <div className="si-veg-track si-veg-track-a">
+                {[...VEG_ROW_A, ...VEG_ROW_A].map((item, i) => (
+                  <span key={i} className="si-veg-chip">
+                    <img src={item.imageUrl} alt="" />
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="si-hero-wordmark">
+              <span className="si-hero-wordmark-veg">Veg</span>
+              <span className="si-hero-wordmark-drop">Drop</span>
+            </div>
+
+            <div className="si-veg-row" aria-hidden="true">
+              <div className="si-veg-track si-veg-track-b">
+                {[...VEG_ROW_B, ...VEG_ROW_B].map((item, i) => (
+                  <span key={i} className="si-veg-chip">
+                    <img src={item.imageUrl} alt="" />
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
       </header>
 

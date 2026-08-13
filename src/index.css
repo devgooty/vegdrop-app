@@ -419,6 +419,98 @@
      the seam straight back, and the mask above is the fix to restore. */
 }
 
+/* The customer/shopkeeper hero: two rows of real produce photos, each in its
+   own square box, scrolling past in opposite directions on white, with the
+   wordmark sitting still between them. Replaced the static hero.webp
+   wreath, then a plain emoji version. An earlier photo attempt reused the
+   four `initialCategories` cover images and got reverted for reading as
+   blurry abstract crops — these are closer, single-item shots (see
+   `producePhoto()` in LoginPage.jsx), so each box reads as one recognisable
+   vegetable or fruit. White keeps the band consistent with the page under
+   it. */
+.si-hero-veg {
+  position: relative;
+  width: 100%;
+  max-width: 26rem;
+  margin-inline: auto;
+  height: clamp(13rem, 34vh, 18rem);
+  min-height: 13rem;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1rem;
+  overflow: hidden;
+  background: var(--si-bg);
+  border-bottom: 1px solid var(--si-line);
+}
+
+.si-veg-row {
+  overflow: hidden;
+  width: 100%;
+}
+
+.si-veg-track {
+  display: flex;
+  width: max-content;
+  gap: 0.85rem;
+  padding-inline: 0.6rem;
+  will-change: transform;
+}
+.si-veg-track-a {
+  animation: si-veg-scroll-left 22s linear infinite;
+}
+.si-veg-track-b {
+  animation: si-veg-scroll-right 26s linear infinite;
+}
+
+/* Each track renders its row's categories twice back to back, so the set is
+   exactly half the track's width — animating to -50% moves precisely one
+   set-width and loops with no visible seam or jump. */
+@keyframes si-veg-scroll-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes si-veg-scroll-right {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+
+/* Same photo-frame treatment Categories.jsx uses for its category art — a
+   cream-gradient square mount with a soft border — sized down for a row of
+   many, not four. */
+.si-veg-chip {
+  display: block;
+  flex-shrink: 0;
+  width: clamp(3.4rem, 13vw, 4.25rem);
+  height: clamp(3.4rem, 13vw, 4.25rem);
+  border-radius: 1rem;
+  padding: 2px;
+  background: linear-gradient(180deg, #fffdf9, #f3efe6);
+  border: 1px solid #dcd5c6;
+  box-shadow: 0 4px 10px -6px rgba(15, 31, 23, 0.25);
+}
+.si-veg-chip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0.8rem;
+}
+
+.si-hero-wordmark {
+  text-align: center;
+  font-weight: 800;
+  font-size: clamp(1.9rem, 8vw, 2.5rem);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.si-hero-wordmark-veg {
+  color: #1B4D3E;
+}
+.si-hero-wordmark-drop {
+  color: #C8372D;
+}
+
 /* Delivery-only: the scooter icon is a static badge, and this is the cheap
    way to read as "in motion" without a video asset — a gentle bob on the
    whole badge plus a few speed-line marks that slide out and fade behind it.
@@ -485,7 +577,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .si-hero-img-bob,
-  .si-speed-line {
+  .si-speed-line,
+  .si-veg-track {
     animation: none;
   }
 }
