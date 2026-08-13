@@ -652,6 +652,13 @@
   pointer-events: none;
 }
 
+/* Same red the marquee wordmark uses for "Drop" (.si-hero-wordmark-drop) —
+   just the two capitals here rather than the whole second half, since white
+   is what actually needs the contrast boost from the scrim underneath. */
+.si-hero-wordmark-overlay-accent {
+  color: #C8372D;
+}
+
 /* A short green rule under the heading — the card is white on white, and this
    is the one mark that says which brand's form it is. */
 .si-underline::after {

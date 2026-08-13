@@ -458,7 +458,9 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               className="si-hero-img"
             />
             <span className="si-hero-shopkeeper-scrim" aria-hidden="true" />
-            <span className="si-hero-wordmark-overlay" aria-hidden="true">VegDrop</span>
+            <span className="si-hero-wordmark-overlay" aria-hidden="true">
+              <span className="si-hero-wordmark-overlay-accent">V</span>eg<span className="si-hero-wordmark-overlay-accent">D</span>rop
+            </span>
           </div>
         ) : (
           <div className="si-hero-veg">
