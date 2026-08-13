@@ -73,6 +73,17 @@ export default function App() {
   const [categories] = useState(initialCategories);
 
   /**
+   * Home-page display grouping only — every other read of `categories`
+   * (product lookups, the shopkeeper's own category picker, DeveloperPanel)
+   * keeps using the full flat list, ids and all, so a shopkeeper can still
+   * tag a listing with the exact vegetable rather than just the umbrella
+   * bucket. This split only decides which tiles the "Categories" grid shows
+   * versus which sit under their own "Fresh Vegetables" heading below it.
+   */
+  const primaryCategories = categories.filter((c) => c.group !== 'fresh-vegetables');
+  const freshVegetableCategories = categories.filter((c) => c.group === 'fresh-vegetables');
+
+  /**
    * Everything below starts EMPTY, and waits for the server.
    *
    * These used to be seeded from `sampleProducts`, `initialOrders` and
@@ -1646,9 +1657,20 @@ export default function App() {
 
                     {/* 3. DYNAMIC 2-COLUMN CATEGORIES SECTION */}
                     <Categories
-                      categories={categories}
+                      categories={primaryCategories}
                       onSelectCategory={(cat) => setActiveCategoryDetail(cat)}
                     />
+
+                    {/* 3b. NON-LEAFY VEGETABLES, GROUPED UNDER THEIR OWN
+                        "FRESH VEGETABLES" HEADING RATHER THAN THE GRID ABOVE */}
+                    {freshVegetableCategories.length > 0 && (
+                      <Categories
+                        categories={freshVegetableCategories}
+                        onSelectCategory={(cat) => setActiveCategoryDetail(cat)}
+                        title="Fresh Vegetables"
+                        countLabel="Varieties"
+                      />
+                    )}
 
                     {/*
                       4. HORIZONTAL PRODUCT CAROUSELS PER CATEGORY

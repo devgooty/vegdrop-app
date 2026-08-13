@@ -1,15 +1,15 @@
 import React from 'react';
 import { Sparkles } from 'lucide-react';
 
-export default function Categories({ categories, onSelectCategory }) {
+export default function Categories({ categories, onSelectCategory, title = 'Categories', countLabel = 'Farm Sections' }) {
   return (
     <section className="p-4 select-none">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <h2 className="font-vintage text-lg font-bold text-[#1B4D3E] tracking-tight">Categories</h2>
+          <h2 className="font-vintage text-lg font-bold text-[#1B4D3E] tracking-tight">{title}</h2>
           <span className="bg-[#EAE4D7] text-[#1B4D3E] text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-[#D5CDBC] shadow-2xs flex items-center gap-1">
             <Sparkles className="w-3 h-3 text-[#1B4D3E]" />
-            {categories.length} Farm Sections
+            {categories.length} {countLabel}
           </span>
         </div>
       </div>

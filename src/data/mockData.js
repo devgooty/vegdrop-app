@@ -56,6 +56,15 @@ export const marketVegetables = [
   { slug: 'turnip', title: 'Turnip', imageUrl: producePhoto('1648291913186-951f2ef36c85') },
 ];
 
+/**
+ * Leafy greens are the one subset of `marketVegetables` that reads as its own
+ * aisle rather than a variety of "fresh vegetables" — spinach and coriander,
+ * matching the `leafy-greens` tile above. Everything else in the list is a
+ * non-leafy vegetable and is grouped under the `fresh-vegetables` tile
+ * instead of standing beside it: see `group` below.
+ */
+const LEAFY_SLUGS = new Set(['spinach', 'coriander']);
+
 export const initialCategories = [
   {
     id: 1,
@@ -96,5 +105,18 @@ export const initialCategories = [
   // the four above, that field is decorative dead weight nothing here can
   // compute honestly without a real per-category product count from the API —
   // omitted rather than invented.
-  ...marketVegetables.map((veg, i) => ({ id: 5 + i, slug: veg.slug, title: veg.title, imageUrl: veg.imageUrl })),
+  //
+  // `group: 'fresh-vegetables'` on the non-leafy items is read by App.jsx to
+  // render them under their own "Fresh Vegetables" heading on the home page
+  // instead of the flat grid the four aisle tiles and the two leafy items sit
+  // in — it's a display grouping only, so a shopkeeper tagging a product
+  // still picks the exact vegetable (e.g. "Tomato") from every id below, not
+  // just the umbrella "Fresh Vegetables" bucket.
+  ...marketVegetables.map((veg, i) => ({
+    id: 5 + i,
+    slug: veg.slug,
+    title: veg.title,
+    imageUrl: veg.imageUrl,
+    ...(LEAFY_SLUGS.has(veg.slug) ? {} : { group: 'fresh-vegetables' }),
+  })),
 ];
