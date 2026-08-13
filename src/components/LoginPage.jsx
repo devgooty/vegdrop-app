@@ -100,19 +100,20 @@ const COPY = {
  * fetch — this is the first paint of the first screen, and it carries the
  * wordmark, so it must not wait on a third party.
  *
- * Shared by customer and shopkeeper — a shopkeeper-specific photo was tried
- * and reverted there, since those two screens told themselves apart through
- * their heading anyway (see `SIGN_UP` below). Delivery gets its own asset
- * because a rider is a visually distinct persona (helmet, scooter) rather
- * than a variation on the same produce photography, so there's no shared
- * original for it to drift out of sync with.
+ * Customer keeps the original produce photo. Delivery and shopkeeper each
+ * get their own asset instead, because a rider and a stallholder are
+ * visually distinct personas (helmet/scooter, cap/counter) rather than a
+ * variation on the same produce photography — the case that made a shared
+ * shopkeeper photo not worth keeping in sync the first time it was tried.
  */
 const HERO_SRC = '/hero.webp';
 const HERO_SRC_BY_APP = {
   delivery: '/delivery-hero.webp',
+  shopkeeper: '/shopkeeper-hero.svg',
 };
 const HERO_DIMENSIONS_BY_APP = {
   delivery: { width: 1024, height: 1024 },
+  shopkeeper: { width: 1024, height: 1024 },
 };
 const DEFAULT_HERO_DIMENSIONS = { width: 768, height: 790 };
 

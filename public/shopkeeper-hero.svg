@@ -1,0 +1,79 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="512" cy="512" r="512" fill="#C4E31D"/>
+
+  <!-- ground shadow -->
+  <ellipse cx="512" cy="792" rx="230" ry="16" fill="#8FB015" opacity="0.5"/>
+
+  <!-- support poles -->
+  <rect x="322" y="330" width="24" height="130" fill="#0B3D24"/>
+  <rect x="678" y="330" width="24" height="130" fill="#0B3D24"/>
+
+  <!-- scalloped awning -->
+  <path d="M296 268
+           Q296 214 352 214
+           L672 214
+           Q728 214 728 268
+           L728 300
+           Q702 332 676 300
+           Q650 332 624 300
+           Q598 332 572 300
+           Q546 332 520 300
+           Q494 332 468 300
+           Q442 332 416 300
+           Q390 332 364 300
+           Q338 332 312 300
+           Q296 300 296 268 Z"
+        fill="#0B3D24"/>
+  <rect x="352" y="214" width="320" height="26" fill="#C4E31D" opacity="0.3"/>
+
+  <!-- shopkeeper: head + shoulders, a shade lighter than the awning for separation -->
+  <path d="M382 596
+           C382 486 438 420 512 420
+           C586 420 642 486 642 596 Z"
+        fill="#145C36"/>
+
+  <!-- apron -->
+  <path d="M452 596 C452 536 478 508 512 508 C546 508 572 536 572 596 Z" fill="#1B7345"/>
+  <line x1="478" y1="586" x2="478" y2="548" stroke="#C4E31D" stroke-width="6" opacity="0.4"/>
+  <line x1="546" y1="586" x2="546" y2="548" stroke="#C4E31D" stroke-width="6" opacity="0.4"/>
+
+  <!-- head -->
+  <circle cx="512" cy="356" r="66" fill="#145C36"/>
+
+  <!-- flat cap, outlined so it reads apart from the awning above -->
+  <path d="M446 344 Q446 288 512 288 Q578 288 578 344 L578 352 L446 352 Z" fill="#145C36" stroke="#C4E31D" stroke-width="4"/>
+  <rect x="438" y="348" width="148" height="18" rx="9" fill="#145C36" stroke="#C4E31D" stroke-width="4"/>
+  <path d="M560 326 q24 -6 30 12 q-18 8 -36 0 Z" fill="#145C36" stroke="#C4E31D" stroke-width="4"/>
+  <path d="M512 300 Q526 300 526 314 Q512 314 512 300 Z" fill="#C4E31D"/>
+
+  <!-- counter / stall -->
+  <rect x="270" y="672" width="484" height="120" rx="16" fill="#0B3D24"/>
+  <rect x="270" y="672" width="484" height="28" rx="8" fill="#0F4A2B"/>
+  <line x1="308" y1="732" x2="716" y2="732" stroke="#C4E31D" stroke-width="5" opacity="0.45"/>
+  <line x1="308" y1="756" x2="716" y2="756" stroke="#C4E31D" stroke-width="5" opacity="0.45"/>
+
+  <!-- produce along the counter -->
+  <g>
+    <!-- carrot bunch -->
+    <path d="M336 668 L352 622 L364 668 Z" fill="#F0982B"/>
+    <path d="M350 620 q-4 -14 -12 -18" stroke="#3C8A3E" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M358 620 q4 -14 12 -18" stroke="#3C8A3E" stroke-width="5" fill="none" stroke-linecap="round"/>
+
+    <!-- tomato -->
+    <circle cx="426" cy="654" r="24" fill="#D93B2B"/>
+    <path d="M418 634 q8 -9 15 0" stroke="#3C8A3E" stroke-width="5" fill="none" stroke-linecap="round"/>
+
+    <!-- eggplant -->
+    <ellipse cx="512" cy="656" rx="19" ry="28" fill="#5B3A87" transform="rotate(-10 512 656)"/>
+    <path d="M508 630 q6 -13 13 -7" stroke="#3C8A3E" stroke-width="5" fill="none" stroke-linecap="round"/>
+
+    <!-- broccoli -->
+    <circle cx="598" cy="652" r="21" fill="#3C8A3E"/>
+    <circle cx="585" cy="640" r="13" fill="#4B9E4A"/>
+    <circle cx="611" cy="640" r="13" fill="#4B9E4A"/>
+
+    <!-- bell pepper -->
+    <path d="M672 630 C660 630 652 646 656 662 C660 676 692 676 696 662 C700 646 684 630 672 630 Z" fill="#E8552B"/>
+    <path d="M670 626 q2 -10 10 -8" stroke="#3C8A3E" stroke-width="5" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>
