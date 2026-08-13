@@ -374,6 +374,14 @@
   font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Shopkeeper-only: a warm cream instead of the shared white, picking up the
+   wood tones in the stall artwork above it rather than cutting hard to a
+   stark white the moment the photo ends. Customer and delivery keep --si-bg
+   at white — their artwork was tuned to blend into white, not cream. */
+.si-scope-shopkeeper {
+  --si-bg: #F7F1E4;
+}
+
 /* The hero photograph, full bleed across the top.
 
    The wordmark is painted into the artwork, so there is no text VegDrop on

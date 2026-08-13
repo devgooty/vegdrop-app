@@ -416,7 +416,12 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
   // this fit a screen of any height. overflow-y-auto is the safety net for the
   // taller registration step.
   return (
-    <div className="si-scope flex h-[100dvh] flex-col overflow-y-auto">
+    <div
+      className={
+        'si-scope flex h-[100dvh] flex-col overflow-y-auto' +
+        (appType === 'shopkeeper' ? ' si-scope-shopkeeper' : '')
+      }
+    >
 
       {/* Full bleed to the screen edges — the artwork's own white margin is the
           only padding it needs, and the page continues in the same white where
