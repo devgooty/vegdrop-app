@@ -391,6 +391,20 @@
   --si-bg: #F7F1E4;
 }
 
+/* Shopkeeper-only: the heading as a solid brand-green badge rather than
+   plain ink text — the cream page background left it reading flat, and
+   this is the one heading that only has cream around it (customer and
+   delivery sit on white, where dark text already carries enough weight
+   on its own). Uses the shared --si-green tokens rather than a new color. */
+.si-heading-shopkeeper {
+  display: inline-block;
+  color: #fff;
+  background: linear-gradient(135deg, var(--si-green-dark), var(--si-green));
+  padding: 0.5rem 1.05rem;
+  border-radius: 0.85rem;
+  box-shadow: 0 10px 20px -10px rgba(11, 122, 55, 0.55);
+}
+
 /* The hero photograph, full bleed across the top.
 
    The wordmark is painted into the artwork, so there is no text VegDrop on
