@@ -76,11 +76,20 @@ export default function App() {
    * Home-page display grouping only — every other read of `categories`
    * (product lookups, the shopkeeper's own category picker, DeveloperPanel)
    * keeps using the full flat list, ids and all, so a shopkeeper can still
-   * tag a listing with the exact vegetable rather than just the umbrella
-   * bucket. This split only decides which tiles the "Categories" grid shows
-   * versus which sit under their own "Fresh Vegetables" heading below it.
+   * tag a listing with the exact vegetable, or the generic "Fresh Vegetables"
+   * bucket, whichever fits. This split only decides which tiles the top
+   * "Categories" grid shows versus which sit under their own "Fresh
+   * Vegetables" heading below it.
+   *
+   * The generic `fresh-vegetables` tile itself is left out of the grid
+   * (rather than kept alongside the 22 real vegetables under the same name)
+   * — once every non-leafy vegetable has its own tile in the section below,
+   * a second, unrelated "Fresh Vegetables" tile pointing at a different,
+   * always-empty category is just a duplicate label for a shopper to be
+   * confused by. It still exists in `categories`, so it's still a valid
+   * category for a shopkeeper's own listings.
    */
-  const primaryCategories = categories.filter((c) => c.group !== 'fresh-vegetables');
+  const primaryCategories = categories.filter((c) => c.group !== 'fresh-vegetables' && c.slug !== 'fresh-vegetables');
   const freshVegetableCategories = categories.filter((c) => c.group === 'fresh-vegetables');
 
   /**
