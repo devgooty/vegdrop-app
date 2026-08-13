@@ -625,15 +625,25 @@
 /* A dedicated scrim rather than relying on text-shadow alone: text-shadow
    degrades unpredictably against a busy, high-contrast photo (a market
    stall's produce, price tags and all, is a much noisier backdrop than the
-   splash video it was borrowed from). The gradient guarantees a dark-enough
-   band at the bottom no matter what the photo underneath it is. */
+   splash video it was borrowed from). Requested layout moved the wordmark
+   into the middle of the photo (was bottom-anchored) so the produce reads
+   as a full frame around it — the scrim follows it there as a horizontal
+   band, fading to nothing at top and bottom, rather than the old
+   bottom-up wash, so the rest of the stall stays fully visible. */
 .si-hero-shopkeeper-scrim {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
-  height: 42%;
-  background: linear-gradient(to top, rgba(6, 20, 12, 0.72), rgba(6, 20, 12, 0));
+  top: 50%;
+  height: 30%;
+  transform: translateY(-50%);
+  background: linear-gradient(
+    to bottom,
+    rgba(6, 20, 12, 0) 0%,
+    rgba(6, 20, 12, 0.68) 30%,
+    rgba(6, 20, 12, 0.68) 70%,
+    rgba(6, 20, 12, 0) 100%
+  );
   pointer-events: none;
 }
 
@@ -641,11 +651,12 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
   text-align: center;
   font-family: 'Baloo 2', 'Plus Jakarta Sans', ui-sans-serif, sans-serif;
   font-weight: 800;
-  font-size: clamp(1.8rem, 7vw, 2.4rem);
+  font-size: clamp(2rem, 8vw, 2.8rem);
   letter-spacing: 0.01em;
   color: #fff;
   text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55), 0 1px 4px rgba(0, 0, 0, 0.5);
