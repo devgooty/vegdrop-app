@@ -622,6 +622,21 @@
   margin-inline: auto;
 }
 
+/* A dedicated scrim rather than relying on text-shadow alone: text-shadow
+   degrades unpredictably against a busy, high-contrast photo (a market
+   stall's produce, price tags and all, is a much noisier backdrop than the
+   splash video it was borrowed from). The gradient guarantees a dark-enough
+   band at the bottom no matter what the photo underneath it is. */
+.si-hero-shopkeeper-scrim {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 42%;
+  background: linear-gradient(to top, rgba(6, 20, 12, 0.72), rgba(6, 20, 12, 0));
+  pointer-events: none;
+}
+
 .si-hero-wordmark-overlay {
   position: absolute;
   left: 0;

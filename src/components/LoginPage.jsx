@@ -457,6 +457,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               fetchPriority="high"
               className="si-hero-img"
             />
+            <span className="si-hero-shopkeeper-scrim" aria-hidden="true" />
             <span className="si-hero-wordmark-overlay" aria-hidden="true">VegDrop</span>
           </div>
         ) : (
