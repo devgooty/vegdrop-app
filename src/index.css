@@ -429,10 +429,12 @@
    vegetable or fruit. White keeps the band consistent with the page under
    it. */
 .si-hero-veg {
+  /* Full bleed to the screen edges, same as the photo hero it replaced — a
+     max-width here (the form below intentionally has one, at 26rem) would
+     cap the visible band short of a wide viewport's real edge, leaving a
+     dead white gap between the last photo and the edge of the screen. */
   position: relative;
   width: 100%;
-  max-width: 26rem;
-  margin-inline: auto;
   height: clamp(14.5rem, 37vh, 20rem);
   min-height: 14.5rem;
   max-height: 100%;
@@ -496,18 +498,27 @@
   border-radius: 0.95rem;
 }
 
+/* Rounded and bubbly rather than the app's usual Plus Jakarta Sans — this is
+   the one place on the login screen that reads as a logotype rather than UI
+   text, standing in for the hand-lettered mark that used to be baked into
+   hero.webp. Positive tracking, not the -0.02em the rest of the app's
+   headings use: a tight-tracked rounded face reads cramped, where a display
+   sans reads tight-and-confident. */
 .si-hero-wordmark {
   text-align: center;
+  font-family: 'Baloo 2', 'Plus Jakarta Sans', ui-sans-serif, sans-serif;
   font-weight: 800;
-  font-size: clamp(1.9rem, 8vw, 2.5rem);
-  letter-spacing: -0.02em;
+  font-size: clamp(2.1rem, 8.5vw, 2.75rem);
+  letter-spacing: 0.01em;
   line-height: 1;
 }
 .si-hero-wordmark-veg {
   color: #1B4D3E;
+  text-shadow: 0 2px 0 rgba(15, 31, 23, 0.06);
 }
 .si-hero-wordmark-drop {
   color: #C8372D;
+  text-shadow: 0 2px 0 rgba(200, 55, 45, 0.12);
 }
 
 /* Delivery-only: the scooter icon is a static badge, and this is the cheap
