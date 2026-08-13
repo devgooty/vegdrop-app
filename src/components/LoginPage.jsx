@@ -109,7 +109,7 @@ const COPY = {
  */
 const DELIVERY_HERO_SRC = '/delivery-hero.webp';
 const DELIVERY_HERO_DIMENSIONS = { width: 1024, height: 1024 };
-const SHOPKEEPER_HERO_SRC = '/shopkeeper-hero.svg';
+const SHOPKEEPER_HERO_SRC = '/shopkeeper-hero.jpg';
 const SHOPKEEPER_HERO_DIMENSIONS = { width: 1024, height: 1024 };
 
 /**
