@@ -370,6 +370,13 @@ orderSchema.index({ 'fulfillment.status': 1, 'fulfillment.settledAt': 1 });
  * the only record that it was delivered.
  */
 orderSchema.index({ shop: 1, status: 1, 'fulfillment.settledAt': 1 });
+/**
+ * The shop-order rider sweep, which needs its own index for the same reason
+ * as the settlement backfill above: a shop order has no sourcing engine, so
+ * `fulfillment.status` never applies to it and this reuses `riderOffer`
+ * purely as a timeout clock rather than a live offer round.
+ */
+orderSchema.index({ shop: 1, status: 1, 'fulfillment.riderOffer.expiresAt': 1 });
 
 orderSchema.virtual('id').get(function getId() {
   return this._id.toHexString();

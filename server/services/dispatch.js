@@ -485,6 +485,156 @@ async function deliverOrder({ orderId, riderId }) {
   return { delivered: true, order: delivered };
 }
 
+// ---------------------------------------------------------------------------
+// Independent-shop dispatch
+// ---------------------------------------------------------------------------
+
+/**
+ * The same nearest-first idea as the market cascade above, but simpler.
+ *
+ * A shop order has no accept/decline screen — the delivery app's legacy tab
+ * just lists whatever `visibilityFilter` hands it and offers a "Delivered"
+ * button, nothing more. So instead of asking, the nearest on-duty rider is
+ * handed the job directly: `assignedTo` is set the moment the shopkeeper
+ * confirms, which is also what makes the order disappear from every OTHER
+ * rider's list — `visibilityFilter`'s open-pool clause only matches
+ * `assignedTo: null`.
+ *
+ * The safety net is a timeout rather than a refusal (see
+ * `expireShopOrderAssignment`): if the order is still `Preparing` with the
+ * same assignee past the deadline, nobody showed up, and it moves to the next
+ * nearest — same cascade depth and open-pool backstop as the market side,
+ * reusing the same `fulfillment.riderOffer` fields purely as a clock.
+ */
+async function offerShopOrderToNearestRider(orderId) {
+  const order = await Order.findById(orderId)
+    .select('shop assignedTo status fulfillment.riderOffer orderNumber')
+    .lean();
+
+  if (!order) return { assigned: false, reason: 'NOT_FOUND' };
+  if (!order.shop) return { assigned: false, reason: 'NOT_SHOP_ORDER' };
+  if (order.status !== 'Preparing') return { assigned: false, reason: 'NOT_OFFERABLE' };
+  if (order.assignedTo) return { assigned: false, reason: 'ALREADY_ASSIGNED' };
+
+  const offer = order.fulfillment?.riderOffer || {};
+
+  if (offer.count >= config.marketplace.riderMaxOffers) {
+    return openShopOrderToPool(orderId);
+  }
+
+  const shopkeeper = await User.findById(order.shop).select('shop.location').lean();
+  const shopLocation = shopkeeper?.shop?.location;
+  if (!shopLocation?.coordinates?.length) return { assigned: false, reason: 'SHOP_HAS_NO_LOCATION' };
+
+  const declined = offer.declinedBy || [];
+  const rider = await findNearestRider({ marketLocation: shopLocation, excludeIds: declined });
+
+  if (!rider) {
+    // Same reasoning as the market side: only fall to the pool once someone
+    // has actually been asked and missed it, never on the strength of nobody
+    // being online yet.
+    if (declined.length > 0) return openShopOrderToPool(orderId);
+    return { assigned: false, reason: 'NO_RIDER_AVAILABLE' };
+  }
+
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + config.marketplace.shopRiderAssignTimeoutSeconds * 1000);
+
+  const updated = await Order.findOneAndUpdate(
+    {
+      _id: orderId,
+      status: 'Preparing',
+      assignedTo: null,
+    },
+    {
+      $set: {
+        assignedTo: rider._id,
+        'fulfillment.riderOffer.rider': rider._id,
+        'fulfillment.riderOffer.expiresAt': expiresAt,
+      },
+      $inc: { 'fulfillment.riderOffer.count': 1 },
+      $push: {
+        'fulfillment.events': eventPush({
+          at: now,
+          type: 'rider_assigned',
+          rider: rider._id,
+          note: `${Math.round(rider.distanceMeters)}m away`,
+        }),
+      },
+    },
+    { returnDocument: 'after' }
+  );
+
+  if (!updated) return { assigned: false, reason: 'RACED' };
+  return { assigned: true, rider, order: updated };
+}
+
+/**
+ * Give up cascading through nearby riders; any on-duty rider may take it from
+ * the ordinary claim route, same as a marketless order always could.
+ */
+async function openShopOrderToPool(orderId) {
+  const now = new Date();
+  const updated = await Order.findOneAndUpdate(
+    { _id: orderId, assignedTo: null, status: 'Preparing' },
+    {
+      $set: {
+        'fulfillment.riderOffer.openPool': true,
+        'fulfillment.riderOffer.rider': null,
+        'fulfillment.riderOffer.expiresAt': null,
+      },
+      $push: { 'fulfillment.events': eventPush({ at: now, type: 'rider_open_pool' }) },
+    },
+    { returnDocument: 'after' }
+  );
+  return { assigned: false, openPool: Boolean(updated), order: updated, reason: 'OPEN_POOL' };
+}
+
+/**
+ * The deadline passed with the order still `Preparing` and nobody having
+ * carried it off. Release this rider and try the next nearest — the timeout
+ * equivalent of `declineOffer`/`expireOffer` on the market side, just
+ * triggered by silence rather than a tap or a lapsed clock on an offer that
+ * was never asked in the first place.
+ */
+async function expireShopOrderAssignment(orderId) {
+  const order = await Order.findOne({ _id: orderId, shop: { $ne: null } })
+    .select('assignedTo status fulfillment.riderOffer')
+    .lean();
+  if (!order || order.status !== 'Preparing' || !order.assignedTo) return { action: 'skipped' };
+
+  const rider = order.assignedTo;
+  const expiresAt = order.fulfillment?.riderOffer?.expiresAt;
+  if (!expiresAt || expiresAt > new Date()) return { action: 'skipped' };
+
+  const now = new Date();
+  const released = await Order.findOneAndUpdate(
+    {
+      _id: orderId,
+      assignedTo: rider,
+      status: 'Preparing',
+      // Match the exact deadline just read: if another instance already
+      // released this assignment, our filter no longer matches.
+      'fulfillment.riderOffer.expiresAt': expiresAt,
+    },
+    {
+      $set: {
+        assignedTo: null,
+        'fulfillment.riderOffer.rider': null,
+        'fulfillment.riderOffer.expiresAt': null,
+      },
+      $addToSet: { 'fulfillment.riderOffer.declinedBy': rider },
+      $push: { 'fulfillment.events': eventPush({ at: now, type: 'rider_assignment_expired', rider }) },
+    },
+    { returnDocument: 'after' }
+  );
+
+  if (!released) return { action: 'skipped' };
+
+  const next = await offerShopOrderToNearestRider(orderId);
+  return { action: 'reoffered', next };
+}
+
 module.exports = {
   OFFERABLE,
   deliverOrder,
@@ -496,4 +646,7 @@ module.exports = {
   expireOffer,
   buildPickupList,
   collectStall,
+  offerShopOrderToNearestRider,
+  openShopOrderToPool,
+  expireShopOrderAssignment,
 };

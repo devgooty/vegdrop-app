@@ -200,6 +200,63 @@ async function sweepRiderOffers() {
 }
 
 /**
+ * Independent-shop rider assignments: ones that timed out with nobody having
+ * shown up, plus confirmed orders the first attempt never managed to offer.
+ *
+ * Mirrors `sweepRiderOffers` above — the expire-then-retry pair is the same
+ * shape, just reading `status`/`assignedTo` instead of `fulfillment.status`,
+ * because a shop order has no sourcing engine to drive the fine-grained state.
+ */
+async function sweepShopOrderAssignments() {
+  const now = new Date();
+
+  const expired = await Order.find({
+    shop: { $ne: null },
+    status: 'Preparing',
+    assignedTo: { $ne: null },
+    'fulfillment.riderOffer.expiresAt': { $lte: now },
+  })
+    .select('_id orderNumber')
+    .limit(BATCH_SIZE)
+    .lean();
+
+  for (const order of expired) {
+    try {
+      await dispatch.expireShopOrderAssignment(order._id);
+    } catch (err) {
+      console.warn(`[sweeper] shop rider ${order.orderNumber}: ${err.message}`);
+    }
+  }
+
+  /**
+   * Confirmed but never offered — the first attempt found no rider in range,
+   * or the request-time call itself failed. Riders come online continuously,
+   * so asking again every tick is the whole recovery mechanism, same as the
+   * market side.
+   */
+  const unoffered = await Order.find({
+    shop: { $ne: null },
+    status: 'Preparing',
+    assignedTo: null,
+    'fulfillment.riderOffer.rider': null,
+    'fulfillment.riderOffer.openPool': false,
+  })
+    .select('_id orderNumber')
+    .limit(BATCH_SIZE)
+    .lean();
+
+  for (const order of unoffered) {
+    try {
+      await dispatch.offerShopOrderToNearestRider(order._id);
+    } catch (err) {
+      console.warn(`[sweeper] shop rider search ${order.orderNumber}: ${err.message}`);
+    }
+  }
+
+  return { expired: expired.length, retried: unoffered.length };
+}
+
+/**
  * Stall earnings whose hold has expired, plus any delivery whose payout record
  * never got written.
  *
@@ -272,6 +329,7 @@ async function tick() {
     const sourcingResult = await sweepSourcing();
     const partialResult = await sweepPartialDecisions();
     const riderResult = await sweepRiderOffers();
+    const shopRiderResult = await sweepShopOrderAssignments();
     const settlementResult = await sweepSettlements();
     const refundResult = await sweepPendingRefunds();
     /**
@@ -288,6 +346,7 @@ async function tick() {
       sourcing: sourcingResult,
       partial: partialResult,
       rider: riderResult,
+      shopRider: shopRiderResult,
       settlement: settlementResult,
       refunds: refundResult,
       schedules: scheduleResult,
@@ -327,6 +386,7 @@ module.exports = {
   sweepSourcing,
   sweepPartialDecisions,
   sweepRiderOffers,
+  sweepShopOrderAssignments,
   sweepSettlements,
   sweepPendingRefunds,
 };

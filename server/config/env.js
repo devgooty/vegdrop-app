@@ -488,6 +488,16 @@ const config = Object.freeze({
     // A rider whose last ping is older than this is treated as gone, whatever
     // their duty status says — a killed app never gets to say goodbye.
     riderStaleLocationSeconds: int('RIDER_STALE_LOCATION_SECONDS', 120),
+
+    /**
+     * An independent shop order has no accept/decline screen — the nearest
+     * rider is handed the job directly rather than asked. This is how long
+     * they have to actually show up before it moves to the next nearest, so
+     * it needs to be long enough to walk or ride to a shop, not just glance at
+     * a phone — a lot longer than `riderOfferTimeoutSeconds`, which only times
+     * a tap.
+     */
+    shopRiderAssignTimeoutSeconds: int('SHOP_RIDER_ASSIGN_TIMEOUT_SECONDS', 300),
   }),
 
   /**

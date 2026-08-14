@@ -12,6 +12,7 @@ const wallet = require('../services/wallet');
 const sourcing = require('../services/sourcing');
 const checkout = require('../services/checkout');
 const settlement = require('../services/settlement');
+const dispatch = require('../services/dispatch');
 const { CANCELLABLE_BY_CUSTOMER, CANCELLABLE_BY_STAFF, transitionTo } = require('../utils/orderStatus');
 
 const router = express.Router();
@@ -600,6 +601,25 @@ router.patch(
         await settlement.recordDelivery(order._id);
       } catch (err) {
         console.warn(`[orders] settlement for ${order.orderNumber} deferred: ${err.message}`);
+      }
+    }
+
+    /**
+     * The shopkeeper just confirmed a real order, so it is worth a rider's
+     * time to go get it. Without this it sat in the open pool, visible to
+     * every on-duty agent at once, with nothing telling any of them it was
+     * worth checking until one happened to look — see dispatch.js for why
+     * the nearest one is handed the job directly rather than asked.
+     *
+     * Same shape as the settlement call above: awaited because the whole
+     * point is that this happens now, but never allowed to fail the
+     * confirmation itself. The sweeper's retry picks up anything this missed.
+     */
+    if (status === 'Preparing' && order.shop) {
+      try {
+        await dispatch.offerShopOrderToNearestRider(order._id);
+      } catch (err) {
+        console.warn(`[orders] shop dispatch for ${order.orderNumber} deferred: ${err.message}`);
       }
     }
 
