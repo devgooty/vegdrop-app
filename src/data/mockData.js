@@ -54,6 +54,26 @@ export const marketVegetables = [
   { slug: 'green-beans', title: 'Green Beans', imageUrl: producePhoto('1567375698348-5d9d5ae99de0') },
   { slug: 'spring-onion', title: 'Spring Onion', imageUrl: producePhoto('1559836833-2a2c99b1f54f') },
   { slug: 'turnip', title: 'Turnip', imageUrl: producePhoto('1648291913186-951f2ef36c85') },
+  { slug: 'pumpkin', title: 'Pumpkin', imageUrl: producePhoto('1570586437263-ab629fccc818') },
+  { slug: 'radish', title: 'Radish', imageUrl: producePhoto('1576072115035-5fe30e447e60') },
+  { slug: 'mushroom', title: 'Mushroom', imageUrl: producePhoto('1552825898-07e419204683') },
+  { slug: 'sweet-corn', title: 'Sweet Corn', imageUrl: producePhoto('1683543124257-1d214be3a366') },
+  { slug: 'zucchini', title: 'Zucchini', imageUrl: producePhoto('1753445657076-5c3c710c42c4') },
+  { slug: 'leek', title: 'Leek', imageUrl: producePhoto('1760108273146-c1ad5f5bce30') },
+  { slug: 'celery', title: 'Celery', imageUrl: producePhoto('1742805286467-305b3529c00a') },
+  { slug: 'raw-banana', title: 'Raw Banana', imageUrl: producePhoto('1528279335935-f486951a6adf') },
+  { slug: 'fennel', title: 'Fennel', imageUrl: producePhoto('1760393339688-cbb315e481f4') },
+  { slug: 'asparagus', title: 'Asparagus', imageUrl: producePhoto('1756364125457-ae0be9c397c1') },
+];
+
+/**
+ * Leafy items in the aisle above have a real Product under categoryId 1
+ * ("Leafy Greens") rather than categoryId 2, same reasoning as spinach —
+ * see the comment on SEED_PRODUCTS in server/utils/seed.js.
+ */
+export const marketLeafyGreens = [
+  { slug: 'lettuce', title: 'Lettuce', imageUrl: producePhoto('1693667660375-653320dbebb4') },
+  { slug: 'mustard-greens', title: 'Mustard Greens', imageUrl: producePhoto('1772701488768-4ddd628abc84') },
 ];
 
 export const initialCategories = [
@@ -104,4 +124,12 @@ export const initialCategories = [
   // shopkeeper's own category picker can still offer the exact vegetable
   // rather than only the umbrella bucket.
   ...marketVegetables.map((veg, i) => ({ id: 5 + i, slug: veg.slug, title: veg.title, imageUrl: veg.imageUrl })),
+  // Same idea, for the leafy items whose real Product sits under categoryId 1
+  // instead. Ids continue straight on from the block above.
+  ...marketLeafyGreens.map((veg, i) => ({
+    id: 5 + marketVegetables.length + i,
+    slug: veg.slug,
+    title: veg.title,
+    imageUrl: veg.imageUrl,
+  })),
 ];
