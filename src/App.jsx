@@ -21,6 +21,8 @@ import OTPBoxGroup from './components/OTPBoxGroup';
 import MarketPicker from './components/MarketPicker';
 import NearbyShops from './components/NearbyShops';
 import LocationPrimer from './components/LocationPrimer';
+import LanguagePicker from './components/LanguagePicker';
+import { useLanguage } from './i18n/LanguageContext';
 import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
 import { savedCustomerAddress } from './services/address';
 import { productSkuFromHash } from './services/share';
@@ -66,6 +68,7 @@ export default function App() {
   const uniqueId = () => ++_idCounter.current;
 
   const toast = useToast();
+  const { t } = useLanguage();
 
   /**
    * The category taxonomy is genuinely static — there is no categories endpoint
@@ -2173,6 +2176,13 @@ export default function App() {
                         </div>
                       )}
 
+                        {/* Same reasoning as Log Out below: a setting someone
+                            may want from wherever they are on this tab, not
+                            just from the plain profile view. */}
+                        <div className="pt-2 sm:pt-3 relative z-10 max-w-sm mx-auto">
+                          <LanguagePicker />
+                        </div>
+
                         {/* Log Out stays on every account view — it is the one
                             control someone may want from wherever they are.
                             Deleting the account does NOT: it lives inside
@@ -2183,7 +2193,7 @@ export default function App() {
                             onClick={handleLogout}
                             className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] sm:text-sm font-extrabold px-2 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all cursor-pointer shadow-[inset_1px_1px_2px_rgba(255,255,255,0.8),4px_4px_8px_rgba(166,180,200,0.3),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(166,180,200,0.4),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
                           >
-                            Log Out
+                            {t('common.signOut')}
                           </button>
                         </div>
 

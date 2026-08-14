@@ -5,12 +5,14 @@ import {
   Landmark, CreditCard, Lock, Loader2, Pencil,
 } from 'lucide-react';
 import MarketPickups from './MarketPickups';
+import LanguagePicker from './LanguagePicker';
 import {
   startLocationReporting, setDutyStatus,
   fetchRiderBankDetails, saveRiderBankDetails,
   describeLegalNameProblem, describeBankNameProblem, describeIfscProblem, describeAccountProblem,
 } from '../services/rider';
 import { ApiRequestError, NetworkError } from '../services/apiClient';
+import { useLanguage } from '../i18n/LanguageContext';
 import useRiderJobs from '../hooks/useRiderJobs';
 
 /** Leaflet only ships to a rider who actually has a route to look at. */
@@ -42,6 +44,7 @@ const DeliveryRouteMap = lazy(() => import('./DeliveryRouteMap'));
  * where the data genuinely does not exist the screen says so.
  */
 export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLogout, notifications = [], onClearNotification }) {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('home');
   const [isOnline, setIsOnline] = useState(false);
 
@@ -138,11 +141,11 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
       <header className="bg-white px-5 py-4 border-b border-gray-100 shadow-sm sticky top-0 z-40">
         <div className="flex items-center justify-between">
           <h1 className="font-black text-xl text-gray-900 tracking-tight">
-            {activeTab === 'home' && 'Dashboard'}
-            {activeTab === 'orders' && 'Active Tasks'}
-            {activeTab === 'map' && '🗺 Live Route'}
-            {activeTab === 'earnings' && 'Deliveries'}
-            {activeTab === 'profile' && 'My Profile'}
+            {activeTab === 'home' && t('header.dashboard')}
+            {activeTab === 'orders' && t('header.activeTasks')}
+            {activeTab === 'map' && `🗺 ${t('header.liveRoute')}`}
+            {activeTab === 'earnings' && t('header.deliveries')}
+            {activeTab === 'profile' && t('header.myProfile')}
           </h1>
           <div className="relative">
             <Bell className="w-6 h-6 text-gray-500" />
@@ -208,11 +211,11 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 mx-auto w-full max-w-md bg-white border-t border-gray-200 pb-safe pt-2 px-6 flex justify-between items-center shadow-[0_-10px_20px_rgba(0,0,0,0.03)] z-40 rounded-t-3xl">
-        <NavButton icon={Home} label="Home" isActive={activeTab === 'home'} onClick={() => setActiveTab('home')} />
-        <NavButton icon={PackageCheck} label="Orders" isActive={activeTab === 'orders'} onClick={() => setActiveTab('orders')} />
-        <NavButton icon={MapIcon} label="Map" isActive={activeTab === 'map'} onClick={() => setActiveTab('map')} />
-        <NavButton icon={Wallet} label="Trips" isActive={activeTab === 'earnings'} onClick={() => setActiveTab('earnings')} />
-        <NavButton icon={User} label="Profile" isActive={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
+        <NavButton icon={Home} label={t('nav.home')} isActive={activeTab === 'home'} onClick={() => setActiveTab('home')} />
+        <NavButton icon={PackageCheck} label={t('nav.orders')} isActive={activeTab === 'orders'} onClick={() => setActiveTab('orders')} />
+        <NavButton icon={MapIcon} label={t('nav.map')} isActive={activeTab === 'map'} onClick={() => setActiveTab('map')} />
+        <NavButton icon={Wallet} label={t('nav.trips')} isActive={activeTab === 'earnings'} onClick={() => setActiveTab('earnings')} />
+        <NavButton icon={User} label={t('nav.profile')} isActive={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
       </nav>
     </div>
   );
@@ -595,6 +598,8 @@ function ProfileTab({ user, deliveredTotal, onLogout }) {
           {deliveredTotal} {deliveredTotal === 1 ? 'delivery' : 'deliveries'} completed
         </div>
       </div>
+
+      <LanguagePicker />
 
       <BankDetailsCard />
 

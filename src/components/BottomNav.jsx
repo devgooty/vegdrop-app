@@ -1,7 +1,9 @@
 import React from 'react';
 import { Home, ShoppingBasket, UserCheck, Package, TrendingUp } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCart, cartBump, userRole }) {
+  const { t } = useLanguage();
   return (
     <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-[#FAF7F2]/95 backdrop-blur-md border-t border-[#DCD5C6] flex justify-around py-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] z-30 px-2 pb-safe">
       {/* Home Tab */}
@@ -14,7 +16,7 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
         }`}
       >
         <Home className={`w-5 h-5 transition-transform duration-300 ${activeTab === 'home' ? 'scale-110' : ''}`} />
-        <span className="text-[11px] font-semibold mt-1">Home</span>
+        <span className="text-[11px] font-semibold mt-1">{t('nav.home')}</span>
       </button>
 
       {/* Prices Tab */}
@@ -27,7 +29,7 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
         }`}
       >
         <TrendingUp className={`w-5 h-5 transition-transform duration-300 ${activeTab === 'prices' ? 'scale-110' : ''}`} />
-        <span className="text-[11px] font-semibold mt-1">Prices</span>
+        <span className="text-[11px] font-semibold mt-1">{t('nav.prices')}</span>
       </button>
 
       {/* Cart Button */}
@@ -50,7 +52,7 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
             </span>
           )}
         </div>
-        <span className="text-[11px] font-semibold mt-1">Cart</span>
+        <span className="text-[11px] font-semibold mt-1">{t('nav.cart')}</span>
       </button>
 
       {/* Orders Tab - Only for customers or guests */}
@@ -64,7 +66,7 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
           }`}
         >
           <Package className={`w-5 h-5 transition-transform duration-300 ${activeTab === 'orders' ? 'scale-110' : ''}`} />
-          <span className="text-[11px] font-semibold mt-1">Orders</span>
+          <span className="text-[11px] font-semibold mt-1">{t('nav.orders')}</span>
         </button>
       )}
 
@@ -78,7 +80,7 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
         }`}
       >
         <UserCheck className={`w-5 h-5 transition-transform duration-300 ${activeTab === 'account' ? 'scale-110' : ''}`} />
-        <span className="text-[11px] font-semibold mt-1">Account</span>
+        <span className="text-[11px] font-semibold mt-1">{t('nav.account')}</span>
       </button>
     </nav>
   );

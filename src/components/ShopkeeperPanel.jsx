@@ -7,7 +7,9 @@ import {
 import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../services/auth';
 import { fetchShopEarnings, withdrawShopEarnings } from '../services/shops';
 import { ApiRequestError } from '../services/apiClient';
+import { useLanguage } from '../i18n/LanguageContext';
 import OTPBoxGroup from './OTPBoxGroup';
+import LanguagePicker from './LanguagePicker';
 
 /** Server amounts are integer paise; ₹1,250.00 is what a shopkeeper reads. */
 const formatPaise = (paise) =>
@@ -62,6 +64,8 @@ function KycGateBanner({ kyc, onOpenKyc }) {
 }
 
 export default function ShopkeeperPanel({ user, orders, products, setProducts, categories = [], onAddProduct, onEditProduct, onUpdateOrderStatus, onOrderAccepted, onLogout, onSyncOrders, kyc = null, onOpenKyc, onUserUpdated }) {
+  const { t } = useLanguage();
+
   // UX gate only. Every catalog write is authorized again by the API.
   const canUpdateStock = kyc ? kyc.canUpdateStock : true;
 
@@ -849,12 +853,14 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
         </button>
       </div>
 
+      <LanguagePicker />
+
       {onLogout && (
-        <button 
+        <button
           onClick={onLogout}
           className="w-full bg-red-50 text-red-600 font-black py-4 rounded-2xl border border-red-100 active:scale-95 transition-transform flex items-center justify-center gap-2"
         >
-          <LogOut className="w-5 h-5" /> LOG OUT
+          <LogOut className="w-5 h-5" /> {t('common.signOut').toUpperCase()}
         </button>
       )}
     </div>
@@ -1179,7 +1185,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
             {activeTab === 'orders' && 'Order Management'}
             {activeTab === 'products' && 'Product Catalog'}
             {activeTab === 'analytics' && 'Analytics & Earnings'}
-            {activeTab === 'profile' && 'Shop Settings'}
+            {activeTab === 'profile' && t('header.shopSettings')}
           </h1>
           <p className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
@@ -1423,11 +1429,11 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 mx-auto w-full max-w-md bg-white border-t border-gray-200 pb-safe pt-2 px-6 flex justify-between items-center shadow-[0_-10px_20px_rgba(0,0,0,0.03)] z-40 rounded-t-3xl">
-        <NavButton icon={LayoutDashboard} label="Home" isActive={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setActiveScreen('list'); }} />
-        <NavButton icon={Package} label="Orders" isActive={activeTab === 'orders'} onClick={() => { setActiveTab('orders'); setActiveScreen('list'); }} />
-        <NavButton icon={Store} label="Products" isActive={activeTab === 'products'} onClick={() => { setActiveTab('products'); setActiveScreen('list'); }} />
-        <NavButton icon={BarChart3} label="Analytics" isActive={activeTab === 'analytics'} onClick={() => { setActiveTab('analytics'); setActiveScreen('list'); }} />
-        <NavButton icon={User} label="Profile" isActive={activeTab === 'profile'} onClick={() => { setActiveTab('profile'); setActiveScreen('list'); }} />
+        <NavButton icon={LayoutDashboard} label={t('nav.home')} isActive={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setActiveScreen('list'); }} />
+        <NavButton icon={Package} label={t('nav.orders')} isActive={activeTab === 'orders'} onClick={() => { setActiveTab('orders'); setActiveScreen('list'); }} />
+        <NavButton icon={Store} label={t('nav.products')} isActive={activeTab === 'products'} onClick={() => { setActiveTab('products'); setActiveScreen('list'); }} />
+        <NavButton icon={BarChart3} label={t('nav.analytics')} isActive={activeTab === 'analytics'} onClick={() => { setActiveTab('analytics'); setActiveScreen('list'); }} />
+        <NavButton icon={User} label={t('nav.profile')} isActive={activeTab === 'profile'} onClick={() => { setActiveTab('profile'); setActiveScreen('list'); }} />
       </nav>
     </div>
   );
