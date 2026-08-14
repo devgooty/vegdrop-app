@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Coins, Gift, Sparkles, Clock, Info } from 'lucide-react';
 import { summarizeRewards, RUPEES_PER_BATCH, TOKENS_PER_BATCH } from '../services/rewards';
+import SpinWheel from './SpinWheel';
 
 /**
  * The Rewards screen in the Account tab.
@@ -85,6 +86,10 @@ export default function AccountRewards({ user, orders }) {
           </p>
         )}
       </div>
+
+      {/* Sits directly under the earning rule: the wheel is what the tokens the
+          rule describes are actually for. */}
+      <SpinWheel userId={user?.id} totalTokens={totalTokens} />
 
       {/* Where the tokens came from */}
       <div className="space-y-3">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Trash2, Plus, Minus, ShoppingBasket, CheckCircle2, MapPin, AlertTriangle } from 'lucide-react';
 import { savedCustomerAddress } from '../services/address';
+import { cartItemCount } from '../services/cart';
 
 /**
  * Delivery pricing, mirrored from server/routes/orders.js.
@@ -105,12 +106,14 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-start z-[25] animate-fade-in">
       {/* Stops short of the bottom nav (z-30) so Home/Prices/Orders/Account stay
           reachable while the basket is open. */}
-      <div className="bg-[#FFFDF9] w-full max-w-md h-[calc(100dvh-4.25rem)] flex flex-col justify-between shadow-2xl overflow-hidden relative">
+      <div className="bg-[#FFFDF9] w-full max-w-md h-[calc(100dvh-4.25rem-env(safe-area-inset-bottom,0px))] flex flex-col justify-between shadow-2xl overflow-hidden relative">
         {/* Header */}
         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShoppingBasket className="w-5 h-5 text-emerald-600" />
-            <h3 className="font-bold text-gray-900 text-base">Your Basket ({cartItems.length})</h3>
+            {/* Counts items, not lines — the bottom-nav badge always has, and the
+              two disagreeing ("9" on the tab, "(6)" here) reads as a bug. */}
+          <h3 className="font-bold text-gray-900 text-base">Your Basket ({cartItemCount(cartItems)})</h3>
           </div>
           <button
             onClick={onClose}

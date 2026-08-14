@@ -241,7 +241,7 @@ export default function CustomerOrders({
   return (
     <div className="animate-fade-in pb-12">
       {/* Header */}
-      <div className="bg-[#1B4D3E] text-white pt-6 pb-4 px-4 shadow-lg sticky top-0 z-20">
+      <div className="bg-[#1B4D3E] text-white pt-safe-6 pb-4 px-4 shadow-lg sticky top-0 z-20">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
             <Package className="w-5 h-5 text-amber-300" />

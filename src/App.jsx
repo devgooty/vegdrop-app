@@ -24,6 +24,7 @@ import LocationPrimer from './components/LocationPrimer';
 import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
 import { savedCustomerAddress } from './services/address';
 import { productSkuFromHash } from './services/share';
+import { mergeCartLines, cartItemCount } from './services/cart';
 import { createSchedule, fetchSchedules, recurrenceFromDates, describeRecurrence } from './services/schedules';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
@@ -1075,6 +1076,19 @@ export default function App() {
       ? marketProducts
       : products;
 
+  /**
+   * Repair a basket saved while Add could append duplicate lines.
+   *
+   * The basket outlives the deploy that fixed the writer, so without this an
+   * affected shopper keeps seeing their three separate "Broccoli x1" rows for
+   * good. `mergeCartLines` returns the same reference when there is nothing to
+   * merge, so the overwhelming majority of loads neither re-render nor rewrite
+   * storage.
+   */
+  useEffect(() => {
+    setCartItems((prev) => mergeCartLines(prev));
+  }, [setCartItems]);
+
   const handleAddToCart = useCallback((product, event) => {
     if (product.stock === 0) {
       toast.warning(`"${product.name}" is sold out!`);
@@ -1085,7 +1099,15 @@ export default function App() {
     const targetCart = isScheduled ? scheduledCartItems : cartItems;
     const setTargetCart = isScheduled ? setScheduledCartItems : setCartItems;
     
-    const existing = targetCart.find((item) => item.id === product.id);
+    /**
+     * Only for the toast, never for the cart itself.
+     *
+     * This is a render-time snapshot, so it is stale the moment two taps land
+     * in one batch. Getting it wrong costs a duplicate "added" toast; getting
+     * the *cart* wrong from the same read used to cost a duplicate line, which
+     * is why the real lookup moved inside the updater below.
+     */
+    const existingAtRender = targetCart.find((item) => item.id === product.id);
 
     // Trigger smooth fly-to-cart animation when item is picked/added
     const clickX = event && event.clientX ? Math.max(10, event.clientX - 45) : window.innerWidth / 2 - 45;
@@ -1101,6 +1123,19 @@ export default function App() {
     setFlyingItems((prev) => [...prev, newFlyItem]);
 
     setTargetCart((prev) => {
+      /**
+       * Resolved from `prev`, not from the enclosing render.
+       *
+       * Tapping Add three times quickly puts all three updates in one React
+       * batch, and every one of them saw the same pre-batch `cartItems` — so
+       * each concluded the product was absent and appended its own line. The
+       * basket came back with three "Broccoli (500g)" rows at quantity 1
+       * instead of one row at 3, and removing one left the others behind.
+       * `prev` is the only view that reflects the updates already queued ahead
+       * of this one.
+       */
+      const existing = prev.find((item) => item.id === product.id);
+
       if (existing) {
         return prev.map((item) =>
           item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
@@ -1124,7 +1159,7 @@ export default function App() {
       }];
     });
 
-    if (!existing) {
+    if (!existingAtRender) {
       toast.success(`"${product.name}" added to ${isScheduled ? 'schedule' : 'basket'} 🛒`);
     }
   }, [cartItems, scheduledCartItems, shoppingMode, setCartItems, setScheduledCartItems, toast]);
@@ -1520,7 +1555,7 @@ export default function App() {
     return () => window.removeEventListener('hashchange', apply);
   }, [browseProducts, products, handleOpenProductDetail, toast]);
 
-  const totalCartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const totalCartCount = cartItemCount(cartItems);
   const pendingOrdersCount = orders.filter((o) => o.status === 'Pending').length;
 
   const activeCartItems = shoppingMode === 'scheduled' ? scheduledCartItems : cartItems;
@@ -1536,7 +1571,10 @@ export default function App() {
   }
 
   return (
-    <div className="max-w-md mx-auto min-h-screen bg-gray-50 flex flex-col justify-between pb-16 relative shadow-xl border-x border-gray-200/60">
+    /* pb reserves room for the fixed bottom nav, so it has to grow by the same
+       home-indicator inset the nav itself now adds — otherwise the last row of
+       content sits behind it on a gesture-bar phone. */
+    <div className="max-w-md mx-auto min-h-screen bg-gray-50 flex flex-col justify-between pb-[calc(4rem+env(safe-area-inset-bottom,0px))] relative shadow-xl border-x border-gray-200/60">
       
       {/* FLY TO CART ITEM ANIMATION OVERLAY */}
       <FlyToCartOverlay

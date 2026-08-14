@@ -169,7 +169,7 @@ export default function Header({
 
   return (
     <header
-      className={`bg-[#FAF7F2] p-3 px-4 flex items-center justify-between gap-2 sticky top-0 z-20 border-b transition-all duration-300 ${
+      className={`bg-[#FAF7F2] p-3 px-4 pt-safe-3 flex items-center justify-between gap-2 sticky top-0 z-20 border-b transition-all duration-300 ${
         isScrolled
           ? 'header-scrolled border-[#D5CDBC]'
           : 'border-[#DCD5C6] shadow-xs'
