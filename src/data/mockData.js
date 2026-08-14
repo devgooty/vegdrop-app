@@ -57,7 +57,6 @@ export const marketVegetables = [
   { slug: 'pumpkin', title: 'Pumpkin', imageUrl: producePhoto('1570586437263-ab629fccc818') },
   { slug: 'radish', title: 'Radish', imageUrl: producePhoto('1576072115035-5fe30e447e60') },
   { slug: 'mushroom', title: 'Mushroom', imageUrl: producePhoto('1552825898-07e419204683') },
-  { slug: 'sweet-corn', title: 'Sweet Corn', imageUrl: producePhoto('1683543124257-1d214be3a366') },
   { slug: 'zucchini', title: 'Zucchini', imageUrl: producePhoto('1753445657076-5c3c710c42c4') },
   { slug: 'leek', title: 'Leek', imageUrl: producePhoto('1760108273146-c1ad5f5bce30') },
   { slug: 'celery', title: 'Celery', imageUrl: producePhoto('1742805286467-305b3529c00a') },

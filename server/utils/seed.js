@@ -85,7 +85,6 @@ const SEED_PRODUCTS = [
   { sku: 'VEG-PUMPKIN-1000', categoryId: 2, name: 'Pumpkin (Kaddu)', weight: '1 pc (approx 1kg)', pricePaise: 3500, oldPricePaise: 4200, rating: 4.3, reviews: 58, isOrganic: false, stock: 12, image: 'https://images.unsplash.com/photo-1570586437263-ab629fccc818?w=300' },
   { sku: 'VEG-RADISH-500', categoryId: 2, name: 'Fresh Radish (Mooli)', weight: '500g', pricePaise: 2500, oldPricePaise: 3200, rating: 4.2, reviews: 40, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1576072115035-5fe30e447e60?w=300' },
   { sku: 'VEG-MUSHROOM-200', categoryId: 2, name: 'Button Mushroom', weight: '200g', pricePaise: 4500, oldPricePaise: 5500, rating: 4.6, reviews: 88, isOrganic: false, stock: 15, image: 'https://images.unsplash.com/photo-1552825898-07e419204683?w=300' },
-  { sku: 'VEG-SWEETCORN-400', categoryId: 2, name: 'Sweet Corn (Makai)', weight: '2 pcs (approx 400g)', pricePaise: 3000, oldPricePaise: 3800, rating: 4.5, reviews: 70, isOrganic: false, stock: 18, image: 'https://images.unsplash.com/photo-1683543124257-1d214be3a366?w=300' },
   { sku: 'VEG-ZUCCHINI-500', categoryId: 2, name: 'Zucchini', weight: '500g', pricePaise: 4000, oldPricePaise: 5000, rating: 4.3, reviews: 34, isOrganic: false, stock: 14, image: 'https://images.unsplash.com/photo-1753445657076-5c3c710c42c4?w=300' },
   { sku: 'VEG-LEEK-250', categoryId: 2, name: 'Leek', weight: '250g', pricePaise: 3500, oldPricePaise: 4200, rating: 4.1, reviews: 22, isOrganic: false, stock: 12, image: 'https://images.unsplash.com/photo-1760108273146-c1ad5f5bce30?w=300' },
   { sku: 'VEG-CELERY-250', categoryId: 2, name: 'Celery', weight: '1 bunch (approx 250g)', pricePaise: 3500, oldPricePaise: 4200, rating: 4.0, reviews: 19, isOrganic: false, stock: 10, image: 'https://images.unsplash.com/photo-1742805286467-305b3529c00a?w=300' },
@@ -181,6 +180,32 @@ async function seedProducts() {
     if (!isDuplicateKeyOnly) throw err;
   }
   return missing.length;
+}
+
+/**
+ * Skus that used to be in SEED_PRODUCTS and no longer are.
+ *
+ * `seedProducts()` only ever adds a missing sku — nothing un-seeds one when
+ * it disappears from the list above, so an already-seeded database
+ * (production included) needs this to actually catch up. Scoped to
+ * `owner: null` AND `createdBy: null`, the same guard scripts/remove-demo-seed.js
+ * uses: only a row this seeder could plausibly have created is ever touched,
+ * never a real shopkeeper's or market owner's listing that happens to reuse
+ * a retired sku.
+ *
+ * Safe to clear once a deploy has run against every environment that matters
+ * — it exists to catch up already-seeded databases, not as a permanent record.
+ */
+const RETIRED_PRODUCT_SKUS = ['VEG-SWEETCORN-400'];
+
+async function retireProducts() {
+  if (RETIRED_PRODUCT_SKUS.length === 0) return 0;
+  const result = await Product.deleteMany({
+    sku: { $in: RETIRED_PRODUCT_SKUS },
+    owner: null,
+    createdBy: null,
+  });
+  return result.deletedCount;
 }
 
 async function seedAccounts() {
@@ -300,6 +325,9 @@ async function seedIfEmpty() {
   const productCount = await seedProducts();
   if (productCount > 0) console.info(`[seed] inserted ${productCount} product(s) into the catalog.`);
 
+  const retiredCount = await retireProducts();
+  if (retiredCount > 0) console.info(`[seed] removed ${retiredCount} retired product(s) from the catalog.`);
+
   if (config.isProduction) {
     console.info('[seed] demo accounts, markets and stalls skipped: disabled in production.');
     return;
@@ -340,4 +368,13 @@ async function seedIfEmpty() {
  * stop a newly added catalog item from reaching a database that was seeded
  * before that item existed.
  */
-module.exports = { seedIfEmpty, seedProducts, SEED_ACCOUNTS, SEED_PRODUCTS, SEED_MARKETS, SEED_STALLS };
+module.exports = {
+  seedIfEmpty,
+  seedProducts,
+  retireProducts,
+  SEED_ACCOUNTS,
+  SEED_PRODUCTS,
+  SEED_MARKETS,
+  SEED_STALLS,
+  RETIRED_PRODUCT_SKUS,
+};
