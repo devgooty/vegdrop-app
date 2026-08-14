@@ -102,8 +102,10 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-[1000] animate-fade-in">
-      <div className="bg-[#FFFDF9] w-full max-w-md h-[100dvh] flex flex-col justify-between shadow-2xl overflow-hidden relative">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-start z-[25] animate-fade-in">
+      {/* Stops short of the bottom nav (z-30) so Home/Prices/Orders/Account stay
+          reachable while the basket is open. */}
+      <div className="bg-[#FFFDF9] w-full max-w-md h-[calc(100dvh-4.25rem)] flex flex-col justify-between shadow-2xl overflow-hidden relative">
         {/* Header */}
         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-2">

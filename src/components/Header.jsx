@@ -43,6 +43,11 @@ export default function Header({
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchRef = useRef(null);
   const inputRef = useRef(null);
+  // The panel is anchored to the header, not to the input, so it sits outside
+  // searchRef's subtree. It needs its own ref or the outside-click detector
+  // below treats a tap on a suggestion as a tap outside, closes the panel on
+  // pointerdown, and the click never reaches the row that was tapped.
+  const panelRef = useRef(null);
 
   const reactId = useId();
   const listboxId = `search-listbox-${reactId}`;
@@ -74,7 +79,9 @@ export default function Header({
     if (!isOpen) return;
 
     const handlePointerDown = (event) => {
-      if (!searchRef.current?.contains(event.target)) setIsOpen(false);
+      if (searchRef.current?.contains(event.target)) return;
+      if (panelRef.current?.contains(event.target)) return;
+      setIsOpen(false);
     };
     document.addEventListener('pointerdown', handlePointerDown);
     return () => document.removeEventListener('pointerdown', handlePointerDown);
@@ -246,6 +253,7 @@ export default function Header({
           the logo and the wallet and is far too narrow to read a suggestion in. */}
       {isOpen && (
         <SearchSuggestions
+          panelRef={panelRef}
           options={options}
           activeIndex={activeIndex}
           listboxId={listboxId}
