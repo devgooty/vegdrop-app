@@ -23,6 +23,7 @@ import NearbyShops from './components/NearbyShops';
 import LocationPrimer from './components/LocationPrimer';
 import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
 import { savedCustomerAddress } from './services/address';
+import { productSkuFromHash } from './services/share';
 import { createSchedule, fetchSchedules, recurrenceFromDates, describeRecurrence } from './services/schedules';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
@@ -1478,6 +1479,47 @@ export default function App() {
     handleOpenProductDetail(product);
   }, [handleOpenProductDetail]);
 
+  /**
+   * Open the product named by a `#/p/<sku>` share link.
+   *
+   * Resolution is by `sku` rather than `id` because the link may have been
+   * written by someone browsing a different market, whose copy of the item is a
+   * separate document with a different `_id`. The market sheet is searched
+   * first so a shared item is priced the way the *recipient* would buy it, and
+   * the platform catalog is the fallback for a market that does not stock it.
+   *
+   * `handledShareHash` is what stops this from fighting the shopper: without it
+   * the effect would reopen the product every time an unrelated re-render
+   * happened, making the back button appear broken. The hash is left in the URL
+   * on purpose — clearing it would break a reload of the same link.
+   */
+  const handledShareHash = useRef(null);
+
+  useEffect(() => {
+    const apply = () => {
+      const sku = productSkuFromHash();
+      if (!sku || handledShareHash.current === sku) return;
+
+      // Nothing has loaded yet; stay unhandled so the next render retries.
+      if (browseProducts.length === 0 && products.length === 0) return;
+
+      const match =
+        browseProducts.find((p) => p.sku === sku) || products.find((p) => p.sku === sku);
+
+      handledShareHash.current = sku;
+
+      if (!match) {
+        toast.warning('That item is no longer available.');
+        return;
+      }
+      handleOpenProductDetail(match);
+    };
+
+    apply();
+    window.addEventListener('hashchange', apply);
+    return () => window.removeEventListener('hashchange', apply);
+  }, [browseProducts, products, handleOpenProductDetail, toast]);
+
   const totalCartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const pendingOrdersCount = orders.filter((o) => o.status === 'Pending').length;
 
@@ -1520,6 +1562,11 @@ export default function App() {
           categories={categories}
           onSelectProduct={handleOpenProductDetail}
           onOpenCategory={handleOpenCategoryFromSearch}
+          onShared={(result) =>
+            result === 'copied'
+              ? toast.success('Link copied — paste it anywhere to share this item.')
+              : toast.error('Could not share this item.')
+          }
         />
       ) : activeCategoryDetail ? (
         <CategoryDetailView

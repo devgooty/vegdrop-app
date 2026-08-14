@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Star, ShieldCheck, Truck, Sparkles, Plus, Minus, Check, Heart, Share2, Camera } from 'lucide-react';
 import RelatedProducts from './RelatedProducts';
+import { shareProduct } from '../services/share';
 
 export default function ProductDetailView({
   product,
@@ -13,8 +14,17 @@ export default function ProductDetailView({
   categories = [],
   onSelectProduct,
   onOpenCategory,
+  onShared,
 }) {
   const [isLiked, setIsLiked] = useState(false);
+
+  const handleShare = async () => {
+    const result = await shareProduct(product);
+    // 'shared' needs nothing said — the OS sheet already confirmed it — and
+    // 'cancelled' means the shopper backed out on purpose.
+    if (result === 'copied') onShared?.('copied');
+    else if (result === 'failed') onShared?.('failed');
+  };
 
   // Weight Variants Logic
   const isWeightBased = product.weight && (product.weight.toLowerCase().includes('g') || product.weight.toLowerCase().includes('kg')) && !product.weight.toLowerCase().includes('pack');
@@ -97,7 +107,11 @@ export default function ProductDetailView({
           >
             <Heart className={`w-4 h-4 ${isLiked ? 'text-red-500 fill-red-500' : 'text-[#8A7E6B]'}`} />
           </button>
-          <button className="p-2 rounded-full bg-white border border-[#DCD5C6] shadow-2xs cursor-pointer">
+          <button
+            onClick={handleShare}
+            aria-label={`Share ${product.name}`}
+            className="p-2 rounded-full bg-white border border-[#DCD5C6] shadow-2xs cursor-pointer"
+          >
             <Share2 className="w-4 h-4 text-[#8A7E6B]" />
           </button>
         </div>

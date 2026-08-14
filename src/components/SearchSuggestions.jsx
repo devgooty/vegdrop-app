@@ -15,6 +15,7 @@ import { Search, CornerDownLeft, LayoutGrid } from 'lucide-react';
  * and break typing mid-selection.
  */
 export default function SearchSuggestions({
+  panelRef,
   options,
   activeIndex,
   listboxId,
@@ -26,6 +27,7 @@ export default function SearchSuggestions({
 
   return (
     <div
+      ref={panelRef}
       className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[min(60vh,26rem)] overflow-y-auto overscroll-contain rounded-2xl border border-[#DCD5C6] bg-[#FFFDF9] shadow-[0_12px_28px_-8px_rgba(45,38,25,0.28)] animate-fade-in"
       // Pointer-down rather than click is what stops the input blurring before
       // the pick lands — blur closes the panel, and the click would then be

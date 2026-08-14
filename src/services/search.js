@@ -123,13 +123,21 @@ export function buildSuggestions({ products = [], categories = [], query, limit 
     const rank = score(category.title, normalizedQuery);
     if (rank === null) continue;
 
+    // A section this market stocks nothing in is not an answer to anything, and
+    // offering it is actively harmful: the row below deletes the same-named
+    // term, so a "Onion" section holding no products would both open an empty
+    // screen *and* take the term that had the actual onions behind it. Leave
+    // the term standing instead.
+    const count = products.filter((p) => p.categoryId === category.id).length;
+    if (count === 0) continue;
+
     terms.delete(normalize(category.title));
     suggestions.push({
       id: `category:${category.id}`,
       kind: 'category',
       label: category.title,
       category,
-      count: products.filter((p) => p.categoryId === category.id).length,
+      count,
       rank,
     });
   }
