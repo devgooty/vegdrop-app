@@ -16,6 +16,8 @@ import {
 } from '../services/auth';
 import { ApiRequestError, NetworkError } from '../services/apiClient';
 import { marketVegetables } from '../data/mockData';
+import { useLanguage } from '../i18n/LanguageContext';
+import { LANGUAGES } from '../i18n/translations';
 
 import OTPBoxGroup from './OTPBoxGroup';
 
@@ -175,6 +177,7 @@ const SIGN_UP = {
 
 export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegdrop_' }) {
   const signUp = SIGN_UP[appType] || SIGN_UP.customer;
+  const { language, setLanguage, t } = useLanguage();
 
   const [step, setStep] = useState(STEP.IDENTIFIER);
 
@@ -649,6 +652,34 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                     className={fieldClass}
                     disabled={isSubmitting}
                   />
+                </div>
+
+                {/* Applies immediately, the same way it does in Settings later —
+                    so the account this form is about to create starts in
+                    whichever language was picked here, not English by default. */}
+                <div>
+                  <label className={labelClass}>{t('settings.language')}</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {LANGUAGES.map((lang) => {
+                      const isActive = lang.code === language;
+                      return (
+                        <button
+                          key={lang.code}
+                          type="button"
+                          onClick={() => setLanguage(lang.code)}
+                          aria-pressed={isActive}
+                          disabled={isSubmitting}
+                          className={`py-2.5 rounded-xl text-[13.5px] font-bold border transition-all active:scale-95 ${
+                            isActive
+                              ? 'bg-[#0B7A37] text-white border-[#0B7A37] shadow-[0_4px_10px_-4px_rgba(11,122,55,0.6)]'
+                              : 'bg-[#F1F7F3] text-[#0F1F17] border-[#DCE9E1] hover:bg-[#E7F1EA]'
+                          }`}
+                        >
+                          {lang.nativeName}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {error && <Notice tone="error">{error}</Notice>}
