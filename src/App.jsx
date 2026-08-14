@@ -2234,10 +2234,24 @@ export default function App() {
             setActiveProductDetail(null);
             setActiveCategoryDetail(null);
             handleClearSearch();
+            /**
+             * The basket closes with the tab change.
+             *
+             * It sits at z-25, deliberately below this nav, so the tabs stay
+             * reachable while it is open — but nothing was dismissing it, so
+             * tapping Account switched the tab *underneath* and left the basket
+             * covering the whole screen. Every other route reset on this line
+             * exists for the same reason.
+             */
+            setIsCartOpen(false);
+            setIsScheduledCartOpen(false);
             setActiveTab(tab);
           }}
           cartCount={totalCartCount}
-          onOpenCart={() => setIsCartOpen(true)}
+          // Tapping Cart with the basket already open closes it. It is the same
+          // control in the same place, and leaving it inert made it read as
+          // broken now that the nav is reachable from inside the basket.
+          onOpenCart={() => setIsCartOpen((open) => !open)}
           cartBump={cartBump}
           pendingOrdersCount={pendingOrdersCount}
           userRole={user?.role}
