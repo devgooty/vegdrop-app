@@ -6,8 +6,8 @@ const config = require('../config/env');
 /**
  * Authenticated field-level encryption for financial identifiers.
  *
- * PAN and bank account numbers are stored encrypted rather than in the clear.
- * The threat this addresses is a database dump: hashing is not an option because
+ * Bank account numbers are stored encrypted rather than in the clear. The
+ * threat this addresses is a database dump: hashing is not an option because
  * the values must be readable again to submit them to the payout provider, and a
  * plain column would hand an attacker a ready-made identity-theft dataset.
  *
@@ -23,12 +23,11 @@ const config = require('../config/env');
  * These are HKDF `info` parameters, so they are part of the key derivation.
  * Editing a single character derives different keys from the same
  * KYC_ENCRYPTION_KEY, which is indistinguishable from rotating that key: every
- * PAN and bank account already stored becomes permanently undecryptable, and
- * every fingerprint changes so the uniqueness index silently stops matching
- * existing records. The app was renamed to VegDrop and these deliberately kept
- * the old string for exactly that reason. The `:v1` suffix is the intended way
- * to change them — bump it only alongside a migration that re-encrypts every
- * existing row.
+ * encrypted field already stored becomes permanently undecryptable, and every
+ * fingerprint changes along with it. The app was renamed to VegDrop and these
+ * deliberately kept the old string for exactly that reason. The `:v1` suffix is
+ * the intended way to change them — bump it only alongside a migration that
+ * re-encrypts every existing row.
  */
 
 const ENC_KEY = crypto.hkdfSync('sha256', Buffer.from(config.kyc.encryptionKey), Buffer.alloc(0), 'vegbazzar:kyc:aead:v1', 32);
@@ -46,7 +45,7 @@ function encrypt(plaintext) {
   }
 
   // 12 bytes is the GCM-recommended nonce size, and a fresh random one per call
-  // means encrypting the same PAN twice never produces the same ciphertext.
+  // means encrypting the same value twice never produces the same ciphertext.
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(ENC_KEY), iv);
 
@@ -76,13 +75,13 @@ function decrypt(packed) {
 }
 
 /**
- * Deterministic, non-reversible fingerprint used for uniqueness checks.
+ * Deterministic, non-reversible fingerprint of a value.
  *
- * Encryption is randomised, so two records holding the same PAN produce
- * different ciphertext and a unique index over that column would never fire.
- * This gives the index something stable to key on without storing the PAN in a
- * recoverable form. Keyed (HMAC) rather than a bare hash, because the PAN
- * keyspace is small enough to brute-force an unkeyed digest.
+ * Encryption is randomised, so two calls with the same input produce different
+ * ciphertext — this gives something stable to compare or index on without
+ * storing the value in a recoverable form. Keyed (HMAC) rather than a bare
+ * hash, because some values this is used for have a keyspace small enough to
+ * brute-force an unkeyed digest.
  *
  * @param {string} value
  * @returns {string} hex digest

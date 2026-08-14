@@ -17,7 +17,7 @@ import {
   submitKycDetails,
   requestPennyDrop,
   verifyPennyDrop,
-  describePanProblem,
+  describeBankNameProblem,
   describeIfscProblem,
   describeAccountProblem,
   describeUpiProblem,
@@ -28,7 +28,7 @@ import { ApiRequestError, NetworkError } from '../services/apiClient';
  * Vendor verification.
  *
  * Three stages, mirroring the server's state machine:
- *   draft       -> collect PAN, bank account and UPI ID
+ *   draft       -> collect bank details and a UPI ID
  *   penny_sent  -> confirm the exact amount that landed in the account
  *   verified    -> catalog writes unlocked
  *
@@ -46,7 +46,7 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
   const [error, setError] = useState('');
 
   const [legalName, setLegalName] = useState('');
-  const [pan, setPan] = useState('');
+  const [bankName, setBankName] = useState('');
   const [bankAccount, setBankAccount] = useState('');
   const [ifsc, setIfsc] = useState('');
   const [upiVpa, setUpiVpa] = useState('');
@@ -83,8 +83,8 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
 
     // Advisory checks only; the server enforces the authoritative rules.
     const problem =
-      (!legalName.trim() && 'Enter your name exactly as it appears on your PAN card.') ||
-      describePanProblem(pan) ||
+      (!legalName.trim() && 'Enter the name on the bank account.') ||
+      describeBankNameProblem(bankName) ||
       describeAccountProblem(bankAccount) ||
       describeIfscProblem(ifsc) ||
       describeUpiProblem(upiVpa);
@@ -99,7 +99,7 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
     try {
       const updated = await submitKycDetails({
         legalName: legalName.trim(),
-        pan: pan.trim().toUpperCase(),
+        bankName: bankName.trim(),
         bankAccount: bankAccount.trim(),
         ifsc: ifsc.trim().toUpperCase(),
         upiVpa: upiVpa.trim().toLowerCase(),
@@ -196,7 +196,7 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
               )}
 
               <div>
-                <label className="block font-bold text-gray-800 mb-1">Name (as on PAN card)</label>
+                <label className="block font-bold text-gray-800 mb-1">Bank Account Name</label>
                 <div className="relative">
                   <input
                     type="text"
@@ -209,23 +209,6 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
                     disabled={isBusy}
                   />
                   <User className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-800 mb-1">PAN Number</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={pan}
-                    onChange={(e) => setPan(e.target.value.toUpperCase().slice(0, 10))}
-                    placeholder="ABCDE1234F"
-                    maxLength={10}
-                    className="w-full bg-white border border-gray-300 rounded-2xl py-2.5 pl-10 pr-3 text-xs font-mono font-semibold tracking-wider text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]"
-                    required
-                    disabled={isBusy}
-                  />
-                  <CreditCard className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
                 </div>
               </div>
 
@@ -243,6 +226,23 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
                     disabled={isBusy}
                   />
                   <Landmark className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-800 mb-1">Bank Name</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value.slice(0, 120))}
+                    placeholder="e.g. HDFC Bank"
+                    maxLength={120}
+                    className="w-full bg-white border border-gray-300 rounded-2xl py-2.5 pl-10 pr-3 text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]"
+                    required
+                    disabled={isBusy}
+                  />
+                  <CreditCard className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
                 </div>
               </div>
 
@@ -287,8 +287,8 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
               <div className="bg-gray-50 p-3 rounded-2xl border border-gray-200 flex gap-2">
                 <Lock className="w-3.5 h-3.5 text-gray-500 shrink-0 mt-0.5" />
                 <p className="text-[10px] text-gray-600 font-semibold leading-relaxed">
-                  Your PAN and account number are encrypted and never shown in full again — only the
-                  last four digits.
+                  Your account number is encrypted and never shown in full again — only the last four
+                  digits.
                 </p>
               </div>
 
@@ -378,7 +378,7 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
 
               <div className="bg-gray-50 p-3 rounded-2xl border border-gray-200 text-left space-y-1.5">
                 <Row label="Name" value={kyc?.legalName} />
-                <Row label="PAN" value={kyc?.pan} />
+                <Row label="Bank" value={kyc?.bankName} />
                 <Row label="Bank account" value={kyc?.bankAccount} />
                 <Row label="UPI ID" value={kyc?.upiVpa} />
               </div>

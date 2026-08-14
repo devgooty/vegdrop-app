@@ -43,7 +43,7 @@ function requireVerifiedVendor(req, _res, next) {
           403,
           kyc
             ? 'Finish verifying your bank account before updating stock.'
-            : 'Add your PAN and bank details, then verify your UPI account, before updating stock.',
+            : 'Add your bank details, then verify your UPI account, before updating stock.',
           'KYC_REQUIRED',
           { kycStatus: kyc?.status || 'missing' }
         )

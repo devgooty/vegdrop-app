@@ -6,14 +6,14 @@
  * re-checks it on every catalog write, so hiding the stock controls in the UI is
  * a courtesy, not a security boundary.
  *
- * Full PAN and bank account numbers are write-only from the client's point of
- * view: they are sent once and only ever read back masked.
+ * The full bank account number is write-only from the client's point of view: it
+ * is sent once and only ever read back masked.
  */
 
 import { api } from './apiClient';
 
 /**
- * @returns {Promise<{status: string, isVerified: boolean, canUpdateStock: boolean, pan?: string, bankAccount?: string, upiVpa?: string, pennyDrop?: object}>}
+ * @returns {Promise<{status: string, isVerified: boolean, canUpdateStock: boolean, bankName?: string, bankAccount?: string, upiVpa?: string, pennyDrop?: object}>}
  */
 export async function fetchKycStatus() {
   const result = await api.get('/kyc/me');
@@ -24,8 +24,8 @@ export async function fetchKycStatus() {
  * Submit identity and settlement details. Re-submitting replaces them and voids
  * any outstanding verification transfer.
  */
-export async function submitKycDetails({ legalName, pan, bankAccount, ifsc, upiVpa }) {
-  const result = await api.post('/kyc/me', { legalName, pan, bankAccount, ifsc, upiVpa });
+export async function submitKycDetails({ legalName, bankName, bankAccount, ifsc, upiVpa }) {
+  const result = await api.post('/kyc/me', { legalName, bankName, bankAccount, ifsc, upiVpa });
   return result.data;
 }
 
@@ -48,11 +48,8 @@ export async function verifyPennyDrop(amountPaise) {
 // Advisory only, to give immediate feedback. The server enforces the real rules
 // and its answer is the one that counts.
 
-export function describePanProblem(value) {
-  if (!value) return 'Enter your PAN.';
-  if (!/^[A-Za-z]{5}\d{4}[A-Za-z]$/.test(value.trim())) {
-    return 'PAN must be 5 letters, 4 digits, then 1 letter (e.g. ABCDE1234F).';
-  }
+export function describeBankNameProblem(value) {
+  if (!value || !value.trim()) return 'Enter your bank name.';
   return null;
 }
 

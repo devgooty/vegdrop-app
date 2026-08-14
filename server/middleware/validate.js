@@ -107,13 +107,6 @@ const positiveInt = (max) =>
 // encrypted or sent to the payout provider; they do NOT prove the document
 // exists or belongs to the caller. Only the penny drop establishes control.
 
-/** Indian PAN: five letters, four digits, one letter. */
-const pan = z
-  .string()
-  .trim()
-  .toUpperCase()
-  .regex(/^[A-Z]{5}\d{4}[A-Z]$/, 'Must be a valid 10-character PAN (e.g. ABCDE1234F).');
-
 /** IFSC: four letters, a literal 0, then six alphanumerics. */
 const ifsc = z
   .string()
@@ -145,7 +138,6 @@ module.exports = {
     identifier,
     otpCode,
     positiveInt,
-    pan,
     ifsc,
     bankAccount,
     upiVpa,

@@ -12,10 +12,8 @@ const fieldCrypto = require('../services/fieldCrypto');
  * list nothing and sell nothing.
  *
  * Storage rules:
- *  - PAN and bank account are encrypted (AES-256-GCM) and never leave the server
- *    in full. Only the last four digits are ever returned to a client.
- *  - Uniqueness is enforced on a keyed fingerprint, because the ciphertext is
- *    randomised and would defeat an index.
+ *  - The bank account number is encrypted (AES-256-GCM) and never leaves the
+ *    server in full. Only the last four digits are ever returned to a client.
  *  - The penny-drop amount is stored as an HMAC, exactly like an OTP code. If it
  *    were stored in the clear, a database read would let anyone pass the check
  *    without ever seeing the bank statement.
@@ -38,14 +36,13 @@ const vendorKycSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Name exactly as printed on the PAN card. Compared against the beneficiary
-    // name the bank returns, so a vendor cannot settle into someone else's account.
+    // The bank account holder's name. Compared against the beneficiary name the
+    // bank returns, so a vendor cannot settle into someone else's account.
     legalName: { type: String, required: true, trim: true, maxlength: 120 },
 
-    panEncrypted: { type: String, required: true, select: false },
-    panLast4: { type: String, required: true, maxlength: 4 },
-    // Unique: one PAN cannot back two vendor accounts.
-    panFingerprint: { type: String, required: true, index: { unique: true } },
+    // e.g. "HDFC Bank" — not sensitive, so stored in the clear unlike the account
+    // number below.
+    bankName: { type: String, required: true, trim: true, maxlength: 120 },
 
     bankAccountEncrypted: { type: String, required: true, select: false },
     bankAccountLast4: { type: String, required: true, maxlength: 4 },
@@ -82,14 +79,12 @@ const vendorKycSchema = new mongoose.Schema(
 
 /**
  * Defence in depth. `select: false` already keeps these out of a default query,
- * but an explicit `.select('+panEncrypted')` somewhere would otherwise serialise
- * straight through to a response.
+ * but an explicit `.select('+bankAccountEncrypted')` somewhere would otherwise
+ * serialise straight through to a response.
  */
 function stripSensitive(_doc, ret) {
   delete ret._id;
-  delete ret.panEncrypted;
   delete ret.bankAccountEncrypted;
-  delete ret.panFingerprint;
   if (ret.pennyDrop) delete ret.pennyDrop.amountHash;
   return ret;
 }
@@ -110,8 +105,8 @@ vendorKycSchema.methods.toPublicJSON = function toPublicJSON() {
   return {
     id: this._id.toHexString(),
     legalName: this.legalName,
+    bankName: this.bankName,
     // Masked to the last four, the most any receipt would show.
-    pan: `XXXXX${this.panLast4}`,
     bankAccount: `••••${this.bankAccountLast4}`,
     ifsc: this.ifsc,
     upiVpa: this.upiVpa,
@@ -130,14 +125,10 @@ vendorKycSchema.methods.toPublicJSON = function toPublicJSON() {
 };
 
 /** Encrypt on the way in, so no caller has to remember to. */
-vendorKycSchema.statics.buildSecrets = function buildSecrets({ pan, bankAccount }) {
-  const normalizedPan = String(pan).trim().toUpperCase();
+vendorKycSchema.statics.buildSecrets = function buildSecrets({ bankAccount }) {
   const normalizedAccount = String(bankAccount).trim();
 
   return {
-    panEncrypted: fieldCrypto.encrypt(normalizedPan),
-    panLast4: normalizedPan.slice(-4),
-    panFingerprint: fieldCrypto.fingerprint(normalizedPan),
     bankAccountEncrypted: fieldCrypto.encrypt(normalizedAccount),
     bankAccountLast4: normalizedAccount.slice(-4),
   };

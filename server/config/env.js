@@ -244,10 +244,9 @@ const razorpayWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || '';
 /**
  * Vendor KYC.
  *
- * PAN and bank account numbers are encrypted at rest. The key is separate from
- * the JWT secrets on purpose: rotating a signing secret should not force a
- * re-encrypt of every KYC record, and a leaked token secret must not also
- * decrypt PANs.
+ * Bank account numbers are encrypted at rest. The key is separate from the JWT
+ * secrets on purpose: rotating a signing secret should not force a re-encrypt
+ * of every KYC record, and a leaked token secret must not also decrypt them.
  */
 const kycEncryptionKey = secret('KYC_ENCRYPTION_KEY');
 

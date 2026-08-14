@@ -602,9 +602,9 @@ router.post(
  * A vendor account created here is inert: it has no stall's worth of products
  * (nothing distinguishes it from any other shopkeeper yet, since this catalog
  * has no per-vendor ownership) and, more importantly, no KYC record — so
- * middleware/vendorVerified.js refuses every catalog write until the PAN and
- * bank account are verified. The role alone grants access to the panel, not
- * the ability to sell anything.
+ * middleware/vendorVerified.js refuses every catalog write until the bank
+ * account is verified. The role alone grants access to the panel, not the
+ * ability to sell anything.
  */
 router.post(
   '/vendor/register/start',

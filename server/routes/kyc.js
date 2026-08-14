@@ -16,13 +16,9 @@ const router = express.Router();
 /**
  * Vendor KYC.
  *
- * Proves two separate things before a shopkeeper may list stock:
- *
- *  1. Identity — a PAN, which is also the uniqueness key, so one person cannot
- *     run several vendor accounts.
- *  2. Control of the settlement account — a penny drop. Format validation shows
- *     a UPI ID is well-formed; only receiving money proves the vendor can see
- *     that account.
+ * Proves control of the settlement account before a shopkeeper may list stock —
+ * a penny drop. Format validation shows a UPI ID is well-formed; only receiving
+ * money proves the vendor can see that account.
  *
  * The amount is randomised between 1 and 100 paise and the vendor must report it
  * exactly. A fixed ₹1 with a "did you receive it?" button would verify nothing —
@@ -41,7 +37,7 @@ function hashAmount(kycId, amountPaise) {
   return fieldCrypto.fingerprint(`penny:${kycId}:${amountPaise}`);
 }
 
-/** Names differ in case, punctuation and spacing between PAN and bank records. */
+/** Names differ in case, punctuation and spacing between declared and bank records. */
 function normalizeName(value) {
   return String(value || '')
     .toLowerCase()
@@ -85,7 +81,7 @@ router.post(
     body: z
       .object({
         legalName: fields.nonEmptyString(120),
-        pan: fields.pan,
+        bankName: fields.nonEmptyString(120),
         bankAccount: fields.bankAccount,
         ifsc: fields.ifsc,
         upiVpa: fields.upiVpa,
@@ -95,7 +91,7 @@ router.post(
       .strict(),
   }),
   async (req, res) => {
-    const { legalName, pan, bankAccount, ifsc, upiVpa } = req.valid.body;
+    const { legalName, bankName, bankAccount, ifsc, upiVpa } = req.valid.body;
 
     const existing = await loadKyc(req.user);
     if (existing?.status === 'verified') {
@@ -113,7 +109,7 @@ router.post(
     }
 
     // When the provider tells us who the account belongs to, it must match the
-    // PAN holder. This is what stops a vendor settling into someone else's account.
+    // declared name. This is what stops a vendor settling into someone else's account.
     if (vpaCheck.beneficiaryName) {
       const declared = normalizeName(legalName);
       const actual = normalizeName(vpaCheck.beneficiaryName);
@@ -126,11 +122,12 @@ router.post(
       }
     }
 
-    const secrets = VendorKyc.buildSecrets({ pan, bankAccount });
+    const secrets = VendorKyc.buildSecrets({ bankAccount });
 
     const doc = {
       user: req.user._id,
       legalName,
+      bankName,
       ifsc,
       upiVpa,
       upiBeneficiaryName: vpaCheck.beneficiaryName,
@@ -156,13 +153,7 @@ router.post(
       { user: req.user._id },
       { $set: doc },
       { returnDocument: 'after', upsert: true, runValidators: true, setDefaultsOnInsert: true }
-    ).catch((err) => {
-      // Unique index on panFingerprint.
-      if (err?.code === 11000) {
-        throw new ApiError(409, 'That PAN is already registered to another vendor.', 'PAN_ALREADY_USED');
-      }
-      throw err;
-    });
+    );
 
     return res.status(201).json({ data: kyc.toPublicJSON() });
   }
@@ -184,7 +175,7 @@ router.post(
     const kyc = await loadKyc(req.user);
 
     if (!kyc) {
-      throw new ApiError(400, 'Submit your PAN and bank details first.', 'KYC_NOT_SUBMITTED');
+      throw new ApiError(400, 'Submit your bank details first.', 'KYC_NOT_SUBMITTED');
     }
     if (kyc.status === 'verified') {
       throw new ApiError(409, 'This account is already verified.', 'KYC_ALREADY_VERIFIED');

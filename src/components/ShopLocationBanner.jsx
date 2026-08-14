@@ -159,7 +159,7 @@ export default function ShopLocationBanner({ shop, onSaved }) {
       */}
       {shop && !shop.kycVerified && (
         <p className="text-[11px] text-gray-500 mt-3 leading-relaxed">
-          Your shop appears to customers once your PAN and bank verification is complete.
+          Your shop appears to customers once your bank verification is complete.
         </p>
       )}
     </div>

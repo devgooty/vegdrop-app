@@ -153,13 +153,13 @@ function auth(token) {
  * tests are not about KYC — kyc.test.js exercises the real flow.
  */
 async function verifyVendor(user) {
-  const pan = `ABCDE${String(Math.floor(Math.random() * 9000) + 1000)}F`;
   return VendorKyc.create({
     user: user._id,
     legalName: user.name,
+    bankName: 'HDFC Bank',
     ifsc: 'HDFC0001234',
     upiVpa: `vendor${Math.floor(Math.random() * 900000)}@okhdfcbank`,
-    ...VendorKyc.buildSecrets({ pan, bankAccount: '123456789012' }),
+    ...VendorKyc.buildSecrets({ bankAccount: '123456789012' }),
     status: 'verified',
     verifiedAt: new Date(),
   });

@@ -34,7 +34,7 @@ test.afterEach(() => notify.setTransport(null));
 
 const VALID_DETAILS = {
   legalName: 'Ramesh Kumar',
-  pan: 'ABCDE1234F',
+  bankName: 'HDFC Bank',
   bankAccount: '123456789012',
   ifsc: 'HDFC0001234',
   upiVpa: 'ramesh@okhdfcbank',
@@ -205,38 +205,23 @@ test('a penny drop cannot be requested before details are submitted', async () =
 // Stored data
 // ---------------------------------------------------------------------------
 
-test('PAN and bank account are encrypted at rest and masked in responses', async () => {
+test('bank account is encrypted at rest and masked in responses', async () => {
   const { accessToken } = await authenticatedUser('shopkeeper');
 
   await api().post('/api/kyc/me').set(auth(accessToken)).send(VALID_DETAILS);
 
-  const raw = await VendorKyc.findOne({}).select('+panEncrypted +bankAccountEncrypted').lean();
+  const raw = await VendorKyc.findOne({}).select('+bankAccountEncrypted').lean();
 
   const serialized = JSON.stringify(raw);
-  assert.ok(!serialized.includes(VALID_DETAILS.pan), 'PAN found in plaintext');
   assert.ok(!serialized.includes(VALID_DETAILS.bankAccount), 'bank account found in plaintext');
 
-  assert.ok(raw.panEncrypted.startsWith('v1.'));
-  assert.equal(raw.panLast4, '234F');
+  assert.ok(raw.bankAccountEncrypted.startsWith('v1.'));
+  assert.equal(raw.bankAccountLast4, '9012');
 
   const res = await api().get('/api/kyc/me').set(auth(accessToken));
-  assert.equal(res.body.data.pan, 'XXXXX234F');
+  assert.equal(res.body.data.bankName, 'HDFC Bank');
   assert.equal(res.body.data.bankAccount, '••••9012');
-  assert.equal(res.body.data.panEncrypted, undefined);
-});
-
-test('one PAN cannot back two vendor accounts', async () => {
-  const first = await authenticatedUser('shopkeeper');
-  await api().post('/api/kyc/me').set(auth(first.accessToken)).send(VALID_DETAILS);
-
-  const second = await authenticatedUser('shopkeeper');
-  const res = await api()
-    .post('/api/kyc/me')
-    .set(auth(second.accessToken))
-    .send({ ...VALID_DETAILS, upiVpa: 'other@okhdfcbank' });
-
-  assert.equal(res.status, 409);
-  assert.equal(res.body.error.code, 'PAN_ALREADY_USED');
+  assert.equal(res.body.data.bankAccountEncrypted, undefined);
 });
 
 test('verified details cannot be silently replaced', async () => {
@@ -272,11 +257,10 @@ test('a client cannot mark itself verified through the submit body', async () =>
   assert.equal(blocked.status, 403);
 });
 
-test('malformed PAN, IFSC and UPI IDs are rejected', async () => {
+test('malformed IFSC and UPI IDs are rejected', async () => {
   const { accessToken } = await authenticatedUser('shopkeeper');
 
   const cases = [
-    { ...VALID_DETAILS, pan: '1234567890' },
     { ...VALID_DETAILS, ifsc: 'HDFC1001234' },
     { ...VALID_DETAILS, upiVpa: 'not-a-vpa' },
     { ...VALID_DETAILS, bankAccount: '12345' },

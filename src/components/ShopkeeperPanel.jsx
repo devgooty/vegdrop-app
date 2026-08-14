@@ -54,7 +54,7 @@ function KycGateBanner({ kyc, onOpenKyc }) {
         <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
           {isPending
             ? 'We sent a small amount to your UPI ID. Enter the exact figure to unlock stock updates.'
-            : 'Add your PAN and bank details, then confirm a ₹1 UPI transfer, before listing or updating stock.'}
+            : 'Add your bank details, then confirm a ₹1 UPI transfer, before listing or updating stock.'}
         </p>
       </div>
     </button>
@@ -1093,6 +1093,10 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
                 <dd className="font-bold text-gray-900 text-right">{kyc.legalName}</dd>
               </div>
               <div className="flex justify-between gap-3">
+                <dt className="text-gray-500 font-semibold">Bank</dt>
+                <dd className="font-bold text-gray-900 text-right">{kyc.bankName}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
                 <dt className="text-gray-500 font-semibold">Account</dt>
                 <dd className="font-bold text-gray-900 font-mono">{kyc.bankAccount}</dd>
               </div>
@@ -1106,10 +1110,6 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
                   <dd className="font-bold text-gray-900 font-mono truncate">{kyc.upiVpa}</dd>
                 </div>
               )}
-              <div className="flex justify-between gap-3">
-                <dt className="text-gray-500 font-semibold">PAN</dt>
-                <dd className="font-bold text-gray-900 font-mono">{kyc.pan}</dd>
-              </div>
             </dl>
           ) : (
             <div className="space-y-3">
@@ -1118,7 +1118,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
                   ? 'We have sent a small amount to your UPI ID. Enter the exact figure you received to finish verifying — we deliberately do not tell you what it was.'
                   : kycStatus === 'rejected'
                     ? kyc?.rejectionReason || 'Your last submission was rejected. You can submit again.'
-                    : 'Add your PAN and settlement account so we have somewhere to send your earnings.'}
+                    : 'Add your bank details so we have somewhere to send your earnings.'}
               </p>
               <button
                 type="button"

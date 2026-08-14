@@ -36,7 +36,7 @@ Copy `.env.example` to `.env`. Notes that are easy to get wrong:
 
 - **Never prefix a secret with `VITE_`.** Vite inlines those into the browser bundle. This codebase previously shipped role passwords that way; they were readable in `dist/`.
 - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `OTP_PEPPER`, `KYC_ENCRYPTION_KEY` are **required in production** — the process aborts at boot without them. In development a random ephemeral secret is generated per run, so sessions reset on restart.
-- **`KYC_ENCRYPTION_KEY` is effectively permanent.** It encrypts PAN and bank account numbers at rest; rotating it makes every existing vendor KYC record undecryptable.
+- **`KYC_ENCRYPTION_KEY` is effectively permanent.** It encrypts bank account numbers at rest; rotating it makes every existing vendor KYC record undecryptable.
 - Production additionally requires `CORS_ALLOWED_ORIGINS`, real Razorpay credentials, `RAZORPAYX_*` payout credentials, and a MongoDB deployment that supports transactions. Each is a boot-time hard failure, not a warning.
 - `RAZORPAYX_*` is a **separate product** from `RAZORPAY_*`. Payments credentials collect money and cannot send it, so the KYC penny drop needs its own set.
 
@@ -91,7 +91,7 @@ Two consequences that have already bitten:
 
 **Vendor self-registration** (`/auth/vendor/register/start` → `/vendor/register/verify`) is the *same* dual-OTP flow as customer registration — both contacts required, each proved by its own code, phone-unreachable tolerated the same way — sharing an implementation (`startRegistrationChallenge`/`completeRegistration` in `routes/auth.js`). It differs only in which role the account gets and which OTP `purpose` guards it: `vendor_registration` is a distinct enum value on `OtpChallenge`, not `registration` plus a payload flag, so a code issued for a customer sign-up can never be redeemed to mint a `shopkeeper` account. The role is hardcoded in the route, never read from a body.
 
-A vendor account created this way is inert until two separate things are true. It has no KYC record, and `middleware/vendorVerified.js` refuses every catalog write in `routes/products.js` until the PAN and bank account are verified (see Vendor KYC, below). Clearing KYC then grants writes only to **its own listings**: `Product.createdBy` is stamped from the session at creation and checked on every later write, so one vendor cannot reprice, empty or delist another's range. A null `createdBy` — seeded catalog, and anything predating the field — is administrable by `market_owner`/`developer` only; "unowned" deliberately does not mean "claimable by the first vendor to ask".
+A vendor account created this way is inert until two separate things are true. It has no KYC record, and `middleware/vendorVerified.js` refuses every catalog write in `routes/products.js` until the bank account is verified (see Vendor KYC, below). Clearing KYC then grants writes only to **its own listings**: `Product.createdBy` is stamped from the session at creation and checked on every later write, so one vendor cannot reprice, empty or delist another's range. A null `createdBy` — seeded catalog, and anything predating the field — is administrable by `market_owner`/`developer` only; "unowned" deliberately does not mean "claimable by the first vendor to ask".
 
 The phone a session is issued for comes from the **stored challenge**, never from the verify request body — otherwise holding a challenge id would let you point it at a number you don't control.
 
@@ -177,14 +177,11 @@ Holding the `shopkeeper` role no longer implies a human vetted the account, so c
 
 The status is read from the database on every request, never cached in the JWT — a de-verified vendor must stop trading immediately, the same reasoning behind re-reading `role` in `middleware/auth.js`.
 
-Two things are proven independently:
-
-- **Identity** — a PAN, which is also the uniqueness key, so one person cannot run several vendor accounts.
-- **Control of the settlement account** — a penny drop. Format validation shows a UPI ID is well-formed; only receiving money proves the vendor can see that account.
+What is collected is a legal name, bank name, bank account number, IFSC and a UPI ID — no PAN; there is no identity-uniqueness check, only **control of the settlement account**, proven by a penny drop. Format validation shows a UPI ID is well-formed; only receiving money proves the vendor can see that account. When the provider reports a beneficiary name for the UPI ID, it must loosely match the declared legal name.
 
 **The penny-drop amount is randomised (1–100 paise) and must be reported exactly.** A fixed ₹1 with a "did you receive it?" button would verify nothing — anyone could click yes. Only its HMAC is stored, exactly like an OTP code, so a database read does not hand over the answer. Attempts are counted atomically before comparison and the record is rejected at the cap.
 
-PAN and bank account are encrypted with AES-256-GCM (`services/fieldCrypto.js`) and only ever returned masked to the last four digits. Because the ciphertext is randomised, uniqueness is enforced on a keyed HMAC fingerprint — a unique index over the ciphertext would never fire.
+The bank account number is encrypted with AES-256-GCM (`services/fieldCrypto.js`) and only ever returned masked to the last four digits.
 
 `services/payouts.js` is a provider interface: RazorpayX when `RAZORPAYX_*` is configured, a console-logging mock otherwise. Production boot refuses the mock. Provider failures surface as **502, never the upstream status** — RazorpayX rejecting our request is our integration fault, and reporting it as a 400 would tell the vendor they typed something wrong when they did not.
 
