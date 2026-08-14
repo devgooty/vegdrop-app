@@ -725,3 +725,41 @@
   .si-step { animation: none; }
   .si-otp { transition: none; }
 }
+
+/* ── Safe areas (notch / home indicator) ─────────────────────────────────────
+
+   `pb-safe` was in use on all three bottom nav bars long before this block
+   existed, and was doing nothing: it is not a Tailwind v4 built-in and nothing
+   here defined it, so the class parsed and silently dropped. That is why the
+   installed app ran under the home indicator.
+
+   Each of these ADDS the device inset to a base pad rather than replacing the
+   element's padding, so a phone with no notch keeps the same comfortable
+   spacing it always had and `env()` contributes 0. The base matches what the
+   bars already set, so nothing shifts on a rectangular screen.
+
+   These are inert without `viewport-fit=cover` in index.html — env() resolves
+   to 0 under the default `viewport-fit=auto`. The two ship together. */
+
+/* Bottom bars: clears the home indicator. Base 0.625rem = the py-2.5 the nav
+   bars already carried. */
+.pb-safe {
+  padding-bottom: calc(0.625rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Top bars: clears the status bar / notch.
+
+   Applied to the bar itself rather than to a wrapper on purpose. Every top bar
+   in this app is `sticky top-0`, and sticky resolves against the scrollport, so
+   padding on an ancestor does not move it — the bar would scroll back up under
+   the clock. Padding it here keeps its own background painted all the way into
+   the inset, which is what makes the status bar look like part of the app. */
+.pt-safe-3 {
+  padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+}
+.pt-safe-3\.5 {
+  padding-top: calc(0.875rem + env(safe-area-inset-top, 0px));
+}
+.pt-safe-6 {
+  padding-top: calc(1.5rem + env(safe-area-inset-top, 0px));
+}

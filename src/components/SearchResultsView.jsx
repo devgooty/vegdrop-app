@@ -53,7 +53,7 @@ export default function SearchResultsView({
 
   return (
     <div className="min-h-screen bg-[#F6F3EC] flex flex-col pb-20 animate-fade-in">
-      <header className="bg-[#FAF7F2] p-3 shadow-xs sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-[#DCD5C6]">
+      <header className="bg-[#FAF7F2] p-3 pt-safe-3 shadow-xs sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-[#DCD5C6]">
         <button
           onClick={onBack}
           className="skeuo-btn-light p-1 px-2.5 rounded-full transition-all flex items-center gap-1 text-xs font-bold cursor-pointer"

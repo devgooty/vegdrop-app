@@ -3,7 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/logo.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      `viewport-fit=cover` is what lets the installed app fill the whole screen.
+      The default (`auto`) keeps the page inside the safe area, which on a
+      notched phone letterboxes it — blank bands above and below that read as
+      "the app doesn't fit the screen".
+
+      It is also the switch that makes `env(safe-area-inset-*)` return real
+      numbers; without it they are 0 and every safe-area pad in src/index.css is
+      silently a no-op. So this attribute and those pads ship together: cover
+      without the pads puts the header under the clock and the nav under the
+      home indicator.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>VegDrop - Artisanal Fresh Basket</title>
     
     <!-- 📱 Progressive Web App (PWA) Config -->

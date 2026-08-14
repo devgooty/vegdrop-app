@@ -87,7 +87,7 @@ export default function ProductDetailView({
   return (
     <div className="min-h-screen bg-[#F6F3EC] flex flex-col pb-6 animate-fade-in">
       {/* 1. Header Bar with Back Button */}
-      <header className="bg-[#FAF7F2] p-3.5 shadow-xs sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[#DCD5C6]">
+      <header className="bg-[#FAF7F2] p-3.5 pt-safe-3.5 shadow-xs sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[#DCD5C6]">
         <button
           onClick={onBack}
           className="skeuo-btn-light p-1.5 px-3 rounded-full transition-all flex items-center gap-1 text-xs font-bold cursor-pointer"
