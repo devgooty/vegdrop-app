@@ -9,14 +9,17 @@ const Stall = require('../models/Stall');
 const StallInventory = require('../models/StallInventory');
 
 /**
- * Development seeding.
+ * Development seeding, and the shared product catalog.
  *
  * The previous seeder hardcoded eight accounts with real personal passwords in
  * source. There are no passwords at all now — signing in as one of these
  * accounts means requesting a code for its phone number, which the console
  * transport prints to stdout in development.
  *
- * Refuses to run in production.
+ * Demo accounts, markets and stalls refuse to run in production. The product
+ * catalog does not: SEED_PRODUCTS is the shared platform catalog, not demo
+ * data, and `seedProducts()` only ever inserts a sku that is missing — see
+ * its own comment below.
  */
 
 const SEED_PRODUCTS = [
@@ -56,6 +59,14 @@ const SEED_PRODUCTS = [
   { sku: 'VEG-GREENBEANS-500', categoryId: 2, name: 'French Beans (Fansi)', weight: '500g', pricePaise: 4500, oldPricePaise: 5500, rating: 4.4, reviews: 61, isOrganic: false, stock: 18, image: 'https://images.unsplash.com/photo-1567375698348-5d9d5ae99de0?w=300' },
   { sku: 'VEG-SPRINGONION-150', categoryId: 2, name: 'Spring Onion (Hara Pyaaz)', weight: '1 bunch (approx 150g)', pricePaise: 2000, oldPricePaise: 2500, rating: 4.3, reviews: 37, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1559836833-2a2c99b1f54f?w=300' },
   { sku: 'VEG-TURNIP-500', categoryId: 2, name: 'Fresh Turnip (Shalgam)', weight: '500g', pricePaise: 3000, oldPricePaise: 3800, rating: 4.2, reviews: 24, isOrganic: false, stock: 14, image: 'https://images.unsplash.com/photo-1648291913186-951f2ef36c85?w=300' },
+
+  /**
+   * The one item `marketVegetables` in mockData.js still had no matching row
+   * for — everything else in that list was covered when the batch above was
+   * added. Same treatment: real product, categoryId 2, the exact photo id
+   * already vetted for it in mockData.js.
+   */
+  { sku: 'VEG-CORIANDER-100', categoryId: 2, name: 'Fresh Coriander (Dhaniya)', weight: '1 bunch (approx 100g)', pricePaise: 1500, oldPricePaise: 2000, rating: 4.4, reviews: 45, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1723810330043-dd05647294cb?w=300' },
 ];
 
 /**
@@ -248,13 +259,20 @@ async function seedMarkets() {
 }
 
 async function seedIfEmpty() {
+  /**
+   * The shared platform catalog runs in every environment, production
+   * included. `seedProducts()` only ever inserts a sku that is missing — see
+   * the comment on it above — so this is how a product added to
+   * SEED_PRODUCTS after production was first seeded still reaches it, on the
+   * next ordinary boot, without a one-off script or direct database access.
+   */
+  const productCount = await seedProducts();
+  if (productCount > 0) console.info(`[seed] inserted ${productCount} product(s) into the catalog.`);
+
   if (config.isProduction) {
-    console.info('[seed] skipped: seeding is disabled in production.');
+    console.info('[seed] demo accounts, markets and stalls skipped: disabled in production.');
     return;
   }
-
-  const productCount = await seedProducts();
-  if (productCount > 0) console.info(`[seed] inserted ${productCount} demo products.`);
 
   const accounts = await seedAccounts();
 
@@ -283,5 +301,12 @@ async function seedIfEmpty() {
  * identifies what to delete from the same constants that created it. A removal
  * list maintained separately would silently stop matching the moment either
  * side gained a row.
+ *
+ * `seedProducts` is exported on its own, separately from `seedIfEmpty`, because
+ * it is already per-sku idempotent against a non-empty collection (see the
+ * comment on it above) — `seedIfEmpty`'s production guard exists to stop the
+ * *other* seed steps (demo accounts, markets) from ever running there, not to
+ * stop a newly added catalog item from reaching a database that was seeded
+ * before that item existed.
  */
-module.exports = { seedIfEmpty, SEED_ACCOUNTS, SEED_PRODUCTS, SEED_MARKETS, SEED_STALLS };
+module.exports = { seedIfEmpty, seedProducts, SEED_ACCOUNTS, SEED_PRODUCTS, SEED_MARKETS, SEED_STALLS };
