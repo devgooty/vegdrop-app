@@ -2,9 +2,15 @@ import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Truck, CheckCircle2, MapPin, Phone, PackageCheck, Bell,
   LogOut, User, Home, Map as MapIcon, Wallet, Info, Clock, AlertTriangle,
+  Landmark, CreditCard, Lock, Loader2, Pencil,
 } from 'lucide-react';
 import MarketPickups from './MarketPickups';
-import { startLocationReporting, setDutyStatus } from '../services/rider';
+import {
+  startLocationReporting, setDutyStatus,
+  fetchRiderBankDetails, saveRiderBankDetails,
+  describeLegalNameProblem, describeBankNameProblem, describeIfscProblem, describeAccountProblem,
+} from '../services/rider';
+import { ApiRequestError, NetworkError } from '../services/apiClient';
 import useRiderJobs from '../hooks/useRiderJobs';
 
 /** Leaflet only ships to a rider who actually has a route to look at. */
@@ -590,6 +596,8 @@ function ProfileTab({ user, deliveredTotal, onLogout }) {
         </div>
       </div>
 
+      <BankDetailsCard />
+
       {onLogout && (
         <button
           type="button"
@@ -599,6 +607,259 @@ function ProfileTab({ user, deliveredTotal, onLogout }) {
           <LogOut className="w-5 h-5" /> SIGN OUT
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Where the market office should send this rider's payouts.
+ *
+ * There is no rider payout ledger in this codebase (see DeliveriesTab, above),
+ * so saving these details unlocks nothing — it just keeps them on file instead
+ * of collected ad hoc over phone calls. Unlike vendor KYC there is no penny
+ * drop: nobody is proving control of the account here, only recording it.
+ */
+function BankDetailsCard() {
+  const [details, setDetails] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const [legalName, setLegalName] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [bankAccount, setBankAccount] = useState('');
+  const [ifsc, setIfsc] = useState('');
+
+  const describeError = (err, fallback) => {
+    if (err instanceof NetworkError) {
+      return 'Could not reach the server. Check your connection and try again.';
+    }
+    if (err instanceof ApiRequestError) return err.message;
+    return fallback;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchRiderBankDetails()
+      .then((data) => {
+        if (cancelled) return;
+        setDetails(data);
+        if (!data) setIsEditing(true);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(describeError(err, 'Could not load your bank details.'));
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const startEditing = () => {
+    setLegalName(details?.legalName || '');
+    setBankName(details?.bankName || '');
+    setBankAccount('');
+    setIfsc(details?.ifsc || '');
+    setError('');
+    setIsEditing(true);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (isBusy) return;
+
+    // Advisory checks only; the server enforces the authoritative rules.
+    const problem =
+      describeLegalNameProblem(legalName) ||
+      describeBankNameProblem(bankName) ||
+      describeAccountProblem(bankAccount) ||
+      describeIfscProblem(ifsc);
+
+    if (problem) {
+      setError(problem);
+      return;
+    }
+
+    setError('');
+    setIsBusy(true);
+    try {
+      const updated = await saveRiderBankDetails({
+        legalName: legalName.trim(),
+        bankName: bankName.trim(),
+        bankAccount: bankAccount.trim(),
+        ifsc: ifsc.trim().toUpperCase(),
+      });
+      setDetails(updated);
+      setIsEditing(false);
+    } catch (err) {
+      setError(describeError(err, 'Could not save those details. Please try again.'));
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-center gap-2 py-6 text-gray-500 text-xs font-bold">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>Loading bank details…</span>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+      <div className="flex items-center justify-between border-b pb-2 mb-4">
+        <h3 className="font-black text-gray-900 flex items-center gap-2">
+          <Landmark className="w-4 h-4 text-emerald-700" />
+          Bank Details
+        </h3>
+        {!isEditing && (
+          <button
+            type="button"
+            onClick={startEditing}
+            className="text-emerald-700 text-xs font-bold flex items-center gap-1 active:scale-95"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            {details ? 'Edit' : 'Add'}
+          </button>
+        )}
+      </div>
+
+      {!isEditing && details && (
+        <div className="space-y-1.5">
+          <Row label="Name (PAN)" value={details.legalName} />
+          <Row label="Bank" value={details.bankName} />
+          <Row label="Account" value={details.bankAccount} />
+          <Row label="IFSC" value={details.ifsc} />
+        </div>
+      )}
+
+      {!isEditing && !details && (
+        <p className="text-xs text-gray-500 leading-relaxed">
+          Add your bank details so the market office knows where to send what you're owed.
+        </p>
+      )}
+
+      {isEditing && (
+        <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
+          <div>
+            <label className="block font-bold text-gray-800 mb-1">Name (as per PAN card)</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={legalName}
+                onChange={(e) => setLegalName(e.target.value.slice(0, 120))}
+                placeholder="e.g. Ramesh Kumar"
+                maxLength={120}
+                className="w-full bg-white border border-gray-300 rounded-2xl py-2.5 pl-10 pr-3 text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                required
+                disabled={isBusy}
+              />
+              <User className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-800 mb-1">Bank Name</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value.slice(0, 120))}
+                placeholder="e.g. HDFC Bank"
+                maxLength={120}
+                className="w-full bg-white border border-gray-300 rounded-2xl py-2.5 pl-10 pr-3 text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                required
+                disabled={isBusy}
+              />
+              <CreditCard className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-800 mb-1">Bank Account Number</label>
+            <div className="relative">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={bankAccount}
+                onChange={(e) => setBankAccount(e.target.value.replace(/\D/g, '').slice(0, 18))}
+                placeholder={details ? `Currently ${details.bankAccount}` : '9 to 18 digits'}
+                className="w-full bg-white border border-gray-300 rounded-2xl py-2.5 pl-10 pr-3 text-xs font-mono font-semibold tracking-wider text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                required
+                disabled={isBusy}
+              />
+              <Landmark className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-800 mb-1">IFSC Code</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={ifsc}
+                onChange={(e) => setIfsc(e.target.value.toUpperCase().slice(0, 11))}
+                placeholder="HDFC0001234"
+                maxLength={11}
+                className="w-full bg-white border border-gray-300 rounded-2xl py-2.5 pl-10 pr-3 text-xs font-mono font-semibold tracking-wider text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                required
+                disabled={isBusy}
+              />
+              <Landmark className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+            </div>
+          </div>
+
+          <div className="bg-gray-50 p-3 rounded-2xl border border-gray-200 flex gap-2">
+            <Lock className="w-3.5 h-3.5 text-gray-500 shrink-0 mt-0.5" />
+            <p className="text-[10px] text-gray-600 font-semibold leading-relaxed">
+              Your account number is encrypted and never shown in full again — only the last four
+              digits.
+            </p>
+          </div>
+
+          {error && <p className="text-[11px] font-bold text-rose-600">{error}</p>}
+
+          <div className="flex gap-2">
+            {details && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditing(false);
+                  setError('');
+                }}
+                disabled={isBusy}
+                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-xs transition-colors active:scale-95 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={isBusy}
+              className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold py-3 rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 text-xs active:scale-98 disabled:opacity-70"
+            >
+              {isBusy && <Loader2 className="w-4 h-4 animate-spin" />}
+              <span>{isBusy ? 'Saving…' : 'Save'}</span>
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  );
+}
+
+function Row({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wide">{label}</span>
+      <span className="text-[11px] font-mono font-bold text-gray-900 truncate">{value || '—'}</span>
     </div>
   );
 }

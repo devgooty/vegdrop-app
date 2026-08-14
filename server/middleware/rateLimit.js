@@ -169,6 +169,15 @@ const stallActionLimiter = rateLimit({
   handler: jsonLimitHandler('Too many actions. Please slow down.', 'RATE_LIMITED'),
 });
 
+/** A rider's own settlement details are rarely edited; this only guards retries. */
+const riderBankDetailsLimiter = rateLimit({
+  ...base,
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) => `riderbank:${req.user?._id || ipKeyGenerator(req.ip)}`,
+  handler: jsonLimitHandler('Too many attempts. Please wait before trying again.', 'RATE_LIMITED'),
+});
+
 module.exports = {
   globalLimiter,
   otpRequestLimiter,
@@ -179,4 +188,5 @@ module.exports = {
   kycLimiter,
   riderLocationLimiter,
   stallActionLimiter,
+  riderBankDetailsLimiter,
 };

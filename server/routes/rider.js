@@ -5,10 +5,11 @@ const Order = require('../models/Order');
 const User = require('../models/User');
 const Market = require('../models/Market');
 const Stall = require('../models/Stall');
+const RiderBankDetails = require('../models/RiderBankDetails');
 const { ApiError } = require('../middleware/errors');
 const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { riderLocationLimiter } = require('../middleware/rateLimit');
+const { riderLocationLimiter, riderBankDetailsLimiter } = require('../middleware/rateLimit');
 const dispatch = require('../services/dispatch');
 
 const router = express.Router();
@@ -394,6 +395,46 @@ router.post(
     }
 
     return res.json({ data: result.order.toJSON() });
+  }
+);
+
+/**
+ * Settlement details — where the market office should send this rider's
+ * payouts. There is no rider payout ledger in this codebase, so nothing reads
+ * this to decide what to pay; it just keeps the details on file. Unlike vendor
+ * KYC, there is no penny-drop step: nothing here is unlocked or gated by it.
+ */
+router.get('/bank-details', ...riderGate, async (req, res) => {
+  const details = await RiderBankDetails.findOne({ user: req.user._id });
+  return res.json({ data: details ? details.toPublicJSON() : null });
+});
+
+/** Submit or replace settlement details. Re-submitting simply overwrites them. */
+router.put(
+  '/bank-details',
+  ...riderGate,
+  riderBankDetailsLimiter,
+  validate({
+    body: z
+      .object({
+        legalName: fields.nonEmptyString(120),
+        bankName: fields.nonEmptyString(120),
+        bankAccount: fields.bankAccount,
+        ifsc: fields.ifsc,
+      })
+      .strict(),
+  }),
+  async (req, res) => {
+    const { legalName, bankName, bankAccount, ifsc } = req.valid.body;
+    const secrets = RiderBankDetails.buildSecrets({ bankAccount });
+
+    const details = await RiderBankDetails.findOneAndUpdate(
+      { user: req.user._id },
+      { $set: { legalName, bankName, ifsc, ...secrets } },
+      { returnDocument: 'after', upsert: true, runValidators: true, setDefaultsOnInsert: true }
+    );
+
+    return res.json({ data: details.toPublicJSON() });
   }
 );
 

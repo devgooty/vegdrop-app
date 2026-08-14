@@ -66,6 +66,50 @@ export async function markDelivered(orderId) {
   return result.data;
 }
 
+// --- Settlement details -----------------------------------------------------
+// There is no rider payout ledger in this codebase; these just keep the
+// rider's bank details on file for the market office to pay out against.
+
+/** @returns {Promise<{legalName, bankName, bankAccount, ifsc, updatedAt}|null>} */
+export async function fetchRiderBankDetails() {
+  const result = await api.get('/rider/bank-details');
+  return result.data;
+}
+
+/** Submit or replace settlement details. Re-submitting overwrites them. */
+export async function saveRiderBankDetails({ legalName, bankName, bankAccount, ifsc }) {
+  const result = await api.put('/rider/bank-details', { legalName, bankName, bankAccount, ifsc });
+  return result.data;
+}
+
+// --- Client-side format guidance -------------------------------------------
+// Advisory only, to give immediate feedback. The server enforces the real
+// rules and its answer is the one that counts.
+
+export function describeLegalNameProblem(value) {
+  if (!value || !value.trim()) return 'Enter the name exactly as it appears on your PAN card.';
+  return null;
+}
+
+export function describeBankNameProblem(value) {
+  if (!value || !value.trim()) return 'Enter your bank name.';
+  return null;
+}
+
+export function describeIfscProblem(value) {
+  if (!value) return 'Enter the IFSC code.';
+  if (!/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(value.trim())) {
+    return 'IFSC must be 4 letters, a zero, then 6 characters (e.g. HDFC0001234).';
+  }
+  return null;
+}
+
+export function describeAccountProblem(value) {
+  if (!value) return 'Enter your bank account number.';
+  if (!/^\d{9,18}$/.test(value.trim())) return 'Account number must be 9 to 18 digits.';
+  return null;
+}
+
 /**
  * Why this rider is not reaching dispatch, in a form a screen can render.
  *
