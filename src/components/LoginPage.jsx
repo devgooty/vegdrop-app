@@ -492,8 +492,15 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
         )}
       </header>
 
-      <main className="shrink-0 px-4 pt-6 pb-2 sm:px-5 sm:pt-8">
-        <div className="mx-auto w-full max-w-[26rem]">
+      {/* flex-1, not shrink-0: on the short identifier step the sheet alone
+          doesn't reach the bottom of a normal phone screen, leaving a gap of
+          bare page background beneath the card. Growing this to fill
+          whatever the (shrunk) header left behind — and letting it shrink
+          back on the taller registration step, same as before — keeps that
+          space inside the column instead of showing as dead space below
+          it. */}
+      <main className="flex flex-1 flex-col px-4 pt-6 pb-2 sm:px-5 sm:pt-8">
+        <div className="mx-auto flex w-full max-w-[26rem] flex-1 flex-col">
 
           {/* The photo is shared with the customer app, so this heading is the
               one place a shopkeeper or rider is told this screen is theirs.
