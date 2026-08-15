@@ -124,18 +124,6 @@ const VEG_ROW_A = marketVegetables.slice(0, Math.ceil(marketVegetables.length / 
 const VEG_ROW_B = marketVegetables.slice(Math.ceil(marketVegetables.length / 2));
 
 /**
- * Shopkeeper-only footer chips. The identifier step (one field, a checkbox,
- * a button) is short enough that on an ordinary phone the card no longer
- * reaches the bottom of the screen, leaving the page's own cream background
- * empty below it — a gap, not a design choice. Rather than stretching the
- * card itself, that leftover space is filled with a light, dimmed row of the
- * same produce photography used elsewhere in the app: it reads as a quiet
- * background detail, not a second hero competing with the artwork above the
- * form. Ten is enough to wrap across a phone width without repeating.
- */
-const SHOPKEEPER_FOOTER_VEG = marketVegetables.slice(0, 10);
-
-/**
  * How each app signs a NEW account up.
  *
  * Every role registers through the same dual-OTP flow — this app has no
@@ -505,11 +493,12 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
       </header>
 
       {/* flex-1, not shrink-0: on the short identifier step the sheet alone
-          doesn't reach the bottom of a normal phone screen. Growing this to
-          fill whatever the (shrunk) header left behind — and letting it
-          shrink back on the taller registration step, same as before —
-          means the leftover space is always accounted for, whether that's
-          the shopkeeper footer below or just the sheet's own padding. */}
+          doesn't reach the bottom of a normal phone screen, leaving a gap of
+          bare page background beneath the card. Growing this to fill
+          whatever the (shrunk) header left behind — and letting it shrink
+          back on the taller registration step, same as before — keeps that
+          space inside the column instead of showing as dead space below
+          it. */}
       <main className="flex flex-1 flex-col px-4 pt-6 pb-2 sm:px-5 sm:pt-8">
         <div className="mx-auto flex w-full max-w-[26rem] flex-1 flex-col">
 
@@ -746,21 +735,6 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               </form>
             )}
           </section>
-
-          {/* Fills whatever room the flex-1 column above has left over —
-              see the comment on <main> — instead of leaving the page's
-              cream background blank beneath a short card. */}
-          {appType === 'shopkeeper' && (
-            <div className="si-shopkeeper-footer" aria-hidden="true">
-              <div className="si-shopkeeper-footer-row">
-                {SHOPKEEPER_FOOTER_VEG.map((item) => (
-                  <span key={item.slug} className="si-shopkeeper-footer-chip">
-                    <img src={item.imageUrl} alt="" loading="lazy" />
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
 
         </div>
       </main>
