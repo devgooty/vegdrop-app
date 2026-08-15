@@ -2288,6 +2288,7 @@ export default function App() {
           // control in the same place, and leaving it inert made it read as
           // broken now that the nav is reachable from inside the basket.
           onOpenCart={() => setIsCartOpen((open) => !open)}
+          cartOpen={isCartOpen}
           cartBump={cartBump}
           pendingOrdersCount={pendingOrdersCount}
           userRole={user?.role}
