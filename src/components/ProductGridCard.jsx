@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Star, Plus, Minus, Camera } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
+import { productName, productWeight } from '../i18n/catalog';
 
 /**
  * The two-per-row product card.
@@ -20,6 +22,7 @@ export default function ProductGridCard({
   onUpdateQuantity,
   onSelectProduct
 }) {
+  const { t, language } = useLanguage();
   const isWeightBased = item.weight && (item.weight.toLowerCase().includes('g') || item.weight.toLowerCase().includes('kg')) && !item.weight.toLowerCase().includes('pack');
 
   const weightVariants = [
@@ -98,7 +101,7 @@ export default function ProductGridCard({
 
             {item.isOrganic && (
               <span className="bg-[#EAE4D7] text-[#1B4D3E] border border-[#D5CDBC] absolute top-1 left-1 text-[8px] font-extrabold px-1.5 py-0.2 rounded-md uppercase tracking-wider shadow-2xs">
-                Organic
+                {t('product.organic')}
               </span>
             )}
 
@@ -114,7 +117,7 @@ export default function ProductGridCard({
             {item.freshPhotoAt && (
               <span className="bg-[#1B4D3E] text-white absolute top-1 right-1 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider shadow-xs flex items-center gap-0.5">
                 <Camera className="w-2.5 h-2.5" />
-                Today
+                {t('product.today')}
               </span>
             )}
             <div className="absolute bottom-1 right-1 bg-[#FFFDF9]/95 backdrop-blur-xs px-1.5 py-0.2 rounded-md text-[9px] font-bold text-[#2D2A26] flex items-center gap-0.5 border border-[#E0D9C8] shadow-xs">
@@ -123,7 +126,7 @@ export default function ProductGridCard({
             </div>
           </div>
 
-          <h3 className="font-semibold text-xs text-[#2D2A26] line-clamp-1 group-hover:text-[#1B4D3E] transition-colors">{item.name}</h3>
+          <h3 className="font-semibold text-xs text-[#2D2A26] line-clamp-1 group-hover:text-[#1B4D3E] transition-colors">{productName(item, language)}</h3>
           {/*
             The market this price belongs to. Only present when browsing a
             market — the platform catalog has no store behind it, and an empty
@@ -132,7 +135,7 @@ export default function ProductGridCard({
           {item.marketName && (
             <p className="text-[10px] font-semibold text-[#1B4D3E] line-clamp-1">{item.marketName}</p>
           )}
-          <p className="text-[10px] text-[#7A7060] font-medium">{variantWeightStr}</p>
+          <p className="text-[10px] text-[#7A7060] font-medium">{productWeight(variantWeightStr, language)}</p>
 
           {/* Weight Variants Selector */}
           {isWeightBased && (
@@ -170,7 +173,7 @@ export default function ProductGridCard({
             disabled
             className="bg-gray-200 text-gray-400 font-bold px-2 py-1 rounded-xl text-[10px] cursor-not-allowed"
           >
-            Sold Out
+            {t('product.soldOut')}
           </button>
         ) : inCart ? (
           <div className="skeuo-btn-emerald flex items-center rounded-xl p-0.5 shadow-sm" onClick={(e) => e.stopPropagation()}>
@@ -204,7 +207,7 @@ export default function ProductGridCard({
             className="skeuo-btn-emerald font-extrabold px-2.5 py-1 rounded-xl text-xs flex items-center gap-1 cursor-pointer active:scale-95"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Add</span>
+            <span>{t('product.add')}</span>
           </button>
         )}
       </div>

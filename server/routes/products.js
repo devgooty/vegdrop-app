@@ -180,6 +180,11 @@ router.post(
         sku: fields.nonEmptyString(60),
         categoryId: z.number().int(),
         name: fields.nonEmptyString(200),
+        // Optional translations. Empty is allowed and meaningful — it is what
+        // makes the client fall back to the English name for this one product
+        // rather than showing a blank label.
+        nameTe: z.string().trim().max(200).optional(),
+        nameHi: z.string().trim().max(200).optional(),
         weight: z.string().trim().max(60).optional(),
         price: rupeesToPaise,
         oldPrice: rupeesToPaise.optional(),
@@ -222,6 +227,11 @@ router.patch(
     body: z
       .object({
         name: fields.nonEmptyString(200).optional(),
+        // Settable to '' on purpose, which is how a wrong translation gets
+        // withdrawn — the row falls back to English instead of being stuck with
+        // it until someone edits the database by hand.
+        nameTe: z.string().trim().max(200).optional(),
+        nameHi: z.string().trim().max(200).optional(),
         weight: z.string().trim().max(60).optional(),
         price: rupeesToPaise.optional(),
         oldPrice: rupeesToPaise.nullable().optional(),

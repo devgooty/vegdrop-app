@@ -1156,6 +1156,16 @@ export default function App() {
         id: product.id,
         originalId: product.originalId ?? product.id,
         name: product.name,
+        /**
+         * The translated names travel into the line too.
+         *
+         * The line is rebuilt from a fixed field list rather than spread, which
+         * is the same trap `originalId` fell into above: without these the
+         * basket would resolve every product back to its English name while the
+         * card the shopper tapped it from showed Telugu.
+         */
+        nameTe: product.nameTe || '',
+        nameHi: product.nameHi || '',
         price: product.price,
         quantity: 1,
         image: product.image,

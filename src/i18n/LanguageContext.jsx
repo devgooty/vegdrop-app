@@ -41,7 +41,7 @@ export function LanguageProvider({ children }) {
     () => ({
       language,
       setLanguage,
-      t: (key) => translate(key, language),
+      t: (key, vars) => translate(key, language, vars),
     }),
     [language, setLanguage]
   );
@@ -49,7 +49,7 @@ export function LanguageProvider({ children }) {
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 
-/** @returns {{ language: string, setLanguage: (code: string) => void, t: (key: string) => string }} */
+/** @returns {{ language: string, setLanguage: (code: string) => void, t: (key: string, vars?: Record<string, string|number>) => string }} */
 export function useLanguage() {
   const ctx = useContext(LanguageContext);
   if (!ctx) throw new Error('useLanguage() must be used inside a LanguageProvider.');

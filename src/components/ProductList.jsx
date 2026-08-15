@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Star, Plus, Minus, ChevronRight, Eye } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
+import { productName, productWeight, categoryTitle } from '../i18n/catalog';
 
 export default function ProductList({
   categories,
@@ -10,6 +12,7 @@ export default function ProductList({
   onOpenCategoryDetail,
   onSelectProduct
 }) {
+  const { t, language } = useLanguage();
   return (
     <section className="space-y-6 px-4 pb-6 select-none">
       {categories.map((category, catIndex) => {
@@ -26,7 +29,7 @@ export default function ProductList({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <h3 className="font-vintage text-base font-bold text-[#1B4D3E] tracking-tight">
-                  {category.title}
+                  {categoryTitle(category, language)}
                 </h3>
                 <span className="text-[10px] font-bold text-[#1B4D3E] bg-[#EAE4D7] px-2.5 py-0.5 rounded-full border border-[#D5CDBC] shadow-2xs">
                   {categoryProducts.length} Harvested
@@ -76,6 +79,9 @@ function ProductCard({
   onUpdateQuantity,
   delayIndex
 }) {
+  // Its own hook rather than props threaded down from ProductList: this is a
+  // sibling component in the same file, not a child of that closure.
+  const { t, language } = useLanguage();
   const [imgLoaded, setImgLoaded] = useState(false);
 
   const isWeightBased = item.weight && (item.weight.toLowerCase().includes('g') || item.weight.toLowerCase().includes('kg')) && !item.weight.toLowerCase().includes('pack');
@@ -125,6 +131,9 @@ function ProductCard({
       price: displayPrice,
       oldPrice: displayOldPrice,
       weight: variantWeightStr,
+      // Stays English on purpose. This is the line's stored record, which order
+      // history and support read; the Telugu/Hindi names ride along as their own
+      // fields and productName() resolves the display name at render time.
       name: isWeightBased ? `${item.name} (${variantWeightStr})` : item.name
     }, e);
   };
@@ -154,7 +163,7 @@ function ProductCard({
 
             <img
               src={item.image}
-              alt={item.name}
+              alt={productName(item, language)}
               onLoad={() => setImgLoaded(true)}
               className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-500 img-lazy ${
                 imgLoaded ? 'loaded' : ''
@@ -176,7 +185,7 @@ function ProductCard({
             {item.stock === 0 && (
               <div className="absolute inset-0 bg-black/55 flex items-center justify-center p-1">
                 <span className="bg-rose-600 text-white font-extrabold text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full shadow-xs">
-                  Sold Out
+                  {t('product.soldOut')}
                 </span>
               </div>
             )}
@@ -196,7 +205,7 @@ function ProductCard({
 
         <div>
           <h4 className="font-vintage font-bold text-xs text-[#2D2A26] line-clamp-1 group-hover:text-[#1B4D3E] transition-colors">
-            {item.name}
+            {productName(item, language)}
           </h4>
 
           {/*
@@ -254,7 +263,7 @@ function ProductCard({
             disabled
             className="bg-gray-200 text-gray-400 font-bold px-2 py-1 rounded-xl text-[10px] cursor-not-allowed"
           >
-            Sold Out
+            {t('product.soldOut')}
           </button>
         ) : inCart ? (
           <div className="skeuo-btn-emerald flex items-center rounded-xl p-0.5 shadow-sm" onClick={(e) => e.stopPropagation()}>
@@ -292,7 +301,7 @@ function ProductCard({
             className="skeuo-btn-emerald font-extrabold px-2.5 py-1 rounded-xl text-xs flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow-2xs hover:shadow-xs"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Add</span>
+            <span>{t('product.add')}</span>
           </button>
         )}
       </div>
