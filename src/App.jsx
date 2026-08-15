@@ -23,6 +23,7 @@ import NearbyShops from './components/NearbyShops';
 import LocationPrimer from './components/LocationPrimer';
 import LanguagePicker from './components/LanguagePicker';
 import { useLanguage } from './i18n/LanguageContext';
+import { productName, dateLocale } from './i18n/catalog';
 import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
 import { savedCustomerAddress } from './services/address';
 import { productSkuFromHash } from './services/share';
@@ -68,7 +69,7 @@ export default function App() {
   const uniqueId = () => ++_idCounter.current;
 
   const toast = useToast();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   /**
    * The category taxonomy is genuinely static — there is no categories endpoint
@@ -246,7 +247,7 @@ export default function App() {
     // blocked-reason banner keeps whichever language was active when the basket
     // first refused, and never restates itself after a language switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMarket, selectedShop, addressVersion, t]);
+  }, [selectedMarket, selectedShop, addressVersion, t, language]);
 
   // Profile editing, plus the verified phone-change flow
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -526,11 +527,11 @@ export default function App() {
    */
   const handleScheduleCart = useCallback(async () => {
     if (!user) {
-      toast.warning('Sign in to set up a repeat delivery.');
+      toast.warning(t('toast.signInToSchedule'));
       return;
     }
     if (!scheduledCartItems || scheduledCartItems.length === 0) {
-      toast.warning('Your basket is empty!');
+      toast.warning(t('toast.basketEmpty'));
       return;
     }
     // A standing order inherits the same requirement as a one-off: without a
@@ -545,9 +546,7 @@ export default function App() {
     // Daily needs no dates at all; the others need at least one to recur on.
     if (frequency !== 'daily' && selectedDates.length === 0) {
       toast.warning(
-        frequency === 'weekly'
-          ? 'Pick at least one day of the week.'
-          : 'Pick at least one day of the month.'
+        t(frequency === 'weekly' ? 'toast.pickWeekday' : 'toast.pickMonthDay')
       );
       return;
     }
@@ -581,10 +580,13 @@ export default function App() {
       setIsScheduledCartOpen(false);
 
       toast.success(
-        `${describeRecurrence(created)} — first delivery ${new Date(created.nextRunAt).toLocaleDateString()} 📅`
+        t('toast.scheduleCreated', {
+          recurrence: describeRecurrence(created, t, dateLocale(language)),
+          date: new Date(created.nextRunAt).toLocaleDateString(dateLocale(language)),
+        })
       );
     } catch (err) {
-      toast.error(err.message || 'Could not set up that repeat delivery.');
+      toast.error(err.message || t('toast.scheduleFailed'));
     }
   }, [
     selectedDates,
@@ -594,6 +596,8 @@ export default function App() {
     selectedMarket,
     checkoutBlockedReason,
     toast,
+    t,
+    language,
   ]);
 
   /**
@@ -617,8 +621,8 @@ export default function App() {
     } else {
       setActiveTab('home');
     }
-    toast.success(`Welcome back, ${userData.name}! 🌿`);
-  }, [setActiveTab, toast]);
+    toast.success(t('toast.welcomeBack', { name: userData.name }));
+  }, [setActiveTab, toast, t]);
 
   const handleLogout = useCallback(async () => {
     const name = user?.name || 'User';
@@ -626,8 +630,8 @@ export default function App() {
     setUser(null);
     clearCart();
     setActiveTab('login');
-    toast.info(`Signed out. See you soon, ${name}! 👋`);
-  }, [user, clearCart, setActiveTab, toast]);
+    toast.info(t('toast.signedOut', { name }));
+  }, [user, clearCart, setActiveTab, toast, t]);
 
   /**
    * Sign out every device, not just this one.
@@ -647,12 +651,7 @@ export default function App() {
    * holding.
    */
   const handleLogoutEverywhere = useCallback(async () => {
-    const confirmed = window.confirm(
-      'Sign out on every device?\n\n' +
-      'Every other phone, tablet and browser signed in to this account will be ' +
-      'signed out immediately, and so will this one. Use this if you think ' +
-      'someone else has access to your account.'
-    );
+    const confirmed = window.confirm(t('toast.confirmLogoutEverywhere'));
     if (!confirmed) return;
 
     const name = user?.name || 'User';
@@ -665,14 +664,12 @@ export default function App() {
     setUser(null);
     clearCart();
     setActiveTab('login');
-    toast.success(`All devices signed out. Sign in again to continue, ${name}. 🔒`);
-  }, [user, clearCart, setActiveTab, toast]);
+    toast.success(t('toast.loggedOutEverywhere', { name }));
+  }, [user, clearCart, setActiveTab, toast, t]);
 
   const handleDeleteAccount = useCallback(async () => {
     if (!user) return;
-    const confirmDelete = window.confirm(
-      "⚠️ WARNING: Are you sure you want to PERMANENTLY delete your account? This will remove all your data from the database and cannot be undone."
-    );
+    const confirmDelete = window.confirm(t('toast.confirmDeleteAccount'));
     if (!confirmDelete) return;
 
     try {
@@ -681,9 +678,11 @@ export default function App() {
       // Self-service deletion is admin-gated server-side; surface the refusal
       // rather than signing the user out as though it had succeeded.
       toast.error(
-        err instanceof ApiRequestError && err.status === 403
-          ? 'Account deletion must be performed by an administrator. Contact support.'
-          : 'Could not delete your account. Please try again.'
+        t(
+          err instanceof ApiRequestError && err.status === 403
+            ? 'toast.deleteNeedsAdmin'
+            : 'toast.deleteFailed'
+        )
       );
       return;
     }
@@ -692,8 +691,8 @@ export default function App() {
     setUser(null);
     clearCart();
     setActiveTab('login');
-    toast.warning("Your account was permanently deleted. 👋");
-  }, [user, clearCart, setActiveTab, setRegisteredUsers, toast]);
+    toast.warning(t('toast.accountDeleted'));
+  }, [user, clearCart, setActiveTab, setRegisteredUsers, toast, t]);
 
   const handleStartEditingProfile = useCallback(() => {
     if (!user) return;
@@ -731,7 +730,7 @@ export default function App() {
     const phone = editPhone.trim();
 
     if (!name || !phone) {
-      toast.error('Name and mobile number are required.');
+      toast.error(t('toast.nameAndPhoneRequired'));
       return;
     }
 
@@ -750,7 +749,7 @@ export default function App() {
       // An address can be added or replaced, but not removed — there is no
       // endpoint for dropping one, so say that rather than silently ignoring it.
       if (emailChanged && !email) {
-        toast.warning('Removing an email address is not supported yet.');
+        toast.warning(t('toast.emailRemovalUnsupported'));
       }
 
       if (emailChanged && email) {
@@ -775,15 +774,15 @@ export default function App() {
       }
 
       setIsEditingProfile(false);
-      if (name !== user.name) toast.success('Profile updated successfully!');
+      if (name !== user.name) toast.success(t('toast.profileUpdated'));
     } catch (err) {
       toast.error(
         err.code === 'EMAIL_NOT_CONFIGURED'
-          ? 'Email is not set up on this server yet, so an address cannot be verified.'
-          : err.message || 'Could not update your profile.'
+          ? t('toast.emailNotConfigured')
+          : err.message || t('toast.profileUpdateFailed')
       );
     }
-  }, [user, editName, editEmail, editPhone, setUser, setRegisteredUsers, toast]);
+  }, [user, editName, editEmail, editPhone, setUser, setRegisteredUsers, toast, t]);
 
   const handleVerifyProfileOTP = useCallback(async (e) => {
     e.preventDefault();
@@ -821,7 +820,7 @@ export default function App() {
         setProfileChallenge({ kind: 'phone', ...issued });
         setPendingPhoneChange(null);
         setProfileMobileOTP('');
-        toast.success('Email verified. Now confirm your new mobile number.');
+        toast.success(t('toast.emailVerifiedNowPhone'));
         return;
       }
     } catch (err) {
@@ -833,12 +832,8 @@ export default function App() {
     setShowProfileOTP(false);
     setProfileChallenge(null);
     setPendingPhoneChange(null);
-    toast.success(
-      isEmail
-        ? 'Email verified. Login codes will be copied there too. ✉️'
-        : 'Mobile number updated. Other devices have been signed out. 🔒'
-    );
-  }, [profileChallenge, pendingPhoneChange, profileMobileOTP, setUser, setRegisteredUsers, toast]);
+    toast.success(t(isEmail ? 'toast.emailVerified' : 'toast.phoneUpdated'));
+  }, [profileChallenge, pendingPhoneChange, profileMobileOTP, setUser, setRegisteredUsers, toast, t]);
 
   /**
    * Stock edits are optimistic, then reconciled against the server's response.
@@ -999,13 +994,13 @@ export default function App() {
       const { market: current, shop } = sellerRef.current;
       switchSeller(
         (current && current.id !== market.id) || Boolean(shop),
-        `Switched to ${market.name}. Your cart was cleared — prices differ by market.`
+        t('toast.switchedMarket', { market: market.name })
       );
       setSelectedMarket(market);
       // One seller at a time.
       setSelectedShop(null);
     },
-    [switchSeller]
+    [switchSeller, t]
   );
 
   /**
@@ -1021,13 +1016,13 @@ export default function App() {
       const { market, shop: current } = sellerRef.current;
       switchSeller(
         current?.id !== shop.id || Boolean(market),
-        `Shopping from ${shop.name}. Your cart was cleared — prices differ by shop.`
+        t('toast.switchedShop', { shop: shop.name })
       );
       setSelectedShop(shop);
       setSelectedMarket(null);
       setMarketProducts([]);
     },
-    [switchSeller]
+    [switchSeller, t]
   );
 
   /** One shop's own listings. Empty until a shop is chosen. */
@@ -1097,7 +1092,7 @@ export default function App() {
 
   const handleAddToCart = useCallback((product, event) => {
     if (product.stock === 0) {
-      toast.warning(`"${product.name}" is sold out!`);
+      toast.warning(t('toast.soldOut', { name: productName(product, language) }));
       return;
     }
     
@@ -1176,9 +1171,13 @@ export default function App() {
     });
 
     if (!existingAtRender) {
-      toast.success(`"${product.name}" added to ${isScheduled ? 'schedule' : 'basket'} 🛒`);
+      toast.success(
+        t(isScheduled ? 'toast.addedToSchedule' : 'toast.addedToBasket', {
+          name: productName(product, language),
+        })
+      );
     }
-  }, [cartItems, scheduledCartItems, shoppingMode, setCartItems, setScheduledCartItems, toast]);
+  }, [cartItems, scheduledCartItems, shoppingMode, setCartItems, setScheduledCartItems, toast, t, language]);
 
   const handleFlyingItemEnd = useCallback((id) => {
     setFlyingItems((prev) => prev.filter((item) => item.id !== id));
@@ -1220,11 +1219,9 @@ export default function App() {
     }
 
     toast.success(
-      result?.credited === false
-        ? 'This payment was already credited.'
-        : 'Wallet topped up! 💰'
+      t(result?.credited === false ? 'toast.alreadyCredited' : 'toast.walletToppedUp')
     );
-  }, [toast]);
+  }, [toast, t]);
 
   /**
    * Place an order.
@@ -1239,7 +1236,7 @@ export default function App() {
    */
   const handleCheckout = useCallback(async (totalAmount, selectedPaymentMethod = 'COD') => {
     if (!user) {
-      toast.error('Please sign in to place an order.');
+      toast.error(t('toast.signInToOrder'));
       return false;
     }
     // Authoritative: the modal disables its button on the same condition, but a
@@ -1250,7 +1247,7 @@ export default function App() {
       return false;
     }
     if (cartItems.length === 0) {
-      toast.error('Your cart is empty.');
+      toast.error(t('toast.cartEmpty'));
       return false;
     }
 
@@ -1284,13 +1281,16 @@ export default function App() {
           setWalletBalance(result.balance);
           if (chargeRupees > shortfallRupees) {
             toast.success(
-              `Paid ₹${chargeRupees}. ₹${(chargeRupees - shortfallRupees).toFixed(0)} stays in your VegWallet.`
+              t('toast.paidChangeToWallet', {
+                paid: chargeRupees,
+                change: (chargeRupees - shortfallRupees).toFixed(0),
+              })
             );
           }
         } catch (err) {
           // A dismissed checkout sheet is a decision, not a fault.
           if (/cancel/i.test(err?.message || '')) return false;
-          toast.error(err?.message || 'Payment failed. Your order was not placed.');
+          toast.error(err?.message || t('toast.paymentFailed'));
           return false;
         }
 
@@ -1360,16 +1360,16 @@ export default function App() {
        * difference between "someone is on it" and "we are still asking around".
        */
       if (order.fulfillmentStatus === 'sourcing') {
-        toast.success(`Order ${order.id} placed! Finding a stall at ${order.marketName} 🧺`);
+        toast.success(t('toast.orderSourcing', { id: order.id, market: order.marketName }));
       } else if (order.fulfillmentStatus) {
-        toast.success(`Order ${order.id} accepted and being packed 🚀`);
+        toast.success(t('toast.orderAccepted', { id: order.id }));
       } else {
-        toast.success(`Order ${order.id} placed! Estimated delivery: 10 mins 🚀`);
+        toast.success(t('toast.orderPlaced', { id: order.id }));
       }
       return true;
     } catch (err) {
       if (err instanceof NetworkError) {
-        toast.error('Could not reach the server. Your order was not placed.');
+        toast.error(t('toast.noServer'));
       } else if (err instanceof ApiRequestError && err.code === 'INSUFFICIENT_FUNDS') {
         toast.error(err.message);
       } else if (err instanceof ApiRequestError && err.code === 'INSUFFICIENT_STOCK') {
@@ -1378,20 +1378,30 @@ export default function App() {
           .then((items2) => items2.length > 0 && setProducts(items2))
           .catch(() => {});
       } else if (err instanceof ApiRequestError && err.code === 'MARKET_CANNOT_FILL') {
-        toast.error(`${selectedMarket?.name || 'This market'} is not selling one of these today. Try another market.`);
+        toast.error(
+          t('toast.marketCannotFill', {
+            market: selectedMarket?.name || t('toast.thisMarket'),
+          })
+        );
       } else if (err instanceof ApiRequestError && err.code === 'MARKET_UNAVAILABLE') {
-        toast.error(`${selectedMarket?.name || 'That market'} has closed. Pick another one.`);
+        toast.error(
+          t('toast.marketClosed', { market: selectedMarket?.name || t('toast.thatMarket') })
+        );
       } else if (err instanceof ApiRequestError && err.code === 'SHOP_UNAVAILABLE') {
-        toast.error(`${selectedShop?.name || 'That shop'} has closed. Pick another one.`);
+        toast.error(
+          t('toast.shopClosed', { shop: selectedShop?.name || t('toast.thatShop') })
+        );
         setSelectedShop(null);
       } else if (err instanceof ApiRequestError && err.code === 'SHOP_JOINED_MARKET') {
         // They now trade at a market, so they are reached through it instead.
-        toast.info(`${selectedShop?.name || 'That shop'} has moved into a market. Pick the market instead.`);
+        toast.info(
+          t('toast.shopJoinedMarket', { shop: selectedShop?.name || t('toast.thatShop') })
+        );
         setSelectedShop(null);
       } else if (err instanceof ApiRequestError && err.code === 'MIXED_SELLERS') {
         toast.error(err.message);
       } else {
-        toast.error(err.message || 'Could not place your order. Please try again.');
+        toast.error(err.message || t('toast.orderFailed'));
       }
 
       /**
@@ -1400,7 +1410,7 @@ export default function App() {
        * it" — the balance is the thing that answers that.
        */
       if (isOnlinePayment) {
-        toast.info('Your payment is safe in your VegWallet. Nothing was lost.');
+        toast.info(t('toast.paymentSafe'));
       }
       return false;
     }
@@ -1416,6 +1426,7 @@ export default function App() {
     walletBalance,
     setWalletBalance,
     setWalletTransactions,
+    t,
   ]);
 
 
@@ -1431,7 +1442,7 @@ export default function App() {
     try {
       const updated = await cancelOrder(order.serverId || order.id);
       setOrders((prev) => prev.map((o) => (o.serverId === updated.serverId ? updated : o)));
-      toast.success('Order cancelled. Any payment has been refunded to your wallet.');
+      toast.success(t('toast.orderCancelled'));
       fetchWallet()
         .then((w) => {
           setWalletBalance(w.balance);
@@ -1440,13 +1451,13 @@ export default function App() {
         .catch(() => {});
     } catch (err) {
       if (err instanceof ApiRequestError && err.code === 'ORDER_LOCKED') {
-        toast.info('A stall just accepted your order — it is being packed now.');
+        toast.info(t('toast.orderLocked'));
         fetchOrders({ limit: 100 }).then(setOrders).catch(() => {});
       } else {
-        toast.error(err.message || 'Could not cancel that order.');
+        toast.error(err.message || t('toast.cancelFailed'));
       }
     }
-  }, [toast]);
+  }, [toast, t]);
 
   /**
    * "Send the 3 that are available."
@@ -1467,8 +1478,8 @@ export default function App() {
       // paid nothing yet and simply owes less at the door.
       toast.success(
         updated.refund > 0
-          ? `On its way. ₹${updated.refund} for the unavailable items is back in your wallet.`
-          : 'On its way. You will only be charged for what arrives.'
+          ? t('toast.partialRefunded', { amount: updated.refund })
+          : t('toast.partialCod')
       );
       fetchWallet()
         .then((w) => {
@@ -1478,31 +1489,35 @@ export default function App() {
         .catch(() => {});
     } catch (err) {
       if (err instanceof ApiRequestError && err.code === 'NOT_PARTIAL') {
-        toast.info('Already sorted — your order is on its way.');
+        toast.info(t('toast.alreadySorted'));
         fetchOrders({ limit: 100 }).then(setOrders).catch(() => {});
       } else {
-        toast.error(err.message || 'Could not update that order.');
+        toast.error(err.message || t('toast.updateOrderFailed'));
       }
     }
-  }, [toast]);
+  }, [toast, t]);
 
   /** "Try another market for everything." */
   const handleRetryPartial = useCallback(async (order) => {
     try {
       const updated = await retryPartialOrder(order.serverId || order.id);
       setOrders((prev) => prev.map((o) => (o.serverId === updated.serverId ? updated : o)));
-      toast.info(`Looking in ${updated.marketName || 'another market'} for the full order.`);
+      toast.info(
+        t('toast.lookingElsewhere', {
+          market: updated.marketName || t('toast.anotherMarket'),
+        })
+      );
     } catch (err) {
       if (err instanceof ApiRequestError && err.code === 'NO_MARKET') {
-        toast.warning('No other market nearby has the rest. Send what is available, or cancel.');
+        toast.warning(t('toast.noOtherMarket'));
       } else if (err instanceof ApiRequestError && err.code === 'NOT_PARTIAL') {
-        toast.info('That order has already moved on.');
+        toast.info(t('toast.orderMovedOn'));
         fetchOrders({ limit: 100 }).then(setOrders).catch(() => {});
       } else {
-        toast.error(err.message || 'Could not try another market.');
+        toast.error(err.message || t('toast.retryFailed'));
       }
     }
-  }, [toast]);
+  }, [toast, t]);
 
   const handleOpenProductDetail = useCallback((product, cat) => {
     const parentCategory = cat || categories.find((c) => c.id === product.categoryId);
@@ -1560,7 +1575,7 @@ export default function App() {
       handledShareHash.current = sku;
 
       if (!match) {
-        toast.warning('That item is no longer available.');
+        toast.warning(t('toast.itemGone'));
         return;
       }
       handleOpenProductDetail(match);
@@ -1569,7 +1584,7 @@ export default function App() {
     apply();
     window.addEventListener('hashchange', apply);
     return () => window.removeEventListener('hashchange', apply);
-  }, [browseProducts, products, handleOpenProductDetail, toast]);
+  }, [browseProducts, products, handleOpenProductDetail, toast, t]);
 
   const totalCartCount = cartItemCount(cartItems);
   const pendingOrdersCount = orders.filter((o) => o.status === 'Pending').length;
@@ -1618,8 +1633,8 @@ export default function App() {
           onOpenCategory={handleOpenCategoryFromSearch}
           onShared={(result) =>
             result === 'copied'
-              ? toast.success('Link copied — paste it anywhere to share this item.')
-              : toast.error('Could not share this item.')
+              ? toast.success(t('toast.linkCopied'))
+              : toast.error(t('toast.shareFailed'))
           }
         />
       ) : activeCategoryDetail ? (

@@ -440,6 +440,266 @@ const STRINGS = {
   'status.Delivered': { en: 'Delivered', hi: 'पहुँच गया', te: 'డెలివరీ అయ్యింది' },
   'status.Cancelled': { en: 'Cancelled', hi: 'रद्द', te: 'రద్దు' },
 
+  // --- Toasts and confirmations (App.jsx) --------------------------------------
+  //
+  // Only the customer-facing ones. The developer and market-owner panels are
+  // English throughout, so translating just their toasts would leave a Telugu
+  // sentence floating over an English screen.
+  //
+  // A server error message (`err.message`) is shown as it arrives. It is
+  // English, and translating it would mean matching on wording that the server
+  // is free to change — the `err.code` branches below exist precisely so the
+  // cases worth wording ourselves are keyed on a code instead.
+  'toast.signInToSchedule': {
+    en: 'Sign in to set up a repeat delivery.',
+    hi: 'दोहराई जाने वाली डिलीवरी सेट करने के लिए साइन इन करें।',
+    te: 'పునరావృత డెలివరీ పెట్టడానికి సైన్ ఇన్ చేయండి.',
+  },
+  'toast.basketEmpty': { en: 'Your basket is empty!', hi: 'आपकी टोकरी खाली है!', te: 'మీ బుట్ట ఖాళీగా ఉంది!' },
+  'toast.cartEmpty': { en: 'Your cart is empty.', hi: 'आपकी टोकरी खाली है।', te: 'మీ బుట్ట ఖాళీగా ఉంది.' },
+  'toast.pickWeekday': {
+    en: 'Pick at least one day of the week.',
+    hi: 'हफ़्ते का कम से कम एक दिन चुनें।',
+    te: 'వారంలో కనీసం ఒక రోజు ఎంచుకోండి.',
+  },
+  'toast.pickMonthDay': {
+    en: 'Pick at least one day of the month.',
+    hi: 'महीने का कम से कम एक दिन चुनें।',
+    te: 'నెలలో కనీసం ఒక రోజు ఎంచుకోండి.',
+  },
+  'toast.scheduleCreated': {
+    en: '{recurrence} — first delivery {date} 📅',
+    hi: '{recurrence} — पहली डिलीवरी {date} 📅',
+    te: '{recurrence} — మొదటి డెలివరీ {date} 📅',
+  },
+  'toast.scheduleFailed': {
+    en: 'Could not set up that repeat delivery.',
+    hi: 'वह दोहराई जाने वाली डिलीवरी सेट नहीं हो सकी।',
+    te: 'ఆ పునరావృత డెలివరీని పెట్టలేకపోయాం.',
+  },
+  'toast.welcomeBack': { en: 'Welcome back, {name}! 🌿', hi: 'वापसी पर स्वागत है, {name}! 🌿', te: 'మళ్లీ స్వాగతం, {name}! 🌿' },
+  'toast.signedOut': { en: 'Signed out. See you soon, {name}! 👋', hi: 'लॉग आउट हो गए। जल्द मिलते हैं, {name}! 👋', te: 'లాగ్ అవుట్ అయ్యారు. త్వరలో కలుద్దాం, {name}! 👋' },
+  'toast.confirmLogoutEverywhere': {
+    en: 'Sign out on every device?\n\nEvery other phone, tablet and browser signed in to this account will be signed out immediately, and so will this one. Use this if you think someone else has access to your account.',
+    hi: 'हर डिवाइस से लॉग आउट करें?\n\nइस खाते में साइन इन हर दूसरा फ़ोन, टैबलेट और ब्राउज़र तुरंत लॉग आउट हो जाएगा, और यह भी। अगर आपको लगता है कि किसी और के पास आपके खाते की पहुँच है तो इसका इस्तेमाल करें।',
+    te: 'ప్రతి పరికరం నుండి లాగ్ అవుట్ చేయాలా?\n\nఈ ఖాతాలో సైన్ ఇన్ అయిన ప్రతి ఇతర ఫోన్, టాబ్లెట్, బ్రౌజర్ వెంటనే లాగ్ అవుట్ అవుతాయి, ఇదీ అవుతుంది. మీ ఖాతా వేరొకరికి అందుబాటులో ఉందని అనిపిస్తే దీన్ని వాడండి.',
+  },
+  'toast.loggedOutEverywhere': {
+    en: 'All devices signed out. Sign in again to continue, {name}. 🔒',
+    hi: 'सभी डिवाइस लॉग आउट हो गए। जारी रखने के लिए फिर साइन इन करें, {name}। 🔒',
+    te: 'అన్ని పరికరాలు లాగ్ అవుట్ అయ్యాయి. కొనసాగించడానికి మళ్లీ సైన్ ఇన్ చేయండి, {name}. 🔒',
+  },
+  'toast.confirmDeleteAccount': {
+    en: '⚠️ WARNING: Are you sure you want to PERMANENTLY delete your account? This will remove all your data from the database and cannot be undone.',
+    hi: '⚠️ चेतावनी: क्या आप वाक़ई अपना खाता हमेशा के लिए मिटाना चाहते हैं? इससे आपका सारा डेटा डेटाबेस से हट जाएगा और यह वापस नहीं लाया जा सकता।',
+    te: '⚠️ హెచ్చరిక: మీ ఖాతాను శాశ్వతంగా తొలగించాలనుకుంటున్నారా? దీంతో మీ మొత్తం డేటా డేటాబేస్ నుండి తొలగిపోతుంది, తిరిగి తీసుకురాలేరు.',
+  },
+  'toast.deleteNeedsAdmin': {
+    en: 'Account deletion must be performed by an administrator. Contact support.',
+    hi: 'खाता मिटाने का काम व्यवस्थापक ही कर सकता है। सहायता से संपर्क करें।',
+    te: 'ఖాతా తొలగింపు నిర్వాహకుడు మాత్రమే చేయగలరు. సపోర్ట్‌ను సంప్రదించండి.',
+  },
+  'toast.deleteFailed': {
+    en: 'Could not delete your account. Please try again.',
+    hi: 'आपका खाता मिटाया नहीं जा सका। कृपया फिर कोशिश करें।',
+    te: 'మీ ఖాతాను తొలగించలేకపోయాం. దయచేసి మళ్లీ ప్రయత్నించండి.',
+  },
+  'toast.accountDeleted': {
+    en: 'Your account was permanently deleted. 👋',
+    hi: 'आपका खाता हमेशा के लिए मिटा दिया गया। 👋',
+    te: 'మీ ఖాతా శాశ్వతంగా తొలగించబడింది. 👋',
+  },
+  'toast.nameAndPhoneRequired': {
+    en: 'Name and mobile number are required.',
+    hi: 'नाम और मोबाइल नंबर ज़रूरी हैं।',
+    te: 'పేరు, మొబైల్ నంబర్ తప్పనిసరి.',
+  },
+  'toast.emailRemovalUnsupported': {
+    en: 'Removing an email address is not supported yet.',
+    hi: 'ईमेल पता हटाने की सुविधा अभी नहीं है।',
+    te: 'ఇమెయిల్ చిరునామాను తీసేసే సదుపాయం ఇంకా లేదు.',
+  },
+  'toast.profileUpdated': {
+    en: 'Profile updated successfully!',
+    hi: 'प्रोफ़ाइल सफलतापूर्वक बदल गई!',
+    te: 'ప్రొఫైల్ విజయవంతంగా మారింది!',
+  },
+  'toast.emailNotConfigured': {
+    en: 'Email is not set up on this server yet, so an address cannot be verified.',
+    hi: 'इस सर्वर पर ईमेल अभी सेट नहीं है, इसलिए पता सत्यापित नहीं हो सकता।',
+    te: 'ఈ సర్వర్‌లో ఇమెయిల్ ఇంకా సెటప్ కాలేదు, కాబట్టి చిరునామాను ధృవీకరించలేం.',
+  },
+  'toast.profileUpdateFailed': {
+    en: 'Could not update your profile.',
+    hi: 'आपकी प्रोफ़ाइल बदली नहीं जा सकी।',
+    te: 'మీ ప్రొఫైల్‌ను మార్చలేకపోయాం.',
+  },
+  'toast.emailVerifiedNowPhone': {
+    en: 'Email verified. Now confirm your new mobile number.',
+    hi: 'ईमेल सत्यापित। अब अपना नया मोबाइल नंबर पक्का करें।',
+    te: 'ఇమెయిల్ ధృవీకరించారు. ఇప్పుడు మీ కొత్త మొబైల్ నంబర్‌ను నిర్ధారించండి.',
+  },
+  'toast.emailVerified': {
+    en: 'Email verified. Login codes will be copied there too. ✉️',
+    hi: 'ईमेल सत्यापित। लॉगिन कोड वहाँ भी भेजे जाएँगे। ✉️',
+    te: 'ఇమెయిల్ ధృవీకరించారు. లాగిన్ కోడ్‌లు అక్కడికీ వస్తాయి. ✉️',
+  },
+  'toast.phoneUpdated': {
+    en: 'Mobile number updated. Other devices have been signed out. 🔒',
+    hi: 'मोबाइल नंबर बदल गया। दूसरे डिवाइस लॉग आउट कर दिए गए। 🔒',
+    te: 'మొబైల్ నంబర్ మారింది. ఇతర పరికరాలు లాగ్ అవుట్ అయ్యాయి. 🔒',
+  },
+  'toast.switchedMarket': {
+    en: 'Switched to {market}. Your cart was cleared — prices differ by market.',
+    hi: '{market} पर चले गए। आपकी टोकरी ख़ाली कर दी गई — हर बाज़ार की क़ीमतें अलग होती हैं।',
+    te: '{market}కి మారారు. మీ బుట్ట ఖాళీ చేశాం — ప్రతి మార్కెట్‌లో ధరలు వేరుగా ఉంటాయి.',
+  },
+  'toast.switchedShop': {
+    en: 'Shopping from {shop}. Your cart was cleared — prices differ by shop.',
+    hi: 'अब {shop} से ख़रीदारी। आपकी टोकरी ख़ाली कर दी गई — हर दुकान की क़ीमतें अलग होती हैं।',
+    te: 'ఇప్పుడు {shop} నుండి కొనుగోలు. మీ బుట్ట ఖాళీ చేశాం — ప్రతి దుకాణంలో ధరలు వేరుగా ఉంటాయి.',
+  },
+  'toast.soldOut': { en: '“{name}” is sold out!', hi: '“{name}” का स्टॉक ख़त्म है!', te: '“{name}” స్టాక్ అయిపోయింది!' },
+  'toast.addedToBasket': { en: '“{name}” added to basket 🛒', hi: '“{name}” टोकरी में जोड़ा गया 🛒', te: '“{name}” బుట్టలో చేర్చాం 🛒' },
+  'toast.addedToSchedule': { en: '“{name}” added to schedule 🛒', hi: '“{name}” शेड्यूल में जोड़ा गया 🛒', te: '“{name}” షెడ్యూల్‌లో చేర్చాం 🛒' },
+  'toast.alreadyCredited': {
+    en: 'This payment was already credited.',
+    hi: 'यह भुगतान पहले ही जमा हो चुका है।',
+    te: 'ఈ చెల్లింపు ఇప్పటికే జమ అయ్యింది.',
+  },
+  'toast.walletToppedUp': { en: 'Wallet topped up! 💰', hi: 'वॉलेट रिचार्ज हो गया! 💰', te: 'వాలెట్ రీఛార్జ్ అయ్యింది! 💰' },
+  'toast.signInToOrder': {
+    en: 'Please sign in to place an order.',
+    hi: 'ऑर्डर करने के लिए कृपया साइन इन करें।',
+    te: 'ఆర్డర్ చేయడానికి దయచేసి సైన్ ఇన్ చేయండి.',
+  },
+  'toast.paidChangeToWallet': {
+    en: 'Paid ₹{paid}. ₹{change} stays in your VegWallet.',
+    hi: '₹{paid} चुकाए। ₹{change} आपके VegWallet में रहेंगे।',
+    te: '₹{paid} చెల్లించారు. ₹{change} మీ VegWalletలో ఉంటాయి.',
+  },
+  'toast.paymentFailed': {
+    en: 'Payment failed. Your order was not placed.',
+    hi: 'भुगतान नहीं हुआ। आपका ऑर्डर नहीं लगा।',
+    te: 'చెల్లింపు జరగలేదు. మీ ఆర్డర్ నమోదు కాలేదు.',
+  },
+  'toast.orderSourcing': {
+    en: 'Order {id} placed! Finding a stall at {market} 🧺',
+    hi: 'ऑर्डर {id} लग गया! {market} में दुकान खोजी जा रही है 🧺',
+    te: 'ఆర్డర్ {id} నమోదైంది! {market}లో దుకాణం వెతుకుతున్నాం 🧺',
+  },
+  'toast.orderAccepted': {
+    en: 'Order {id} accepted and being packed 🚀',
+    hi: 'ऑर्डर {id} स्वीकार हुआ और पैक हो रहा है 🚀',
+    te: 'ఆర్డర్ {id} ఆమోదించారు, ప్యాక్ అవుతోంది 🚀',
+  },
+  'toast.orderPlaced': {
+    en: 'Order {id} placed! Estimated delivery: 10 mins 🚀',
+    hi: 'ऑर्डर {id} लग गया! अनुमानित डिलीवरी: 10 मिनट 🚀',
+    te: 'ఆర్డర్ {id} నమోదైంది! అంచనా డెలివరీ: 10 నిమిషాలు 🚀',
+  },
+  'toast.noServer': {
+    en: 'Could not reach the server. Your order was not placed.',
+    hi: 'सर्वर तक नहीं पहुँच सके। आपका ऑर्डर नहीं लगा।',
+    te: 'సర్వర్‌కు చేరలేకపోయాం. మీ ఆర్డర్ నమోదు కాలేదు.',
+  },
+  'toast.marketCannotFill': {
+    en: '{market} is not selling one of these today. Try another market.',
+    hi: '{market} आज इनमें से एक नहीं बेच रहा। दूसरा बाज़ार आज़माएँ।',
+    te: '{market} ఈరోజు వీటిలో ఒకటి అమ్మడం లేదు. వేరే మార్కెట్ ప్రయత్నించండి.',
+  },
+  'toast.thisMarket': { en: 'This market', hi: 'यह बाज़ार', te: 'ఈ మార్కెట్' },
+  'toast.thatMarket': { en: 'That market', hi: 'वह बाज़ार', te: 'ఆ మార్కెట్' },
+  'toast.thatShop': { en: 'That shop', hi: 'वह दुकान', te: 'ఆ దుకాణం' },
+  'toast.anotherMarket': { en: 'another market', hi: 'दूसरे बाज़ार', te: 'మరో మార్కెట్' },
+  'toast.marketClosed': { en: '{market} has closed. Pick another one.', hi: '{market} बंद हो गया। दूसरा चुनें।', te: '{market} మూసేశారు. వేరేది ఎంచుకోండి.' },
+  'toast.shopClosed': { en: '{shop} has closed. Pick another one.', hi: '{shop} बंद हो गई। दूसरी चुनें।', te: '{shop} మూసేశారు. వేరేది ఎంచుకోండి.' },
+  'toast.shopJoinedMarket': {
+    en: '{shop} has moved into a market. Pick the market instead.',
+    hi: '{shop} अब एक बाज़ार में चली गई है। उसकी जगह बाज़ार चुनें।',
+    te: '{shop} ఇప్పుడు ఒక మార్కెట్‌లోకి మారింది. బదులుగా ఆ మార్కెట్ ఎంచుకోండి.',
+  },
+  'toast.orderFailed': {
+    en: 'Could not place your order. Please try again.',
+    hi: 'आपका ऑर्डर नहीं लग सका। कृपया फिर कोशिश करें।',
+    te: 'మీ ఆర్డర్ నమోదు కాలేదు. దయచేసి మళ్లీ ప్రయత్నించండి.',
+  },
+  'toast.paymentSafe': {
+    en: 'Your payment is safe in your VegWallet. Nothing was lost.',
+    hi: 'आपका पैसा आपके VegWallet में सुरक्षित है। कुछ भी नहीं गया।',
+    te: 'మీ డబ్బు మీ VegWalletలో సురక్షితంగా ఉంది. ఏమీ పోలేదు.',
+  },
+  'toast.orderCancelled': {
+    en: 'Order cancelled. Any payment has been refunded to your wallet.',
+    hi: 'ऑर्डर रद्द हो गया। जो भी भुगतान हुआ था वह आपके वॉलेट में वापस आ गया है।',
+    te: 'ఆర్డర్ రద్దైంది. చెల్లించిన డబ్బు మీ వాలెట్‌కు తిరిగి వచ్చింది.',
+  },
+  'toast.orderLocked': {
+    en: 'A stall just accepted your order — it is being packed now.',
+    hi: 'एक दुकान ने अभी आपका ऑर्डर ले लिया — यह पैक हो रहा है।',
+    te: 'ఒక దుకాణం ఇప్పుడే మీ ఆర్డర్ తీసుకుంది — ఇది ప్యాక్ అవుతోంది.',
+  },
+  'toast.cancelFailed': {
+    en: 'Could not cancel that order.',
+    hi: 'वह ऑर्डर रद्द नहीं हो सका।',
+    te: 'ఆ ఆర్డర్‌ను రద్దు చేయలేకపోయాం.',
+  },
+  'toast.partialRefunded': {
+    en: 'On its way. ₹{amount} for the unavailable items is back in your wallet.',
+    hi: 'रवाना हो गया। जो नहीं मिला उसके ₹{amount} आपके वॉलेट में वापस आ गए हैं।',
+    te: 'బయలుదేరింది. దొరకని వస్తువుల ₹{amount} మీ వాలెట్‌కు తిరిగి వచ్చాయి.',
+  },
+  'toast.partialCod': {
+    en: 'On its way. You will only be charged for what arrives.',
+    hi: 'रवाना हो गया। जो पहुँचेगा उसी का पैसा लिया जाएगा।',
+    te: 'బయలుదేరింది. వచ్చిన వాటికే డబ్బు తీసుకుంటాం.',
+  },
+  'toast.alreadySorted': {
+    en: 'Already sorted — your order is on its way.',
+    hi: 'पहले ही तय हो चुका — आपका ऑर्डर रास्ते में है।',
+    te: 'ఇప్పటికే పరిష్కారమైంది — మీ ఆర్డర్ దారిలో ఉంది.',
+  },
+  'toast.updateOrderFailed': {
+    en: 'Could not update that order.',
+    hi: 'वह ऑर्डर बदला नहीं जा सका।',
+    te: 'ఆ ఆర్డర్‌ను మార్చలేకపోయాం.',
+  },
+  'toast.lookingElsewhere': {
+    en: 'Looking in {market} for the full order.',
+    hi: 'पूरे ऑर्डर के लिए {market} में देखा जा रहा है।',
+    te: 'పూర్తి ఆర్డర్ కోసం {market}లో చూస్తున్నాం.',
+  },
+  'toast.noOtherMarket': {
+    en: 'No other market nearby has the rest. Send what is available, or cancel.',
+    hi: 'बाक़ी सामान पास के किसी दूसरे बाज़ार में नहीं है। जो उपलब्ध है वह भेजें, या रद्द करें।',
+    te: 'మిగిలినవి దగ్గరలోని మరే మార్కెట్‌లోనూ లేవు. అందుబాటులో ఉన్నవి పంపండి, లేదా రద్దు చేయండి.',
+  },
+  'toast.orderMovedOn': {
+    en: 'That order has already moved on.',
+    hi: 'वह ऑर्डर आगे बढ़ चुका है।',
+    te: 'ఆ ఆర్డర్ ఇప్పటికే ముందుకు వెళ్లిపోయింది.',
+  },
+  'toast.retryFailed': {
+    en: 'Could not try another market.',
+    hi: 'दूसरा बाज़ार आज़माया नहीं जा सका।',
+    te: 'మరో మార్కెట్‌ను ప్రయత్నించలేకపోయాం.',
+  },
+  'toast.itemGone': {
+    en: 'That item is no longer available.',
+    hi: 'वह वस्तु अब उपलब्ध नहीं है।',
+    te: 'ఆ వస్తువు ఇక అందుబాటులో లేదు.',
+  },
+  'toast.linkCopied': {
+    en: 'Link copied — paste it anywhere to share this item.',
+    hi: 'लिंक कॉपी हो गया — इसे कहीं भी चिपकाकर यह वस्तु साझा करें।',
+    te: 'లింక్ కాపీ అయ్యింది — ఎక్కడైనా పేస్ట్ చేసి ఈ వస్తువును షేర్ చేయండి.',
+  },
+  'toast.shareFailed': {
+    en: 'Could not share this item.',
+    hi: 'यह वस्तु साझा नहीं हो सकी।',
+    te: 'ఈ వస్తువును షేర్ చేయలేకపోయాం.',
+  },
+
   // --- VegWallet (WalletModal.jsx) ---------------------------------------------
   //
   // A ledger row's `label` and `note` are NOT here. They arrive from the server
