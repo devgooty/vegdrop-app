@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Minus, ChevronDown, Search, Info, Loader2 } from 'lucide-react';
 import { fetchMarketPriceHistory } from '../services/markets';
+import { useLanguage } from '../i18n/LanguageContext';
+import { productName, productWeight, categoryTitle } from '../i18n/catalog';
 
 /**
  * The Price Tracker.
@@ -101,6 +103,7 @@ function SparkLine({ vertices, color, width = SPARK.width, height = SPARK.height
 
 /** The expanded chart, with a date axis and a marker on each real change. */
 function DetailChart({ series, color, width = 300, height = 130 }) {
+  const { t, language } = useLanguage();
   const [hover, setHover] = useState(null);
   const svgRef = useRef(null);
 
@@ -176,10 +179,10 @@ function DetailChart({ series, color, width = 300, height = 130 }) {
         ))}
 
         <text x="0" y={height - 6} fontSize="8" fill="#9ca3af" fontWeight="600">
-          {formatDay(series[0].at)}
+          {formatDay(series[0].at, language)}
         </text>
         <text x={width} y={height - 6} textAnchor="end" fontSize="8" fill="#9ca3af" fontWeight="600">
-          today
+          {t('price.today')}
         </text>
       </svg>
 
@@ -189,7 +192,9 @@ function DetailChart({ series, color, width = 300, height = 130 }) {
           style={{ left: `${(changeDots[hover].x / width) * 100}%`, transform: 'translateX(-50%)' }}
         >
           ₹{(changeDots[hover].point.pricePaise / 100).toFixed(2).replace(/\.00$/, '')} ·{' '}
-          {changeDots[hover].point.carried ? 'in force' : formatDay(changeDots[hover].point.at)}
+          {changeDots[hover].point.carried
+            ? t('price.inForce')
+            : formatDay(changeDots[hover].point.at, language)}
         </div>
       )}
     </div>
@@ -197,6 +202,7 @@ function DetailChart({ series, color, width = 300, height = 130 }) {
 }
 
 export default function PriceHistory({ products = [], categories = [], market = null }) {
+  const { t, language } = useLanguage();
   const [expandedId, setExpandedId] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -245,11 +251,17 @@ export default function PriceHistory({ products = [], categories = [], market = 
       products.filter((p) => {
         const matchesCat =
           selectedCategory === 'all' || p.categoryId === parseInt(selectedCategory, 10);
+        // Match on the English name AND the displayed one. Someone reading a
+        // Telugu list types Telugu; someone who knows the produce by its English
+        // name types that. Neither should come back empty.
+        const query = searchQuery.trim().toLowerCase();
         const matchesSearch =
-          searchQuery === '' || p.name.toLowerCase().includes(searchQuery.toLowerCase());
+          query === '' ||
+          p.name.toLowerCase().includes(query) ||
+          productName(p, language).toLowerCase().includes(query);
         return matchesCat && matchesSearch;
       }),
-    [products, selectedCategory, searchQuery]
+    [products, selectedCategory, searchQuery, language]
   );
 
   /** Direction over the window, from the first recorded price to the latest. */
@@ -280,18 +292,18 @@ export default function PriceHistory({ products = [], categories = [], market = 
         <div className="relative z-10">
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp className="w-5 h-5 text-emerald-300" />
-            <h2 className="text-lg font-black tracking-tight">Price Tracker</h2>
+            <h2 className="text-lg font-black tracking-tight">{t('price.title')}</h2>
           </div>
           <p className="text-emerald-200/80 text-xs font-medium mb-4">
             {market
-              ? `Price changes at ${market.name} over the last ${windowDays} days`
-              : 'Pick a market to see how its prices have moved'}
+              ? t('price.subtitleMarket', { market: market.name, days: windowDays })
+              : t('price.subtitleNoMarket')}
           </p>
 
           <div className="grid grid-cols-3 gap-3">
-            <Tally label="Rising" value={rising} tone="text-rose-300" icon={<TrendingUp className="w-3.5 h-3.5" />} />
-            <Tally label="Falling" value={falling} tone="text-emerald-300" icon={<TrendingDown className="w-3.5 h-3.5" />} />
-            <Tally label="Steady" value={steady} tone="text-white" icon={<Minus className="w-3.5 h-3.5" />} />
+            <Tally label={t('price.rising')} value={rising} tone="text-rose-300" icon={<TrendingUp className="w-3.5 h-3.5" />} />
+            <Tally label={t('price.falling')} value={falling} tone="text-emerald-300" icon={<TrendingDown className="w-3.5 h-3.5" />} />
+            <Tally label={t('price.steady')} value={steady} tone="text-white" icon={<Minus className="w-3.5 h-3.5" />} />
           </div>
 
           {market && (
@@ -314,20 +326,12 @@ export default function PriceHistory({ products = [], categories = [], market = 
         </div>
       </div>
 
-      {!market && (
-        <Notice>
-          Prices are set by each market, so a trend only means something once you have chosen one.
-          Pick a market on the home screen and its price changes will show up here.
-        </Notice>
-      )}
+      {!market && <Notice>{t('price.needMarket')}</Notice>}
 
-      {failed && <Notice>Could not load price history just now. Pull down to try again.</Notice>}
+      {failed && <Notice>{t('price.loadFailed')}</Notice>}
 
       {market && !loading && tracked.length === 0 && !failed && (
-        <Notice>
-          No price changes recorded at {market.name} yet. This fills in as the market updates its
-          sheet — it does not estimate what prices might have been.
-        </Notice>
+        <Notice>{t('price.noneRecorded', { market: market.name })}</Notice>
       )}
 
       <div className="relative">
@@ -335,7 +339,7 @@ export default function PriceHistory({ products = [], categories = [], market = 
         <input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search items..."
+          placeholder={t('price.searchItems')}
           className="w-full bg-white border border-gray-200 rounded-xl py-2.5 pl-9 pr-3 text-sm font-medium text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30 focus:border-[#1B4D3E] shadow-sm transition-all"
         />
       </div>
@@ -345,14 +349,14 @@ export default function PriceHistory({ products = [], categories = [], market = 
           <CategoryChip
             active={selectedCategory === 'all'}
             onClick={() => setSelectedCategory('all')}
-            label="All"
+            label={t('price.all')}
           />
           {categories.map((c) => (
             <CategoryChip
               key={c.id}
               active={String(selectedCategory) === String(c.id)}
               onClick={() => setSelectedCategory(String(c.id))}
-              label={c.title || c.name}
+              label={categoryTitle(c, language) || c.name}
             />
           ))}
         </div>
@@ -361,7 +365,7 @@ export default function PriceHistory({ products = [], categories = [], market = 
       {loading ? (
         <div className="flex items-center justify-center gap-2 text-gray-500 py-10 text-sm font-semibold">
           <Loader2 className="w-4 h-4 animate-spin" />
-          Loading price history…
+          {t('price.loading')}
         </div>
       ) : (
         <div className="space-y-2.5">
@@ -393,9 +397,12 @@ export default function PriceHistory({ products = [], categories = [], market = 
                   )}
 
                   <div className="min-w-0 flex-1">
-                    <p className="font-bold text-sm text-gray-900 truncate">{product.name}</p>
+                    <p className="font-bold text-sm text-gray-900 truncate">
+                      {productName(product, language)}
+                    </p>
                     <p className="text-xs text-gray-500">
-                      ₹{product.price} {product.weight ? `· ${product.weight}` : ''}
+                      ₹{product.price}{' '}
+                      {product.weight ? `· ${productWeight(product.weight, language)}` : ''}
                     </p>
                   </div>
 
@@ -416,7 +423,7 @@ export default function PriceHistory({ products = [], categories = [], market = 
                     </>
                   ) : (
                     <span className="text-[11px] text-gray-400 font-semibold shrink-0">
-                      no changes
+                      {t('price.noChanges')}
                     </span>
                   )}
                 </button>
@@ -426,8 +433,8 @@ export default function PriceHistory({ products = [], categories = [], market = 
                     <DetailChart series={points} color={color} />
                     <p className="text-[11px] text-gray-400 mt-2 leading-snug">
                       {points.length === 1
-                        ? 'One price on record — it has not changed in this window.'
-                        : `${points.length} price changes recorded. The line holds flat between changes because that is what the price did.`}
+                        ? t('price.oneOnRecord')
+                        : t('price.changesRecorded', { count: points.length })}
                     </p>
                   </div>
                 )}
@@ -475,6 +482,15 @@ function Notice({ children }) {
   );
 }
 
-function formatDay(iso) {
-  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+/**
+ * A day on the date axis, in the reader's own script.
+ *
+ * The locale is derived from the app language rather than the browser's, so a
+ * screen the shopper has explicitly set to Telugu does not carry English month
+ * names because the phone happens to be en-US. All three are `-IN` regions, so
+ * the day-then-month order is the same in each.
+ */
+function formatDay(iso, language = 'en') {
+  const locale = { te: 'te-IN', hi: 'hi-IN' }[language] || 'en-IN';
+  return new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
 }

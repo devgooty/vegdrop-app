@@ -295,6 +295,67 @@ const STRINGS = {
     hi: 'आप तक पहुँचने वाले बाज़ार दिखाने के लिए यह ज़रूरी है।',
     te: 'మీకు చేరగల మార్కెట్లను చూపడానికి ఇది అవసరం.',
   },
+  // The ETA line under the hero offer. Two whole sentences rather than one with
+  // a "your door" fallback substituted in: Telugu marks the destination with a
+  // case suffix on the place itself (`{place}కి`), so a fallback that already
+  // carries one would come out doubled.
+  'hero.etaTo': { en: '15m to {place}', hi: '{place} तक 15 मिनट', te: '{place}కి 15 నిమిషాలు' },
+  'hero.etaDoor': {
+    en: '15m to your door',
+    hi: 'आपके दरवाज़े तक 15 मिनट',
+    te: 'మీ ఇంటికి 15 నిమిషాలు',
+  },
+
+  'market.finding': {
+    en: 'Finding markets near you…',
+    hi: 'आपके पास के बाज़ार खोजे जा रहे हैं…',
+    te: 'మీ దగ్గరి మార్కెట్లను వెతుకుతోంది…',
+  },
+  'market.noneTitle': {
+    en: 'No markets deliver here yet',
+    hi: 'यहाँ अभी कोई बाज़ार डिलीवरी नहीं करता',
+    te: 'ఇక్కడికి ఇంకా ఏ మార్కెట్ డెలివరీ చేయదు',
+  },
+  'market.noneHint': {
+    en: 'We are opening in new areas all the time.',
+    hi: 'हम लगातार नए इलाक़ों में शुरू कर रहे हैं।',
+    te: 'మేము ఎప్పటికప్పుడు కొత్త ప్రాంతాల్లో ప్రారంభిస్తున్నాం.',
+  },
+  'market.shoppingFrom': { en: 'Shopping from', hi: 'यहाँ से ख़रीदारी', te: 'ఇక్కడి నుండి కొనుగోలు' },
+  'market.choose': { en: 'Choose a market', hi: 'बाज़ार चुनें', te: 'మార్కెట్ ఎంచుకోండి' },
+  // Stall counts are split into a one/many pair rather than built by appending
+  // an "s": Hindi and Telugu do not pluralise this the way English does, and a
+  // string assembled from fragments in English order comes out wrong in both.
+  'market.summaryOne': {
+    en: '{km} km away · 1 stall open',
+    hi: '{km} किमी दूर · 1 दुकान खुली',
+    te: '{km} కి.మీ దూరం · 1 దుకాణం తెరిచి ఉంది',
+  },
+  'market.summaryMany': {
+    en: '{km} km away · {stalls} stalls open',
+    hi: '{km} किमी दूर · {stalls} दुकानें खुली',
+    te: '{km} కి.మీ దూరం · {stalls} దుకాణాలు తెరిచి ఉన్నాయి',
+  },
+  'market.rowOne': {
+    en: '{km} km · 1 stall open',
+    hi: '{km} किमी · 1 दुकान खुली',
+    te: '{km} కి.మీ · 1 దుకాణం తెరిచి ఉంది',
+  },
+  'market.rowMany': {
+    en: '{km} km · {stalls} stalls open',
+    hi: '{km} किमी · {stalls} दुकानें खुली',
+    te: '{km} కి.మీ · {stalls} దుకాణాలు తెరిచి ఉన్నాయి',
+  },
+  'market.rowClosed': {
+    en: '{km} km · closed right now',
+    hi: '{km} किमी · अभी बंद है',
+    te: '{km} కి.మీ · ప్రస్తుతం మూసివేసి ఉంది',
+  },
+  'market.rowTooFar': {
+    en: '{km} km · too far to deliver',
+    hi: '{km} किमी · डिलीवरी के लिए बहुत दूर',
+    te: '{km} కి.మీ · డెలివరీకి చాలా దూరం',
+  },
 
   // --- Checkout blockers (App.jsx) --------------------------------------------
   'checkout.needMarket': {
@@ -312,6 +373,53 @@ const STRINGS = {
     en: 'Earn {tokens} tokens for every ₹{rupees} you spend',
     hi: 'हर ₹{rupees} ख़र्च पर {tokens} टोकन कमाएँ',
     te: 'మీరు ఖర్చు చేసే ప్రతి ₹{rupees}కి {tokens} టోకెన్లు సంపాదించండి',
+  },
+
+  // --- Price Tracker (PriceHistory.jsx) ---------------------------------------
+  'price.title': { en: 'Price Tracker', hi: 'क़ीमत ट्रैकर', te: 'ధరల ట్రాకర్' },
+  'price.subtitleMarket': {
+    en: 'Price changes at {market} over the last {days} days',
+    hi: '{market} में पिछले {days} दिनों के क़ीमत बदलाव',
+    te: 'గత {days} రోజుల్లో {market}లో ధరల మార్పులు',
+  },
+  'price.subtitleNoMarket': {
+    en: 'Pick a market to see how its prices have moved',
+    hi: 'क़ीमतें कैसे बदलीं यह देखने के लिए बाज़ार चुनें',
+    te: 'ధరలు ఎలా మారాయో చూడటానికి ఒక మార్కెట్ ఎంచుకోండి',
+  },
+  'price.rising': { en: 'Rising', hi: 'बढ़ रही', te: 'పెరుగుతున్నవి' },
+  'price.falling': { en: 'Falling', hi: 'घट रही', te: 'తగ్గుతున్నవి' },
+  'price.steady': { en: 'Steady', hi: 'स्थिर', te: 'స్థిరం' },
+  'price.needMarket': {
+    en: 'Prices are set by each market, so a trend only means something once you have chosen one. Pick a market on the home screen and its price changes will show up here.',
+    hi: 'क़ीमतें हर बाज़ार अपनी तय करता है, इसलिए बाज़ार चुनने पर ही रुझान का मतलब बनता है। होम स्क्रीन पर बाज़ार चुनें, उसके क़ीमत बदलाव यहाँ दिखेंगे।',
+    te: 'ధరలను ప్రతి మార్కెట్ తనే నిర్ణయిస్తుంది, కాబట్టి మీరు ఒకటి ఎంచుకున్నాకే ధోరణికి అర్థం ఉంటుంది. హోమ్ స్క్రీన్‌లో ఒక మార్కెట్ ఎంచుకోండి, దాని ధరల మార్పులు ఇక్కడ కనిపిస్తాయి.',
+  },
+  'price.loadFailed': {
+    en: 'Could not load price history just now. Pull down to try again.',
+    hi: 'अभी क़ीमत इतिहास नहीं आ सका। फिर कोशिश करने के लिए नीचे खींचें।',
+    te: 'ప్రస్తుతం ధరల చరిత్ర రాలేదు. మళ్లీ ప్రయత్నించడానికి కిందికి లాగండి.',
+  },
+  'price.noneRecorded': {
+    en: 'No price changes recorded at {market} yet. This fills in as the market updates its sheet — it does not estimate what prices might have been.',
+    hi: '{market} में अभी कोई क़ीमत बदलाव दर्ज नहीं हुआ। बाज़ार जैसे-जैसे अपनी सूची बदलेगा, यह भरता जाएगा — यह अंदाज़ा नहीं लगाता कि क़ीमतें क्या रही होंगी।',
+    te: '{market}లో ఇంకా ఏ ధరల మార్పూ నమోదు కాలేదు. మార్కెట్ తన జాబితాను మార్చే కొద్దీ ఇది నిండుతుంది — ధరలు ఎలా ఉండేవో ఇది ఊహించదు.',
+  },
+  'price.searchItems': { en: 'Search items...', hi: 'वस्तुएँ खोजें...', te: 'వస్తువులను వెతకండి...' },
+  'price.all': { en: 'All', hi: 'सभी', te: 'అన్నీ' },
+  'price.loading': { en: 'Loading price history…', hi: 'क़ीमत इतिहास आ रहा है…', te: 'ధరల చరిత్ర వస్తోంది…' },
+  'price.noChanges': { en: 'no changes', hi: 'कोई बदलाव नहीं', te: 'మార్పులు లేవు' },
+  'price.today': { en: 'today', hi: 'आज', te: 'ఈరోజు' },
+  'price.inForce': { en: 'in force', hi: 'अभी लागू', te: 'ప్రస్తుతం అమల్లో' },
+  'price.oneOnRecord': {
+    en: 'One price on record — it has not changed in this window.',
+    hi: 'रिकॉर्ड में एक ही क़ीमत — इस अवधि में यह नहीं बदली।',
+    te: 'రికార్డులో ఒకే ధర — ఈ వ్యవధిలో ఇది మారలేదు.',
+  },
+  'price.changesRecorded': {
+    en: '{count} price changes recorded. The line holds flat between changes because that is what the price did.',
+    hi: '{count} क़ीमत बदलाव दर्ज हैं। दो बदलावों के बीच लकीर सपाट रहती है क्योंकि क़ीमत ने वही किया।',
+    te: '{count} ధరల మార్పులు నమోదయ్యాయి. మార్పుల మధ్య గీత సమాంతరంగా ఉంటుంది, ఎందుకంటే ధర అలాగే ఉంది.',
   },
 };
 

@@ -65,6 +65,56 @@ const CATEGORY_TITLES = {
   // but the slug does not, and keying off the title's wording is exactly the
   // mistake this map avoids.
   'exotic-imported': { te: 'ఎగ్జాటిక్ & మూలికలు', hi: 'विदेशी और जड़ी-बूटियाँ' },
+
+  /**
+   * The per-vegetable aisle entries.
+   *
+   * `initialCategories` is four real aisles followed by one entry per item in
+   * `marketVegetables` / `marketLeafyGreens`, and anything rendering that array
+   * — the Price Tracker's filter chips, a shopkeeper's category picker — shows
+   * all of them together. So they belong in the same map: a caller cannot know
+   * which kind of entry it is holding, and should not have to.
+   *
+   * These are the everyday market word, matching the product names in
+   * server/utils/productTranslations.js. Where the product carries a variety
+   * ("Button Mushroom", "Iceberg Lettuce") the tile keeps only the plain noun,
+   * because the tile is the aisle, not the item.
+   */
+  tomato: { te: 'టమాటా', hi: 'टमाटर' },
+  'green-chilli': { te: 'పచ్చిమిర్చి', hi: 'हरी मिर्च' },
+  peas: { te: 'బఠానీలు', hi: 'मटर' },
+  brinjal: { te: 'వంకాయ', hi: 'बैंगन' },
+  cucumber: { te: 'కీరదోస', hi: 'खीरा' },
+  'bottle-gourd': { te: 'సొరకాయ', hi: 'लौकी' },
+  onion: { te: 'ఉల్లిపాయ', hi: 'प्याज' },
+  cabbage: { te: 'క్యాబేజీ', hi: 'पत्ता गोभी' },
+  cauliflower: { te: 'కాలీఫ్లవర్', hi: 'फूल गोभी' },
+  carrot: { te: 'క్యారెట్', hi: 'गाजर' },
+  beetroot: { te: 'బీట్‌రూట్', hi: 'चुकंदर' },
+  potato: { te: 'బంగాళాదుంప', hi: 'आलू' },
+  spinach: { te: 'పాలకూర', hi: 'पालक' },
+  coriander: { te: 'కొత్తిమీర', hi: 'हरा धनिया' },
+  ginger: { te: 'అల్లం', hi: 'अदरक' },
+  garlic: { te: 'వెల్లుల్లి', hi: 'लहसुन' },
+  'ridge-gourd': { te: 'బీరకాయ', hi: 'तुरई' },
+  'bitter-gourd': { te: 'కాకరకాయ', hi: 'करेला' },
+  okra: { te: 'బెండకాయ', hi: 'भिंडी' },
+  capsicum: { te: 'క్యాప్సికం', hi: 'शिमला मिर्च' },
+  'sweet-potato': { te: 'చిలగడదుంప', hi: 'शकरकंद' },
+  'green-beans': { te: 'ఫ్రెంచ్ బీన్స్', hi: 'फ्रेंच बीन्स' },
+  'spring-onion': { te: 'ఉల్లికాడలు', hi: 'हरा प्याज' },
+  turnip: { te: 'టర్నిప్', hi: 'शलगम' },
+  pumpkin: { te: 'గుమ్మడికాయ', hi: 'कद्दू' },
+  radish: { te: 'ముల్లంగి', hi: 'मूली' },
+  mushroom: { te: 'పుట్టగొడుగులు', hi: 'मशरूम' },
+  zucchini: { te: 'జుకిని', hi: 'जुकीनी' },
+  leek: { te: 'లీక్', hi: 'लीक' },
+  celery: { te: 'సెలెరీ', hi: 'सेलेरी' },
+  'raw-banana': { te: 'అరటికాయ', hi: 'कच्चा केला' },
+  fennel: { te: 'సోంపు', hi: 'सौंफ' },
+  asparagus: { te: 'ఆస్పరాగస్', hi: 'शतावरी' },
+  lettuce: { te: 'లెట్యూస్', hi: 'सलाद पत्ता' },
+  'mustard-greens': { te: 'ఆవాకూర', hi: 'सरसों का साग' },
 };
 
 const CATEGORY_BADGES = {

@@ -490,7 +490,10 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
                 {banner.offer}
               </span>
               <span className="text-[10px] text-emerald-200 font-semibold flex items-center gap-0.5">
-                <Clock className="w-3 h-3" /> 15m to {location ? location.split(',')[0] : 'your door'}
+                <Clock className="w-3 h-3" />{' '}
+                {location
+                  ? t('hero.etaTo', { place: location.split(',')[0] })
+                  : t('hero.etaDoor')}
               </span>
             </div>
 

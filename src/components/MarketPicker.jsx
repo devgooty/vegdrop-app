@@ -63,7 +63,7 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
     return (
       <div className="mx-4 mt-4 rounded-2xl bg-white border border-gray-200 px-4 py-4 flex items-center gap-3">
         <RefreshCw className="w-4 h-4 text-emerald-600 animate-spin shrink-0" />
-        <span className="text-[13px] text-gray-600">Finding markets near you…</span>
+        <span className="text-[13px] text-gray-600">{t('market.finding')}</span>
       </div>
     );
   }
@@ -104,8 +104,8 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
     return (
       <div className="mx-4 mt-4 rounded-2xl bg-white border border-dashed border-gray-300 px-5 py-6 text-center">
         <Store className="w-6 h-6 text-gray-400 mx-auto mb-2" />
-        <p className="text-[13.5px] font-bold text-gray-900">No markets deliver here yet</p>
-        <p className="text-[12px] text-gray-500 mt-1">We are opening in new areas all the time.</p>
+        <p className="text-[13.5px] font-bold text-gray-900">{t('market.noneTitle')}</p>
+        <p className="text-[12px] text-gray-500 mt-1">{t('market.noneHint')}</p>
       </div>
     );
   }
@@ -121,15 +121,17 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
         </span>
         <span className="flex-1 min-w-0">
           <span className="block text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
-            Shopping from
+            {t('market.shoppingFrom')}
           </span>
           <span className="block text-[14px] font-extrabold text-gray-900 truncate">
-            {selectedMarket ? selectedMarket.name : 'Choose a market'}
+            {selectedMarket ? selectedMarket.name : t('market.choose')}
           </span>
           {selectedMarket && (
             <span className="block text-[11.5px] text-gray-500">
-              {selectedMarket.distanceKm} km away · {selectedMarket.openStalls} stall
-              {selectedMarket.openStalls === 1 ? '' : 's'} open
+              {t(selectedMarket.openStalls === 1 ? 'market.summaryOne' : 'market.summaryMany', {
+                km: selectedMarket.distanceKm,
+                stalls: selectedMarket.openStalls,
+              })}
             </span>
           )}
         </span>
@@ -160,12 +162,16 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
                       {market.name}
                     </span>
                     <span className="block text-[11.5px] text-gray-500 truncate">
-                      {market.distanceKm} km ·{' '}
-                      {!market.isOpen
-                        ? 'closed right now'
-                        : !market.deliverable
-                          ? 'too far to deliver'
-                          : `${market.openStalls} stall${market.openStalls === 1 ? '' : 's'} open`}
+                      {t(
+                        !market.isOpen
+                          ? 'market.rowClosed'
+                          : !market.deliverable
+                            ? 'market.rowTooFar'
+                            : market.openStalls === 1
+                              ? 'market.rowOne'
+                              : 'market.rowMany',
+                        { km: market.distanceKm, stalls: market.openStalls }
+                      )}
                     </span>
                   </span>
                   {chosen && <Check className="w-4.5 h-4.5 text-emerald-600 shrink-0" strokeWidth={3} />}
