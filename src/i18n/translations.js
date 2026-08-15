@@ -1151,6 +1151,15 @@ const STRINGS = {
     te: 'స్పిన్‌లు, బహుమతులు ఈ పరికరంలో మాత్రమే నమోదవుతాయి, ఇంకా తీసుకోలేరు — ఇది రివార్డ్ స్టోర్ ముందస్తు రూపం. గెలిచినా ఏమీ పంపబడదు.',
   },
 
+  // --- Account tab, signed out (App.jsx) ---------------------------------------
+  'account.guestTitle': { en: 'Guest User', hi: 'अतिथि उपयोगकर्ता', te: 'అతిథి వినియోగదారు' },
+  'account.guestBody': {
+    en: 'Log in to access your Customer account or privileged Role Panels (Shopkeeper, Delivery, Developer, Market Owner).',
+    hi: 'अपने ग्राहक खाते या विशेष रोल पैनल (दुकानदार, डिलीवरी, डेवलपर, मार्केट ओनर) तक पहुँचने के लिए लॉग इन करें।',
+    te: 'మీ కస్టమర్ ఖాతా లేదా ప్రత్యేక రోల్ ప్యానెల్స్ (దుకాణదారు, డెలివరీ, డెవలపర్, మార్కెట్ ఓనర్) కోసం లాగిన్ చేయండి.',
+  },
+  'account.goToSignIn': { en: 'Go to Sign In Page', hi: 'साइन इन पेज पर जाएँ', te: 'సైన్ ఇన్ పేజీకి వెళ్లండి' },
+
   // --- Account menu -----------------------------------------------------------
   'account.purchaseHistory': { en: 'Purchase History', hi: 'ख़रीद इतिहास', te: 'కొనుగోలు చరిత్ర' },
   'account.purchaseHistorySub': {

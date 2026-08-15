@@ -2244,16 +2244,14 @@ export default function App() {
                       <div className="bg-emerald-100 text-[#1B4D3E] w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2 font-bold text-2xl">
                         🔒
                       </div>
-                      <h3 className="font-extrabold text-lg text-gray-900">Guest User</h3>
-                      <p className="text-xs text-gray-500 max-w-xs mx-auto">
-                        Log in to access your Customer account or privileged Role Panels (Shopkeeper, Delivery, Developer, Market Owner).
-                      </p>
+                      <h3 className="font-extrabold text-lg text-gray-900">{t('account.guestTitle')}</h3>
+                      <p className="text-xs text-gray-500 max-w-xs mx-auto">{t('account.guestBody')}</p>
 
                       <button
                         onClick={() => setActiveTab('login')}
                         className="bg-[#1B4D3E] hover:bg-[#143B2B] text-white text-xs font-extrabold px-6 py-3 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
                       >
-                        Go to Sign In Page
+                        {t('account.goToSignIn')}
                       </button>
                     </div>
                   )}
