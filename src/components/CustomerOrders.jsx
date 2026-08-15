@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { setScheduleStatus, cancelSchedule, describeRecurrence } from '../services/schedules';
 import { Package, Clock, IndianRupee, MapPin, ArrowRight, ShoppingBag, CalendarRange, RotateCw, PauseCircle, PlayCircle, Trash2, CalendarDays, CalendarClock, Calendar as CalendarIcon, ChevronRight, Navigation, X, AlertTriangle } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
+import { dateLocale } from '../i18n/catalog';
 
 /**
  * Plain-language labels for the market fulfillment stages.
@@ -9,16 +11,16 @@ import { Package, Clock, IndianRupee, MapPin, ArrowRight, ShoppingBag, CalendarR
  * to "stalls are deciding", which tells a waiting customer nothing. These say
  * what is actually happening to their vegetables.
  */
-const MARKET_STAGE = {
-  sourcing: 'Finding a stall',
-  partial_review: 'Needs your answer',
-  packing: 'Being packed',
-  awaiting_rider: 'Ready for pickup',
-  collecting: 'Rider collecting',
-  dispatched: 'On the way',
-  delivered: 'Delivered',
-  failed: 'Could not fill',
-  cancelled: 'Cancelled',
+const MARKET_STAGE_KEY = {
+  sourcing: 'stage.sourcing',
+  partial_review: 'stage.partial_review',
+  packing: 'stage.packing',
+  awaiting_rider: 'stage.awaiting_rider',
+  collecting: 'stage.collecting',
+  dispatched: 'stage.dispatched',
+  delivered: 'stage.delivered',
+  failed: 'stage.failed',
+  cancelled: 'stage.cancelled',
 };
 
 /**
@@ -29,12 +31,14 @@ const MARKET_STAGE = {
  * the order actually reached it.
  */
 const ORDER_STAGES = [
-  { key: 'sourcing', label: 'Finding a stall', hint: 'Stalls in the market are deciding who can fill this.' },
-  { key: 'packing', label: 'Being packed', hint: 'Your vegetables are being bagged.' },
-  { key: 'awaiting_rider', label: 'Waiting for a rider', hint: 'Packed, and waiting for someone to collect it.' },
-  { key: 'collecting', label: 'Rider collecting', hint: 'A rider is walking the stalls to pick everything up.' },
-  { key: 'dispatched', label: 'On the way', hint: 'It has left the market.' },
-  { key: 'delivered', label: 'Delivered', hint: '' },
+  { key: 'sourcing', labelKey: 'stage.sourcing', hintKey: 'stage.hint.sourcing' },
+  { key: 'packing', labelKey: 'stage.packing', hintKey: 'stage.hint.packing' },
+  // Longer wording than the badge's "Ready for pickup": on a progress list the
+  // stage is read as what is happening, not as a status chip.
+  { key: 'awaiting_rider', labelKey: 'stage.awaitingRiderLong', hintKey: 'stage.hint.awaiting_rider' },
+  { key: 'collecting', labelKey: 'stage.collecting', hintKey: 'stage.hint.collecting' },
+  { key: 'dispatched', labelKey: 'stage.dispatched', hintKey: 'stage.hint.dispatched' },
+  { key: 'delivered', labelKey: 'stage.delivered', hintKey: null },
 ];
 
 /** Whether a stage is done, current, or still ahead. */
@@ -83,6 +87,7 @@ export default function CustomerOrders({
   onAcceptPartial,
   onRetryPartial,
 }) {
+  const { t, language } = useLanguage();
   const [activeTab, setActiveTab] = useState('recent');
   const [trackingModalOrder, setTrackingModalOrder] = useState(null);
   const [busyScheduleId, setBusyScheduleId] = useState(null);
@@ -120,9 +125,26 @@ export default function CustomerOrders({
   const firstDayOfWeek = today.getDay();
   const emptyDays = Array.from({ length: firstDayOfWeek }, (_, i) => i);
 
-  const startMonth = daysArray[0].toLocaleString('default', { month: 'short' });
-  const endMonth = daysArray[daysArray.length - 1].toLocaleString('default', { month: 'short' });
+  // `'default'` is the browser's locale, not the app's — a calendar on a screen
+  // set to Telugu was labelled "Aug - Sept" because the phone happened to be
+  // en-US. The weekday strip below is derived the same way rather than from a
+  // hardcoded ['Su', 'Mo', …], which had the same problem.
+  const calendarLocale = dateLocale(language);
+  const startMonth = daysArray[0].toLocaleString(calendarLocale, { month: 'short' });
+  const endMonth = daysArray[daysArray.length - 1].toLocaleString(calendarLocale, { month: 'short' });
   const calendarTitle = startMonth === endMonth ? `${startMonth} ${today.getFullYear()}` : `${startMonth} - ${endMonth} ${today.getFullYear()}`;
+
+  // 2024-01-07 was a Sunday, so index 0..6 walks Sunday through Saturday.
+  const weekdayHeadings = React.useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, i) =>
+        new Date(Date.UTC(2024, 0, 7 + i)).toLocaleDateString(calendarLocale, {
+          weekday: 'short',
+          timeZone: 'UTC',
+        })
+      ),
+    [calendarLocale]
+  );
 
   const formatDateStr = (d) => {
     const offset = d.getTimezoneOffset();
@@ -159,7 +181,7 @@ export default function CustomerOrders({
       );
       setScheduledOrders((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     } catch (err) {
-      setScheduleError(err.message || 'Could not change that repeat delivery.');
+      setScheduleError(err.message || t('sched.errChange'));
     } finally {
       setBusyScheduleId(null);
     }
@@ -167,14 +189,14 @@ export default function CustomerOrders({
 
   const deleteSchedule = async (scheduleId) => {
     if (!setScheduledOrders) return;
-    if (!window.confirm('Stop this repeat delivery? Orders already placed are unaffected.')) return;
+    if (!window.confirm(t('sched.confirmStop'))) return;
 
     setBusyScheduleId(scheduleId);
     try {
       await cancelSchedule(scheduleId);
       setScheduledOrders((prev) => prev.filter((s) => s.id !== scheduleId));
     } catch (err) {
-      setScheduleError(err.message || 'Could not stop that repeat delivery.');
+      setScheduleError(err.message || t('sched.errStop'));
     } finally {
       setBusyScheduleId(null);
     }
@@ -189,7 +211,7 @@ export default function CustomerOrders({
         setSelectedDates(prev => prev.filter(d => d !== dateStr));
       } else {
         if (selectedDates.length >= 7) {
-          alert("You can select up to 7 days maximum for a weekly schedule.");
+          alert(t('sched.maxWeekly'));
           return;
         }
         setSelectedDates(prev => [...prev, dateStr].sort());
@@ -199,7 +221,7 @@ export default function CustomerOrders({
         setSelectedDates(prev => prev.filter(d => d !== dateStr));
       } else {
         if (selectedDates.length >= 30) {
-          alert(`You can select up to 30 days maximum.`);
+          alert(t('sched.maxMonthly'));
           return;
         }
         setSelectedDates(prev => [...prev, dateStr].sort());
@@ -222,19 +244,25 @@ export default function CustomerOrders({
     })
     .sort((a, b) => new Date(a.nextRunAt) - new Date(b.nextRunAt));
 
+  // `key` stays English — it is compared against the server's `frequency` and
+  // used to build state — while `labelKey` is what the button actually shows.
   const filterButtons = [
-    { key: 'All', label: 'All', icon: CalendarRange, color: 'text-[#1B4D3E]' },
-    { key: 'Daily', label: 'Daily', icon: CalendarDays, color: 'text-blue-600' },
-    { key: 'Weekly', label: 'Weekly', icon: CalendarClock, color: 'text-purple-600' },
-    { key: 'Monthly', label: 'Monthly', icon: CalendarIcon, color: 'text-amber-600' },
+    { key: 'All', labelKey: 'sched.all', icon: CalendarRange, color: 'text-[#1B4D3E]' },
+    { key: 'Daily', labelKey: 'sched.daily', icon: CalendarDays, color: 'text-blue-600' },
+    { key: 'Weekly', labelKey: 'sched.weekly', icon: CalendarClock, color: 'text-purple-600' },
+    { key: 'Monthly', labelKey: 'sched.monthly', icon: CalendarIcon, color: 'text-amber-600' },
   ];
+
+  /** The Daily/Weekly/Monthly filter word, for a sentence that names it. */
+  const frequencyWord = (key) =>
+    t({ Daily: 'sched.daily', Weekly: 'sched.weekly', Monthly: 'sched.monthly' }[key] || 'sched.all');
 
   const getFrequencyStyle = (frequency) => {
     switch (frequency) {
-      case 'Daily': return { bg: 'bg-blue-500', badge: 'bg-blue-100 text-blue-800 border-blue-200', label: '📅 Daily Delivery' };
-      case 'Weekly': return { bg: 'bg-purple-500', badge: 'bg-purple-100 text-purple-800 border-purple-200', label: '🗓️ Weekly Delivery' };
-      case 'Monthly': return { bg: 'bg-amber-500', badge: 'bg-amber-100 text-amber-800 border-amber-200', label: '📆 Monthly Delivery' };
-      default: return { bg: 'bg-gray-400', badge: 'bg-gray-100 text-gray-800 border-gray-200', label: 'Scheduled' };
+      case 'Daily': return { bg: 'bg-blue-500', badge: 'bg-blue-100 text-blue-800 border-blue-200', label: t('sched.dailyDelivery') };
+      case 'Weekly': return { bg: 'bg-purple-500', badge: 'bg-purple-100 text-purple-800 border-purple-200', label: t('sched.weeklyDelivery') };
+      case 'Monthly': return { bg: 'bg-amber-500', badge: 'bg-amber-100 text-amber-800 border-amber-200', label: t('sched.monthlyDelivery') };
+      default: return { bg: 'bg-gray-400', badge: 'bg-gray-100 text-gray-800 border-gray-200', label: t('sched.generic') };
     }
   };
 
@@ -247,8 +275,8 @@ export default function CustomerOrders({
             <Package className="w-5 h-5 text-amber-300" />
           </div>
           <div>
-            <h1 className="font-vintage text-2xl font-black tracking-wide drop-shadow-md">My Orders</h1>
-            <p className="text-emerald-100 text-xs font-medium">Track purchases & subscriptions</p>
+            <h1 className="font-vintage text-2xl font-black tracking-wide drop-shadow-md">{t('orders.title')}</h1>
+            <p className="text-emerald-100 text-xs font-medium">{t('orders.subtitle')}</p>
           </div>
         </div>
 
@@ -262,7 +290,7 @@ export default function CustomerOrders({
                 : 'text-white/80 hover:bg-white/5'
             }`}
           >
-            <Clock className="w-3.5 h-3.5" /> Recent Orders
+            <Clock className="w-3.5 h-3.5" /> {t('orders.tabRecent')}
           </button>
           <button
             onClick={() => setActiveTab('scheduled')}
@@ -272,7 +300,7 @@ export default function CustomerOrders({
                 : 'text-white/80 hover:bg-white/5'
             }`}
           >
-            <CalendarRange className="w-3.5 h-3.5" /> Scheduled Deliveries
+            <CalendarRange className="w-3.5 h-3.5" /> {t('orders.tabScheduled')}
           </button>
         </div>
       </div>
@@ -287,13 +315,13 @@ export default function CustomerOrders({
                 <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
                   <ShoppingBag className="w-10 h-10 text-emerald-300" />
                 </div>
-                <h3 className="font-bold text-lg text-gray-800 mb-2">No Orders Yet!</h3>
-                <p className="text-sm text-gray-500 mb-6">You haven't placed any orders with VegDrop yet. Start exploring fresh produce!</p>
+                <h3 className="font-bold text-lg text-gray-800 mb-2">{t('orders.noneTitle')}</h3>
+                <p className="text-sm text-gray-500 mb-6">{t('orders.noneBody')}</p>
                 <button
                   onClick={onGoHome}
                   className="bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-bold py-3 px-6 rounded-2xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 mx-auto w-full"
                 >
-                  Start Shopping <ArrowRight className="w-4 h-4" />
+                  {t('orders.startShopping')} <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             ) : (
@@ -308,7 +336,9 @@ export default function CustomerOrders({
                           #{String(order.id).slice(-6)}
                         </span>
                         <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${getStatusColor(order.status)}`}>
-                          {MARKET_STAGE[order.fulfillmentStatus] || order.status}
+                          {MARKET_STAGE_KEY[order.fulfillmentStatus]
+                            ? t(MARKET_STAGE_KEY[order.fulfillmentStatus])
+                            : order.status}
                         </span>
                       </div>
                       {order.marketName && (
@@ -316,7 +346,7 @@ export default function CustomerOrders({
                       )}
                       <div className="flex items-center gap-1 text-[10px] text-gray-500 font-semibold">
                         <Clock className="w-3 h-3" />
-                        <span>{new Date(order.timestamp).toLocaleString()}</span>
+                        <span>{new Date(order.timestamp).toLocaleString(dateLocale(language))}</span>
                       </div>
                     </div>
                     <div className="text-right">
@@ -324,13 +354,13 @@ export default function CustomerOrders({
                         <IndianRupee className="w-4 h-4" />
                         {order.totalAmount}
                       </span>
-                      <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">{order.paymentMethod || 'Online'}</span>
+                      <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">{order.paymentMethod || t('orders.online')}</span>
                     </div>
                   </div>
 
                   <div className="bg-[#FAF7F2] rounded-xl p-3 border border-[#EAE3D2] shadow-inner mb-3">
                     <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-                      <Package className="w-3 h-3" /> Order Items
+                      <Package className="w-3 h-3" /> {t('orders.orderItems')}
                     </h4>
                     <div className="space-y-1.5">
                       {order.items.map((item, idx) => (
@@ -362,8 +392,8 @@ export default function CustomerOrders({
                         <Clock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                         <p className="leading-snug">
                           {order.sourcingAttempt > 1
-                            ? `Checking another market nearby (try ${order.sourcingAttempt}).`
-                            : 'Finding a stall to fill your order. This usually takes under a minute.'}
+                            ? t('orders.sourcingRetry', { attempt: order.sourcingAttempt })
+                            : t('orders.sourcingFirst')}
                         </p>
                       </div>
                       {onCancelOrder && (
@@ -371,7 +401,7 @@ export default function CustomerOrders({
                           onClick={() => onCancelOrder(order)}
                           className="w-full py-2.5 border border-rose-200 text-rose-700 font-black text-xs rounded-xl active:scale-95 transition-transform"
                         >
-                          Cancel order
+                          {t('orders.cancel')}
                         </button>
                       )}
                     </div>
@@ -391,19 +421,21 @@ export default function CustomerOrders({
                         <div className="flex items-start gap-2">
                           <PauseCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                           <p className="leading-snug">
-                            {order.availableItems.length} of{' '}
-                            {order.availableItems.length + order.unavailableItems.length} items are
-                            available here.
+                            {t('orders.partialAvailable', {
+                              available: order.availableItems.length,
+                              total:
+                                order.availableItems.length + order.unavailableItems.length,
+                            })}
                           </p>
                         </div>
 
                         {order.unavailableItems.length > 0 && (
                           <p className="mt-2 leading-snug font-medium text-amber-800">
-                            Not available:{' '}
-                            {order.unavailableItems
-                              .map((i) => `${i.name}${i.quantity > 1 ? ` ×${i.quantity}` : ''}`)
-                              .join(', ')}
-                            .
+                            {t('orders.partialMissing', {
+                              items: order.unavailableItems
+                                .map((i) => `${i.name}${i.quantity > 1 ? ` ×${i.quantity}` : ''}`)
+                                .join(', '),
+                            })}
                           </p>
                         )}
                       </div>
@@ -413,11 +445,11 @@ export default function CustomerOrders({
                           onClick={() => onAcceptPartial(order)}
                           className="w-full py-2.5 bg-[#0B7A37] text-white font-black text-xs rounded-xl active:scale-95 transition-transform"
                         >
-                          Send the {order.availableItems.length} available
+                          {t('orders.partialSend', { count: order.availableItems.length })}
                           {order.unavailableValue > 0 &&
-                            (order.alreadyPaid
-                              ? ` · ₹${order.unavailableValue} back`
-                              : ` · pay ₹${order.unavailableValue} less`)}
+                            t(order.alreadyPaid ? 'orders.partialRefund' : 'orders.partialPayLess', {
+                              amount: order.unavailableValue,
+                            })}
                         </button>
                       )}
 
@@ -426,7 +458,7 @@ export default function CustomerOrders({
                           onClick={() => onRetryPartial(order)}
                           className="w-full py-2.5 border border-[#0B7A37] text-[#0B7A37] font-black text-xs rounded-xl active:scale-95 transition-transform"
                         >
-                          Try another market for everything
+                          {t('orders.partialRetry')}
                         </button>
                       )}
 
@@ -435,7 +467,7 @@ export default function CustomerOrders({
                           onClick={() => onCancelOrder(order)}
                           className="w-full py-2.5 border border-rose-200 text-rose-700 font-black text-xs rounded-xl active:scale-95 transition-transform"
                         >
-                          Cancel order
+                          {t('orders.cancel')}
                         </button>
                       )}
                     </div>
@@ -445,13 +477,18 @@ export default function CustomerOrders({
                     <div className="mt-3 flex items-start gap-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
                       <Package className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                       <p className="leading-snug">
-                        Accepted — your order is being packed and can no longer be cancelled.
+                        {t('orders.packingNote')}
                         {order.droppedItems.length > 0 &&
-                          ` ${order.droppedItems.map((i) => i.name).join(', ')} could not be sourced and ${
-                            order.droppedItems.length === 1 ? 'was' : 'were'
-                          } ${
-                            order.droppedItems.some((i) => i.refunded > 0) ? 'refunded' : 'removed'
-                          }.`}
+                          t(
+                            order.droppedItems.some((i) => i.refunded > 0)
+                              ? order.droppedItems.length === 1
+                                ? 'orders.droppedRefundedOne'
+                                : 'orders.droppedRefundedMany'
+                              : order.droppedItems.length === 1
+                                ? 'orders.droppedRemovedOne'
+                                : 'orders.droppedRemovedMany',
+                            { items: order.droppedItems.map((i) => i.name).join(', ') }
+                          )}
                       </p>
                     </div>
                   )}
@@ -459,24 +496,21 @@ export default function CustomerOrders({
                   {order.fulfillmentStatus === 'awaiting_rider' && (
                     <div className="mt-3 flex items-start gap-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
                       <Package className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      <p className="leading-snug">Packed and waiting for a rider.</p>
+                      <p className="leading-snug">{t('orders.awaitingRider')}</p>
                     </div>
                   )}
 
                   {order.fulfillmentStatus === 'collecting' && (
                     <div className="mt-3 flex items-start gap-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
                       <Navigation className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      <p className="leading-snug">Your rider is collecting from the stalls.</p>
+                      <p className="leading-snug">{t('orders.collecting')}</p>
                     </div>
                   )}
 
                   {order.fulfillmentStatus === 'failed' && (
                     <div className="mt-3 flex items-start gap-2 text-[11px] font-semibold text-rose-800 bg-rose-50 p-2.5 rounded-xl border border-rose-200">
                       <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      <p className="leading-snug">
-                        No stall nearby could fill this one, so it was cancelled and your money
-                        refunded. Try a different market.
-                      </p>
+                      <p className="leading-snug">{t('orders.failedNote')}</p>
                     </div>
                   )}
 
@@ -487,7 +521,7 @@ export default function CustomerOrders({
                       className="mt-3 w-full py-2.5 bg-gradient-to-r from-[#1B4D3E] to-emerald-600 text-white font-black text-xs rounded-xl shadow-md flex items-center justify-center gap-2 active:scale-95 transition-transform animate-pulse"
                     >
                       <Navigation className="w-4 h-4" />
-                      Track Your Order Live 🚴
+                      {t('orders.trackLive')}
                     </button>
                   )}
                 </div>
@@ -535,7 +569,7 @@ export default function CustomerOrders({
                   >
                     <div className="flex items-center gap-2">
                       <Icon className={`w-5 h-5 ${isActive ? 'text-amber-300' : btn.color}`} />
-                      {btn.label}
+                      {t(btn.labelKey)}
                     </div>
                     <span className={`text-xs rounded-full px-2.5 py-0.5 font-black ${
                       isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'
@@ -552,13 +586,19 @@ export default function CustomerOrders({
               <div className="bg-white rounded-[1.5rem] p-4 shadow-md border border-gray-100 animate-scale-in mb-6">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="font-black text-gray-800 text-lg">Pick Date{['Weekly', 'Monthly'].includes(scheduleFilter) ? 's' : ''}</h3>
+                    <h3 className="font-black text-gray-800 text-lg">
+                      {t(
+                        ['Weekly', 'Monthly'].includes(scheduleFilter)
+                          ? 'sched.pickDates'
+                          : 'sched.pickDate'
+                      )}
+                    </h3>
                     <p className="text-xs font-bold text-blue-500">
-                      {scheduleFilter === 'Weekly' 
-                        ? 'Select 3 to 7 days for weekly delivery' 
+                      {scheduleFilter === 'Weekly'
+                        ? t('sched.hintWeekly')
                         : scheduleFilter === 'Monthly'
-                          ? `Select at least 15 days`
-                          : 'Schedule your cart for delivery'}
+                          ? t('sched.hintMonthly')
+                          : t('sched.hintDaily')}
                     </p>
                   </div>
                   <div className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-black shadow-inner border border-blue-100">
@@ -575,9 +615,9 @@ export default function CustomerOrders({
                         <CalendarIcon className="w-5 h-5 text-blue-600" />
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Delivery Date</p>
+                        <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">{t('sched.deliveryDate')}</p>
                         <p className="font-black text-gray-800 text-sm">
-                          {new Date(selectedDates[0]).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                          {new Date(selectedDates[0]).toLocaleDateString(dateLocale(language), { weekday: 'long', month: 'short', day: 'numeric' })}
                         </p>
                       </div>
                     </div>
@@ -585,15 +625,15 @@ export default function CustomerOrders({
                       onClick={() => setSelectedDates([])}
                       className="text-xs font-bold text-blue-600 hover:text-blue-800 underline"
                     >
-                      Change
+                      {t('common.change')}
                     </button>
                   </div>
                 ) : (
                   <>
                     {/* Days of week */}
                     <div className="grid grid-cols-7 gap-1 mb-2 text-center text-[10px] font-black text-gray-400 uppercase tracking-wider">
-                      {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
-                        <div key={day}>{day}</div>
+                      {weekdayHeadings.map((day, i) => (
+                        <div key={i}>{day}</div>
                       ))}
                     </div>
 
@@ -642,12 +682,16 @@ export default function CustomerOrders({
                 {/* Validation messages for Weekly & Monthly */}
                 {scheduleFilter === 'Weekly' && selectedDates.length > 0 && selectedDates.length < 3 && (
                   <div className="text-center text-xs font-bold text-amber-600 bg-amber-50 rounded-lg py-2 mb-4 border border-amber-200">
-                    Please select at least {3 - selectedDates.length} more day{3 - selectedDates.length > 1 ? 's' : ''}.
+                    {3 - selectedDates.length === 1
+                      ? t('sched.needMoreOne')
+                      : t('sched.needMore', { count: 3 - selectedDates.length })}
                   </div>
                 )}
                 {scheduleFilter === 'Monthly' && selectedDates.length > 0 && selectedDates.length < 15 && (
                   <div className="text-center text-xs font-bold text-amber-600 bg-amber-50 rounded-lg py-2 mb-4 border border-amber-200">
-                    Please select at least {15 - selectedDates.length} more day{15 - selectedDates.length > 1 ? 's' : ''}.
+                    {15 - selectedDates.length === 1
+                      ? t('sched.needMoreOne')
+                      : t('sched.needMore', { count: 15 - selectedDates.length })}
                   </div>
                 )}
 
@@ -655,20 +699,26 @@ export default function CustomerOrders({
                 {selectedDates.length > 0 && (
                   <div className="bg-blue-50/50 rounded-xl p-3 border border-blue-100 animate-fade-in">
                     <h4 className="text-xs font-black text-blue-800 flex items-center justify-between mb-2">
-                      <span>Order Summary ({['Weekly', 'Monthly'].includes(scheduleFilter) ? `${selectedDates.length} days` : '1 day'})</span>
-                      <span className="bg-white px-2 py-0.5 rounded-md border border-blue-200">{cartItems?.length || 0} items</span>
+                      <span>
+                        {['Weekly', 'Monthly'].includes(scheduleFilter)
+                          ? t('sched.summaryDays', { count: selectedDates.length })
+                          : t('sched.summaryOneDay')}
+                      </span>
+                      <span className="bg-white px-2 py-0.5 rounded-md border border-blue-200">
+                        {t('sched.itemCount', { count: cartItems?.length || 0 })}
+                      </span>
                     </h4>
                     
                     {(!cartItems || cartItems.length === 0) ? (
                       <div className="text-center py-5 bg-white rounded-lg border border-blue-100 border-dashed">
                         <ShoppingBag className="w-8 h-8 text-blue-200 mx-auto mb-2" />
-                        <p className="text-[10px] font-bold text-gray-500">Your cart is empty.</p>
-                        <p className="text-[9px] text-gray-400 mb-3">Add items to schedule a delivery.</p>
+                        <p className="text-[10px] font-bold text-gray-500">{t('sched.cartEmpty')}</p>
+                        <p className="text-[9px] text-gray-400 mb-3">{t('sched.cartEmptyHint')}</p>
                         <button 
                           onClick={onStartScheduledShopping}
                           className="bg-[#1B4D3E] hover:bg-[#143B2B] text-white text-[10px] font-black px-5 py-2 rounded-full shadow-sm transition-all active:scale-95"
                         >
-                          Go to Store
+                          {t('sched.goToStore')}
                         </button>
                       </div>
                     ) : (
@@ -685,7 +735,11 @@ export default function CustomerOrders({
                           ))}
                         </div>
                         <div className="flex items-center justify-between font-black text-sm pt-2 border-t border-blue-200 mb-3">
-                          <span className="text-gray-800">Total {['Weekly', 'Monthly'].includes(scheduleFilter) ? `for ${selectedDates.length} days` : ''}:</span>
+                          <span className="text-gray-800">
+                            {['Weekly', 'Monthly'].includes(scheduleFilter)
+                              ? t('sched.totalForDays', { count: selectedDates.length })
+                              : t('sched.total')}
+                          </span>
                           <span className="text-blue-700">
                             ₹{(cartItems.reduce((acc, i) => acc + (i.price * i.quantity), 0)) * (['Weekly', 'Monthly'].includes(scheduleFilter) ? selectedDates.length : 1)}
                           </span>
@@ -699,7 +753,7 @@ export default function CustomerOrders({
                               : 'bg-blue-600 hover:bg-blue-700 text-white active:scale-95'
                           }`}
                         >
-                          Schedule Delivery <ChevronRight className="w-4 h-4" />
+                          {t('sched.scheduleDelivery')} <ChevronRight className="w-4 h-4" />
                         </button>
                       </>
                     )}
@@ -715,23 +769,25 @@ export default function CustomerOrders({
                   <RotateCw className="w-10 h-10 text-amber-400" />
                 </div>
                 <h3 className="font-bold text-lg text-gray-800 mb-2">
-                  {scheduleFilter === 'All' ? 'No Active Schedules' : `No ${scheduleFilter} Schedules`}
+                  {scheduleFilter === 'All'
+                    ? t('sched.noneAll')
+                    : t('sched.noneFiltered', { frequency: frequencyWord(scheduleFilter) })}
                 </h3>
                 <p className="text-sm text-gray-500 mb-6">
-                  {scheduleFilter === 'All' 
-                    ? 'Subscribe to your daily essentials to automate your deliveries!' 
-                    : `You don't have any ${scheduleFilter.toLowerCase()} delivery schedules yet.`}
+                  {scheduleFilter === 'All'
+                    ? t('sched.noneAllBody')
+                    : t('sched.noneFilteredBody', { frequency: frequencyWord(scheduleFilter) })}
                 </p>
                 <button
                   onClick={onGoHome}
                   className="bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-bold py-3 px-6 rounded-2xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 mx-auto w-full"
                 >
-                  Explore Essentials <ArrowRight className="w-4 h-4" />
+                  {t('sched.explore')} <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             ) : (
               <>
-                <h3 className="font-black text-gray-400 text-xs uppercase tracking-widest pl-2 mb-2 mt-4">Existing Schedules</h3>
+                <h3 className="font-black text-gray-400 text-xs uppercase tracking-widest pl-2 mb-2 mt-4">{t('sched.existing')}</h3>
                 {filteredSchedules.map((schedule) => {
                   const freqStyle = getFrequencyStyle(schedule.frequency);
                   return (
@@ -739,7 +795,9 @@ export default function CustomerOrders({
                       
                       {/* Frequency ribbon */}
                       <div className={`absolute -right-8 top-4 rotate-45 text-[9px] font-black uppercase tracking-wider py-1 px-10 text-white shadow-sm ${freqStyle.bg}`}>
-                        {String(schedule.frequency).replace(/^./, (c) => c.toUpperCase())}
+                        {frequencyWord(
+                          String(schedule.frequency).replace(/^./, (c) => c.toUpperCase())
+                        )}
                       </div>
                       
                       {/* Header row */}
@@ -755,7 +813,7 @@ export default function CustomerOrders({
                                 : 'bg-amber-100 text-amber-800 border-amber-200'
                             }`}>
                               <RotateCw className={`w-3 h-3 ${schedule.status === 'active' ? 'animate-spin' : ''}`} style={schedule.status === 'active' ? { animationDuration: '3s' } : {}} /> 
-                              {schedule.status === 'active' ? 'Active' : 'Paused'}
+                              {t(schedule.status === 'active' ? 'sched.active' : 'sched.paused')}
                             </span>
                           </div>
                           
@@ -766,7 +824,14 @@ export default function CustomerOrders({
                           
                           <div className="flex items-center gap-1 text-[11px] text-gray-500 font-bold mt-2">
                             <CalendarRange className="w-3.5 h-3.5 text-[#1B4D3E]" />
-                            <span>Next Delivery: <span className="text-[#1B4D3E] font-extrabold">{new Date(schedule.nextRunAt).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span></span>
+                            <span className="text-[#1B4D3E] font-extrabold">
+                              {t('sched.nextDelivery', {
+                                date: new Date(schedule.nextRunAt).toLocaleDateString(
+                                  dateLocale(language),
+                                  { weekday: 'short', day: 'numeric', month: 'short' }
+                                ),
+                              })}
+                            </span>
                           </div>
                         </div>
                         {/*
@@ -782,10 +847,10 @@ export default function CustomerOrders({
                         */}
                         <div className="text-right mt-1 max-w-[45%]">
                           <span className="text-[11px] font-black text-[#1B4D3E] block leading-tight">
-                            {describeRecurrence(schedule)}
+                            {describeRecurrence(schedule, t, dateLocale(language))}
                           </span>
                           <span className="text-[9px] text-gray-400 font-bold uppercase">
-                            priced on the day
+                            {t('sched.pricedOnDay')}
                           </span>
                         </div>
                       </div>
@@ -793,7 +858,7 @@ export default function CustomerOrders({
                       {/* Items */}
                       <div className="bg-[#FAF7F2] rounded-xl p-3 border border-[#EAE3D2] shadow-inner mb-3">
                         <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-                          <Package className="w-3 h-3" /> Subscribed Items
+                          <Package className="w-3 h-3" /> {t('sched.subscribedItems')}
                         </h4>
                         <div className="space-y-1.5">
                           {/* Quantities and names, no line prices — the same
@@ -801,7 +866,7 @@ export default function CustomerOrders({
                           {schedule.items.map((item, idx) => (
                             <div key={idx} className="flex justify-between text-xs font-bold">
                               <span className="text-gray-700">
-                                {item.quantity}x {item.name || 'Item'}
+                                {item.quantity}x {item.name || t('sched.item')}
                               </span>
                             </div>
                           ))}
@@ -830,16 +895,16 @@ export default function CustomerOrders({
                           }`}
                         >
                           {schedule.status === 'active' ? (
-                            <><PauseCircle className="w-4 h-4" /> Pause Delivery</>
+                            <><PauseCircle className="w-4 h-4" /> {t('sched.pause')}</>
                           ) : (
-                            <><PlayCircle className="w-4 h-4" /> Resume Delivery</>
+                            <><PlayCircle className="w-4 h-4" /> {t('sched.resume')}</>
                           )}
                         </button>
                         <button 
                           onClick={() => deleteSchedule(schedule.id)}
                           disabled={busyScheduleId === schedule.id}
                           className="p-2.5 rounded-xl text-rose-500 bg-rose-50 border border-rose-100 hover:bg-rose-100 transition-all shadow-sm active:scale-95"
-                          title="Cancel Subscription"
+                          title={t('sched.cancelSubscription')}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -860,8 +925,13 @@ export default function CustomerOrders({
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-[#1B4D3E] to-emerald-600 text-white px-5 py-4 flex items-center justify-between">
               <div>
-                <p className="font-black text-base">Order progress</p>
-                <p className="text-emerald-200 text-xs">Order #{trackingModalOrder.id} • {trackingModalOrder.customerName}</p>
+                <p className="font-black text-base">{t('orders.progressTitle')}</p>
+                <p className="text-emerald-200 text-xs">
+                  {t('orders.progressSub', {
+                    id: trackingModalOrder.id,
+                    name: trackingModalOrder.customerName,
+                  })}
+                </p>
               </div>
               <button onClick={() => setTrackingModalOrder(null)} className="p-1.5 bg-white/20 rounded-full">
                 <X className="w-5 h-5 text-white" />
@@ -898,10 +968,10 @@ export default function CustomerOrders({
                           state === 'pending' ? 'text-gray-400' : 'text-gray-900'
                         }`}
                       >
-                        {stage.label}
+                        {t(stage.labelKey)}
                       </p>
-                      {state === 'current' && (
-                        <p className="text-[11.5px] text-emerald-700">{stage.hint}</p>
+                      {state === 'current' && stage.hintKey && (
+                        <p className="text-[11.5px] text-emerald-700">{t(stage.hintKey)}</p>
                       )}
                     </div>
                   </li>
@@ -913,7 +983,7 @@ export default function CustomerOrders({
             <div className="px-4 py-3 flex items-start gap-2 border-t border-gray-100">
               <MapPin className="w-4 h-4 text-rose-500 mt-0.5 shrink-0" />
               <div>
-                <p className="text-[10px] text-gray-400 font-bold uppercase">Delivering to</p>
+                <p className="text-[10px] text-gray-400 font-bold uppercase">{t('orders.deliveringTo')}</p>
                 <p className="text-xs font-semibold text-gray-700">{trackingModalOrder.deliveryAddress || trackingModalOrder.address}</p>
               </div>
             </div>

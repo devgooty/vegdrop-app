@@ -93,23 +93,46 @@ export function recurrenceFromDates(frequency, isoDates = []) {
   return { daysOfMonth: [...new Set(dates.map((d) => d.getDate()))].sort((a, b) => a - b) };
 }
 
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/**
+ * The weekday name in a given language.
+ *
+ * Read out of `toLocaleDateString` rather than a table of names here: the
+ * browser already carries all seven in every locale, and a hand-copied table
+ * would be three more lists to keep correct. 2024-01-07 was a Sunday, so
+ * adding the JS day index to it lands on the right weekday.
+ */
+function weekdayName(index, locale) {
+  const sunday = new Date(Date.UTC(2024, 0, 7 + index));
+  return sunday.toLocaleDateString(locale, { weekday: 'long', timeZone: 'UTC' });
+}
 
-/** "Every Monday and Thursday" — what the schedule actually does, in words. */
-export function describeRecurrence(schedule) {
+/**
+ * "Every Monday and Thursday" — what the schedule actually does, in words.
+ *
+ * `t` and `locale` are passed in rather than pulled from a hook, because this
+ * is a service: it is called from render code that already holds both, and
+ * importing the language context here would tie a plain function to React.
+ * Both default to English so a caller that has not been wired yet still reads.
+ */
+export function describeRecurrence(schedule, t = (k) => k, locale = 'en-IN') {
   if (!schedule) return '';
-  if (schedule.frequency === 'daily') return 'Every day';
+  if (schedule.frequency === 'daily') return t('recur.everyDay');
 
   if (schedule.frequency === 'weekly') {
-    const names = (schedule.daysOfWeek || []).map((d) => WEEKDAYS[d]);
-    if (names.length === 0) return 'Weekly';
-    if (names.length === 7) return 'Every day';
-    return `Every ${names.join(' and ')}`;
+    const days = schedule.daysOfWeek || [];
+    if (days.length === 0) return t('recur.weekly');
+    if (days.length === 7) return t('recur.everyDay');
+    return t('recur.everyDays', {
+      days: days.map((d) => weekdayName(d, locale)).join(t('recur.and')),
+    });
   }
 
   const days = schedule.daysOfMonth || [];
-  if (days.length === 0) return 'Monthly';
-  return `Monthly on the ${days.map(ordinal).join(', ')}`;
+  if (days.length === 0) return t('recur.monthly');
+  // Ordinals are English-only by construction ("1st"); Hindi and Telugu take
+  // the bare number, which is how a date is written in both.
+  const suffixed = locale.startsWith('en') ? days.map(ordinal) : days.map(String);
+  return t('recur.monthlyOn', { days: suffixed.join(', ') });
 }
 
 function ordinal(n) {

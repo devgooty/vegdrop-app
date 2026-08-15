@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Minus, ChevronDown, Search, Info, Loader2 } from 'lucide-react';
 import { fetchMarketPriceHistory } from '../services/markets';
 import { useLanguage } from '../i18n/LanguageContext';
-import { productName, productWeight, categoryTitle } from '../i18n/catalog';
+import { productName, productWeight, categoryTitle, dateLocale } from '../i18n/catalog';
 
 /**
  * The Price Tracker.
@@ -482,15 +482,10 @@ function Notice({ children }) {
   );
 }
 
-/**
- * A day on the date axis, in the reader's own script.
- *
- * The locale is derived from the app language rather than the browser's, so a
- * screen the shopper has explicitly set to Telugu does not carry English month
- * names because the phone happens to be en-US. All three are `-IN` regions, so
- * the day-then-month order is the same in each.
- */
+/** A day on the date axis, in the reader's own script. */
 function formatDay(iso, language = 'en') {
-  const locale = { te: 'te-IN', hi: 'hi-IN' }[language] || 'en-IN';
-  return new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+  return new Date(iso).toLocaleDateString(dateLocale(language), {
+    day: 'numeric',
+    month: 'short',
+  });
 }

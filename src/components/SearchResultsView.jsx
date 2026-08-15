@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ArrowLeft, Search, Filter, SearchX } from 'lucide-react';
 import ProductGridCard from './ProductGridCard';
 import { searchProducts } from '../services/search';
+import { useLanguage } from '../i18n/LanguageContext';
 
 /**
  * Everything the shop stocks under one name — what picking a suggestion opens.
@@ -27,6 +28,7 @@ export default function SearchResultsView({
   onSelectProduct,
   onBack,
 }) {
+  const { t } = useLanguage();
   const [filterOrganic, setFilterOrganic] = useState(false);
   const [sortBy, setSortBy] = useState('relevance');
 
@@ -59,15 +61,17 @@ export default function SearchResultsView({
           className="skeuo-btn-light p-1 px-2.5 rounded-full transition-all flex items-center gap-1 text-xs font-bold cursor-pointer"
         >
           <ArrowLeft className="w-3.5 h-3.5 text-[#1B4D3E]" />
-          <span>Back</span>
+          <span>{t('common.back')}</span>
         </button>
 
         <h1 className="font-vintage font-extrabold text-sm text-[#1B4D3E] truncate tracking-tight">
-          Results for “{trimmedQuery}”
+          {t('search.resultsFor', { query: trimmedQuery })}
         </h1>
 
         <span className="bg-[#EAE4D7] text-[#1B4D3E] text-[10px] font-bold px-2 py-0.5 rounded-full border border-[#D5CDBC] shadow-2xs shrink-0">
-          {results.length} {results.length === 1 ? 'Item' : 'Items'}
+          {results.length === 1
+            ? t('search.itemOne')
+            : t('search.itemCount', { count: results.length })}
         </span>
       </header>
 
@@ -75,13 +79,13 @@ export default function SearchResultsView({
       <div className="p-4 py-3 space-y-2 flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="flex-1 min-w-0 relative">
-            <label htmlFor="search-results-query" className="sr-only">Refine your search</label>
+            <label htmlFor="search-results-query" className="sr-only">{t('search.refine')}</label>
             <input
               id="search-results-query"
               type="text"
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
-              placeholder="Search the whole shop..."
+              placeholder={t('search.wholeShop')}
               className="w-full skeuo-inset-input rounded-full py-1.5 pl-8 pr-3 text-xs font-medium text-[#2D2A26] placeholder-[#9A8F7C] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30"
             />
             <Search className="w-3.5 h-3.5 text-[#8A7E6B] absolute left-2.5 top-2" />
@@ -94,27 +98,29 @@ export default function SearchResultsView({
               filterOrganic ? 'skeuo-btn-emerald' : 'skeuo-btn-light'
             }`}
           >
-            Organic
+            {t('search.organic')}
           </button>
         </div>
 
         <div className="flex items-center justify-between text-xs text-[#7A7060]">
           <span className="font-semibold text-[#2D2A26] text-[11px]">
-            Showing {results.length} {results.length === 1 ? 'product' : 'products'}
+            {results.length === 1
+              ? t('search.showingOne')
+              : t('search.showing', { count: results.length })}
           </span>
           <div className="flex items-center gap-1">
             <Filter className="w-3 h-3 text-[#8A7E6B]" />
-            <label htmlFor="search-results-sort" className="sr-only">Sort results</label>
+            <label htmlFor="search-results-sort" className="sr-only">{t('search.sort')}</label>
             <select
               id="search-results-sort"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
               className="bg-transparent font-bold text-[#1B4D3E] text-[11px] focus:outline-none cursor-pointer"
             >
-              <option value="relevance">Best Match</option>
-              <option value="price-low">Price: Low to High</option>
-              <option value="price-high">Price: High to Low</option>
-              <option value="rating">Top Rated</option>
+              <option value="relevance">{t('search.bestMatch')}</option>
+              <option value="price-low">{t('search.priceLowHigh')}</option>
+              <option value="price-high">{t('search.priceHighLow')}</option>
+              <option value="rating">{t('search.topRated')}</option>
             </select>
           </div>
         </div>
@@ -125,12 +131,10 @@ export default function SearchResultsView({
           <div className="col-span-2 skeuo-card rounded-2xl p-8 text-center">
             <SearchX className="w-10 h-10 mx-auto mb-3 text-[#C9C0AC]" aria-hidden="true" />
             <p className="text-[#2D2A26] text-sm font-bold">
-              Nothing matching “{trimmedQuery}”
+              {t('search.nothingMatching', { query: trimmedQuery })}
             </p>
             <p className="text-[#8A7E6B] text-xs font-medium mt-1">
-              {filterOrganic
-                ? 'Try turning off the Organic filter, or search for something else.'
-                : 'Check the spelling, or try a shorter word.'}
+              {filterOrganic ? t('search.tryWithoutOrganic') : t('search.checkSpelling')}
             </p>
           </div>
         ) : (

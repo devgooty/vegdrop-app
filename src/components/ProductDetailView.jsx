@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { ArrowLeft, Star, ShieldCheck, Truck, Sparkles, Plus, Minus, Check, Heart, Share2, Camera } from 'lucide-react';
 import RelatedProducts from './RelatedProducts';
 import { shareProduct } from '../services/share';
+import { useLanguage } from '../i18n/LanguageContext';
+import { productName, productWeight, categoryTitle } from '../i18n/catalog';
 
 export default function ProductDetailView({
   product,
@@ -16,6 +18,7 @@ export default function ProductDetailView({
   onOpenCategory,
   onShared,
 }) {
+  const { t, language } = useLanguage();
   const [isLiked, setIsLiked] = useState(false);
 
   const handleShare = async () => {
@@ -93,11 +96,15 @@ export default function ProductDetailView({
           className="skeuo-btn-light p-1.5 px-3 rounded-full transition-all flex items-center gap-1 text-xs font-bold cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4 text-[#1B4D3E]" />
-          <span>Back to {category ? category.title : 'Category'}</span>
+          <span>
+            {t('product.backTo', {
+              category: category ? categoryTitle(category, language) : t('product.category'),
+            })}
+          </span>
         </button>
 
         <span className="font-vintage font-bold text-xs text-[#1B4D3E]">
-          {category ? category.title : 'Harvest Details'}
+          {category ? categoryTitle(category, language) : t('product.harvestDetails')}
         </span>
 
         <div className="flex items-center gap-2">
@@ -109,7 +116,7 @@ export default function ProductDetailView({
           </button>
           <button
             onClick={handleShare}
-            aria-label={`Share ${product.name}`}
+            aria-label={t('product.share', { name: productName(product, language) })}
             className="p-2 rounded-full bg-white border border-[#DCD5C6] shadow-2xs cursor-pointer"
           >
             <Share2 className="w-4 h-4 text-[#8A7E6B]" />
@@ -122,7 +129,7 @@ export default function ProductDetailView({
         <div className="relative h-64 w-full rounded-2xl overflow-hidden bg-[#F0EBE1]">
           <img
             src={product.image}
-            alt={product.name}
+            alt={productName(product, language)}
             className="w-full h-full object-cover"
             onError={(e) => {
               e.target.src = 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500';
@@ -131,13 +138,13 @@ export default function ProductDetailView({
 
           {product.isOrganic && (
             <span className="skeuo-badge-emerald absolute top-3 left-3 text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm">
-              🌿 100% Certified Organic
+              🌿 {t('product.certifiedOrganic')}
             </span>
           )}
 
           {discountPercent > 0 && (
             <span className="skeuo-badge-amber absolute top-3 right-3 text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm">
-              Save {discountPercent}%
+              {t('product.save', { percent: discountPercent })}
             </span>
           )}
         </div>
@@ -161,14 +168,20 @@ export default function ProductDetailView({
         <div className="skeuo-card rounded-2xl p-4 space-y-3">
           <div className="flex justify-between items-start gap-2">
             <div>
-              <h1 className="font-vintage text-2xl font-black text-[#1B4D3E] leading-tight">{product.name}</h1>
-              <p className="text-xs font-semibold text-[#7A7060] mt-0.5">Base Quantity: {product.weight}</p>
+              <h1 className="font-vintage text-2xl font-black text-[#1B4D3E] leading-tight">
+                {productName(product, language)}
+              </h1>
+              <p className="text-xs font-semibold text-[#7A7060] mt-0.5">
+                {t('product.baseQuantity')} {productWeight(product.weight, language)}
+              </p>
             </div>
 
             <div className="text-right">
               <div className="font-vintage font-extrabold text-2xl text-[#1B4D3E]">₹{displayPrice}</div>
               {displayOldPrice && (
-                <div className="text-xs text-[#9A8F7C] line-through font-medium">M.R.P: ₹{displayOldPrice}</div>
+                <div className="text-xs text-[#9A8F7C] line-through font-medium">
+                  {t('product.mrp')} ₹{displayOldPrice}
+                </div>
               )}
             </div>
           </div>
@@ -180,7 +193,7 @@ export default function ProductDetailView({
                 <button
                   onClick={(e) => onUpdateQuantity(variantId, -1)}
                   className="p-1.5 hover:bg-[#143B2B] rounded-lg transition-colors cursor-pointer active:scale-90"
-                  title="Decrease"
+                  title={t('product.decrease')}
                 >
                   <Minus className="w-4 h-4 stroke-[3]" />
                 </button>
@@ -190,7 +203,7 @@ export default function ProductDetailView({
                 <button
                   onClick={(e) => onUpdateQuantity(variantId, 1, e, product)}
                   className="p-1.5 hover:bg-[#143B2B] rounded-lg transition-colors cursor-pointer active:scale-90"
-                  title="Increase"
+                  title={t('product.increase')}
                 >
                   <Plus className="w-4 h-4 stroke-[3]" />
                 </button>
@@ -201,7 +214,7 @@ export default function ProductDetailView({
                 className="skeuo-btn-emerald font-extrabold px-4 py-2 rounded-xl text-sm flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
               >
                 <Plus className="w-4 h-4" />
-                <span>Add</span>
+                <span>{t('product.add')}</span>
               </button>
             )}
           </div>
@@ -209,7 +222,9 @@ export default function ProductDetailView({
           {/* Detailed Weight Variants Selector */}
           {isWeightBased && (
             <div className="pt-2 border-t border-[#EFEBE0]">
-              <p className="text-[10px] font-bold text-[#8A7E6B] mb-2 uppercase tracking-wider">Select Weight</p>
+              <p className="text-[10px] font-bold text-[#8A7E6B] mb-2 uppercase tracking-wider">
+                {t('product.selectWeight')}
+              </p>
               <div className="flex items-center gap-2 bg-[#F3EFE6] p-1.5 rounded-xl border border-[#E5DFD1]">
                 {weightVariants.map(v => (
                   <button
@@ -234,7 +249,9 @@ export default function ProductDetailView({
               <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
               <span>{product.rating}</span>
             </div>
-            <span className="text-xs text-[#7A7060] font-medium">({product.reviews || 120} verified customer reviews)</span>
+            <span className="text-xs text-[#7A7060] font-medium">
+              {t('product.reviews', { count: product.reviews || 120 })}
+            </span>
           </div>
         </div>
 
@@ -245,8 +262,8 @@ export default function ProductDetailView({
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-[#1B4D3E]">100% Pesticide Free</h4>
-              <p className="text-[10px] text-[#7A7060]">Lab tested clean harvest</p>
+              <h4 className="text-xs font-bold text-[#1B4D3E]">{t('product.pesticideFree')}</h4>
+              <p className="text-[10px] text-[#7A7060]">{t('product.pesticideFreeSub')}</p>
             </div>
           </div>
 
@@ -255,18 +272,16 @@ export default function ProductDetailView({
               <Truck className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-[#1B4D3E]">15-Min Delivery</h4>
-              <p className="text-[10px] text-[#7A7060]">Cold chain fresh express</p>
+              <h4 className="text-xs font-bold text-[#1B4D3E]">{t('product.fastDelivery')}</h4>
+              <p className="text-[10px] text-[#7A7060]">{t('product.fastDeliverySub')}</p>
             </div>
           </div>
         </div>
 
         {/* 5. Product Description */}
         <div className="skeuo-card rounded-2xl p-4 space-y-2">
-          <h3 className="font-vintage text-sm font-bold text-[#1B4D3E]">Harvest Story & Details</h3>
-          <p className="text-xs text-[#4A443B] leading-relaxed">
-            Freshly harvested from organic partner farms in Ooty and Nilgiri hills. Grown using sustainable composting without chemical pesticides. Rich in essential vitamins, minerals, and natural antioxidants.
-          </p>
+          <h3 className="font-vintage text-sm font-bold text-[#1B4D3E]">{t('product.storyTitle')}</h3>
+          <p className="text-xs text-[#4A443B] leading-relaxed">{t('product.storyBody')}</p>
         </div>
 
         {/* 6. The shop carries on below the fold */}
@@ -294,6 +309,7 @@ export default function ProductDetailView({
  * one" and the photo expiring would otherwise leave a broken frame on the page.
  */
 function FreshPhoto({ url, takenAt }) {
+  const { t } = useLanguage();
   const [failed, setFailed] = useState(false);
   if (failed) return null;
 
@@ -302,31 +318,32 @@ function FreshPhoto({ url, takenAt }) {
       <div className="flex items-center gap-1.5 mb-2 px-0.5">
         <Camera className="w-3.5 h-3.5 text-[#1B4D3E]" />
         <p className="text-[11px] font-black text-[#1B4D3E] uppercase tracking-wider">
-          Photographed at the market
+          {t('freshPhoto.title')}
         </p>
       </div>
       <div className="relative h-56 w-full rounded-2xl overflow-hidden bg-[#F0EBE1]">
         <img
           src={url}
-          alt="The produce currently on the stall"
+          alt={t('freshPhoto.alt')}
           loading="lazy"
           className="w-full h-full object-cover"
           onError={() => setFailed(true)}
         />
       </div>
       <p className="text-[10px] text-[#7A736A] mt-2 px-0.5">
-        Taken {describeAge(takenAt)} by a stall in this market — not a catalogue picture.
+        {t('freshPhoto.caption', { age: describeAge(takenAt, t) })}
       </p>
     </div>
   );
 }
 
-/** "3 hours ago", for a photo caption. */
-function describeAge(when) {
-  if (!when) return 'today';
+/** "3 hours ago", for a photo caption. Takes `t` so it stays a plain function. */
+function describeAge(when, t) {
+  if (!when) return t('freshPhoto.ageToday');
   const minutes = Math.round((Date.now() - new Date(when).getTime()) / 60000);
-  if (minutes < 60) return `${Math.max(1, minutes)} minutes ago`;
+  if (minutes < 60) return t('freshPhoto.ageMinutes', { count: Math.max(1, minutes) });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
-  return 'yesterday';
+  if (hours === 1) return t('freshPhoto.ageHourOne');
+  if (hours < 24) return t('freshPhoto.ageHours', { count: hours });
+  return t('freshPhoto.ageYesterday');
 }

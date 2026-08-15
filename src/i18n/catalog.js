@@ -18,6 +18,18 @@
 const PRODUCT_NAME_FIELD = { te: 'nameTe', hi: 'nameHi' };
 
 /**
+ * The `toLocaleDateString` locale for the app language.
+ *
+ * Derived from what the shopper chose, never from the browser: a screen
+ * explicitly set to Telugu should not carry English month names because the
+ * phone happens to be en-US. All three are `-IN` regions, so day-then-month
+ * order and the Indian digit grouping are the same in each.
+ */
+export function dateLocale(language) {
+  return { te: 'te-IN', hi: 'hi-IN' }[language] || 'en-IN';
+}
+
+/**
  * The product's name in the current language.
  *
  * Falls back to English whenever the translation is missing or blank, which is

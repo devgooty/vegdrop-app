@@ -181,6 +181,374 @@ const STRINGS = {
   'product.storyTitle': { en: 'Harvest Story & Details', hi: 'उपज की कहानी और विवरण', te: 'పంట కథ & వివరాలు' },
   'product.share': { en: 'Share {name}', hi: '{name} साझा करें', te: '{name} షేర్ చేయండి' },
   'product.backTo': { en: 'Back to {category}', hi: '{category} पर वापस', te: '{category}కి వెనుకకు' },
+  'product.category': { en: 'Category', hi: 'श्रेणी', te: 'విభాగం' },
+  'product.moreFrom': { en: 'More from {category}', hi: '{category} से और', te: '{category} నుండి మరిన్ని' },
+  'product.thisSection': { en: 'this section', hi: 'इस विभाग', te: 'ఈ విభాగం' },
+  'product.alsoLike': { en: 'You might also like', hi: 'ये भी पसंद आ सकते हैं', te: 'ఇవి కూడా నచ్చవచ్చు' },
+
+  // --- My Orders (CustomerOrders.jsx) ------------------------------------------
+  //
+  // Order line item names are NOT translated here. A cart line stores the name
+  // as it stood when the order was placed, and that record is what the market
+  // and the rider packed against — rewriting it per reader would make the
+  // customer's copy of an order disagree with everyone else's.
+  'orders.title': { en: 'My Orders', hi: 'मेरे ऑर्डर', te: 'నా ఆర్డర్లు' },
+  'orders.subtitle': {
+    en: 'Track purchases & subscriptions',
+    hi: 'ख़रीद और सदस्यता देखें',
+    te: 'కొనుగోళ్లు, సబ్‌స్క్రిప్షన్‌లు చూడండి',
+  },
+  'orders.tabRecent': { en: 'Recent Orders', hi: 'हाल के ऑर्डर', te: 'ఇటీవలి ఆర్డర్లు' },
+  'orders.tabScheduled': { en: 'Scheduled Deliveries', hi: 'निर्धारित डिलीवरी', te: 'షెడ్యూల్ చేసిన డెలివరీలు' },
+  'orders.noneTitle': { en: 'No Orders Yet!', hi: 'अभी कोई ऑर्डर नहीं!', te: 'ఇంకా ఆర్డర్లు లేవు!' },
+  'orders.noneBody': {
+    en: 'You haven’t placed any orders with VegDrop yet. Start exploring fresh produce!',
+    hi: 'आपने अभी तक VegDrop पर कोई ऑर्डर नहीं किया। ताज़ी उपज देखना शुरू करें!',
+    te: 'మీరు ఇంకా VegDropలో ఏ ఆర్డర్ చేయలేదు. తాజా పంటను చూడటం మొదలుపెట్టండి!',
+  },
+  'orders.startShopping': { en: 'Start Shopping', hi: 'ख़रीदारी शुरू करें', te: 'కొనుగోలు మొదలుపెట్టండి' },
+  'orders.online': { en: 'Online', hi: 'ऑनलाइन', te: 'ఆన్‌లైన్' },
+  'orders.orderItems': { en: 'Order Items', hi: 'ऑर्डर की वस्तुएँ', te: 'ఆర్డర్ వస్తువులు' },
+  'orders.cancel': { en: 'Cancel order', hi: 'ऑर्डर रद्द करें', te: 'ఆర్డర్ రద్దు చేయండి' },
+  'orders.sourcingRetry': {
+    en: 'Checking another market nearby (try {attempt}).',
+    hi: 'पास का दूसरा बाज़ार देखा जा रहा है (प्रयास {attempt})।',
+    te: 'దగ్గరలోని మరో మార్కెట్‌ను చూస్తున్నాం (ప్రయత్నం {attempt}).',
+  },
+  'orders.sourcingFirst': {
+    en: 'Finding a stall to fill your order. This usually takes under a minute.',
+    hi: 'आपका ऑर्डर पूरा करने के लिए दुकान खोजी जा रही है। इसमें आम तौर पर एक मिनट से कम लगता है।',
+    te: 'మీ ఆర్డర్ పూర్తి చేయడానికి దుకాణం వెతుకుతున్నాం. సాధారణంగా నిమిషం లోపే అవుతుంది.',
+  },
+  'orders.partialAvailable': {
+    en: '{available} of {total} items are available here.',
+    hi: '{total} में से {available} वस्तुएँ यहाँ उपलब्ध हैं।',
+    te: '{total}లో {available} వస్తువులు ఇక్కడ అందుబాటులో ఉన్నాయి.',
+  },
+  'orders.partialMissing': { en: 'Not available: {items}.', hi: 'उपलब्ध नहीं: {items}।', te: 'అందుబాటులో లేవు: {items}.' },
+  'orders.partialSend': { en: 'Send the {count} available', hi: 'उपलब्ध {count} भेजें', te: 'అందుబాటులో ఉన్న {count} పంపండి' },
+  'orders.partialRefund': { en: ' · ₹{amount} back', hi: ' · ₹{amount} वापस', te: ' · ₹{amount} తిరిగి' },
+  'orders.partialPayLess': { en: ' · pay ₹{amount} less', hi: ' · ₹{amount} कम दें', te: ' · ₹{amount} తక్కువ చెల్లించండి' },
+  'orders.partialRetry': {
+    en: 'Try another market for everything',
+    hi: 'पूरे ऑर्डर के लिए दूसरा बाज़ार आज़माएँ',
+    te: 'మొత్తానికి మరో మార్కెట్ ప్రయత్నించండి',
+  },
+  'orders.packingNote': {
+    en: 'Accepted — your order is being packed and can no longer be cancelled.',
+    hi: 'स्वीकार — आपका ऑर्डर पैक हो रहा है और अब रद्द नहीं किया जा सकता।',
+    te: 'ఆమోదించారు — మీ ఆర్డర్ ప్యాక్ అవుతోంది, ఇక రద్దు చేయలేరు.',
+  },
+  // Four keys rather than two with a "was/were" placeholder: an English verb
+  // slotted into a Hindi or Telugu sentence lands in the wrong place and in the
+  // wrong script, and neither language inflects this the way English does.
+  'orders.droppedRefundedOne': {
+    en: ' {items} could not be sourced and was refunded.',
+    hi: ' {items} नहीं मिल सका और उसका पैसा वापस कर दिया गया।',
+    te: ' {items} దొరకలేదు, ఆ డబ్బు తిరిగి ఇచ్చేశాం.',
+  },
+  'orders.droppedRefundedMany': {
+    en: ' {items} could not be sourced and were refunded.',
+    hi: ' {items} नहीं मिल सके और उनका पैसा वापस कर दिया गया।',
+    te: ' {items} దొరకలేదు, ఆ డబ్బు తిరిగి ఇచ్చేశాం.',
+  },
+  'orders.droppedRemovedOne': {
+    en: ' {items} could not be sourced and was removed.',
+    hi: ' {items} नहीं मिल सका और उसे हटा दिया गया।',
+    te: ' {items} దొరకలేదు, దాన్ని తీసేశాం.',
+  },
+  'orders.droppedRemovedMany': {
+    en: ' {items} could not be sourced and were removed.',
+    hi: ' {items} नहीं मिल सके और उन्हें हटा दिया गया।',
+    te: ' {items} దొరకలేదు, వాటిని తీసేశాం.',
+  },
+  'orders.awaitingRider': {
+    en: 'Packed and waiting for a rider.',
+    hi: 'पैक हो चुका है, राइडर का इंतज़ार है।',
+    te: 'ప్యాక్ అయ్యింది, రైడర్ కోసం ఎదురుచూస్తోంది.',
+  },
+  'orders.collecting': {
+    en: 'Your rider is collecting from the stalls.',
+    hi: 'आपका राइडर दुकानों से सामान ले रहा है।',
+    te: 'మీ రైడర్ దుకాణాల నుండి తీసుకుంటున్నారు.',
+  },
+  'orders.failedNote': {
+    en: 'No stall nearby could fill this one, so it was cancelled and your money refunded. Try a different market.',
+    hi: 'पास की कोई दुकान इसे पूरा नहीं कर सकी, इसलिए यह रद्द हो गया और आपका पैसा वापस कर दिया गया। दूसरा बाज़ार आज़माएँ।',
+    te: 'దగ్గరలోని ఏ దుకాణమూ దీన్ని పూర్తి చేయలేకపోయింది, కాబట్టి రద్దు చేసి మీ డబ్బు తిరిగి ఇచ్చేశాం. వేరే మార్కెట్ ప్రయత్నించండి.',
+  },
+  'orders.trackLive': { en: 'Track Your Order Live 🚴', hi: 'अपना ऑर्डर लाइव देखें 🚴', te: 'మీ ఆర్డర్‌ను లైవ్‌లో చూడండి 🚴' },
+
+  // Market fulfilment stages
+  'stage.sourcing': { en: 'Finding a stall', hi: 'दुकान खोजी जा रही है', te: 'దుకాణం వెతుకుతోంది' },
+  'stage.partial_review': { en: 'Needs your answer', hi: 'आपके जवाब का इंतज़ार', te: 'మీ సమాధానం కావాలి' },
+  'stage.packing': { en: 'Being packed', hi: 'पैक हो रहा है', te: 'ప్యాక్ అవుతోంది' },
+  'stage.awaiting_rider': { en: 'Ready for pickup', hi: 'पिकअप के लिए तैयार', te: 'పికప్‌కు సిద్ధం' },
+  'stage.collecting': { en: 'Rider collecting', hi: 'राइडर ले रहा है', te: 'రైడర్ తీసుకుంటున్నారు' },
+  'stage.dispatched': { en: 'On the way', hi: 'रास्ते में', te: 'దారిలో ఉంది' },
+  'stage.delivered': { en: 'Delivered', hi: 'पहुँच गया', te: 'డెలివరీ అయ్యింది' },
+  'stage.failed': { en: 'Could not fill', hi: 'पूरा नहीं हो सका', te: 'పూర్తి కాలేదు' },
+  'stage.cancelled': { en: 'Cancelled', hi: 'रद्द', te: 'రద్దు' },
+  'stage.awaitingRiderLong': { en: 'Waiting for a rider', hi: 'राइडर का इंतज़ार', te: 'రైడర్ కోసం ఎదురుచూపు' },
+  'stage.hint.sourcing': {
+    en: 'Stalls in the market are deciding who can fill this.',
+    hi: 'बाज़ार की दुकानें तय कर रही हैं कि इसे कौन पूरा कर सकता है।',
+    te: 'దీన్ని ఎవరు పూర్తి చేయగలరో మార్కెట్‌లోని దుకాణాలు నిర్ణయిస్తున్నాయి.',
+  },
+  'stage.hint.packing': {
+    en: 'Your vegetables are being bagged.',
+    hi: 'आपकी सब्ज़ियाँ थैले में रखी जा रही हैं।',
+    te: 'మీ కూరగాయలను సంచిలో సర్దుతున్నారు.',
+  },
+  'stage.hint.awaiting_rider': {
+    en: 'Packed, and waiting for someone to collect it.',
+    hi: 'पैक हो चुका है, कोई लेने आए इसका इंतज़ार है।',
+    te: 'ప్యాక్ అయ్యింది, ఎవరైనా తీసుకెళ్లడం కోసం ఎదురుచూపు.',
+  },
+  'stage.hint.collecting': {
+    en: 'A rider is walking the stalls to pick everything up.',
+    hi: 'एक राइडर सब कुछ लेने के लिए दुकानों में घूम रहा है।',
+    te: 'ఒక రైడర్ అన్నీ తీసుకోవడానికి దుకాణాల్లో తిరుగుతున్నారు.',
+  },
+  'stage.hint.dispatched': { en: 'It has left the market.', hi: 'यह बाज़ार से निकल चुका है।', te: 'ఇది మార్కెట్ నుండి బయలుదేరింది.' },
+
+  // Scheduled deliveries
+  'sched.all': { en: 'All', hi: 'सभी', te: 'అన్నీ' },
+  'sched.daily': { en: 'Daily', hi: 'रोज़ाना', te: 'ప్రతిరోజూ' },
+  'sched.weekly': { en: 'Weekly', hi: 'साप्ताहिक', te: 'వారానికి' },
+  'sched.monthly': { en: 'Monthly', hi: 'मासिक', te: 'నెలకు' },
+  'sched.dailyDelivery': { en: '📅 Daily Delivery', hi: '📅 रोज़ाना डिलीवरी', te: '📅 ప్రతిరోజూ డెలివరీ' },
+  'sched.weeklyDelivery': { en: '🗓️ Weekly Delivery', hi: '🗓️ साप्ताहिक डिलीवरी', te: '🗓️ వారానికి డెలివరీ' },
+  'sched.monthlyDelivery': { en: '📆 Monthly Delivery', hi: '📆 मासिक डिलीवरी', te: '📆 నెలకు డెలివరీ' },
+  'sched.generic': { en: 'Scheduled', hi: 'निर्धारित', te: 'షెడ్యూల్ చేసినది' },
+  'sched.pickDate': { en: 'Pick Date', hi: 'तारीख़ चुनें', te: 'తేదీ ఎంచుకోండి' },
+  'sched.pickDates': { en: 'Pick Dates', hi: 'तारीख़ें चुनें', te: 'తేదీలు ఎంచుకోండి' },
+  'sched.hintWeekly': {
+    en: 'Select 3 to 7 days for weekly delivery',
+    hi: 'साप्ताहिक डिलीवरी के लिए 3 से 7 दिन चुनें',
+    te: 'వారానికి డెలివరీ కోసం 3 నుండి 7 రోజులు ఎంచుకోండి',
+  },
+  'sched.hintMonthly': { en: 'Select at least 15 days', hi: 'कम से कम 15 दिन चुनें', te: 'కనీసం 15 రోజులు ఎంచుకోండి' },
+  'sched.hintDaily': {
+    en: 'Schedule your cart for delivery',
+    hi: 'अपनी टोकरी की डिलीवरी तय करें',
+    te: 'మీ బుట్ట డెలివరీని షెడ్యూల్ చేయండి',
+  },
+  'sched.deliveryDate': { en: 'Delivery Date', hi: 'डिलीवरी की तारीख़', te: 'డెలివరీ తేదీ' },
+  'sched.needMoreOne': { en: 'Please select 1 more day.', hi: 'कृपया 1 दिन और चुनें।', te: 'దయచేసి మరో 1 రోజు ఎంచుకోండి.' },
+  'sched.needMore': {
+    en: 'Please select at least {count} more days.',
+    hi: 'कृपया कम से कम {count} दिन और चुनें।',
+    te: 'దయచేసి కనీసం మరో {count} రోజులు ఎంచుకోండి.',
+  },
+  'sched.summaryDays': { en: 'Order Summary ({count} days)', hi: 'ऑर्डर सारांश ({count} दिन)', te: 'ఆర్డర్ సారాంశం ({count} రోజులు)' },
+  'sched.summaryOneDay': { en: 'Order Summary (1 day)', hi: 'ऑर्डर सारांश (1 दिन)', te: 'ఆర్డర్ సారాంశం (1 రోజు)' },
+  'sched.itemCount': { en: '{count} items', hi: '{count} वस्तुएँ', te: '{count} వస్తువులు' },
+  'sched.cartEmpty': { en: 'Your cart is empty.', hi: 'आपकी टोकरी खाली है।', te: 'మీ బుట్ట ఖాళీగా ఉంది.' },
+  'sched.cartEmptyHint': {
+    en: 'Add items to schedule a delivery.',
+    hi: 'डिलीवरी तय करने के लिए वस्तुएँ जोड़ें।',
+    te: 'డెలివరీ షెడ్యూల్ చేయడానికి వస్తువులు జోడించండి.',
+  },
+  'sched.goToStore': { en: 'Go to Store', hi: 'दुकान पर जाएँ', te: 'షాప్‌కు వెళ్లండి' },
+  'sched.totalForDays': { en: 'Total for {count} days:', hi: '{count} दिन का कुल:', te: '{count} రోజుల మొత్తం:' },
+  'sched.total': { en: 'Total:', hi: 'कुल:', te: 'మొత్తం:' },
+  'sched.scheduleDelivery': { en: 'Schedule Delivery', hi: 'डिलीवरी तय करें', te: 'డెలివరీ షెడ్యూల్ చేయండి' },
+  'sched.noneAll': { en: 'No Active Schedules', hi: 'कोई सक्रिय शेड्यूल नहीं', te: 'యాక్టివ్ షెడ్యూల్‌లు లేవు' },
+  'sched.noneFiltered': { en: 'No {frequency} Schedules', hi: 'कोई {frequency} शेड्यूल नहीं', te: '{frequency} షెడ్యూల్‌లు లేవు' },
+  'sched.noneAllBody': {
+    en: 'Subscribe to your daily essentials to automate your deliveries!',
+    hi: 'रोज़ की ज़रूरतों की सदस्यता लें और डिलीवरी अपने आप होने दें!',
+    te: 'రోజువారీ అవసరాలకు సబ్‌స్క్రైబ్ చేసి డెలివరీలను ఆటోమేటిక్ చేసుకోండి!',
+  },
+  'sched.noneFilteredBody': {
+    en: 'You don’t have any {frequency} delivery schedules yet.',
+    hi: 'आपके पास अभी कोई {frequency} डिलीवरी शेड्यूल नहीं है।',
+    te: 'మీకు ఇంకా ఏ {frequency} డెలివరీ షెడ్యూల్ లేదు.',
+  },
+  'sched.explore': { en: 'Explore Essentials', hi: 'ज़रूरी सामान देखें', te: 'అవసరమైనవి చూడండి' },
+  'sched.existing': { en: 'Existing Schedules', hi: 'मौजूदा शेड्यूल', te: 'ఉన్న షెడ్యూల్‌లు' },
+  'sched.active': { en: 'Active', hi: 'सक्रिय', te: 'యాక్టివ్' },
+  'sched.paused': { en: 'Paused', hi: 'रुका हुआ', te: 'ఆపివేసినది' },
+  'sched.nextDelivery': { en: 'Next Delivery: {date}', hi: 'अगली डिलीवरी: {date}', te: 'తదుపరి డెలివరీ: {date}' },
+  'sched.pricedOnDay': { en: 'priced on the day', hi: 'उसी दिन की क़ीमत', te: 'ఆ రోజు ధర ప్రకారం' },
+  'sched.subscribedItems': { en: 'Subscribed Items', hi: 'सदस्यता की वस्तुएँ', te: 'సబ్‌స్క్రైబ్ చేసిన వస్తువులు' },
+  'sched.item': { en: 'Item', hi: 'वस्तु', te: 'వస్తువు' },
+  'sched.pause': { en: 'Pause Delivery', hi: 'डिलीवरी रोकें', te: 'డెలివరీ ఆపండి' },
+  'sched.resume': { en: 'Resume Delivery', hi: 'डिलीवरी फिर शुरू करें', te: 'డెలివరీ మళ్లీ మొదలుపెట్టండి' },
+  'sched.cancelSubscription': { en: 'Cancel Subscription', hi: 'सदस्यता रद्द करें', te: 'సబ్‌స్క్రిప్షన్ రద్దు చేయండి' },
+  'sched.confirmStop': {
+    en: 'Stop this repeat delivery? Orders already placed are unaffected.',
+    hi: 'यह दोहराई जाने वाली डिलीवरी बंद करें? पहले से किए गए ऑर्डर पर कोई असर नहीं होगा।',
+    te: 'ఈ పునరావృత డెలివరీని ఆపాలా? ఇప్పటికే చేసిన ఆర్డర్లపై ఎలాంటి ప్రభావం ఉండదు.',
+  },
+  'sched.errChange': {
+    en: 'Could not change that repeat delivery.',
+    hi: 'वह दोहराई जाने वाली डिलीवरी बदली नहीं जा सकी।',
+    te: 'ఆ పునరావృత డెలివరీని మార్చలేకపోయాం.',
+  },
+  'sched.errStop': {
+    en: 'Could not stop that repeat delivery.',
+    hi: 'वह दोहराई जाने वाली डिलीवरी रोकी नहीं जा सकी।',
+    te: 'ఆ పునరావృత డెలివరీని ఆపలేకపోయాం.',
+  },
+  'sched.maxWeekly': {
+    en: 'You can select up to 7 days maximum for a weekly schedule.',
+    hi: 'साप्ताहिक शेड्यूल के लिए ज़्यादा से ज़्यादा 7 दिन चुने जा सकते हैं।',
+    te: 'వారపు షెడ్యూల్‌కు గరిష్ఠంగా 7 రోజులు మాత్రమే ఎంచుకోగలరు.',
+  },
+  'sched.maxMonthly': {
+    en: 'You can select up to 30 days maximum.',
+    hi: 'ज़्यादा से ज़्यादा 30 दिन चुने जा सकते हैं।',
+    te: 'గరిష్ఠంగా 30 రోజులు మాత్రమే ఎంచుకోగలరు.',
+  },
+  'orders.progressTitle': { en: 'Order progress', hi: 'ऑर्डर की प्रगति', te: 'ఆర్డర్ పురోగతి' },
+  'orders.progressSub': { en: 'Order #{id} • {name}', hi: 'ऑर्डर #{id} • {name}', te: 'ఆర్డర్ #{id} • {name}' },
+  'orders.deliveringTo': { en: 'Delivering to', hi: 'यहाँ डिलीवरी', te: 'ఇక్కడికి డెలివరీ' },
+
+  // What a standing order actually does, in words (services/schedules.js).
+  // Weekday names come from `toLocaleDateString`, not a table here — the
+  // browser already knows them in every locale and would only go stale if
+  // copied.
+  'recur.everyDay': { en: 'Every day', hi: 'हर दिन', te: 'ప్రతిరోజూ' },
+  'recur.weekly': { en: 'Weekly', hi: 'साप्ताहिक', te: 'వారానికి' },
+  'recur.monthly': { en: 'Monthly', hi: 'मासिक', te: 'నెలకు' },
+  'recur.everyDays': { en: 'Every {days}', hi: 'हर {days}', te: 'ప్రతి {days}' },
+  'recur.monthlyOn': {
+    en: 'Monthly on the {days}',
+    hi: 'हर महीने {days} को',
+    te: 'ప్రతి నెలా {days}న',
+  },
+  'recur.and': { en: ' and ', hi: ' और ', te: ' మరియు ' },
+
+  // --- Purchase history (AccountHistory.jsx) -----------------------------------
+  'history.lifetimeSpent': { en: 'Total Lifetime Spent', hi: 'कुल आजीवन ख़र्च', te: 'మొత్తం జీవితకాల ఖర్చు' },
+  'history.totalOrders': { en: 'Total Orders', hi: 'कुल ऑर्डर', te: 'మొత్తం ఆర్డర్లు' },
+  'history.itemsPurchased': { en: 'Items Purchased', hi: 'ख़रीदी वस्तुएँ', te: 'కొన్న వస్తువులు' },
+  'history.recent': { en: 'Recent Order History', hi: 'हाल का ऑर्डर इतिहास', te: 'ఇటీవలి ఆర్డర్ చరిత్ర' },
+  'history.none': { en: 'No orders yet', hi: 'अभी कोई ऑर्डर नहीं', te: 'ఇంకా ఆర్డర్లు లేవు' },
+  'history.noneHint': {
+    en: 'Your history will appear here once you buy something.',
+    hi: 'कुछ ख़रीदते ही आपका इतिहास यहाँ दिखने लगेगा।',
+    te: 'మీరు ఏదైనా కొన్న వెంటనే మీ చరిత్ర ఇక్కడ కనిపిస్తుంది.',
+  },
+  'history.cash': { en: 'Cash', hi: 'नक़द', te: 'నగదు' },
+  // The coarse order status, as the server words it.
+  'status.Pending': { en: 'Pending', hi: 'लंबित', te: 'పెండింగ్' },
+  'status.Preparing': { en: 'Preparing', hi: 'तैयार हो रहा है', te: 'సిద్ధమవుతోంది' },
+  'status.OutForDelivery': { en: 'Out for Delivery', hi: 'डिलीवरी के लिए निकला', te: 'డెలివరీకి బయలుదేరింది' },
+  'status.Delivered': { en: 'Delivered', hi: 'पहुँच गया', te: 'డెలివరీ అయ్యింది' },
+  'status.Cancelled': { en: 'Cancelled', hi: 'रद्द', te: 'రద్దు' },
+
+  // --- VegWallet (WalletModal.jsx) ---------------------------------------------
+  //
+  // A ledger row's `label` and `note` are NOT here. They arrive from the server
+  // already worded ("Order VD-1043 payment"), so translating them means adding
+  // keys server-side and sending one — not guessing at the wording client-side.
+  'wallet.availableBalance': { en: 'Available Balance', hi: 'उपलब्ध बैलेंस', te: 'అందుబాటులో ఉన్న బ్యాలెన్స్' },
+  'wallet.addMoney': { en: 'Add Money', hi: 'पैसे जोड़ें', te: 'డబ్బు జోడించండి' },
+  'wallet.history': { en: 'History', hi: 'इतिहास', te: 'చరిత్ర' },
+  'wallet.recent': { en: 'Recent Transactions', hi: 'हाल के लेन-देन', te: 'ఇటీవలి లావాదేవీలు' },
+  'wallet.noTransactions': { en: 'No transactions yet.', hi: 'अभी कोई लेन-देन नहीं।', te: 'ఇంకా లావాదేవీలు లేవు.' },
+  'wallet.balShort': { en: 'Bal ₹{amount}', hi: 'बैलेंस ₹{amount}', te: 'బ్యాలెన్స్ ₹{amount}' },
+  'wallet.balanceAfter': { en: 'Balance ₹{amount}', hi: 'बैलेंस ₹{amount}', te: 'బ్యాలెన్స్ ₹{amount}' },
+  'wallet.backToWallet': { en: 'Back to Wallet', hi: 'वॉलेट पर वापस', te: 'వాలెట్‌కి వెనుకకు' },
+  'wallet.rechargeTitle': { en: 'Recharge Wallet', hi: 'वॉलेट रिचार्ज', te: 'వాలెట్ రీఛార్జ్' },
+  'wallet.rechargeSub': {
+    en: 'Enter amount to add via secure checkout',
+    hi: 'सुरक्षित चेकआउट से जोड़ने के लिए राशि डालें',
+    te: 'సురక్షిత చెక్అవుట్ ద్వారా జోడించడానికి మొత్తాన్ని నమోదు చేయండి',
+  },
+  'wallet.amountLabel': { en: 'Amount (₹)', hi: 'राशि (₹)', te: 'మొత్తం (₹)' },
+  'wallet.quickSelect': { en: 'Quick Select Amount', hi: 'तुरंत राशि चुनें', te: 'త్వరిత మొత్తం ఎంపిక' },
+  'wallet.payViaUpi': { en: 'Pay via UPI app', hi: 'UPI ऐप से भुगतान', te: 'UPI యాప్ ద్వారా చెల్లించండి' },
+  'wallet.secured': {
+    en: 'Secured by Razorpay • Min ₹10 • Max ₹50,000',
+    hi: 'Razorpay से सुरक्षित • कम से कम ₹10 • ज़्यादा से ज़्यादा ₹50,000',
+    te: 'Razorpay ద్వారా సురక్షితం • కనిష్ఠం ₹10 • గరిష్ఠం ₹50,000',
+  },
+  'wallet.waiting': { en: 'Waiting for payment…', hi: 'भुगतान का इंतज़ार…', te: 'చెల్లింపు కోసం వేచి ఉంది…' },
+  'wallet.addAmount': { en: 'Add ₹{amount}', hi: '₹{amount} जोड़ें', te: '₹{amount} జోడించండి' },
+  'wallet.otherMethods': {
+    en: 'Card, netbanking & more',
+    hi: 'कार्ड, नेटबैंकिंग और अन्य',
+    te: 'కార్డ్, నెట్‌బ్యాంకింగ్ & మరిన్ని',
+  },
+  'wallet.historyTitle': { en: 'Transaction History', hi: 'लेन-देन इतिहास', te: 'లావాదేవీల చరిత్ర' },
+  'wallet.enterAmount': { en: 'Enter an amount to add.', hi: 'जोड़ने के लिए राशि डालें।', te: 'జోడించాల్సిన మొత్తాన్ని నమోదు చేయండి.' },
+  'wallet.minTopUp': { en: 'The smallest top-up is ₹10.', hi: 'सबसे कम रिचार्ज ₹10 है।', te: 'కనీస రీఛార్జ్ ₹10.' },
+  'wallet.maxTopUp': { en: 'The largest top-up is ₹50,000.', hi: 'सबसे ज़्यादा रिचार्ज ₹50,000 है।', te: 'గరిష్ఠ రీఛార్జ్ ₹50,000.' },
+  'wallet.cancelled': {
+    en: 'Payment was cancelled. Nothing was charged.',
+    hi: 'भुगतान रद्द हो गया। कुछ भी नहीं कटा।',
+    te: 'చెల్లింపు రద్దైంది. ఏమీ కట్ కాలేదు.',
+  },
+  'wallet.unconfirmed': {
+    en: 'We could not confirm the payment. If you were charged it will appear in your balance shortly.',
+    hi: 'हम भुगतान की पुष्टि नहीं कर सके। अगर पैसे कटे हैं तो वे जल्द ही आपके बैलेंस में दिखेंगे।',
+    te: 'చెల్లింపును నిర్ధారించలేకపోయాం. డబ్బు కట్ అయితే త్వరలో మీ బ్యాలెన్స్‌లో కనిపిస్తుంది.',
+  },
+
+  // --- Category detail (CategoryDetailView.jsx) --------------------------------
+  'categoryView.items': { en: '{count} Items', hi: '{count} वस्तुएँ', te: '{count} వస్తువులు' },
+  'categoryView.itemOne': { en: '1 Item', hi: '1 वस्तु', te: '1 వస్తువు' },
+  'categoryView.freshHarvest': { en: 'Fresh Harvest', hi: 'ताज़ी उपज', te: 'తాజా పంట' },
+  'categoryView.farmFresh': { en: '100% Farm Fresh', hi: '100% खेत से ताज़ा', te: '100% పొలం నుండి తాజా' },
+  'categoryView.blurb': {
+    en: 'Handpicked daily fresh produce directly from local organic farms',
+    hi: 'स्थानीय जैविक खेतों से सीधे, रोज़ हाथ से चुनी ताज़ी उपज',
+    te: 'స్థానిక సేంద్రియ పొలాల నుండి నేరుగా, ప్రతిరోజూ చేతితో ఎంచిన తాజా పంట',
+  },
+  'categoryView.searchIn': {
+    en: 'Search in {category}...',
+    hi: '{category} में खोजें...',
+    te: '{category}లో వెతకండి...',
+  },
+  'categoryView.mostPopular': { en: 'Most Popular', hi: 'सबसे लोकप्रिय', te: 'అత్యంత ప్రసిద్ధం' },
+  'categoryView.noneMatching': {
+    en: 'No items found in this section matching your filter.',
+    hi: 'इस विभाग में आपके फ़िल्टर से मेल खाती कोई वस्तु नहीं मिली।',
+    te: 'ఈ విభాగంలో మీ ఫిల్టర్‌కు సరిపోయే వస్తువులు దొరకలేదు.',
+  },
+  'product.harvestDetails': { en: 'Harvest Details', hi: 'उपज विवरण', te: 'పంట వివరాలు' },
+  'product.certifiedOrganic': {
+    en: '100% Certified Organic',
+    hi: '100% प्रमाणित जैविक',
+    te: '100% ధృవీకరించిన సేంద్రియం',
+  },
+  'product.decrease': { en: 'Decrease', hi: 'घटाएँ', te: 'తగ్గించు' },
+  'product.increase': { en: 'Increase', hi: 'बढ़ाएँ', te: 'పెంచు' },
+  'product.storyBody': {
+    en: 'Freshly harvested from organic partner farms in Ooty and Nilgiri hills. Grown using sustainable composting without chemical pesticides. Rich in essential vitamins, minerals, and natural antioxidants.',
+    hi: 'ऊटी और नीलगिरि की पहाड़ियों के जैविक साझेदार खेतों से ताज़ा तोड़ी गई उपज। रासायनिक कीटनाशकों के बिना, टिकाऊ खाद से उगाई गई। ज़रूरी विटामिन, खनिज और प्राकृतिक एंटीऑक्सीडेंट से भरपूर।',
+    te: 'ఊటీ, నీలగిరి కొండల్లోని సేంద్రియ భాగస్వామ్య పొలాల నుండి తాజాగా కోసినవి. రసాయన పురుగుమందులు లేకుండా, స్థిరమైన కంపోస్టుతో పండించినవి. అవసరమైన విటమిన్లు, ఖనిజాలు, సహజ యాంటీఆక్సిడెంట్లు సమృద్ధిగా ఉన్నాయి.',
+  },
+
+  // --- The stall's own photo of the produce (ProductDetailView) ----------------
+  'freshPhoto.title': {
+    en: 'Photographed at the market',
+    hi: 'बाज़ार में ली गई तस्वीर',
+    te: 'మార్కెట్‌లో తీసిన ఫోటో',
+  },
+  'freshPhoto.alt': {
+    en: 'The produce currently on the stall',
+    hi: 'दुकान पर अभी रखी उपज',
+    te: 'ప్రస్తుతం దుకాణంలో ఉన్న పంట',
+  },
+  'freshPhoto.caption': {
+    en: 'Taken {age} by a stall in this market — not a catalogue picture.',
+    hi: 'इस बाज़ार की एक दुकान ने {age} ली — यह कैटलॉग की तस्वीर नहीं है।',
+    te: 'ఈ మార్కెట్‌లోని ఒక దుకాణం {age} తీసింది — ఇది కేటలాగ్ ఫోటో కాదు.',
+  },
+  'freshPhoto.ageToday': { en: 'today', hi: 'आज', te: 'ఈరోజు' },
+  'freshPhoto.ageMinutes': {
+    en: '{count} minutes ago',
+    hi: '{count} मिनट पहले',
+    te: '{count} నిమిషాల క్రితం',
+  },
+  'freshPhoto.ageHourOne': { en: '1 hour ago', hi: '1 घंटा पहले', te: '1 గంట క్రితం' },
+  'freshPhoto.ageHours': { en: '{count} hours ago', hi: '{count} घंटे पहले', te: '{count} గంటల క్రితం' },
+  'freshPhoto.ageYesterday': { en: 'yesterday', hi: 'कल', te: 'నిన్న' },
 
   // --- Basket (CartModal.jsx) -------------------------------------------------
   'cart.title': { en: 'Your Basket ({count})', hi: 'आपकी टोकरी ({count})', te: 'మీ బుట్ట ({count})' },
@@ -228,6 +596,29 @@ const STRINGS = {
   'search.searchFor': { en: 'Search for', hi: 'खोजें', te: 'వెతకండి' },
   'search.section': { en: 'Section · {count} items', hi: 'विभाग · {count} वस्तुएँ', te: 'విభాగం · {count} వస్తువులు' },
   'search.options': { en: '{count} options', hi: '{count} विकल्प', te: '{count} ఎంపికలు' },
+  'search.wholeShop': {
+    en: 'Search the whole shop...',
+    hi: 'पूरी दुकान में खोजें...',
+    te: 'షాప్ అంతటా వెతకండి...',
+  },
+  'search.organic': { en: 'Organic', hi: 'जैविक', te: 'సేంద్రియం' },
+  'search.itemOne': { en: '1 Item', hi: '1 वस्तु', te: '1 వస్తువు' },
+  'search.showingOne': { en: 'Showing 1 product', hi: '1 उत्पाद दिख रहा है', te: '1 ఉత్పత్తి చూపిస్తోంది' },
+  'search.nothingMatching': {
+    en: 'Nothing matching “{query}”',
+    hi: '“{query}” से कुछ नहीं मिला',
+    te: '“{query}”కి ఏమీ దొరకలేదు',
+  },
+  'search.tryWithoutOrganic': {
+    en: 'Try turning off the Organic filter, or search for something else.',
+    hi: 'जैविक फ़िल्टर हटाकर देखें, या कुछ और खोजें।',
+    te: 'సేంద్రియ ఫిల్టర్ తీసేసి చూడండి, లేదా వేరే ఏదైనా వెతకండి.',
+  },
+  'search.checkSpelling': {
+    en: 'Check the spelling, or try a shorter word.',
+    hi: 'वर्तनी जाँचें, या छोटा शब्द आज़माएँ।',
+    te: 'స్పెల్లింగ్ చూడండి, లేదా చిన్న పదం ప్రయత్నించండి.',
+  },
 
   // --- Rewards & spin wheel ---------------------------------------------------
   'rewards.title': { en: 'Rewards', hi: 'इनाम', te: 'రివార్డులు' },
@@ -238,6 +629,31 @@ const STRINGS = {
   'rewards.howYouEarn': { en: 'How you earn', hi: 'आप कैसे कमाते हैं', te: 'మీరు ఎలా సంపాదిస్తారు' },
   'rewards.tokenHistory': { en: 'Token History', hi: 'टोकन इतिहास', te: 'టోకెన్ చరిత్ర' },
   'rewards.noTokens': { en: 'No tokens yet', hi: 'अभी कोई टोकन नहीं', te: 'ఇంకా టోకెన్లు లేవు' },
+  'rewards.tokenOne': { en: 'token', hi: 'टोकन', te: 'టోకెన్' },
+  // One sentence rather than the English original's bolded fragments. The bold
+  // could only be kept by splitting the sentence at fixed points, and the point
+  // those numbers fall at is different in each language.
+  'rewards.rule': {
+    en: 'Every ₹{rupees} in a single order earns you {tokens} tokens. Tokens are counted per order, so a bigger basket earns more than the same total split up. Cancelled orders don’t earn.',
+    hi: 'एक ही ऑर्डर में हर ₹{rupees} पर {tokens} टोकन मिलते हैं। टोकन हर ऑर्डर के हिसाब से गिने जाते हैं, इसलिए एक बड़ी टोकरी उतने ही कुल ख़र्च को बाँटने से ज़्यादा कमाती है। रद्द ऑर्डर पर कुछ नहीं मिलता।',
+    te: 'ఒకే ఆర్డర్‌లో ప్రతి ₹{rupees}కి {tokens} టోకెన్లు వస్తాయి. టోకెన్లు ఆర్డర్ వారీగా లెక్కిస్తారు, కాబట్టి ఒకే మొత్తాన్ని విడగొట్టడం కంటే పెద్ద బుట్టకే ఎక్కువ వస్తాయి. రద్దైన ఆర్డర్లకు ఏమీ రావు.',
+  },
+  'rewards.shortfall': {
+    en: 'Your last order was ₹{rupees} short of another {tokens} tokens. Worth topping up next time.',
+    hi: 'आपका पिछला ऑर्डर {tokens} और टोकन से ₹{rupees} पीछे रह गया। अगली बार थोड़ा और जोड़ना फ़ायदे का है।',
+    te: 'మీ చివరి ఆర్డర్ మరో {tokens} టోకెన్లకు ₹{rupees} తక్కువైంది. వచ్చేసారి కొంచెం ఎక్కువ చేస్తే మంచిది.',
+  },
+  'rewards.firstTokens': {
+    en: 'Spend ₹{rupees} in one order to earn your first {tokens} tokens.',
+    hi: 'अपने पहले {tokens} टोकन के लिए एक ऑर्डर में ₹{rupees} ख़र्च करें।',
+    te: 'మీ మొదటి {tokens} టోకెన్ల కోసం ఒకే ఆర్డర్‌లో ₹{rupees} ఖర్చు చేయండి.',
+  },
+  'rewards.orderTotal': { en: 'Order total ₹{amount}', hi: 'ऑर्डर कुल ₹{amount}', te: 'ఆర్డర్ మొత్తం ₹{amount}' },
+  'rewards.spendNote': {
+    en: 'Tokens buy spins on the Lucky Spin above. There is no cash redemption yet — your balance keeps counting up from every order in the meantime.',
+    hi: 'टोकन से ऊपर दिए लकी स्पिन घुमाए जा सकते हैं। नक़द में बदलने की सुविधा अभी नहीं है — तब तक हर ऑर्डर से आपका बैलेंस बढ़ता रहेगा।',
+    te: 'పైన ఉన్న లక్కీ స్పిన్ తిప్పడానికి టోకెన్లు వాడొచ్చు. నగదుగా మార్చుకునే సదుపాయం ఇంకా లేదు — అప్పటివరకు ప్రతి ఆర్డర్‌తో మీ బ్యాలెన్స్ పెరుగుతూనే ఉంటుంది.',
+  },
   'spin.title': { en: 'Lucky Spin', hi: 'लकी स्पिन', te: 'లక్కీ స్పిన్' },
   'spin.cost': {
     en: 'Costs {cost} tokens a go. You have {left} to spend.',
@@ -259,6 +675,17 @@ const STRINGS = {
   'spin.prize.short.juiceGlass': { en: 'Juice Glass', hi: 'गिलास', te: 'గ్లాస్' },
   'spin.prize.short.slicer': { en: 'Slicer', hi: 'स्लाइसर', te: 'స్లైసర్' },
   'spin.prize.short.none': { en: 'Try Again', hi: 'फिर से', te: 'మళ్లీ' },
+  'spin.wheelAria': {
+    en: 'Prize wheel with {count} segments',
+    hi: '{count} हिस्सों वाला इनाम चक्र',
+    te: '{count} భాగాల బహుమతి చక్రం',
+  },
+  'spin.unknownPrize': { en: 'Unknown prize', hi: 'अज्ञात इनाम', te: 'తెలియని బహుమతి' },
+  'spin.disclaimer': {
+    en: 'Spins and prizes are recorded on this device only and can’t be claimed yet — this is a preview of the rewards store. Nothing is dispatched for a win.',
+    hi: 'स्पिन और इनाम सिर्फ़ इसी डिवाइस पर दर्ज होते हैं और अभी लिए नहीं जा सकते — यह इनाम स्टोर की एक झलक है। जीत पर कुछ भेजा नहीं जाता।',
+    te: 'స్పిన్‌లు, బహుమతులు ఈ పరికరంలో మాత్రమే నమోదవుతాయి, ఇంకా తీసుకోలేరు — ఇది రివార్డ్ స్టోర్ ముందస్తు రూపం. గెలిచినా ఏమీ పంపబడదు.',
+  },
 
   // --- Account menu -----------------------------------------------------------
   'account.purchaseHistory': { en: 'Purchase History', hi: 'ख़रीद इतिहास', te: 'కొనుగోలు చరిత్ర' },

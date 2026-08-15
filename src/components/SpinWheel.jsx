@@ -9,6 +9,7 @@ import {
   recordSpin,
   availableTokens,
 } from '../services/spinWheel';
+import { useLanguage } from '../i18n/LanguageContext';
 
 const SEGMENT_ANGLE = 360 / PRIZES.length;
 const SPIN_MS = 4200;
@@ -71,6 +72,7 @@ function rotationFor(index, current, random = Math.random) {
  * is why the panel says prizes are not redeemable yet.
  */
 export default function SpinWheel({ userId, totalTokens, onResult }) {
+  const { t } = useLanguage();
   const [spins, setSpins] = useState(() => loadSpins(userId));
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
@@ -114,11 +116,10 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
     <div className="bg-white border border-amber-100 rounded-3xl p-4 shadow-sm">
       <h3 className="font-black text-slate-800 text-sm flex items-center gap-2 mb-1">
         <Ticket className="w-4 h-4 text-amber-500" />
-        Lucky Spin
+        {t('spin.title')}
       </h3>
       <p className="text-[11px] font-semibold text-slate-500 leading-relaxed mb-4">
-        Costs <span className="font-black text-amber-600">{TOKENS_PER_SPIN} tokens</span> a go. You
-        have <span className="font-black text-slate-800">{tokensLeft}</span> to spend.
+        {t('spin.cost', { cost: TOKENS_PER_SPIN, left: tokensLeft })}
       </p>
 
       {/* Wheel */}
@@ -141,7 +142,7 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
             transition: spinning ? `transform ${SPIN_MS}ms cubic-bezier(0.17, 0.67, 0.16, 1)` : 'none',
           }}
           role="img"
-          aria-label={`Prize wheel with ${PRIZES.length} segments`}
+          aria-label={t('spin.wheelAria', { count: PRIZES.length })}
         >
           <circle cx="0" cy="0" r={R + 6} fill="#FFFDF9" stroke="#DCD5C6" strokeWidth="3" />
 
@@ -173,7 +174,7 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
                     fill="#FFFDF9"
                     style={{ userSelect: 'none' }}
                   >
-                    {prize.short}
+                    {t(prize.shortKey)}
                   </text>
                 </g>
               </g>
@@ -194,10 +195,10 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
         }`}
       >
         {spinning
-          ? 'Spinning…'
+          ? t('spin.spinning')
           : tokensLeft >= TOKENS_PER_SPIN
-            ? `Spin for ${TOKENS_PER_SPIN} tokens`
-            : `Need ${TOKENS_PER_SPIN - tokensLeft} more tokens`}
+            ? t('spin.spinFor', { cost: TOKENS_PER_SPIN })
+            : t('spin.needMore', { count: TOKENS_PER_SPIN - tokensLeft })}
       </button>
 
       {/* Result */}
@@ -218,8 +219,11 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
             }`}
           >
             {/* "the", not "a" — "a Egg Basket" is wrong, and picking the article
-                per prize is a lot of machinery for one word. */}
-            {isWin(result) ? `You won the ${result.label}!` : result.label}
+                per prize is a lot of machinery for one word. Telugu and Hindi
+                have no article at all, so `spin.youWon` simply drops it. */}
+            {isWin(result)
+              ? t('spin.youWon', { prize: t(result.labelKey) })
+              : t(result.labelKey)}
           </p>
         </div>
       )}
@@ -229,7 +233,7 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
         <div className="mt-4 border-t border-slate-100 pt-3">
           <h4 className="font-black text-slate-700 text-[11px] flex items-center gap-1.5 mb-2">
             <History className="w-3.5 h-3.5 text-slate-400" />
-            Recent spins
+            {t('spin.recentSpins')}
           </h4>
           <div className="space-y-1.5 max-h-32 overflow-y-auto">
             {spins.slice(0, 8).map((entry, index) => {
@@ -240,7 +244,7 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
                   className="flex items-center justify-between gap-2 text-[11px]"
                 >
                   <span className="font-bold text-slate-600 truncate">
-                    {prize ? `${prize.emoji} ${prize.label}` : 'Unknown prize'}
+                    {prize ? `${prize.emoji} ${t(prize.labelKey)}` : t('spin.unknownPrize')}
                   </span>
                   <span className="shrink-0 font-bold text-slate-400 flex items-center gap-0.5">
                     <Coins className="w-3 h-3" />-{TOKENS_PER_SPIN}
@@ -255,10 +259,7 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
       {/* Said up front, exactly as the token balance above it is. */}
       <p className="flex items-start gap-2 text-[10px] font-semibold text-slate-400 leading-relaxed mt-3">
         <Info className="w-3 h-3 shrink-0 mt-0.5" />
-        <span>
-          Spins and prizes are recorded on this device only and can’t be claimed yet — this is a
-          preview of the rewards store. Nothing is dispatched for a win.
-        </span>
+        <span>{t('spin.disclaimer')}</span>
       </p>
     </div>
   );
