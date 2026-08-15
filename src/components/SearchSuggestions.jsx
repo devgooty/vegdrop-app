@@ -1,5 +1,6 @@
 import React from 'react';
 import { Search, CornerDownLeft, LayoutGrid } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
 
 /**
  * The suggestion panel under the header search box.
@@ -23,6 +24,7 @@ export default function SearchSuggestions({
   onPick,
   onHoverOption,
 }) {
+  const { t } = useLanguage();
   if (options.length === 0) return null;
 
   return (
@@ -34,7 +36,7 @@ export default function SearchSuggestions({
       // delivered to whatever the page moved under the cursor.
       onMouseDown={(e) => e.preventDefault()}
     >
-      <ul id={listboxId} role="listbox" aria-label="Search suggestions" className="py-1.5">
+      <ul id={listboxId} role="listbox" aria-label={t('search.suggestions')} className="py-1.5">
         {options.map((option, index) => (
           <li
             key={option.id}

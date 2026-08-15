@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Store, ChevronRight, Check } from 'lucide-react';
 import { fetchNearbyShops } from '../services/shops';
 import { savedCustomerCoords } from '../services/markets';
+import { useLanguage } from '../i18n/LanguageContext';
 
 /**
  * Local shops near you — the shopkeepers who sell from their own premises.
@@ -22,6 +23,7 @@ import { savedCustomerCoords } from '../services/markets';
  * outright, which is not the customer's problem to read about.
  */
 export default function NearbyShops({ coords, selectedShop, onSelectShop }) {
+  const { t } = useLanguage();
   const [shops, setShops] = useState([]);
   const [expanded, setExpanded] = useState(false);
 
@@ -58,15 +60,17 @@ export default function NearbyShops({ coords, selectedShop, onSelectShop }) {
         </span>
         <span className="flex-1 min-w-0">
           <span className="block text-[10px] font-bold text-amber-700 uppercase tracking-wider">
-            Local shops near you
+            {t('shops.nearYou')}
           </span>
           <span className="block text-[14px] font-extrabold text-gray-900 truncate">
-            {selectedShop ? selectedShop.name : `${usableShops.length || shops.length} nearby`}
+            {selectedShop
+              ? selectedShop.name
+              : t('shops.nearbyCount', { count: usableShops.length || shops.length })}
           </span>
           <span className="block text-[11.5px] text-gray-500 truncate">
             {selectedShop
-              ? `${selectedShop.distanceKm} km away · shopping from here`
-              : 'Buy straight from a shop in your area'}
+              ? t('shops.shoppingHere', { km: selectedShop.distanceKm })
+              : t('shops.buyDirect')}
           </span>
         </span>
         <ChevronRight
@@ -95,12 +99,11 @@ export default function NearbyShops({ coords, selectedShop, onSelectShop }) {
                       {shop.name}
                     </span>
                     <span className="block text-[11.5px] text-gray-500 truncate">
-                      {shop.distanceKm} km
-                      {shop.deliverable
-                        ? shop.address
-                          ? ` · ${shop.address}`
-                          : ''
-                        : ' · too far to deliver'}
+                      {!shop.deliverable
+                        ? t('shops.tooFar', { km: shop.distanceKm })
+                        : shop.address
+                          ? t('shops.withAddress', { km: shop.distanceKm, address: shop.address })
+                          : t('shops.distanceOnly', { km: shop.distanceKm })}
                     </span>
                   </span>
                   {chosen && <Check className="w-4.5 h-4.5 text-amber-600 shrink-0" strokeWidth={3} />}

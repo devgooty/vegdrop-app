@@ -183,7 +183,7 @@ export default function ProductGridCard({
                 onUpdateQuantity(variantId, -1);
               }}
               className="p-1 hover:bg-[#143B2B] rounded-lg transition-colors cursor-pointer active:scale-90"
-              title="Decrease quantity"
+              title={t('product.decreaseQty')}
             >
               <Minus className="w-3 h-3 stroke-[3]" />
             </button>
@@ -196,7 +196,7 @@ export default function ProductGridCard({
                 onUpdateQuantity(variantId, 1, e, item);
               }}
               className="p-1 hover:bg-[#143B2B] rounded-lg transition-colors cursor-pointer active:scale-90"
-              title="Increase quantity"
+              title={t('product.increaseQty')}
             >
               <Plus className="w-3 h-3 stroke-[3]" />
             </button>

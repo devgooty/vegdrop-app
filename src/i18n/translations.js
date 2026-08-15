@@ -90,6 +90,11 @@ const STRINGS = {
     te: 'మీ డెలివరీ చిరునామా పెట్టండి',
   },
   'delivery.detectGps': { en: 'Detect GPS', hi: 'GPS पता लगाएँ', te: 'GPS గుర్తించు' },
+  'delivery.changeAddressTitle': {
+    en: 'Change Delivery Address (Street, Village, District, State & Pincode)',
+    hi: 'डिलीवरी पता बदलें (गली, गाँव, ज़िला, राज्य और पिनकोड)',
+    te: 'డెలివరీ చిరునామా మార్చండి (వీధి, గ్రామం, జిల్లా, రాష్ట్రం & పిన్‌కోడ్)',
+  },
   'delivery.locating': { en: 'Locating...', hi: 'पता लगाया जा रहा है...', te: 'గుర్తిస్తోంది...' },
   'delivery.noGeolocation': {
     en: 'Geolocation is not supported by your browser.',
@@ -440,6 +445,202 @@ const STRINGS = {
   'status.Delivered': { en: 'Delivered', hi: 'पहुँच गया', te: 'డెలివరీ అయ్యింది' },
   'status.Cancelled': { en: 'Cancelled', hi: 'रद्द', te: 'రద్దు' },
 
+  // --- Location permission primer (LocationPrimer.jsx) -------------------------
+  'primer.title': { en: 'Show shops near you?', hi: 'आपके पास की दुकानें दिखाएँ?', te: 'మీ దగ్గరి దుకాణాలు చూపించమా?' },
+  'primer.body': {
+    en: 'We use your location only to show the shops and markets that can deliver to you. It is never shared with anyone else.',
+    hi: 'हम आपकी लोकेशन सिर्फ़ यह दिखाने के लिए इस्तेमाल करते हैं कि कौन सी दुकानें और बाज़ार आप तक डिलीवरी कर सकते हैं। यह किसी और के साथ कभी साझा नहीं की जाती।',
+    te: 'మీకు డెలివరీ చేయగల దుకాణాలు, మార్కెట్లను చూపడానికి మాత్రమే మేము మీ లొకేషన్ వాడతాం. ఇది వేరెవరితోనూ ఎప్పుడూ పంచుకోబడదు.',
+  },
+  'primer.notNow': { en: 'Not now', hi: 'अभी नहीं', te: 'ఇప్పుడు వద్దు' },
+  'primer.allow': { en: 'Allow location', hi: 'लोकेशन की अनुमति दें', te: 'లొకేషన్‌ను అనుమతించండి' },
+
+  // --- Address picker (MapLocationPicker.jsx) ----------------------------------
+  //
+  // `place.type` is not here: it is an emoji plus an OpenStreetMap tag value
+  // ("🏪 convenience"), and translating one half of a string the map data owns
+  // would leave the other half English anyway.
+  'map.detecting': { en: 'Getting your exact location...', hi: 'आपकी सटीक लोकेशन ली जा रही है...', te: 'మీ కచ్చితమైన లొకేషన్ తీసుకుంటున్నాం...' },
+  'map.allowGps': { en: 'Please allow GPS access if prompted', hi: 'पूछे जाने पर GPS की अनुमति दें', te: 'అడిగితే GPS అనుమతి ఇవ్వండి' },
+  'map.redetect': { en: 'Re-detect Location', hi: 'लोकेशन फिर से पता करें', te: 'లొకేషన్ మళ్లీ గుర్తించండి' },
+  'map.gpsDenied': {
+    en: '⚠️ GPS access denied. Please enable location in your browser settings and tap Re-detect.',
+    hi: '⚠️ GPS की अनुमति नहीं मिली। ब्राउज़र सेटिंग्स में लोकेशन चालू करें और "फिर से पता करें" दबाएँ।',
+    te: '⚠️ GPS అనుమతి నిరాకరించారు. బ్రౌజర్ సెట్టింగ్‌లలో లొకేషన్ ఆన్ చేసి "మళ్లీ గుర్తించండి" నొక్కండి.',
+  },
+  'map.exactLocation': { en: 'Your Exact Location', hi: 'आपकी सटीक लोकेशन', te: 'మీ కచ్చితమైన లొకేషన్' },
+  'map.fetching': { en: 'Fetching...', hi: 'लिया जा रहा है...', te: 'తీసుకుంటోంది...' },
+  'map.fetchingAddress': { en: 'Fetching exact address...', hi: 'सटीक पता लिया जा रहा है...', te: 'కచ్చితమైన చిరునామా తీసుకుంటోంది...' },
+  'map.waitingGps': { en: 'Waiting for GPS...', hi: 'GPS का इंतज़ार...', te: 'GPS కోసం ఎదురుచూపు...' },
+  'map.nearbyTitle': { en: 'Nearby Markets & Shops', hi: 'पास के बाज़ार और दुकानें', te: 'దగ్గరి మార్కెట్లు & దుకాణాలు' },
+  'map.scanning': { en: 'Scanning for nearby markets...', hi: 'पास के बाज़ार खोजे जा रहे हैं...', te: 'దగ్గరి మార్కెట్ల కోసం వెతుకుతోంది...' },
+  'map.noneNearby': {
+    en: 'No registered markets found nearby.',
+    hi: 'पास में कोई रजिस्टर्ड बाज़ार नहीं मिला।',
+    te: 'దగ్గరలో నమోదైన మార్కెట్లు దొరకలేదు.',
+  },
+  'map.noneNearbyHint': {
+    en: 'This area may not be mapped on OpenStreetMap yet.',
+    hi: 'यह इलाक़ा शायद अभी OpenStreetMap पर दर्ज नहीं है।',
+    te: 'ఈ ప్రాంతం బహుశా ఇంకా OpenStreetMapలో నమోదు కాలేదు.',
+  },
+  'map.distanceAway': { en: '{distance} away', hi: '{distance} दूर', te: '{distance} దూరం' },
+  'map.pincodeLabel': { en: 'Verify/Edit Pincode', hi: 'पिनकोड जाँचें/बदलें', te: 'పిన్‌కోడ్ చూడండి/మార్చండి' },
+  'map.pincodePlaceholder': { en: 'Enter correct 6-digit Pincode', hi: 'सही 6 अंकों का पिनकोड डालें', te: 'సరైన 6 అంకెల పిన్‌కోడ్ నమోదు చేయండి' },
+  'map.confirm': { en: 'Confirm & Deliver Here', hi: 'पक्का करें और यहीं डिलीवरी', te: 'నిర్ధారించి ఇక్కడికే డెలివరీ' },
+  'map.addressFailed': { en: 'Could not fetch address.', hi: 'पता नहीं मिल सका।', te: 'చిరునామా తీసుకోలేకపోయాం.' },
+  'map.permissionDenied': {
+    en: 'Location permission denied. Please enable GPS.',
+    hi: 'लोकेशन की अनुमति नहीं मिली। कृपया GPS चालू करें।',
+    te: 'లొకేషన్ అనుమతి నిరాకరించారు. దయచేసి GPS ఆన్ చేయండి.',
+  },
+
+  // --- Independent shops (NearbyShops.jsx) -------------------------------------
+  'shops.nearYou': { en: 'Local shops near you', hi: 'आपके पास की दुकानें', te: 'మీ దగ్గరి స్థానిక దుకాణాలు' },
+  'shops.nearbyCount': { en: '{count} nearby', hi: '{count} पास में', te: '{count} దగ్గరలో' },
+  'shops.shoppingHere': {
+    en: '{km} km away · shopping from here',
+    hi: '{km} किमी दूर · यहीं से ख़रीदारी',
+    te: '{km} కి.మీ దూరం · ఇక్కడి నుండే కొనుగోలు',
+  },
+  'shops.buyDirect': {
+    en: 'Buy straight from a shop in your area',
+    hi: 'अपने इलाक़े की दुकान से सीधे ख़रीदें',
+    te: 'మీ ప్రాంతంలోని దుకాణం నుండి నేరుగా కొనండి',
+  },
+  'shops.tooFar': { en: '{km} km · too far to deliver', hi: '{km} किमी · डिलीवरी के लिए बहुत दूर', te: '{km} కి.మీ · డెలివరీకి చాలా దూరం' },
+  'shops.withAddress': { en: '{km} km · {address}', hi: '{km} किमी · {address}', te: '{km} కి.మీ · {address}' },
+  'shops.distanceOnly': { en: '{km} km', hi: '{km} किमी', te: '{km} కి.మీ' },
+
+  // --- Sign in / sign up (LoginPage.jsx) ---------------------------------------
+  //
+  // Shared by all three apps, including the role-specific wording. The
+  // shopkeeper and delivery panels behind this screen are still English, but
+  // the language picker sits on this very card — translating half of what it
+  // visibly controls would read as broken rather than as consistent.
+  'login.pageLogin': { en: 'Login', hi: 'लॉगिन', te: 'లాగిన్' },
+  'login.pageSignUp': { en: 'Sign up', hi: 'साइन अप', te: 'సైన్ అప్' },
+  'login.headingWithRole': { en: '{role} {step}', hi: '{role} {step}', te: '{role} {step}' },
+  'login.signIn': { en: 'Sign in', hi: 'साइन इन', te: 'సైన్ ఇన్' },
+  'login.signInSub': {
+    en: 'We’ll send you a one-time code.',
+    hi: 'हम आपको एक बार का कोड भेजेंगे।',
+    te: 'మేము మీకు ఒక్కసారి వాడే కోడ్ పంపుతాం.',
+  },
+  'login.enterCode': { en: 'Enter your code', hi: 'अपना कोड डालें', te: 'మీ కోడ్ నమోదు చేయండి' },
+  'login.enterCodeSub': {
+    en: 'Six digits, sent to WhatsApp and email.',
+    hi: 'छह अंक, WhatsApp और ईमेल पर भेजे गए।',
+    te: 'ఆరు అంకెలు, WhatsApp మరియు ఇమెయిల్‌కు పంపాం.',
+  },
+  'login.createAccount': { en: 'Create account', hi: 'खाता बनाएँ', te: 'ఖాతా సృష్టించండి' },
+  'login.createAccountSub': {
+    en: 'You’re new here. We need both contacts.',
+    hi: 'आप यहाँ नए हैं। हमें दोनों संपर्क चाहिए।',
+    te: 'మీరు ఇక్కడ కొత్త. మాకు రెండు సంప్రదింపు వివరాలు కావాలి.',
+  },
+  'login.checkMessages': { en: 'Check your messages', hi: 'अपने संदेश देखें', te: 'మీ సందేశాలు చూడండి' },
+  'login.checkMessagesSub': {
+    en: 'Type the code from each one below.',
+    hi: 'हर एक का कोड नीचे लिखें।',
+    te: 'ప్రతిదాని కోడ్‌ను కింద టైప్ చేయండి.',
+  },
+  'login.shopkeeperHeading': { en: 'Shopkeeper', hi: 'दुकानदार', te: 'దుకాణదారు' },
+  'login.shopkeeperTitle': { en: 'Register your stall', hi: 'अपनी दुकान रजिस्टर करें', te: 'మీ దుకాణాన్ని నమోదు చేయండి' },
+  'login.shopkeeperSub': {
+    en: 'You’re new here. We need both contacts, then a quick account check.',
+    hi: 'आप यहाँ नए हैं। हमें दोनों संपर्क चाहिए, फिर एक छोटी खाता जाँच।',
+    te: 'మీరు ఇక్కడ కొత్త. మాకు రెండు సంప్రదింపు వివరాలు కావాలి, ఆ తర్వాత చిన్న ఖాతా తనిఖీ.',
+  },
+  'login.shopkeeperCodesSub': {
+    en: 'Type the code from each one below. You’ll verify your bank account next.',
+    hi: 'हर एक का कोड नीचे लिखें। अगला क़दम आपके बैंक खाते की पुष्टि है।',
+    te: 'ప్రతిదాని కోడ్‌ను కింద టైప్ చేయండి. తర్వాత మీ బ్యాంక్ ఖాతాను ధృవీకరిస్తారు.',
+  },
+  'login.deliveryHeading': { en: 'Delivery Agent', hi: 'डिलीवरी एजेंट', te: 'డెలివరీ ఏజెంట్' },
+  'login.deliveryTitle': { en: 'Sign up to deliver', hi: 'डिलीवरी के लिए साइन अप करें', te: 'డెలివరీ కోసం సైన్ అప్ చేయండి' },
+  'login.deliverySub': {
+    en: 'We need both contacts. Each gets its own code.',
+    hi: 'हमें दोनों संपर्क चाहिए। हर एक को अपना कोड मिलेगा।',
+    te: 'మాకు రెండు సంప్రదింపు వివరాలు కావాలి. ప్రతిదానికీ దాని సొంత కోడ్ వస్తుంది.',
+  },
+  'login.deliveryCodesSub': {
+    en: 'Type the code from each one below, and you can go on duty straight away.',
+    hi: 'हर एक का कोड नीचे लिखें, और आप तुरंत ड्यूटी पर जा सकते हैं।',
+    te: 'ప్రతిదాని కోడ్‌ను కింద టైప్ చేయండి, వెంటనే డ్యూటీలో చేరవచ్చు.',
+  },
+  'login.identifier': { en: 'Mobile number or email', hi: 'मोबाइल नंबर या ईमेल', te: 'మొబైల్ నంబర్ లేదా ఇమెయిల్' },
+  'login.rememberMe': {
+    en: 'Remember me on this device',
+    hi: 'इस डिवाइस पर मुझे याद रखें',
+    te: 'ఈ పరికరంలో నన్ను గుర్తుంచుకో',
+  },
+  'login.checking': { en: 'Checking', hi: 'जाँच रहे हैं', te: 'పరిశీలిస్తోంది' },
+  'login.next': { en: 'Next', hi: 'आगे', te: 'తరువాత' },
+  'login.sentTo': { en: 'Sent to', hi: 'यहाँ भेजा', te: 'ఇక్కడికి పంపాం' },
+  'login.sixDigitCode': { en: 'Six-digit code', hi: 'छह अंकों का कोड', te: 'ఆరు అంకెల కోడ్' },
+  'login.verifyAndSignIn': { en: 'Verify and sign in', hi: 'पुष्टि करें और साइन इन करें', te: 'ధృవీకరించి సైన్ ఇన్ చేయండి' },
+  'login.twoWays': {
+    en: 'Two ways to reach you means you can always get in, even when WhatsApp is down.',
+    hi: 'आप तक पहुँचने के दो रास्ते होने से आप हमेशा अंदर आ सकते हैं, चाहे WhatsApp बंद ही क्यों न हो।',
+    te: 'మిమ్మల్ని చేరుకోవడానికి రెండు మార్గాలుంటే, WhatsApp పని చేయకపోయినా మీరు ఎప్పుడైనా లోపలికి రాగలరు.',
+  },
+  'login.whatsappNumber': { en: 'WhatsApp number', hi: 'WhatsApp नंबर', te: 'WhatsApp నంబర్' },
+  'login.emailAddress': { en: 'Email address', hi: 'ईमेल पता', te: 'ఇమెయిల్ చిరునామా' },
+  'login.yourName': { en: 'Your name', hi: 'आपका नाम', te: 'మీ పేరు' },
+  'login.optional': { en: '— optional', hi: '— वैकल्पिक', te: '— ఐచ్ఛికం' },
+  'login.sending': { en: 'Sending', hi: 'भेजा जा रहा है', te: 'పంపుతోంది' },
+  'login.sendMyCodes': { en: 'Send my codes', hi: 'मेरे कोड भेजें', te: 'నా కోడ్‌లు పంపండి' },
+  'login.startOver': { en: 'Start over', hi: 'फिर से शुरू करें', te: 'మళ్లీ మొదలుపెట్టండి' },
+  'login.whatsappDown': {
+    en: 'WhatsApp is unavailable right now, so we saved your number and skipped that code. Verify your email below to finish — you can confirm the number later.',
+    hi: 'WhatsApp अभी उपलब्ध नहीं है, इसलिए हमने आपका नंबर सहेजकर वह कोड छोड़ दिया। पूरा करने के लिए नीचे अपना ईमेल सत्यापित करें — नंबर बाद में पक्का कर सकते हैं।',
+    te: 'WhatsApp ప్రస్తుతం అందుబాటులో లేదు, కాబట్టి మీ నంబర్‌ను భద్రపరిచి ఆ కోడ్‌ను వదిలేశాం. పూర్తి చేయడానికి కింద మీ ఇమెయిల్‌ను ధృవీకరించండి — నంబర్‌ను తర్వాత నిర్ధారించవచ్చు.',
+  },
+  'login.whatsappLabel': { en: 'WhatsApp', hi: 'WhatsApp', te: 'WhatsApp' },
+  'login.emailLabel': { en: 'Email', hi: 'ईमेल', te: 'ఇమెయిల్' },
+  'login.errNetwork': {
+    en: 'Could not reach the server. Check your connection and try again.',
+    hi: 'सर्वर तक नहीं पहुँच सके। अपना कनेक्शन जाँचें और फिर कोशिश करें।',
+    te: 'సర్వర్‌కు చేరలేకపోయాం. మీ కనెక్షన్ చూసి మళ్లీ ప్రయత్నించండి.',
+  },
+  'login.errContinue': {
+    en: 'Could not continue. Please try again.',
+    hi: 'आगे नहीं बढ़ सके। कृपया फिर कोशिश करें।',
+    te: 'ముందుకు వెళ్లలేకపోయాం. దయచేసి మళ్లీ ప్రయత్నించండి.',
+  },
+  'login.errAllSix': { en: 'Enter all six digits.', hi: 'सभी छह अंक डालें।', te: 'ఆరు అంకెలూ నమోదు చేయండి.' },
+  'login.errExpired': {
+    en: 'This sign-in expired. Start again.',
+    hi: 'यह साइन-इन समाप्त हो गया। फिर से शुरू करें।',
+    te: 'ఈ సైన్-ఇన్ గడువు ముగిసింది. మళ్లీ మొదలుపెట్టండి.',
+  },
+  'login.errBadCode': {
+    en: 'That code did not work. Try again.',
+    hi: 'वह कोड काम नहीं आया। फिर कोशिश करें।',
+    te: 'ఆ కోడ్ పని చేయలేదు. మళ్లీ ప్రయత్నించండి.',
+  },
+  'login.errSendCodes': {
+    en: 'Could not send the codes. Please try again.',
+    hi: 'कोड नहीं भेजे जा सके। कृपया फिर कोशिश करें।',
+    te: 'కోడ్‌లను పంపలేకపోయాం. దయచేసి మళ్లీ ప్రయత్నించండి.',
+  },
+  'login.errSixEmail': {
+    en: 'Enter all six digits from your email.',
+    hi: 'अपने ईमेल वाले सभी छह अंक डालें।',
+    te: 'మీ ఇమెయిల్‌లోని ఆరు అంకెలూ నమోదు చేయండి.',
+  },
+  'login.errSixWhatsapp': {
+    en: 'Enter all six digits from WhatsApp.',
+    hi: 'WhatsApp वाले सभी छह अंक डालें।',
+    te: 'WhatsAppలోని ఆరు అంకెలూ నమోదు చేయండి.',
+  },
+  'login.errCheckCodes': {
+    en: 'That did not work. Check the codes and try again.',
+    hi: 'यह काम नहीं आया। कोड जाँचें और फिर कोशिश करें।',
+    te: 'అది పని చేయలేదు. కోడ్‌లు చూసి మళ్లీ ప్రయత్నించండి.',
+  },
+
   // --- Toasts and confirmations (App.jsx) --------------------------------------
   //
   // Only the customer-facing ones. The developer and market-owner panels are
@@ -778,6 +979,8 @@ const STRINGS = {
   },
   'product.decrease': { en: 'Decrease', hi: 'घटाएँ', te: 'తగ్గించు' },
   'product.increase': { en: 'Increase', hi: 'बढ़ाएँ', te: 'పెంచు' },
+  'product.decreaseQty': { en: 'Decrease quantity', hi: 'मात्रा घटाएँ', te: 'పరిమాణం తగ్గించు' },
+  'product.increaseQty': { en: 'Increase quantity', hi: 'मात्रा बढ़ाएँ', te: 'పరిమాణం పెంచు' },
   'product.storyBody': {
     en: 'Freshly harvested from organic partner farms in Ooty and Nilgiri hills. Grown using sustainable composting without chemical pesticides. Rich in essential vitamins, minerals, and natural antioxidants.',
     hi: 'ऊटी और नीलगिरि की पहाड़ियों के जैविक साझेदार खेतों से ताज़ा तोड़ी गई उपज। रासायनिक कीटनाशकों के बिना, टिकाऊ खाद से उगाई गई। ज़रूरी विटामिन, खनिज और प्राकृतिक एंटीऑक्सीडेंट से भरपूर।',
@@ -856,6 +1059,7 @@ const STRINGS = {
   'search.searchFor': { en: 'Search for', hi: 'खोजें', te: 'వెతకండి' },
   'search.section': { en: 'Section · {count} items', hi: 'विभाग · {count} वस्तुएँ', te: 'విభాగం · {count} వస్తువులు' },
   'search.options': { en: '{count} options', hi: '{count} विकल्प', te: '{count} ఎంపికలు' },
+  'search.suggestions': { en: 'Search suggestions', hi: 'खोज सुझाव', te: 'వెతుకులాట సూచనలు' },
   'search.wholeShop': {
     en: 'Search the whole shop...',
     hi: 'पूरी दुकान में खोजें...',

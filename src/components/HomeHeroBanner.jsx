@@ -381,7 +381,7 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
         <button
           onClick={() => setIsModalOpen(true)}
           className="flex items-center gap-1.5 text-[#1B4D3E] font-bold hover:opacity-80 transition-opacity cursor-pointer truncate max-w-[72%]"
-          title="Change Delivery Address (Street, Village, District, State & Pincode)"
+          title={t('delivery.changeAddressTitle')}
         >
           <div className="relative flex items-center justify-center shrink-0">
             <MapPin className="w-4 h-4 text-emerald-700 animate-pulse" />

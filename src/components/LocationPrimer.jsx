@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { MapPin, LoaderCircle } from 'lucide-react';
 import { currentPosition, savedCustomerCoords } from '../services/markets';
+import { useLanguage } from '../i18n/LanguageContext';
 
 /** Remembers that we already asked, so this appears once rather than every visit. */
 const PRIMER_KEY = 'vegdrop_location_primer';
@@ -26,6 +27,7 @@ export function primerAnswered() {
  * only thing lost is the ordering by distance.
  */
 export default function LocationPrimer({ onLocated }) {
+  const { t } = useLanguage();
   const [visible, setVisible] = useState(false);
   const [asking, setAsking] = useState(false);
 
@@ -104,11 +106,8 @@ export default function LocationPrimer({ onLocated }) {
           <MapPin className="w-4.5 h-4.5 text-emerald-600" />
         </span>
         <div className="flex-1 min-w-0">
-          <p className="text-[13.5px] font-bold text-gray-900">Show shops near you?</p>
-          <p className="text-[12px] text-gray-500 mt-1 leading-relaxed">
-            We use your location only to show the shops and markets that can deliver to you. It is
-            never shared with anyone else.
-          </p>
+          <p className="text-[13.5px] font-bold text-gray-900">{t('primer.title')}</p>
+          <p className="text-[12px] text-gray-500 mt-1 leading-relaxed">{t('primer.body')}</p>
         </div>
       </div>
 
@@ -117,7 +116,7 @@ export default function LocationPrimer({ onLocated }) {
           onClick={handleDismiss}
           className="flex-1 border border-gray-300 text-gray-600 rounded-xl py-2.5 text-[13px] font-bold"
         >
-          Not now
+          {t('primer.notNow')}
         </button>
         <button
           onClick={handleAllow}
@@ -125,7 +124,7 @@ export default function LocationPrimer({ onLocated }) {
           className="flex-1 bg-emerald-600 text-white rounded-xl py-2.5 text-[13px] font-bold flex items-center justify-center gap-2 disabled:opacity-60"
         >
           {asking ? <LoaderCircle className="w-4 h-4 animate-spin" /> : null}
-          Allow location
+          {t('primer.allow')}
         </button>
       </div>
     </div>

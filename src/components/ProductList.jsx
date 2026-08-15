@@ -273,7 +273,7 @@ function ProductCard({
                 onUpdateQuantity(variantId, -1);
               }}
               className="p-1 hover:bg-[#143B2B] rounded-lg transition-colors cursor-pointer active:scale-90"
-              title="Decrease quantity"
+              title={t('product.decreaseQty')}
             >
               <Minus className="w-3.5 h-3.5 stroke-[3]" />
             </button>
@@ -290,7 +290,7 @@ function ProductCard({
               className={`p-1 hover:bg-[#143B2B] rounded-lg transition-colors cursor-pointer active:scale-90 ${
                 inCart.quantity >= item.stock ? 'opacity-50 cursor-not-allowed' : ''
               }`}
-              title="Increase quantity"
+              title={t('product.increaseQty')}
             >
               <Plus className="w-3.5 h-3.5 stroke-[3]" />
             </button>

@@ -67,11 +67,11 @@ const STEP = {
  * staying fixed — "Login" sitting over a card that reads "Create account"
  * contradicts itself.
  */
-const PAGE_TITLE = {
-  [STEP.IDENTIFIER]: 'Login',
-  [STEP.LOGIN_CODE]: 'Login',
-  [STEP.REGISTER]: 'Sign up',
-  [STEP.REGISTER_CODES]: 'Sign up',
+const PAGE_TITLE_KEY = {
+  [STEP.IDENTIFIER]: 'login.pageLogin',
+  [STEP.LOGIN_CODE]: 'login.pageLogin',
+  [STEP.REGISTER]: 'login.pageSignUp',
+  [STEP.REGISTER_CODES]: 'login.pageSignUp',
 };
 
 /**
@@ -79,23 +79,11 @@ const PAGE_TITLE = {
  * wraps costs 18px, and the whole screen has to clear the viewport without
  * scrolling — the field's own label already says what to type.
  */
-const COPY = {
-  [STEP.IDENTIFIER]: {
-    title: 'Sign in',
-    sub: "We'll send you a one-time code.",
-  },
-  [STEP.LOGIN_CODE]: {
-    title: 'Enter your code',
-    sub: 'Six digits, sent to WhatsApp and email.',
-  },
-  [STEP.REGISTER]: {
-    title: 'Create account',
-    sub: "You're new here. We need both contacts.",
-  },
-  [STEP.REGISTER_CODES]: {
-    title: 'Check your messages',
-    sub: 'Type the code from each one below.',
-  },
+const COPY_KEYS = {
+  [STEP.IDENTIFIER]: { title: 'login.signIn', sub: 'login.signInSub' },
+  [STEP.LOGIN_CODE]: { title: 'login.enterCode', sub: 'login.enterCodeSub' },
+  [STEP.REGISTER]: { title: 'login.createAccount', sub: 'login.createAccountSub' },
+  [STEP.REGISTER_CODES]: { title: 'login.checkMessages', sub: 'login.checkMessagesSub' },
 };
 
 /**
@@ -160,18 +148,18 @@ const SIGN_UP = {
     // status on mount for every sign-in, not just a fresh signup, so there is
     // nothing extra to thread through here.
     verify: async (payload) => (await verifyVendorRegistration(payload)).user,
-    heading: 'Shopkeeper',
-    title: 'Register your stall',
-    sub: "You're new here. We need both contacts, then a quick account check.",
-    codesSub: "Type the code from each one below. You'll verify your bank account next.",
+    headingKey: 'login.shopkeeperHeading',
+    titleKey: 'login.shopkeeperTitle',
+    subKey: 'login.shopkeeperSub',
+    codesSubKey: 'login.shopkeeperCodesSub',
   },
   delivery: {
     start: startRiderRegistration,
     verify: verifyRiderRegistration,
-    heading: 'Delivery Agent',
-    title: 'Sign up to deliver',
-    sub: 'We need both contacts. Each gets its own code.',
-    codesSub: 'Type the code from each one below, and you can go on duty straight away.',
+    headingKey: 'login.deliveryHeading',
+    titleKey: 'login.deliveryTitle',
+    subKey: 'login.deliverySub',
+    codesSubKey: 'login.deliveryCodesSub',
   },
 };
 
@@ -212,7 +200,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
    */
   const describeError = (err, fallback) => {
     if (err instanceof NetworkError) {
-      return 'Could not reach the server. Check your connection and try again.';
+      return t('login.errNetwork');
     }
     if (err instanceof ApiRequestError) return err.message;
     return fallback;
@@ -273,7 +261,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
       }
       setStep(STEP.REGISTER);
     } catch (err) {
-      setError(describeError(err, 'Could not continue. Please try again.'));
+      setError(describeError(err, t('login.errContinue')));
     } finally {
       setIsSubmitting(false);
     }
@@ -285,11 +273,11 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     if (isSubmitting) return;
 
     if (!code || code.trim().length < 6) {
-      setError('Enter all six digits.');
+      setError(t('login.errAllSix'));
       return;
     }
     if (!challenge?.challengeId) {
-      setError('This sign-in expired. Start again.');
+      setError(t('login.errExpired'));
       return;
     }
 
@@ -302,7 +290,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
       const user = await verifyPhoneAuth({ challengeId: challenge.challengeId, code: code.trim() });
       onLogin(user);
     } catch (err) {
-      setError(describeError(err, 'That code did not work. Try again.'));
+      setError(describeError(err, t('login.errBadCode')));
 
       if (err instanceof ApiRequestError && ['OTP_EXPIRED', 'OTP_ATTEMPTS_EXCEEDED'].includes(err.code)) {
         resetToStart();
@@ -337,7 +325,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
       setPhoneCode('');
       setStep(STEP.REGISTER_CODES);
     } catch (err) {
-      setError(describeError(err, 'Could not send the codes. Please try again.'));
+      setError(describeError(err, t('login.errSendCodes')));
     } finally {
       setIsSubmitting(false);
     }
@@ -351,11 +339,11 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     const phoneWasDelivered = Boolean(registration?.phone?.delivered);
 
     if (!emailCode || emailCode.trim().length < 6) {
-      setError('Enter all six digits from your email.');
+      setError(t('login.errSixEmail'));
       return;
     }
     if (phoneWasDelivered && (!phoneCode || phoneCode.trim().length < 6)) {
-      setError('Enter all six digits from WhatsApp.');
+      setError(t('login.errSixWhatsapp'));
       return;
     }
 
@@ -376,7 +364,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
       const user = await signUp.verify(payload);
       onLogin(user);
     } catch (err) {
-      setError(describeError(err, 'That did not work. Check the codes and try again.'));
+      setError(describeError(err, t('login.errCheckCodes')));
 
       if (err instanceof ApiRequestError && ['OTP_EXPIRED', 'OTP_ATTEMPTS_EXCEEDED'].includes(err.code)) {
         resetToStart();
@@ -386,12 +374,13 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     }
   };
 
-  let { title, sub } = COPY[step];
+  let title = t(COPY_KEYS[step].title);
+  let sub = t(COPY_KEYS[step].sub);
   if (step === STEP.REGISTER) {
-    title = signUp.title || title;
-    sub = signUp.sub || sub;
+    if (signUp.titleKey) title = t(signUp.titleKey);
+    if (signUp.subKey) sub = t(signUp.subKey);
   } else if (step === STEP.REGISTER_CODES) {
-    sub = signUp.codesSub || sub;
+    if (signUp.codesSubKey) sub = t(signUp.codesSubKey);
   }
 
   const fieldClass =
@@ -511,7 +500,12 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               Prefixed rather than swapped outright, so "Login" and "Sign up"
               still say what step this is — "Shopkeeper" alone would not. */}
           <h1 className="mb-3 px-1 text-[1.6rem] sm:text-[1.75rem] font-extrabold text-[#0F1F17]">
-            {signUp.heading ? `${signUp.heading} ${PAGE_TITLE[step]}` : PAGE_TITLE[step]}
+            {signUp.headingKey
+              ? t('login.headingWithRole', {
+                  role: t(signUp.headingKey),
+                  step: t(PAGE_TITLE_KEY[step]),
+                })
+              : t(PAGE_TITLE_KEY[step])}
           </h1>
 
           <section className="si-sheet p-5 sm:p-6">
@@ -528,7 +522,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               <form onSubmit={handleContinue} className="si-step space-y-4">
                 <div>
                   <label htmlFor="identifier" className={labelClass}>
-                    Mobile number or email
+                    {t('login.identifier')}
                   </label>
                   <input
                     id="identifier"
@@ -551,14 +545,14 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                     onChange={(e) => setRememberMe(e.target.checked)}
                     className="w-4 h-4 rounded border-[#C9D4CD] accent-[#0B7A37] focus:ring-[#16A34A]"
                   />
-                  <span className="text-[13px] text-[#5B6B62]">Remember me on this device</span>
+                  <span className="text-[13px] text-[#5B6B62]">{t('login.rememberMe')}</span>
                 </label>
 
                 {error && <Notice tone="error">{error}</Notice>}
 
                 <button type="submit" disabled={isSubmitting} className={primaryButton}>
                   {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                  <span>{isSubmitting ? 'Checking' : 'Next'}</span>
+                  <span>{t(isSubmitting ? 'login.checking' : 'login.next')}</span>
                   {!isSubmitting && <ArrowRight className="w-4 h-4" />}
                 </button>
 
@@ -570,19 +564,19 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               <form onSubmit={handleVerifyLogin} className="si-step space-y-4">
                 <div className="flex items-center justify-between gap-3 rounded-xl bg-[#F4F7F5] px-3.5 py-3">
                   <div className="min-w-0">
-                    <span className="block text-[11px] font-bold text-[#5B6B62]">Sent to</span>
+                    <span className="block text-[11px] font-bold text-[#5B6B62]">{t('login.sentTo')}</span>
                     <span className="si-num block truncate text-[13px] text-[#0F1F17]">
                       {challenge?.destination || identifier}
                     </span>
                   </div>
                   <button type="button" onClick={resetToStart} className={`${quietButton} shrink-0 flex items-center gap-1`}>
                     <ArrowLeft className="w-3 h-3" />
-                    Change
+                    {t('common.change')}
                   </button>
                 </div>
 
                 <div>
-                  <label className={labelClass}>Six-digit code</label>
+                  <label className={labelClass}>{t('login.sixDigitCode')}</label>
                   <OTPBoxGroup tone="brand" value={code} onChange={setCode} />
                 </div>
 
@@ -590,7 +584,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
                 <button type="submit" disabled={isSubmitting} className={primaryButton}>
                   {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  <span>{isSubmitting ? 'Checking' : 'Verify and sign in'}</span>
+                  <span>{t(isSubmitting ? 'login.checking' : 'login.verifyAndSignIn')}</span>
                 </button>
               </form>
             )}
@@ -598,12 +592,10 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
             {/* STEP 2B — register, both contacts */}
             {step === STEP.REGISTER && (
               <form onSubmit={handleStartRegistration} className="si-step space-y-4">
-                <Notice tone="info">
-                  Two ways to reach you means you can always get in, even when WhatsApp is down.
-                </Notice>
+                <Notice tone="info">{t('login.twoWays')}</Notice>
 
                 <div>
-                  <label htmlFor="phone" className={labelClass}>WhatsApp number</label>
+                  <label htmlFor="phone" className={labelClass}>{t('login.whatsappNumber')}</label>
                   <div className="relative flex items-center">
                     <span className="si-num absolute left-4 text-[14px] text-[#5B6B62] pointer-events-none">
                       +91
@@ -623,7 +615,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                 </div>
 
                 <div>
-                  <label htmlFor="email" className={labelClass}>Email address</label>
+                  <label htmlFor="email" className={labelClass}>{t('login.emailAddress')}</label>
                   <input
                     id="email"
                     type="email"
@@ -640,7 +632,8 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
                 <div>
                   <label htmlFor="name" className={labelClass}>
-                    Your name <span className="font-medium text-[#5B6B62]">— optional</span>
+                    {t('login.yourName')}{' '}
+                    <span className="font-medium text-[#5B6B62]">{t('login.optional')}</span>
                   </label>
                   <input
                     id="name"
@@ -686,12 +679,12 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
                 <button type="submit" disabled={isSubmitting} className={primaryButton}>
                   {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                  <span>{isSubmitting ? 'Sending' : 'Send my codes'}</span>
+                  <span>{t(isSubmitting ? 'login.sending' : 'login.sendMyCodes')}</span>
                   {!isSubmitting && <ArrowRight className="w-4 h-4" />}
                 </button>
 
                 <div className="text-center">
-                  <button type="button" onClick={resetToStart} className={quietButton}>Back</button>
+                  <button type="button" onClick={resetToStart} className={quietButton}>{t('common.back')}</button>
                 </div>
               </form>
             )}
@@ -705,20 +698,19 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                 {registration?.phone?.delivered ? (
                   <div>
                     <label className={labelClass}>
-                      WhatsApp <span className="si-num font-medium text-[#5B6B62]">{registration.phone.destination}</span>
+                      {t('login.whatsappLabel')}{' '}
+                      <span className="si-num font-medium text-[#5B6B62]">{registration.phone.destination}</span>
                     </label>
                     <OTPBoxGroup tone="brand" value={phoneCode} onChange={setPhoneCode} />
                   </div>
                 ) : (
-                  <Notice tone="info">
-                    WhatsApp is unavailable right now, so we saved your number and skipped that code.
-                    Verify your email below to finish — you can confirm the number later.
-                  </Notice>
+                  <Notice tone="info">{t('login.whatsappDown')}</Notice>
                 )}
 
                 <div>
                   <label className={labelClass}>
-                    Email <span className="si-num font-medium text-[#5B6B62]">{registration?.email?.destination}</span>
+                    {t('login.emailLabel')}{' '}
+                    <span className="si-num font-medium text-[#5B6B62]">{registration?.email?.destination}</span>
                   </label>
                   <OTPBoxGroup tone="brand" value={emailCode} onChange={setEmailCode} />
                 </div>
@@ -727,11 +719,11 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
                 <button type="submit" disabled={isSubmitting} className={primaryButton}>
                   {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  <span>{isSubmitting ? 'Checking' : 'Create account'}</span>
+                  <span>{t(isSubmitting ? 'login.checking' : 'login.createAccount')}</span>
                 </button>
 
                 <div className="text-center">
-                  <button type="button" onClick={resetToStart} className={quietButton}>Start over</button>
+                  <button type="button" onClick={resetToStart} className={quietButton}>{t('login.startOver')}</button>
                 </div>
               </form>
             )}
