@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import { ChevronRight } from 'lucide-react';
 import ProductGridCard from './ProductGridCard';
+import { useLanguage } from '../i18n/LanguageContext';
+import { categoryTitle } from '../i18n/catalog';
 
 /**
  * The "keep scrolling and there is more" block under a product's details.
@@ -28,6 +30,7 @@ export default function RelatedProducts({
   onSelectProduct,
   onOpenCategory,
 }) {
+  const { t, language } = useLanguage();
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
     [categories]
@@ -63,7 +66,11 @@ export default function RelatedProducts({
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-vintage text-base font-bold text-[#1B4D3E] tracking-tight">
-              More from {category?.title || 'this section'}
+              {t('product.moreFrom', {
+                category: category
+                  ? categoryTitle(category, language)
+                  : t('product.thisSection'),
+              })}
             </h3>
 
             {category && onOpenCategory && (
@@ -71,7 +78,7 @@ export default function RelatedProducts({
                 onClick={() => onOpenCategory(category)}
                 className="text-xs font-bold text-[#C8372D] hover:text-[#9E2A22] flex items-center gap-0.5 hover:underline cursor-pointer"
               >
-                <span>See All</span>
+                <span>{t('list.seeAll')}</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             )}
@@ -99,7 +106,7 @@ export default function RelatedProducts({
       {elsewhere.length > 0 && (
         <section className="space-y-3">
           <h3 className="font-vintage text-base font-bold text-[#1B4D3E] tracking-tight">
-            You might also like
+            {t('product.alsoLike')}
           </h3>
 
           <div className="grid grid-cols-2 gap-3 items-start">

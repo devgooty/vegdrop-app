@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useId } from 'react';
 import { Search, Wallet, X } from 'lucide-react';
 import SearchSuggestions from './SearchSuggestions';
 import { buildSuggestions } from '../services/search';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export default function Header({
   searchVal,
@@ -18,6 +19,7 @@ export default function Header({
   onOpenCategory,
   onSelectProduct,
 }) {
+  const { t } = useLanguage();
   const [isScrolled, setIsScrolled] = useState(false);
 
   // Role-based header accent
@@ -197,7 +199,7 @@ export default function Header({
 
       {/* Inset Cutout Search Input */}
       <div ref={searchRef} className="flex-1 min-w-0">
-        <label htmlFor="header-search" className="sr-only">Search the shop</label>
+        <label htmlFor="header-search" className="sr-only">{t('header.searchLabel')}</label>
         <div className="relative">
           <input
             ref={inputRef}
@@ -215,7 +217,7 @@ export default function Header({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onFocus={() => { if (query) setIsOpen(true); }}
-            placeholder="Search harvest..."
+            placeholder={t('header.searchPlaceholder')}
             className="w-full skeuo-inset-input rounded-full py-1.5 pl-7 pr-7 text-xs font-medium text-[#2D2A26] placeholder-[#9A8F7C] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30 transition-all"
           />
           <Search className="w-3.5 h-3.5 text-[#8A7E6B] absolute left-2 top-2.5 pointer-events-none" />
@@ -228,7 +230,7 @@ export default function Header({
                 closePanel();
                 inputRef.current?.focus();
               }}
-              aria-label="Clear search"
+              aria-label={t('header.clearSearch')}
               className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5 transition-colors cursor-pointer"
             >
               <X className="w-3 h-3 stroke-[3]" />
@@ -242,7 +244,7 @@ export default function Header({
         <button
           onClick={onOpenWallet}
           className="skeuo-btn-emerald flex items-center gap-1 font-bold px-2 py-1.5 rounded-full text-xs transition-all active:scale-95 cursor-pointer"
-          title="Open VegWallet"
+          title={t('header.openWallet')}
         >
           <Wallet className="w-3.5 h-3.5 text-emerald-200" />
           <span className="animate-count-up">₹{walletBalance.toFixed(0)}</span>

@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { ArrowLeft, LocateFixed, MapPin, Loader2, ShoppingBag, Store, Navigation, RefreshCw } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
 
 // Fix Leaflet default icon issue in React/Vite
 delete L.Icon.Default.prototype._getIconUrl;
@@ -59,6 +60,7 @@ function MapFlyTo({ position }) {
 }
 
 export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGPS }) {
+  const { t } = useLanguage();
   const defaultPosition = [20.5937, 78.9629];
 
   const [gpsPos, setGpsPos] = useState(null); // The actual GPS-pinned position
@@ -164,7 +166,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
           setLocationDetails(detailsObj);
           fetchNearbyPlaces(latitude, longitude);
         } catch (e) {
-          setFormattedFullAddress('Could not fetch address.');
+          setFormattedFullAddress(t('map.addressFailed'));
         }
         setIsDetecting(false);
         setHasInitialLoaded(true);
@@ -175,7 +177,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
         setHasInitialLoaded(true);
         setGpsPos({ lat: defaultPosition[0], lng: defaultPosition[1] });
         setFlyToPos({ lat: defaultPosition[0], lng: defaultPosition[1] });
-        setFormattedFullAddress('Location permission denied. Please enable GPS.');
+        setFormattedFullAddress(t('map.permissionDenied'));
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     );
@@ -239,8 +241,8 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
             <div className="w-16 h-16 rounded-full bg-[#1B4D3E]/10 flex items-center justify-center animate-pulse">
               <LocateFixed className="w-8 h-8 text-[#1B4D3E]" />
             </div>
-            <p className="text-sm font-bold text-[#1B4D3E]">Getting your exact location...</p>
-            <p className="text-xs text-gray-500">Please allow GPS access if prompted</p>
+            <p className="text-sm font-bold text-[#1B4D3E]">{t('map.detecting')}</p>
+            <p className="text-xs text-gray-500">{t('map.allowGps')}</p>
           </div>
         )}
 
@@ -252,7 +254,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
               className="bg-white px-4 py-3 rounded-full shadow-lg border border-gray-100 flex items-center gap-2 text-[#2D2A26] font-bold text-sm hover:bg-gray-50 active:scale-95 transition-transform cursor-pointer"
             >
               <RefreshCw className="w-4 h-4 text-[#1B4D3E]" />
-              <span>Re-detect Location</span>
+              <span>{t('map.redetect')}</span>
             </button>
           </div>
         )}
@@ -260,7 +262,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
         {/* GPS Error state */}
         {gpsError && !isDetecting && (
           <div className="absolute bottom-20 left-4 right-4 z-[400] bg-red-50 border border-red-200 rounded-2xl p-3 text-xs text-red-700 font-semibold text-center">
-            ⚠️ GPS access denied. Please enable location in your browser settings and tap Re-detect.
+            {t('map.gpsDenied')}
           </div>
         )}
       </div>
@@ -277,21 +279,21 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
               <MapPin className="w-5 h-5 text-[#1B4D3E]" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-extrabold text-[#1B4D3E] uppercase tracking-widest mb-0.5">Your Exact Location</p>
+              <p className="text-[10px] font-extrabold text-[#1B4D3E] uppercase tracking-widest mb-0.5">{t('map.exactLocation')}</p>
               <h3 className="font-extrabold text-base text-gray-900 line-clamp-1">
                 {locationDetails?.mandal && locationDetails.mandal !== 'N/A'
                   ? locationDetails.mandal
                   : (locationDetails?.village && locationDetails.village !== 'N/A'
                     ? locationDetails.village
-                    : (isDetecting ? '...' : 'Fetching...'))}
+                    : (isDetecting ? '...' : t('map.fetching')))}
               </h3>
               <div className="text-gray-500 text-xs mt-0.5 leading-snug line-clamp-2 min-h-[28px]">
                 {isDetecting ? (
                   <span className="flex items-center gap-1.5 text-[#1B4D3E] font-medium">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Fetching exact address...
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('map.fetchingAddress')}
                   </span>
                 ) : (
-                  formattedFullAddress || 'Waiting for GPS...'
+                  formattedFullAddress || t('map.waitingGps')
                 )}
               </div>
             </div>
@@ -302,7 +304,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
         <div className="flex-1 overflow-y-auto px-5 pb-3 min-h-0">
           <div className="flex items-center gap-2 mb-2">
             <Store className="w-4 h-4 text-[#1B4D3E]" />
-            <p className="text-[12px] font-extrabold text-gray-800 uppercase tracking-wider">Nearby Markets & Shops</p>
+            <p className="text-[12px] font-extrabold text-gray-800 uppercase tracking-wider">{t('map.nearbyTitle')}</p>
             {isLoadingNearby && <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400 ml-auto" />}
           </div>
 
@@ -313,14 +315,16 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
                   <div key={i} className="h-16 w-24 bg-gray-100 rounded-xl animate-pulse" style={{ animationDelay: `${i * 100}ms` }} />
                 ))}
               </div>
-              <p className="text-[10px] text-gray-400 font-medium">Scanning for nearby markets...</p>
+              <p className="text-[10px] text-gray-400 font-medium">{t('map.scanning')}</p>
             </div>
           )}
 
           {!isLoadingNearby && !isDetecting && nearbyPlaces.length === 0 && locationDetails && (
             <div className="text-center py-4">
               <ShoppingBag className="w-8 h-8 text-gray-200 mx-auto mb-1" />
-              <p className="text-[11px] text-gray-400 font-medium">No registered markets found nearby.<br />This area may not be mapped on OpenStreetMap yet.</p>
+              <p className="text-[11px] text-gray-400 font-medium">
+                {t('map.noneNearby')}<br />{t('map.noneNearbyHint')}
+              </p>
             </div>
           )}
 
@@ -334,7 +338,12 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
                   <div className="flex items-center gap-0.5 mt-auto">
                     <Navigation className="w-2.5 h-2.5 text-[#C8372D]" />
                     <span className="text-[9px] font-bold text-[#C8372D]">
-                      {place.dist >= 1000 ? `${(place.dist / 1000).toFixed(1)}km` : `${place.dist}m`} away
+                      {t('map.distanceAway', {
+                        distance:
+                          place.dist >= 1000
+                            ? `${(place.dist / 1000).toFixed(1)}km`
+                            : `${place.dist}m`,
+                      })}
                     </span>
                   </div>
                 </div>
@@ -346,7 +355,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
         {/* Verify/Edit Pincode field */}
         {!isDetecting && locationDetails && (
           <div className="px-5 pb-1">
-            <label className="block text-[10px] font-extrabold text-[#1B4D3E] uppercase tracking-wider mb-1">Verify/Edit Pincode</label>
+            <label className="block text-[10px] font-extrabold text-[#1B4D3E] uppercase tracking-wider mb-1">{t('map.pincodeLabel')}</label>
             <input
               type="text"
               maxLength={6}
@@ -368,7 +377,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
                 }
               }}
               className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-gray-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30"
-              placeholder="Enter correct 6-digit Pincode"
+              placeholder={t('map.pincodePlaceholder')}
             />
           </div>
         )}
@@ -381,7 +390,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
             className="w-full bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center shadow-md transition-all cursor-pointer text-[15px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed gap-2"
           >
             <MapPin className="w-4 h-4" />
-            Confirm & Deliver Here
+            {t('map.confirm')}
           </button>
         </div>
       </div>

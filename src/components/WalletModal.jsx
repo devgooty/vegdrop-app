@@ -4,6 +4,8 @@ import {
   ChevronLeft, Clock, AlertCircle, ShieldCheck, Loader2
 } from 'lucide-react';
 import { topUpWallet } from '../services/wallet';
+import { useLanguage } from '../i18n/LanguageContext';
+import { dateLocale } from '../i18n/catalog';
 
 // === BRANDED UPI LOGO COMPONENTS ===
 const PhonePeLogo = () => (
@@ -45,9 +47,14 @@ const UPI_BUTTONS = [
 
 const QUICK_AMOUNTS = [100, 200, 500, 1000, 2000];
 
-/** ₹1,250 rather than ₹1250 — a statement is read at a glance. */
-const rupees = (value) =>
-  (value ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+/**
+ * ₹1,250 rather than ₹1250 — a statement is read at a glance.
+ *
+ * The grouping stays Indian (1,25,000) in all three languages, so the locale
+ * only changes which digits are drawn, never where the commas fall.
+ */
+const rupeesIn = (value, locale) =>
+  (value ?? 0).toLocaleString(locale, { maximumFractionDigits: 2 });
 
 /**
  * Wallet balance and top-up.
@@ -56,6 +63,7 @@ const rupees = (value) =>
  * this component never computes or adjusts a balance itself.
  */
 export default function WalletModal({ isOpen, onClose, balance, onRazorpayPayment, transactions = [], user = null }) {
+  const { t, language } = useLanguage();
   // Holds the method being paid with, so the right button shows the spinner.
   const [payingWith, setPayingWith] = useState(null);
   const [payError, setPayError] = useState('');
@@ -77,8 +85,16 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
     if (!ts) return '';
     const d = new Date(ts);
     if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', ' + d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+    const locale = dateLocale(language);
+    return (
+      d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) +
+      ', ' +
+      d.toLocaleDateString(locale, { day: 'numeric', month: 'short' })
+    );
   };
+
+  /** Bound to the active language, so every amount on this screen matches. */
+  const rupees = (value) => rupeesIn(value, dateLocale(language));
 
   // The checkout script is loaded on demand by services/wallet.js when a top-up
   // actually starts, rather than eagerly on every wallet open.
@@ -94,9 +110,9 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
   const handleProceedToPay = async (method = null) => {
     // Inline, not alert(): a blocking dialog over a payment sheet is the wrong
     // place to interrupt someone, and the button is already disabled for these.
-    if (!Number.isInteger(amount)) return setPayError('Enter an amount to add.');
-    if (amount < 10) return setPayError('The smallest top-up is ₹10.');
-    if (amount > 50000) return setPayError('The largest top-up is ₹50,000.');
+    if (!Number.isInteger(amount)) return setPayError(t('wallet.enterAmount'));
+    if (amount < 10) return setPayError(t('wallet.minTopUp'));
+    if (amount > 50000) return setPayError(t('wallet.maxTopUp'));
     if (isProcessing) return undefined;
 
     /**
@@ -123,9 +139,8 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
       // A failure is reported as a failure. Never credit on an error path.
       setPayError(
         error?.message === 'Payment cancelled.'
-          ? 'Payment was cancelled. Nothing was charged.'
-          : error?.message ||
-              'We could not confirm the payment. If you were charged it will appear in your balance shortly.'
+          ? t('wallet.cancelled')
+          : error?.message || t('wallet.unconfirmed')
       );
     } finally {
       setPayingWith(null);
@@ -141,17 +156,17 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
       <div className="bg-gradient-to-br from-[#1B4D3E] via-[#2D6A4F] to-[#1B4D3E] text-white rounded-3xl p-6 shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -translate-y-10 translate-x-10" />
         <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-8 -translate-x-6" />
-        <p className="text-emerald-200 text-xs font-bold uppercase tracking-widest mb-1 relative">Available Balance</p>
+        <p className="text-emerald-200 text-xs font-bold uppercase tracking-widest mb-1 relative">{t('wallet.availableBalance')}</p>
         <div className="flex items-baseline gap-1 relative mb-4">
           <span className="text-2xl font-black">₹</span>
           <span className="text-5xl font-black tracking-tight">{rupees(balance)}</span>
         </div>
         <div className="flex gap-3 relative">
           <button onClick={() => setScreen('add')} className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur text-white font-black py-2.5 rounded-2xl text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 border border-white/20">
-            <Plus className="w-4 h-4" /> Add Money
+            <Plus className="w-4 h-4" /> {t('wallet.addMoney')}
           </button>
           <button onClick={() => setScreen('history')} className="flex-1 bg-white/10 hover:bg-white/20 backdrop-blur text-white font-bold py-2.5 rounded-2xl text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 border border-white/10">
-            <Clock className="w-4 h-4" /> History
+            <Clock className="w-4 h-4" /> {t('wallet.history')}
           </button>
         </div>
       </div>
@@ -159,32 +174,35 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
       {/* Recent Transactions */}
       <div>
         <div className="flex justify-between items-center mb-3">
-          <h4 className="font-black text-gray-900 text-sm">Recent Transactions</h4>
-          <button onClick={() => setScreen('history')} className="text-emerald-600 text-xs font-bold">See All</button>
+          <h4 className="font-black text-gray-900 text-sm">{t('wallet.recent')}</h4>
+          <button onClick={() => setScreen('history')} className="text-emerald-600 text-xs font-bold">{t('list.seeAll')}</button>
         </div>
         {transactions.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center py-4">No transactions yet.</p>
+          <p className="text-xs text-gray-400 text-center py-4">{t('wallet.noTransactions')}</p>
         ) : (
           <div className="space-y-2">
-            {transactions.slice(0, 4).map(t => (
-              <div key={t.id} className="flex items-center gap-3 bg-white rounded-2xl p-3 border border-gray-100 shadow-sm">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${t.type === 'credit' ? 'bg-emerald-100' : 'bg-rose-100'}`}>
-                  {t.type === 'credit'
+            {/* `tx`, not `t` — `t` is the translate function in this scope. */}
+            {transactions.slice(0, 4).map(tx => (
+              <div key={tx.id} className="flex items-center gap-3 bg-white rounded-2xl p-3 border border-gray-100 shadow-sm">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${tx.type === 'credit' ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                  {tx.type === 'credit'
                     ? <ArrowUpRight className="w-4 h-4 text-emerald-700" />
                     : <ArrowDownRight className="w-4 h-4 text-rose-700" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-gray-900 text-sm truncate">{t.label}</p>
-                  <p className="text-[10px] text-gray-400">{formatTs(t.timestamp)}</p>
+                  <p className="font-bold text-gray-900 text-sm truncate">{tx.label}</p>
+                  <p className="text-[10px] text-gray-400">{formatTs(tx.timestamp)}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className={`font-black text-sm ${t.type === 'credit' ? 'text-emerald-700' : 'text-rose-700'}`}>
-                    {t.type === 'credit' ? '+' : '−'}₹{rupees(t.amount)}
+                  <p className={`font-black text-sm ${tx.type === 'credit' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {tx.type === 'credit' ? '+' : '−'}₹{rupees(tx.amount)}
                   </p>
                   {/* The running balance, in place of a chip that could only
                       ever read "Success" — every ledger row is money that
                       already moved. */}
-                  <p className="text-[9px] text-gray-400 font-semibold">Bal ₹{rupees(t.balanceAfter)}</p>
+                  <p className="text-[9px] text-gray-400 font-semibold">
+                    {t('wallet.balShort', { amount: rupees(tx.balanceAfter) })}
+                  </p>
                 </div>
               </div>
             ))}
@@ -197,17 +215,17 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
   const renderAddMoney = () => (
     <div className="flex flex-col h-full bg-[#FAFAF8] p-5">
       <button onClick={() => setScreen('home')} className="flex items-center gap-2 text-gray-500 text-sm font-bold mb-4">
-        <ChevronLeft className="w-4 h-4" /> Back to Wallet
+        <ChevronLeft className="w-4 h-4" /> {t('wallet.backToWallet')}
       </button>
       
       <div className="flex-1">
-        <h3 className="font-black text-gray-900 text-2xl mb-1">Recharge Wallet</h3>
-        <p className="text-sm text-gray-500 mb-8">Enter amount to add via secure checkout</p>
+        <h3 className="font-black text-gray-900 text-2xl mb-1">{t('wallet.rechargeTitle')}</h3>
+        <p className="text-sm text-gray-500 mb-8">{t('wallet.rechargeSub')}</p>
         
         {/* Amount Input */}
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-6 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-full opacity-50 pointer-events-none" />
-          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 text-center">Amount (₹)</label>
+          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 text-center">{t('wallet.amountLabel')}</label>
           <div className="flex items-center justify-center gap-1 border-b-2 border-gray-200 focus-within:border-emerald-500 transition-colors pb-2">
             <span className="text-4xl font-black text-gray-400">₹</span>
             <input 
@@ -222,7 +240,7 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
         </div>
 
         {/* Quick Select */}
-        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Quick Select Amount</p>
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">{t('wallet.quickSelect')}</p>
         <div className="flex flex-wrap gap-2 mb-6">
           {QUICK_AMOUNTS.map(amt => (
             <button 
@@ -240,7 +258,7 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
         </div>
 
         {/* Instant UPI App Options (PhonePe, GPay, Paytm) */}
-        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Pay via UPI app</p>
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">{t('wallet.payViaUpi')}</p>
         <div className="grid grid-cols-3 gap-2.5 mb-6">
           {UPI_BUTTONS.map(({ method, Logo, hoverBorder, hoverText }) => (
             <button
@@ -265,7 +283,7 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
 
         <div className="flex items-center gap-2 text-[10px] text-gray-400 font-bold justify-center bg-gray-100/50 py-3 rounded-xl border border-gray-100">
           <ShieldCheck className="w-4 h-4 text-emerald-500" />
-          Secured by Razorpay • Min ₹10 • Max ₹50,000
+          {t('wallet.secured')}
         </div>
       </div>
 
@@ -284,10 +302,10 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
         >
           {payingWith === 'all' && <Loader2 className="w-5 h-5 animate-spin" />}
           {payingWith === 'all'
-            ? 'Waiting for payment…'
+            ? t('wallet.waiting')
             : amountValid
-              ? `Add ₹${rupees(amount)}`
-              : 'Card, netbanking & more'}
+              ? t('wallet.addAmount', { amount: rupees(amount) })
+              : t('wallet.otherMethods')}
         </button>
       </div>
     </div>
@@ -296,35 +314,37 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
   const renderHistory = () => (
     <div className="flex flex-col h-full bg-[#FAFAF8] p-5">
       <button onClick={() => setScreen('home')} className="flex items-center gap-2 text-gray-500 text-sm font-bold mb-4">
-        <ChevronLeft className="w-4 h-4" /> Back to Wallet
+        <ChevronLeft className="w-4 h-4" /> {t('wallet.backToWallet')}
       </button>
-      <h3 className="font-black text-gray-900 text-xl mb-4">Transaction History</h3>
+      <h3 className="font-black text-gray-900 text-xl mb-4">{t('wallet.historyTitle')}</h3>
       {transactions.length === 0 ? (
-        <p className="text-xs text-gray-400 text-center py-8">No transactions yet.</p>
+        <p className="text-xs text-gray-400 text-center py-8">{t('wallet.noTransactions')}</p>
       ) : (
         <div className="space-y-2 flex-1 overflow-y-auto pr-1 pb-10">
-          {transactions.map(t => (
-            <div key={t.id} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+          {transactions.map(tx => (
+            <div key={tx.id} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${t.type === 'credit' ? 'bg-emerald-100' : 'bg-rose-100'}`}>
-                    {t.type === 'credit' ? <ArrowUpRight className="w-4 h-4 text-emerald-700" /> : <ArrowDownRight className="w-4 h-4 text-rose-700" />}
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${tx.type === 'credit' ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                    {tx.type === 'credit' ? <ArrowUpRight className="w-4 h-4 text-emerald-700" /> : <ArrowDownRight className="w-4 h-4 text-rose-700" />}
                   </div>
                   <div className="min-w-0">
-                    <p className="font-bold text-gray-900 text-sm">{t.label}</p>
+                    <p className="font-bold text-gray-900 text-sm">{tx.label}</p>
                     {/* The server's own note, which carries the order number.
                         This slot used to print a `method` field the API has
                         never sent, so it always read "Wallet". */}
-                    {t.note && <p className="text-[10px] text-gray-400 truncate">{t.note}</p>}
+                    {tx.note && <p className="text-[10px] text-gray-400 truncate">{tx.note}</p>}
                   </div>
                 </div>
-                <p className={`font-black text-sm shrink-0 ${t.type === 'credit' ? 'text-emerald-700' : 'text-rose-700'}`}>
-                  {t.type === 'credit' ? '+' : '−'}₹{rupees(t.amount)}
+                <p className={`font-black text-sm shrink-0 ${tx.type === 'credit' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  {tx.type === 'credit' ? '+' : '−'}₹{rupees(tx.amount)}
                 </p>
               </div>
               <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
-                <p className="text-[10px] text-gray-400">{formatTs(t.timestamp)}</p>
-                <p className="text-[10px] text-gray-500 font-semibold">Balance ₹{rupees(t.balanceAfter)}</p>
+                <p className="text-[10px] text-gray-400">{formatTs(tx.timestamp)}</p>
+                <p className="text-[10px] text-gray-500 font-semibold">
+                  {t('wallet.balanceAfter', { amount: rupees(tx.balanceAfter) })}
+                </p>
               </div>
             </div>
           ))}

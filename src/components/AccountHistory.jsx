@@ -1,7 +1,23 @@
 import React, { useMemo } from 'react';
 import { IndianRupee, Package, Clock, CheckCircle2, ChevronRight } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
+import { dateLocale } from '../i18n/catalog';
+
+/**
+ * The coarse status, translated. Keyed off the exact server string, with the
+ * one spaced value spelled out — the raw status is what the API sends and what
+ * every colour rule below still compares against, so it is never rewritten.
+ */
+const STATUS_KEY = {
+  Pending: 'status.Pending',
+  Preparing: 'status.Preparing',
+  'Out for Delivery': 'status.OutForDelivery',
+  Delivered: 'status.Delivered',
+  Cancelled: 'status.Cancelled',
+};
 
 export default function AccountHistory({ user, orders }) {
+  const { t, language } = useLanguage();
   // Filter orders for the current user
   const userOrders = useMemo(() => {
     if (!user) return [];
@@ -33,10 +49,10 @@ export default function AccountHistory({ user, orders }) {
         
         <div className="relative z-10 flex items-center justify-between">
           <div>
-            <p className="text-emerald-200/80 text-[10px] font-extrabold uppercase tracking-widest mb-1">Total Lifetime Spent</p>
+            <p className="text-emerald-200/80 text-[10px] font-extrabold uppercase tracking-widest mb-1">{t('history.lifetimeSpent')}</p>
             <div className="flex items-end gap-1">
               <span className="text-2xl font-bold text-emerald-400">₹</span>
-              <span className="text-4xl font-black tracking-tight drop-shadow-sm">{totalSpent.toLocaleString('en-IN')}</span>
+              <span className="text-4xl font-black tracking-tight drop-shadow-sm">{totalSpent.toLocaleString(dateLocale(language))}</span>
             </div>
           </div>
           <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md border border-white/10">
@@ -46,11 +62,11 @@ export default function AccountHistory({ user, orders }) {
 
         <div className="mt-5 grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
           <div>
-            <p className="text-emerald-200/60 text-[9px] font-bold uppercase tracking-wider mb-0.5">Total Orders</p>
+            <p className="text-emerald-200/60 text-[9px] font-bold uppercase tracking-wider mb-0.5">{t('history.totalOrders')}</p>
             <p className="font-black text-lg text-emerald-50">{userOrders.length}</p>
           </div>
           <div>
-            <p className="text-emerald-200/60 text-[9px] font-bold uppercase tracking-wider mb-0.5">Items Purchased</p>
+            <p className="text-emerald-200/60 text-[9px] font-bold uppercase tracking-wider mb-0.5">{t('history.itemsPurchased')}</p>
             <p className="font-black text-lg text-emerald-50">{totalItemsOrdered}</p>
           </div>
         </div>
@@ -60,14 +76,14 @@ export default function AccountHistory({ user, orders }) {
       <div className="space-y-3">
         <h3 className="font-black text-slate-800 text-sm px-2 drop-shadow-sm flex items-center gap-2">
           <Package className="w-4 h-4 text-emerald-600" />
-          Recent Order History
+          {t('history.recent')}
         </h3>
 
         {userOrders.length === 0 ? (
           <div className="bg-slate-50 border border-slate-100 rounded-3xl p-8 text-center text-slate-400">
             <Package className="w-12 h-12 mx-auto mb-3 opacity-20" />
-            <p className="font-bold text-sm">No orders yet</p>
-            <p className="text-xs font-medium mt-1 opacity-70">Your history will appear here once you buy something.</p>
+            <p className="font-bold text-sm">{t('history.none')}</p>
+            <p className="text-xs font-medium mt-1 opacity-70">{t('history.noneHint')}</p>
           </div>
         ) : (
           userOrders.map((order) => (
@@ -87,17 +103,17 @@ export default function AccountHistory({ user, orders }) {
                       order.status === 'Cancelled' ? 'bg-rose-50 text-rose-600 border border-rose-100' :
                       'bg-amber-50 text-amber-600 border border-amber-100'
                     }`}>
-                      {order.status}
+                      {STATUS_KEY[order.status] ? t(STATUS_KEY[order.status]) : order.status}
                     </span>
                   </div>
                   <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400">
                     <Clock className="w-3 h-3" />
-                    {new Date(order.timestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    {new Date(order.timestamp).toLocaleDateString(dateLocale(language), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
                 <div className="text-right">
                   <span className="block font-black text-emerald-700 text-base">₹{order.totalAmount}</span>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase">{order.paymentMethod || 'Cash'}</span>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase">{order.paymentMethod || t('history.cash')}</span>
                 </div>
               </div>
 

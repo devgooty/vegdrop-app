@@ -19,6 +19,28 @@ const productSchema = new mongoose.Schema(
 
     categoryId: { type: Number, required: true, index: true },
     name: { type: String, required: true, trim: true, maxlength: 200 },
+
+    /**
+     * The name in Telugu and Hindi.
+     *
+     * Optional, and deliberately not defaulted to `name`: an empty value has to
+     * stay distinguishable from a real translation, because that is what lets
+     * the client fall back to English for one product without every untranslated
+     * row looking translated. `productName()` in src/i18n does that resolution.
+     *
+     * `name` stays required and stays English. It is what the shopkeeper panel,
+     * order records and support conversations key on, and a product whose only
+     * name is in a script the operator cannot read is a product nobody can help
+     * a customer with.
+     *
+     * maxlength matches `name`, but note these are measured in UTF-16 code
+     * units, and Telugu and Hindi both spend several per visible character —
+     * 200 is generous for a product name in any of the three, so this is a sanity
+     * bound rather than a real limit.
+     */
+    nameTe: { type: String, default: '', trim: true, maxlength: 200 },
+    nameHi: { type: String, default: '', trim: true, maxlength: 200 },
+
     weight: { type: String, default: '', maxlength: 60 },
 
     // Integer paise. This is the authoritative price; clients never supply it.

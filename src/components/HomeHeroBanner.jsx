@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Tag, ChevronRight, Clock, MapPin, LocateFixed, Loader2, CheckCircle2, Navigation, X, Check, Building2 } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
 import MapLocationPicker from './MapLocationPicker';
 import { savedCustomerAddress, saveCustomerAddress } from '../services/address';
 
 export default function HomeHeroBanner({ onExplore, onAddressChange }) {
+  // The banner copy below is built inside the component rather than hoisted to
+  // module scope, so it re-resolves when the language changes.
+  const { t } = useLanguage();
   const [currentSlide, setCurrentSlide] = useState(0);
   /**
    * Null until the customer has actually told us where they are.
@@ -41,30 +45,30 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
   const banners = [
     {
       id: 1,
-      tag: 'DAILY FARM HARVEST',
-      title: '100% Organic Fresh Produce',
-      subtitle: 'Handpicked this morning from Nilgiri partner farms',
-      offer: 'Flat 20% OFF',
+      tag: t('hero.dailyHarvest'),
+      title: t('hero.organicTitle'),
+      subtitle: t('hero.organicSub'),
+      offer: t('hero.flat20'),
       code: 'FRESH20',
       image: 'https://images.unsplash.com/photo-1610348725531-843dff563e2c?w=600&auto=format&fit=crop&q=80',
       badgeBg: 'skeuo-badge-emerald',
     },
     {
       id: 2,
-      tag: 'EXPRESS DELIVERY',
-      title: '15-Minute Doorstep Delivery',
-      subtitle: 'Temperature controlled cold-chain express delivery',
-      offer: 'Free Delivery on ₹200+',
+      tag: t('hero.expressDelivery'),
+      title: t('hero.expressTitle'),
+      subtitle: t('hero.expressSub'),
+      offer: t('hero.freeDelivery200'),
       code: 'EXPRESS',
       image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=600&auto=format&fit=crop&q=80',
       badgeBg: 'skeuo-badge-amber',
     },
     {
       id: 3,
-      tag: 'WEEKEND BAZZAR',
-      title: 'Exotic Fruit & Veggie Special',
-      subtitle: 'Avocados, Blueberries, Baby Spinach & Herbs',
-      offer: 'Up to 35% OFF',
+      tag: t('hero.weekendBazzar'),
+      title: t('hero.exoticTitle'),
+      subtitle: t('hero.exoticSub'),
+      offer: t('hero.upto35'),
       code: 'BAZZAR35',
       image: 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?w=600&auto=format&fit=crop&q=80',
       badgeBg: 'skeuo-badge-emerald',
@@ -326,7 +330,7 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
 
   const handleDetectLocation = () => {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
+      alert(t('delivery.noGeolocation'));
       return;
     }
     setIsDetecting(true);
@@ -377,14 +381,14 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
         <button
           onClick={() => setIsModalOpen(true)}
           className="flex items-center gap-1.5 text-[#1B4D3E] font-bold hover:opacity-80 transition-opacity cursor-pointer truncate max-w-[72%]"
-          title="Change Delivery Address (Street, Village, District, State & Pincode)"
+          title={t('delivery.changeAddressTitle')}
         >
           <div className="relative flex items-center justify-center shrink-0">
             <MapPin className="w-4 h-4 text-emerald-700 animate-pulse" />
             <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full ring-1 ring-white" />
           </div>
           <span className="text-[10px] text-[#8A7E6B] font-semibold uppercase tracking-wider shrink-0">
-            {location ? 'Deliver to:' : 'Delivery to:'}
+            {location ? t('delivery.deliverTo') : t('delivery.deliveryTo')}
           </span>
           {displayPincode && (
             <span className="text-[10px] bg-emerald-100 text-emerald-800 font-black px-1.5 py-0.5 rounded-md shrink-0">
@@ -398,7 +402,7 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
                 : 'text-amber-700 decoration-amber-500/60'
             }`}
           >
-            {displayLocationText || 'Set your delivery address'}
+            {displayLocationText || t('delivery.setAddress')}
           </span>
         </button>
 
@@ -410,7 +414,7 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
           {isDetecting ? (
             <>
               <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-200" />
-              <span>Locating...</span>
+              <span>{t('delivery.locating')}</span>
             </>
           ) : locationSuccess ? (
             <>
@@ -420,7 +424,7 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
           ) : (
             <>
               <LocateFixed className="w-3.5 h-3.5 text-amber-200" />
-              <span>Detect GPS</span>
+              <span>{t('delivery.detectGps')}</span>
             </>
           )}
         </button>
@@ -465,7 +469,7 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
 
             <div className="flex items-center gap-1 bg-[#FFFDF9]/20 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/20 text-[10px] font-bold text-amber-200">
               <Tag className="w-3 h-3" />
-              <span>Use Code: {banner.code}</span>
+              <span>{t('hero.useCode')} {banner.code}</span>
             </div>
           </div>
 
@@ -486,7 +490,10 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
                 {banner.offer}
               </span>
               <span className="text-[10px] text-emerald-200 font-semibold flex items-center gap-0.5">
-                <Clock className="w-3 h-3" /> 15m to {location ? location.split(',')[0] : 'your door'}
+                <Clock className="w-3 h-3" />{' '}
+                {location
+                  ? t('hero.etaTo', { place: location.split(',')[0] })
+                  : t('hero.etaDoor')}
               </span>
             </div>
 
@@ -494,7 +501,7 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
               onClick={onExplore}
               className="skeuo-btn-emerald font-extrabold px-3 py-1 rounded-xl text-xs flex items-center gap-1 shadow-md cursor-pointer active:scale-95 z-20"
             >
-              <span>Shop Now</span>
+              <span>{t('hero.shopNow')}</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>

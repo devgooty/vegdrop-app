@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Star, Plus, Minus, ChevronRight, Eye } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
+import { productName, productWeight, categoryTitle } from '../i18n/catalog';
 
 export default function ProductList({
   categories,
@@ -10,6 +12,7 @@ export default function ProductList({
   onOpenCategoryDetail,
   onSelectProduct
 }) {
+  const { t, language } = useLanguage();
   return (
     <section className="space-y-6 px-4 pb-6 select-none">
       {categories.map((category, catIndex) => {
@@ -26,10 +29,10 @@ export default function ProductList({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <h3 className="font-vintage text-base font-bold text-[#1B4D3E] tracking-tight">
-                  {category.title}
+                  {categoryTitle(category, language)}
                 </h3>
                 <span className="text-[10px] font-bold text-[#1B4D3E] bg-[#EAE4D7] px-2.5 py-0.5 rounded-full border border-[#D5CDBC] shadow-2xs">
-                  {categoryProducts.length} Harvested
+                  {t('list.harvested', { count: categoryProducts.length })}
                 </span>
               </div>
 
@@ -37,7 +40,7 @@ export default function ProductList({
                 onClick={() => onOpenCategoryDetail(category)}
                 className="text-xs font-bold text-[#C8372D] hover:text-[#9E2A22] flex items-center gap-0.5 hover:underline cursor-pointer"
               >
-                <span>See All</span>
+                <span>{t('list.seeAll')}</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -76,6 +79,9 @@ function ProductCard({
   onUpdateQuantity,
   delayIndex
 }) {
+  // Its own hook rather than props threaded down from ProductList: this is a
+  // sibling component in the same file, not a child of that closure.
+  const { t, language } = useLanguage();
   const [imgLoaded, setImgLoaded] = useState(false);
 
   const isWeightBased = item.weight && (item.weight.toLowerCase().includes('g') || item.weight.toLowerCase().includes('kg')) && !item.weight.toLowerCase().includes('pack');
@@ -125,6 +131,9 @@ function ProductCard({
       price: displayPrice,
       oldPrice: displayOldPrice,
       weight: variantWeightStr,
+      // Stays English on purpose. This is the line's stored record, which order
+      // history and support read; the Telugu/Hindi names ride along as their own
+      // fields and productName() resolves the display name at render time.
       name: isWeightBased ? `${item.name} (${variantWeightStr})` : item.name
     }, e);
   };
@@ -154,7 +163,7 @@ function ProductCard({
 
             <img
               src={item.image}
-              alt={item.name}
+              alt={productName(item, language)}
               onLoad={() => setImgLoaded(true)}
               className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-500 img-lazy ${
                 imgLoaded ? 'loaded' : ''
@@ -169,14 +178,14 @@ function ProductCard({
             <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200">
               <span className="bg-white/90 backdrop-blur-xs text-[#1B4D3E] font-bold text-[10px] px-2 py-1 rounded-full flex items-center gap-1 shadow-md border border-[#E5DFD1]">
                 <Eye className="w-3.5 h-3.5" />
-                Quick View
+                {t('list.quickView')}
               </span>
             </div>
 
             {item.stock === 0 && (
               <div className="absolute inset-0 bg-black/55 flex items-center justify-center p-1">
                 <span className="bg-rose-600 text-white font-extrabold text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full shadow-xs">
-                  Sold Out
+                  {t('product.soldOut')}
                 </span>
               </div>
             )}
@@ -184,7 +193,7 @@ function ProductCard({
 
           {item.isOrganic && (
             <span className="bg-[#EAE4D7] text-[#1B4D3E] border border-[#D5CDBC] absolute top-1.5 left-1.5 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider shadow-2xs">
-              Organic
+              {t('product.organic')}
             </span>
           )}
           
@@ -196,7 +205,7 @@ function ProductCard({
 
         <div>
           <h4 className="font-vintage font-bold text-xs text-[#2D2A26] line-clamp-1 group-hover:text-[#1B4D3E] transition-colors">
-            {item.name}
+            {productName(item, language)}
           </h4>
 
           {/*
@@ -214,7 +223,7 @@ function ProductCard({
             <p className="text-[11px] text-[#7A7060] font-semibold">{variantWeightStr}</p>
             {item.stock > 0 && item.stock <= 5 && (
               <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1 rounded animate-pulse">
-                Only {item.stock} left
+                {t('list.onlyLeft', { count: item.stock })}
               </span>
             )}
           </div>
@@ -254,7 +263,7 @@ function ProductCard({
             disabled
             className="bg-gray-200 text-gray-400 font-bold px-2 py-1 rounded-xl text-[10px] cursor-not-allowed"
           >
-            Sold Out
+            {t('product.soldOut')}
           </button>
         ) : inCart ? (
           <div className="skeuo-btn-emerald flex items-center rounded-xl p-0.5 shadow-sm" onClick={(e) => e.stopPropagation()}>
@@ -264,7 +273,7 @@ function ProductCard({
                 onUpdateQuantity(variantId, -1);
               }}
               className="p-1 hover:bg-[#143B2B] rounded-lg transition-colors cursor-pointer active:scale-90"
-              title="Decrease quantity"
+              title={t('product.decreaseQty')}
             >
               <Minus className="w-3.5 h-3.5 stroke-[3]" />
             </button>
@@ -281,7 +290,7 @@ function ProductCard({
               className={`p-1 hover:bg-[#143B2B] rounded-lg transition-colors cursor-pointer active:scale-90 ${
                 inCart.quantity >= item.stock ? 'opacity-50 cursor-not-allowed' : ''
               }`}
-              title="Increase quantity"
+              title={t('product.increaseQty')}
             >
               <Plus className="w-3.5 h-3.5 stroke-[3]" />
             </button>
@@ -292,7 +301,7 @@ function ProductCard({
             className="skeuo-btn-emerald font-extrabold px-2.5 py-1 rounded-xl text-xs flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow-2xs hover:shadow-xs"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Add</span>
+            <span>{t('product.add')}</span>
           </button>
         )}
       </div>

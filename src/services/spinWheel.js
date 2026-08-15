@@ -22,13 +22,18 @@
  * having to rebalance every other number to keep a total of 100. The blank
  * outweighs the prizes combined on purpose: a wheel that pays out most of the
  * time reads as fake, and would be ruinous if these are ever real goods.
+ *
+ * `label`/`short` are the English wording; `labelKey`/`shortKey` are what the
+ * component actually renders. Both are kept: the keys live here rather than in a
+ * lookup inside SpinWheel so an id and its translation cannot drift apart, and
+ * the English stays as the readable name in a spin log or a test assertion.
  */
 export const PRIZES = [
-  { id: 'egg-basket', label: 'Egg Basket', short: 'Egg Basket', emoji: '🧺', weight: 8, color: '#1B4D3E' },
-  { id: 'knife', label: 'Kitchen Knife', short: 'Knife', emoji: '🔪', weight: 8, color: '#B45309' },
-  { id: 'juice-glass', label: 'Juice Glass', short: 'Juice Glass', emoji: '🥤', weight: 10, color: '#0F766E' },
-  { id: 'slicer', label: '2-in-1 Vegetable Slicer', short: 'Slicer', emoji: '🔧', weight: 4, color: '#7C2D12' },
-  { id: 'none', label: 'Better Luck Next Time', short: 'Try Again', emoji: '🍀', weight: 70, color: '#57534E' },
+  { id: 'egg-basket', label: 'Egg Basket', short: 'Egg Basket', labelKey: 'spin.prize.eggBasket', shortKey: 'spin.prize.short.eggBasket', emoji: '🧺', weight: 8, color: '#1B4D3E' },
+  { id: 'knife', label: 'Kitchen Knife', short: 'Knife', labelKey: 'spin.prize.knife', shortKey: 'spin.prize.short.knife', emoji: '🔪', weight: 8, color: '#B45309' },
+  { id: 'juice-glass', label: 'Juice Glass', short: 'Juice Glass', labelKey: 'spin.prize.juiceGlass', shortKey: 'spin.prize.short.juiceGlass', emoji: '🥤', weight: 10, color: '#0F766E' },
+  { id: 'slicer', label: '2-in-1 Vegetable Slicer', short: 'Slicer', labelKey: 'spin.prize.slicer', shortKey: 'spin.prize.short.slicer', emoji: '🔧', weight: 4, color: '#7C2D12' },
+  { id: 'none', label: 'Better Luck Next Time', short: 'Try Again', labelKey: 'spin.prize.none', shortKey: 'spin.prize.short.none', emoji: '🍀', weight: 70, color: '#57534E' },
 ];
 
 /** Tokens burned by one spin. */

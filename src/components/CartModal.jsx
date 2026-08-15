@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { X, Trash2, Plus, Minus, ShoppingBasket, CheckCircle2, MapPin, AlertTriangle } from 'lucide-react';
 import { savedCustomerAddress } from '../services/address';
 import { cartItemCount } from '../services/cart';
+import { useLanguage } from '../i18n/LanguageContext';
+import { productName } from '../i18n/catalog';
 
 /**
  * Delivery pricing, mirrored from server/routes/orders.js.
@@ -15,6 +17,7 @@ const DELIVERY_FEE = 25;
 const FREE_DELIVERY_THRESHOLD = 300;
 
 export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity, onCheckout, walletBalance = 0, onSelectProduct, blockedReason = null }) {
+  const { t, language } = useLanguage();
   const [placed, setPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('COD'); // 'PhonePe' | 'Google Pay' | 'Paytm' | 'COD' | 'VegWallet'
   // Razorpay opens in a modal over this one; without this the button stays live
@@ -113,11 +116,11 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
             <ShoppingBasket className="w-5 h-5 text-emerald-600" />
             {/* Counts items, not lines — the bottom-nav badge always has, and the
               two disagreeing ("9" on the tab, "(6)" here) reads as a bug. */}
-          <h3 className="font-bold text-gray-900 text-base">Your Basket ({cartItemCount(cartItems)})</h3>
+          <h3 className="font-bold text-gray-900 text-base">{t('cart.title', { count: cartItemCount(cartItems) })}</h3>
           </div>
           <button
             onClick={onClose}
-            aria-label="Close basket"
+            aria-label={t('cart.closeBasket')}
             className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
           >
             <X className="w-5 h-5" />
@@ -127,10 +130,10 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
         {placed ? (
           <div className="flex-1 p-8 flex flex-col items-center justify-center text-center">
             <CheckCircle2 className="w-16 h-16 text-emerald-500 mb-3 animate-bounce" />
-            <h4 className="font-extrabold text-xl text-gray-900 mb-1">Order Confirmed!</h4>
-            <p className="text-sm text-gray-500 max-w-xs mb-2">Your fresh produce will be delivered to your doorstep in 15-20 minutes.</p>
+            <h4 className="font-extrabold text-xl text-gray-900 mb-1">{t('cart.confirmed')}</h4>
+            <p className="text-sm text-gray-500 max-w-xs mb-2">{t('cart.confirmedSub')}</p>
             <span className="inline-block bg-emerald-100 text-emerald-800 font-extrabold text-xs px-3 py-1 rounded-full border border-emerald-200">
-              Paid via {paymentMethod}
+              {t('cart.paidVia', { method: paymentMethod })}
             </span>
           </div>
         ) : (
@@ -140,7 +143,7 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
               {cartItems.length === 0 ? (
                 <div className="text-center py-12 text-gray-400">
                   <ShoppingBasket className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm font-medium">Your basket is empty.</p>
+                  <p className="text-sm font-medium">{t('cart.empty')}</p>
                 </div>
               ) : (
                 cartItems.map((item) => (
@@ -151,7 +154,7 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                   >
                     <img src={item.image} alt={item.name} className="w-12 h-12 object-cover rounded-lg bg-white" />
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-xs text-gray-900 truncate">{item.name}</h4>
+                      <h4 className="font-semibold text-xs text-gray-900 truncate">{productName(item, language)}</h4>
                       <span className="text-xs font-bold text-emerald-700">₹{item.price}</span>
                     </div>
 
@@ -175,7 +178,7 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                       <button 
                         onClick={(e) => { e.stopPropagation(); onUpdateQuantity(item.id, -item.quantity); }}
                         className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-red-100 bg-white shadow-xs"
-                        title="Remove entirely"
+                        title={t('cart.removeItem')}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -190,15 +193,15 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
               <div className="p-4 bg-gray-50 border-t border-gray-200 space-y-3">
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs text-gray-600">
-                    <span>Subtotal</span>
+                    <span>{t('cart.subtotal')}</span>
                     <span className="font-semibold">₹{total}</span>
                   </div>
                   <div className="flex justify-between text-xs text-gray-600">
-                    <span>Delivery Fee</span>
-                    <span className="font-semibold">{deliveryFee === 0 ? <span className="text-emerald-600 font-bold">FREE</span> : `₹${deliveryFee}`}</span>
+                    <span>{t('cart.deliveryFee')}</span>
+                    <span className="font-semibold">{deliveryFee === 0 ? <span className="text-emerald-600 font-bold">{t('cart.free')}</span> : `₹${deliveryFee}`}</span>
                   </div>
                   <div className="flex justify-between text-sm font-bold text-gray-900 pt-1 border-t border-gray-200">
-                    <span>Grand Total</span>
+                    <span>{t('cart.grandTotal')}</span>
                     <span className="text-emerald-700 font-black">₹{grandTotal}</span>
                   </div>
                 </div>
@@ -214,10 +217,10 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                   <MapPin className={`w-4 h-4 mt-0.5 shrink-0 ${savedAddress ? 'text-emerald-600' : 'text-amber-600'}`} />
                   <div className="min-w-0 flex-1">
                     <p className={`text-[10px] font-bold uppercase tracking-wider ${savedAddress ? 'text-emerald-700' : 'text-amber-700'}`}>
-                      {savedAddress ? 'Delivering to' : 'No delivery address yet'}
+                      {savedAddress ? t('cart.deliveringTo') : t('cart.noAddress')}
                     </p>
                     <p className="text-[11px] text-gray-700 font-medium leading-tight truncate">
-                      {savedAddress || 'Set one from the address bar at the top of the shop.'}
+                      {savedAddress || t('cart.noAddressHint')}
                     </p>
                   </div>
                 </div>
@@ -240,7 +243,7 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
 
                 {/* Select Payment Method Options */}
                 <div className="space-y-1.5">
-                  <p className="text-[11px] font-black text-gray-700 uppercase tracking-wider">Select Payment Method</p>
+                  <p className="text-[11px] font-black text-gray-700 uppercase tracking-wider">{t('cart.selectPayment')}</p>
                   <div className="grid grid-cols-2 gap-2">
                     {/* PhonePe */}
                     <button
@@ -313,7 +316,7 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                         {/* Rounded to paise: the balance is a float derived
                             from the server's integer paise, so a refund can
                             leave it reading "Bal: ₹212.30000000000001". */}
-                        <p className="text-[8px] text-orange-600 font-semibold">Bal: ₹{walletBalance.toFixed(2)}</p>
+                        <p className="text-[8px] text-orange-600 font-semibold">{t('cart.walletBalance', { amount: walletBalance.toFixed(2) })}</p>
                       </div>
                     </button>
 
@@ -330,8 +333,8 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                         💵
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-extrabold leading-tight">Cash on Delivery</p>
-                        <p className="text-[8px] text-emerald-600 font-semibold">Pay at Doorstep</p>
+                        <p className="text-[11px] font-extrabold leading-tight">{t('cart.cod')}</p>
+                        <p className="text-[8px] text-emerald-600 font-semibold">{t('cart.codSub')}</p>
                       </div>
                     </button>
                   </div>
@@ -373,12 +376,12 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                 >
                   <span>
                     {blockedReason
-                      ? 'Cannot place this order yet'
+                      ? t('cart.cannotPlace')
                       : isPaying
-                        ? 'Waiting for payment…'
+                        ? t('cart.waitingPayment')
                         : isOnlinePayment && !walletCovers
-                          ? `Pay ₹${cardAmount} • ${paymentMethod}`
-                          : `Place Order • ₹${grandTotal} (${paymentMethod})`}
+                          ? t('cart.payWith', { amount: cardAmount, method: paymentMethod })
+                          : t('cart.placeOrder', { total: grandTotal, method: paymentMethod })}
                   </span>
                 </button>
               </div>

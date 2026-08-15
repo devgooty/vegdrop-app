@@ -7,6 +7,7 @@ const Market = require('../models/Market');
 const MarketPrice = require('../models/MarketPrice');
 const Stall = require('../models/Stall');
 const StallInventory = require('../models/StallInventory');
+const { PRODUCT_NAME_TRANSLATIONS, translationsForSku } = require('./productTranslations');
 
 /**
  * Development seeding, and the shared product catalog.
@@ -164,7 +165,11 @@ const SEED_STALLS = [
  */
 async function seedProducts() {
   const existingSkus = new Set((await Product.find({}, 'sku').lean()).map((p) => p.sku));
-  const missing = SEED_PRODUCTS.filter((p) => !existingSkus.has(p.sku));
+  const missing = SEED_PRODUCTS.filter((p) => !existingSkus.has(p.sku))
+    // Translations are attached here rather than written out beside every row
+    // above, so the same table also drives backfillProductTranslations() and the
+    // two can never disagree about what a sku is called in Telugu.
+    .map((p) => ({ ...p, ...translationsForSku(p.sku) }));
   if (missing.length === 0) return 0;
 
   try {
@@ -180,6 +185,43 @@ async function seedProducts() {
     if (!isDuplicateKeyOnly) throw err;
   }
   return missing.length;
+}
+
+/**
+ * Fill in Telugu and Hindi names on rows a previous boot already inserted.
+ *
+ * Without this the feature would ship to nobody. `seedProducts()` adds only
+ * *missing* skus, so on every database that has ever run this app — production
+ * included — all 37 catalog rows already exist and would keep `nameTe: ''`
+ * for good, leaving a Telugu shopper reading English product names while the
+ * rest of the app translated correctly.
+ *
+ * Each language is its own update, filtered on that one field being empty, so a
+ * name someone has corrected by hand is never reverted to the table's version.
+ * Matching the row on "either field is empty" and then `$set`-ing both would
+ * quietly overwrite an edited Telugu name whenever Hindi happened to be blank —
+ * which is exactly what the test for this caught.
+ *
+ * A second boot therefore has nothing left to do, and reports 0.
+ */
+async function backfillProductTranslations() {
+  const ops = [];
+  for (const [sku, { te, hi }] of Object.entries(PRODUCT_NAME_TRANSLATIONS)) {
+    if (te) {
+      ops.push({
+        updateOne: { filter: { sku, nameTe: { $in: ['', null] } }, update: { $set: { nameTe: te } } },
+      });
+    }
+    if (hi) {
+      ops.push({
+        updateOne: { filter: { sku, nameHi: { $in: ['', null] } }, update: { $set: { nameHi: hi } } },
+      });
+    }
+  }
+  if (ops.length === 0) return 0;
+
+  const result = await Product.bulkWrite(ops, { ordered: false });
+  return result.modifiedCount || 0;
 }
 
 /**
@@ -328,6 +370,12 @@ async function seedIfEmpty() {
   const retiredCount = await retireProducts();
   if (retiredCount > 0) console.info(`[seed] removed ${retiredCount} retired product(s) from the catalog.`);
 
+  // Runs in production too, and for the same reason the catalog seed does: the
+  // rows are already there, so this is the only path by which they ever get a
+  // Telugu or Hindi name.
+  const translatedCount = await backfillProductTranslations();
+  if (translatedCount > 0) console.info(`[seed] backfilled translations for ${translatedCount} product(s).`);
+
   if (config.isProduction) {
     console.info('[seed] demo accounts, markets and stalls skipped: disabled in production.');
     return;
@@ -371,6 +419,7 @@ async function seedIfEmpty() {
 module.exports = {
   seedIfEmpty,
   seedProducts,
+  backfillProductTranslations,
   retireProducts,
   SEED_ACCOUNTS,
   SEED_PRODUCTS,
