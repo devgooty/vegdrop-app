@@ -388,7 +388,7 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
             <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full ring-1 ring-white" />
           </div>
           <span className="text-[10px] text-[#8A7E6B] font-semibold uppercase tracking-wider shrink-0">
-            {location ? 'Deliver to:' : 'Delivery to:'}
+            {location ? t('delivery.deliverTo') : t('delivery.deliveryTo')}
           </span>
           {displayPincode && (
             <span className="text-[10px] bg-emerald-100 text-emerald-800 font-black px-1.5 py-0.5 rounded-md shrink-0">

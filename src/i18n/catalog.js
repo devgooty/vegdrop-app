@@ -37,8 +37,16 @@ export function productName(product, language) {
   const translated = field ? product[field] : '';
   if (!translated) return english;
 
-  // A cart line's name is "<base> (<weight>)". Keep the weight, swap the base.
-  const suffix = /\s(\(.+\))$/.exec(english);
+  /**
+   * A cart line's name is "<base> (<weight>)" — keep the weight, swap the base.
+   *
+   * The bracket must contain a digit to count as a weight. Catalog names carry
+   * a *transliteration* in the same position ("Organic Spinach (Palak)"), and
+   * keeping that produced "పాలకూర (Palak)" — the local name followed by a
+   * romanisation of itself, which is precisely the English the translation was
+   * meant to remove. "(500g)" has digits; "(Palak)" does not.
+   */
+  const suffix = /\s(\([^)]*\d[^)]*\))$/.exec(english);
   return suffix ? `${translated} ${suffix[1]}` : translated;
 }
 
@@ -53,7 +61,10 @@ const CATEGORY_TITLES = {
   'leafy-greens': { te: 'ఆకుకూరలు', hi: 'पत्तेदार सब्ज़ियाँ' },
   'fresh-vegetables': { te: 'తాజా కూరగాయలు', hi: 'ताज़ी सब्ज़ियाँ' },
   'organic-fruits': { te: 'సేంద్రియ పండ్లు', hi: 'जैविक फल' },
-  'exotic-herbs': { te: 'ఎగ్జాటిక్ & మూలికలు', hi: 'विदेशी और जड़ी-बूटियाँ' },
+  // The slug is `exotic-imported`, not `exotic-herbs` — the title says "Herbs"
+  // but the slug does not, and keying off the title's wording is exactly the
+  // mistake this map avoids.
+  'exotic-imported': { te: 'ఎగ్జాటిక్ & మూలికలు', hi: 'विदेशी और जड़ी-बूटियाँ' },
 };
 
 const CATEGORY_BADGES = {

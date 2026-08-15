@@ -235,15 +235,18 @@ export default function App() {
    */
   const checkoutBlockedReason = useMemo(() => {
     if (!selectedMarket && !selectedShop) {
-      return 'We need your delivery address before we can pick a market to fill this order. Set it from the address bar at the top of the shop.';
+      return t('checkout.needMarket');
     }
     if (!savedCustomerAddress()) {
-      return 'Add the street address the rider should deliver to. Tap the address bar at the top of the shop.';
+      return t('checkout.needStreetAddress');
     }
     return null;
-    // `addressVersion` is the only signal that localStorage changed.
+    // `addressVersion` is the only signal that localStorage changed. `t` is a
+    // dependency because it closes over the chosen language — without it the
+    // blocked-reason banner keeps whichever language was active when the basket
+    // first refused, and never restates itself after a language switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMarket, selectedShop, addressVersion]);
+  }, [selectedMarket, selectedShop, addressVersion, t]);
 
   // Profile editing, plus the verified phone-change flow
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -1852,10 +1855,10 @@ export default function App() {
                           </button>
                           <h2 className="flex-1 text-center font-black text-lg text-[#1B4D3E] mr-9 drop-shadow-sm">
                             {activeAccountView === 'profile'
-                              ? 'Profile Details'
+                              ? t('account.profileDetails')
                               : activeAccountView === 'rewards'
-                                ? 'Rewards'
-                                : 'Purchase History'}
+                                ? t('rewards.title')
+                                : t('account.purchaseHistory')}
                           </h2>
                         </div>
                       )}
@@ -1870,8 +1873,8 @@ export default function App() {
                               <UserIcon className="w-5 h-5 drop-shadow-sm" />
                             </div>
                             <div className="flex-1">
-                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">Profile Details</h3>
-                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">View and edit your personal information</p>
+                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('account.profileDetails')}</h3>
+                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">{t('account.profileDetailsSub')}</p>
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
                               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
@@ -1886,8 +1889,8 @@ export default function App() {
                               <HistoryIcon className="w-5 h-5 drop-shadow-sm" />
                             </div>
                             <div className="flex-1">
-                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">Purchase History</h3>
-                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">Track your past orders and total spending</p>
+                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('account.purchaseHistory')}</h3>
+                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">{t('account.purchaseHistorySub')}</p>
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
                               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
@@ -1902,9 +1905,9 @@ export default function App() {
                               <CoinsIcon className="w-5 h-5 drop-shadow-sm" />
                             </div>
                             <div className="flex-1">
-                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">Rewards</h3>
+                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('rewards.title')}</h3>
                               <p className="text-[10px] font-bold text-slate-400 mt-0.5">
-                                Earn {TOKENS_PER_BATCH} tokens for every ₹{RUPEES_PER_BATCH} you spend
+                                {t('account.rewardsSub', { tokens: TOKENS_PER_BATCH, rupees: RUPEES_PER_BATCH })}
                               </p>
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
@@ -1945,7 +1948,7 @@ export default function App() {
                           <h4 className="font-black text-[#1B4D3E] border-b-2 border-emerald-900/5 pb-2.5 text-sm flex items-center gap-2 drop-shadow-sm">
                             <span className="bg-white p-1.5 rounded-xl shadow-[inset_1px_1px_2px_rgba(0,0,0,0.1),2px_2px_4px_rgba(255,255,255,1)] flex items-center justify-center">
                               <svg className="w-4 h-4 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                            </span> Edit Profile Details
+                            </span> {t('account.editProfile')}
                           </h4>
                           
                           <div className="space-y-3.5">
@@ -2027,7 +2030,7 @@ export default function App() {
                           >
                             <span className="flex items-center justify-center bg-white/50 p-1.5 rounded-xl shadow-[inset_1px_1px_2px_rgba(0,0,0,0.05),1px_1px_2px_rgba(255,255,255,1)]">
                               <svg className="w-5 h-5 text-[#1B4D3E]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                            </span> Edit Profile Details
+                            </span> {t('account.editProfile')}
                           </button>
                         </div>
                       )}
@@ -2217,7 +2220,7 @@ export default function App() {
                             onClick={handleLogoutEverywhere}
                             className="flex-1 text-rose-600/80 hover:text-rose-700 text-[10px] sm:text-xs font-bold px-2 py-1.5 rounded-xl transition-colors cursor-pointer hover:bg-rose-50/60"
                           >
-                            Sign out on all devices
+                            {t('account.signOutAllDevices')}
                           </button>
                         </div>
                       </div>

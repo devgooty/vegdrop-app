@@ -32,7 +32,7 @@ export default function ProductList({
                   {categoryTitle(category, language)}
                 </h3>
                 <span className="text-[10px] font-bold text-[#1B4D3E] bg-[#EAE4D7] px-2.5 py-0.5 rounded-full border border-[#D5CDBC] shadow-2xs">
-                  {categoryProducts.length} Harvested
+                  {t('list.harvested', { count: categoryProducts.length })}
                 </span>
               </div>
 
@@ -40,7 +40,7 @@ export default function ProductList({
                 onClick={() => onOpenCategoryDetail(category)}
                 className="text-xs font-bold text-[#C8372D] hover:text-[#9E2A22] flex items-center gap-0.5 hover:underline cursor-pointer"
               >
-                <span>See All</span>
+                <span>{t('list.seeAll')}</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -178,7 +178,7 @@ function ProductCard({
             <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200">
               <span className="bg-white/90 backdrop-blur-xs text-[#1B4D3E] font-bold text-[10px] px-2 py-1 rounded-full flex items-center gap-1 shadow-md border border-[#E5DFD1]">
                 <Eye className="w-3.5 h-3.5" />
-                Quick View
+                {t('list.quickView')}
               </span>
             </div>
 
@@ -193,7 +193,7 @@ function ProductCard({
 
           {item.isOrganic && (
             <span className="bg-[#EAE4D7] text-[#1B4D3E] border border-[#D5CDBC] absolute top-1.5 left-1.5 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider shadow-2xs">
-              Organic
+              {t('product.organic')}
             </span>
           )}
           
@@ -223,7 +223,7 @@ function ProductCard({
             <p className="text-[11px] text-[#7A7060] font-semibold">{variantWeightStr}</p>
             {item.stock > 0 && item.stock <= 5 && (
               <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1 rounded animate-pulse">
-                Only {item.stock} left
+                {t('list.onlyLeft', { count: item.stock })}
               </span>
             )}
           </div>

@@ -80,6 +80,10 @@ const STRINGS = {
 
   // --- Delivery address bar (HomeHeroBanner.jsx) -----------------------------
   'delivery.deliverTo': { en: 'Deliver to:', hi: 'यहाँ डिलीवरी:', te: 'ఇక్కడికి డెలివరీ:' },
+  // Two English wordings for the same label — "Deliver to:" once there is an
+  // address, "Delivery to:" before. Kept as separate keys so the English is
+  // unchanged; both read the same in Telugu and Hindi.
+  'delivery.deliveryTo': { en: 'Delivery to:', hi: 'यहाँ डिलीवरी:', te: 'ఇక్కడికి డెలివరీ:' },
   'delivery.setAddress': {
     en: 'Set your delivery address',
     hi: 'अपना डिलीवरी पता डालें',
@@ -263,6 +267,47 @@ const STRINGS = {
     hi: 'अपने पुराने ऑर्डर और कुल ख़र्च देखें',
     te: 'మీ గత ఆర్డర్లు మరియు మొత్తం ఖర్చు చూడండి',
   },
+  'account.profileDetails': { en: 'Profile Details', hi: 'प्रोफ़ाइल विवरण', te: 'ప్రొఫైల్ వివరాలు' },
+  'account.profileDetailsSub': {
+    en: 'View and edit your personal information',
+    hi: 'अपनी निजी जानकारी देखें और बदलें',
+    te: 'మీ వ్యక్తిగత సమాచారాన్ని చూడండి, మార్చండి',
+  },
+  'account.editProfile': { en: 'Edit Profile Details', hi: 'प्रोफ़ाइल विवरण बदलें', te: 'ప్రొఫైల్ వివరాలు మార్చండి' },
+  'account.signOutAllDevices': {
+    en: 'Sign out on all devices',
+    hi: 'सभी डिवाइस से लॉग आउट करें',
+    te: 'అన్ని పరికరాల నుండి లాగ్ అవుట్ చేయండి',
+  },
+
+  'list.harvested': { en: '{count} Harvested', hi: '{count} उपज', te: '{count} పంటలు' },
+  'list.onlyLeft': { en: 'Only {count} left', hi: 'सिर्फ़ {count} बचे', te: 'కేవలం {count} మిగిలాయి' },
+  'list.seeAll': { en: 'See All', hi: 'सभी देखें', te: 'అన్నీ చూడండి' },
+  'list.quickView': { en: 'Quick View', hi: 'झलक देखें', te: 'త్వరిత వీక్షణ' },
+  'market.retry': { en: 'Retry', hi: 'फिर कोशिश करें', te: 'మళ్లీ ప్రయత్నించండి' },
+  'market.needAddressTitle': {
+    en: 'Set your delivery address',
+    hi: 'अपना डिलीवरी पता डालें',
+    te: 'మీ డెలివరీ చిరునామా పెట్టండి',
+  },
+  'market.needAddressHint': {
+    en: 'We need it to show the markets that can reach you.',
+    hi: 'आप तक पहुँचने वाले बाज़ार दिखाने के लिए यह ज़रूरी है।',
+    te: 'మీకు చేరగల మార్కెట్లను చూపడానికి ఇది అవసరం.',
+  },
+
+  // --- Checkout blockers (App.jsx) --------------------------------------------
+  'checkout.needMarket': {
+    en: 'We need your delivery address before we can pick a market to fill this order. Set it from the address bar at the top of the shop.',
+    hi: 'इस ऑर्डर के लिए बाज़ार चुनने से पहले हमें आपका डिलीवरी पता चाहिए। दुकान के ऊपर पता बार से इसे डालें।',
+    te: 'ఈ ఆర్డర్‌కు మార్కెట్ ఎంచుకోవడానికి ముందు మీ డెలివరీ చిరునామా కావాలి. షాప్ పైన ఉన్న చిరునామా బార్ నుండి పెట్టండి.',
+  },
+  'checkout.needStreetAddress': {
+    en: 'Add the street address the rider should deliver to. Tap the address bar at the top of the shop.',
+    hi: 'वह पता डालें जहाँ राइडर को डिलीवरी करनी है। दुकान के ऊपर पता बार पर टैप करें।',
+    te: 'రైడర్ డెలివరీ చేయాల్సిన చిరునామా పెట్టండి. షాప్ పైన ఉన్న చిరునామా బార్‌ను తాకండి.',
+  },
+
   'account.rewardsSub': {
     en: 'Earn {tokens} tokens for every ₹{rupees} you spend',
     hi: 'हर ₹{rupees} ख़र्च पर {tokens} टोकन कमाएँ',

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Store, MapPin, ChevronRight, RefreshCw, AlertTriangle, Check } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
 import { fetchNearbyMarkets, currentPosition, savedCustomerCoords } from '../services/markets';
 
 /**
@@ -15,6 +16,7 @@ import { fetchNearbyMarkets, currentPosition, savedCustomerCoords } from '../ser
  * a market silently missing from the list just raises it.
  */
 export default function MarketPicker({ selectedMarket, onSelectMarket }) {
+  const { t } = useLanguage();
   const [markets, setMarkets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -71,16 +73,16 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
       <div className="mx-4 mt-4 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-4 flex items-start gap-3">
         <MapPin className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <p className="text-[13.5px] font-bold text-amber-900">Set your delivery address</p>
+          <p className="text-[13.5px] font-bold text-amber-900">{t('market.needAddressTitle')}</p>
           <p className="text-[12px] text-amber-800 mt-0.5 leading-relaxed">
-            We need it to show the markets that can reach you.
+            {t('market.needAddressHint')}
           </p>
         </div>
         <button
           onClick={load}
           className="text-[12px] font-bold text-amber-900 underline underline-offset-2 shrink-0"
         >
-          Retry
+          {t('market.retry')}
         </button>
       </div>
     );
@@ -92,7 +94,7 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
         <AlertTriangle className="w-4.5 h-4.5 text-gray-400 shrink-0 mt-0.5" />
         <p className="text-[13px] text-gray-600 flex-1">{error}</p>
         <button onClick={load} className="text-[12px] font-bold text-emerald-700 underline shrink-0">
-          Retry
+          {t('market.retry')}
         </button>
       </div>
     );
