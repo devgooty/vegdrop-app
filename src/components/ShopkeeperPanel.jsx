@@ -2,10 +2,10 @@ import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Store, Package, ShoppingBag, CheckCircle2, Clock, Truck,
   MapPin, LogOut, User, LayoutDashboard, Plus, Edit, Trash2,
-  AlertTriangle, Navigation, Check, Camera, TrendingUp, BarChart3, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert
+  AlertTriangle, Navigation, Check, Camera, TrendingUp, BarChart3, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert, Bike
 } from 'lucide-react';
 import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../services/auth';
-import { fetchShopEarnings, withdrawShopEarnings } from '../services/shops';
+import { fetchShopEarnings, withdrawShopEarnings, fetchNearbyRider } from '../services/shops';
 import { fetchRiderLocation } from '../services/orders';
 import { ApiRequestError } from '../services/apiClient';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -348,6 +348,36 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
       clearInterval(interval);
     };
   }, [activeTab, trackedOrdersKey]);
+
+  /**
+   * Is a delivery partner nearby right now — ambient, not tied to any one
+   * order, so unlike `riderLocations` above this polls on every tab: it is
+   * meant to be visible wherever the shopkeeper happens to be looking.
+   *
+   * `null` covers both "nobody's within 5 km" and "location not fetched yet";
+   * the banner only renders once a real distance comes back.
+   */
+  const [nearbyRider, setNearbyRider] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const data = await fetchNearbyRider();
+        if (!cancelled) setNearbyRider(data);
+      } catch {
+        if (!cancelled) setNearbyRider(null);
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   /**
    * Takings for the calendar day, which is what "Today's Revenue" claimed to be.
@@ -1509,6 +1539,20 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                 Save Changes
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Nearby delivery partner — ambient, shown on every tab, only when someone is actually close */}
+      {nearbyRider && (
+        <div className="fixed bottom-[92px] left-0 right-0 mx-auto w-full max-w-md px-4 z-30 pointer-events-none">
+          <div className="bg-emerald-600 text-white rounded-2xl px-4 py-2 shadow-lg flex items-center gap-2 pointer-events-auto">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/20">
+              <Bike className="w-4 h-4" />
+            </span>
+            <p className="text-xs font-bold">
+              Delivery partner nearby · {(nearbyRider.distanceMeters / 1000).toFixed(1)} km away
+            </p>
           </div>
         </div>
       )}

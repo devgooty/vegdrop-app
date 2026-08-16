@@ -9,6 +9,7 @@ const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 const { stallActionLimiter } = require('../middleware/rateLimit');
 const settlement = require('../services/settlement');
+const config = require('../config/env');
 
 const router = express.Router();
 
@@ -214,6 +215,57 @@ router.put(
     });
   }
 );
+
+/**
+ * Is a delivery partner nearby right now — an ambient signal for the
+ * dashboard, answered from wherever this shopkeeper actually trades.
+ *
+ * A stall shopkeeper has no `shop.location` of their own — they trade through
+ * the market's pin, same as every other place that treats a stall as "reached
+ * through its market" rather than a location in its own right. An independent
+ * shopkeeper falls back to their own shop pin.
+ *
+ * This is a courtesy heads-up, not a dispatch decision, so it deliberately
+ * does not reuse `riderSearchRadiusMeters` — that number is tuned for "will
+ * dispatch eventually find someone", this one for "is someone close enough
+ * that it's worth mentioning".
+ */
+router.get('/me/nearby-rider', ...shopGate, async (req, res) => {
+  const stall = await Stall.findOne({ owner: req.user._id, isActive: true, status: 'approved' })
+    .select('market')
+    .populate('market', 'location')
+    .lean();
+
+  const location = stall?.market?.location || req.user.shop?.location;
+  if (!location?.coordinates) {
+    return res.json({ data: null });
+  }
+
+  const staleSince = new Date(Date.now() - config.marketplace.riderStaleLocationSeconds * 1000);
+
+  const [nearest] = await User.aggregate([
+    {
+      $geoNear: {
+        near: location,
+        distanceField: 'distanceMeters',
+        maxDistance: config.marketplace.nearbyRiderRadiusMeters,
+        spherical: true,
+        // Mandatory — see the comment on the /nearby $geoNear above.
+        key: 'rider.lastLocation',
+        query: {
+          role: 'delivery',
+          status: 'active',
+          'rider.dutyStatus': 'online',
+          'rider.lastLocationAt': { $gte: staleSince },
+        },
+      },
+    },
+    { $limit: 1 },
+    { $project: { distanceMeters: { $round: ['$distanceMeters', 0] } } },
+  ]);
+
+  return res.json({ data: nearest ? { distanceMeters: nearest.distanceMeters } : null });
+});
 
 /** Shutter switch, display details, and delivery range. */
 router.patch(

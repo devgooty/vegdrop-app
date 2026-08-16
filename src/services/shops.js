@@ -79,3 +79,15 @@ export async function withdrawShopEarnings() {
   const result = await api.post('/shops/me/earnings/withdraw');
   return result.data;
 }
+
+/**
+ * The nearest online delivery partner right now, answered from wherever this
+ * shopkeeper actually trades (their own pin, or their stall's market).
+ *
+ * Ambient, not tied to any order — `null` just means nobody is within the
+ * 5 km courtesy radius at the moment, not that anything is wrong.
+ */
+export async function fetchNearbyRider() {
+  const result = await api.get('/shops/me/nearby-rider');
+  return result.data;
+}

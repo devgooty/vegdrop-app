@@ -497,6 +497,13 @@ const config = Object.freeze({
      * a tap.
      */
     shopRiderAssignTimeoutSeconds: int('SHOP_RIDER_ASSIGN_TIMEOUT_SECONDS', 300),
+
+    /**
+     * How far counts as "nearby" for the shopkeeper dashboard's ambient rider
+     * indicator — a courtesy heads-up, not a dispatch decision, so it is a
+     * shorter radius than `riderSearchRadiusMeters`.
+     */
+    nearbyRiderRadiusMeters: int('NEARBY_RIDER_RADIUS_METERS', 5000),
   }),
 
   /**
