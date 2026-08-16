@@ -25,6 +25,9 @@ export function toUiOrder(order) {
     status: order.status,
     paymentMethod: order.paymentMethod,
     paymentStatus: order.paymentStatus,
+    // Present once a rider has claimed the order; who reads that from here
+    // decides what it does with it — see the shopkeeper's rider-location card.
+    assignedTo: order.assignedTo || null,
 
     /**
      * Market fulfillment, when the order has it.
@@ -210,4 +213,14 @@ export async function updateOrderStatus(orderId, status) {
 export async function claimOrder(orderId) {
   const result = await api.post(`/orders/${orderId}/claim`);
   return toUiOrder(result.data);
+}
+
+/**
+ * The assigned rider's live GPS fix for one order, for the shop (or market
+ * office) waiting on them — `null` while unassigned, un-fixed, or stale.
+ * @returns {Promise<{lat: number, lng: number, updatedAt: string}|null>}
+ */
+export async function fetchRiderLocation(orderId) {
+  const result = await api.get(`/orders/${orderId}/rider-location`);
+  return result.data;
 }

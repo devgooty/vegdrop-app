@@ -488,6 +488,7 @@ export default function ShopkeeperApp() {
       <ShopkeeperPanel
         user={user}
         orders={orders}
+        shopProfile={shopProfile}
         products={products}
         setProducts={setProducts}
         categories={categories}

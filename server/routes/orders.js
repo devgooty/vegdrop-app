@@ -5,6 +5,8 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Market = require('../models/Market');
 const Stall = require('../models/Stall');
+const User = require('../models/User');
+const config = require('../config/env');
 const { ApiError } = require('../middleware/errors');
 const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
@@ -624,6 +626,48 @@ router.patch(
     }
 
     return res.json({ data: redactForViewer(order.toJSON(), req.user) });
+  }
+);
+
+/**
+ * Where the assigned rider is right now, for the shop (or market office) that
+ * is waiting on them — while the order is still on `visibilityFilter`'s list
+ * for this caller, same as every other read here.
+ *
+ * Rider-only, not customer-facing: a shop packing an order has a legitimate
+ * reason to know whether the pickup is two minutes away, the same reason
+ * `redactForViewer` draws the opposite line for the customer's own address —
+ * an operational agent's position is not the private fact a stranger's home is.
+ *
+ * `null` covers three unremarkable states alike — no rider assigned yet, one
+ * assigned but no GPS fix yet, or a fix old enough that dispatch itself would
+ * treat the rider as gone (`riderStaleLocationSeconds`, the same cutoff
+ * services/dispatch.js uses to decide who is even offered a job) — so a
+ * shopkeeper never reads a stale pin as a live one.
+ */
+router.get(
+  '/:id/rider-location',
+  requireAuth,
+  requireRole('shopkeeper', 'market_owner', 'developer'),
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const order = await Order.findOne({ _id: req.valid.params.id, ...(await visibilityFilter(req.user)) })
+      .select('assignedTo')
+      .lean();
+    if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+    if (!order.assignedTo) return res.json({ data: null });
+
+    const rider = await User.findById(order.assignedTo)
+      .select('rider.lastLocation rider.lastLocationAt')
+      .lean();
+    const point = rider?.rider?.lastLocation;
+    const seenAt = rider?.rider?.lastLocationAt;
+    const stale = !seenAt || seenAt.getTime() < Date.now() - config.marketplace.riderStaleLocationSeconds * 1000;
+    if (!point?.coordinates || stale) return res.json({ data: null });
+
+    return res.json({
+      data: { lat: point.coordinates[1], lng: point.coordinates[0], updatedAt: seenAt },
+    });
   }
 );
 

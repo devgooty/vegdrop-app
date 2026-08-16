@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
-  Truck, CheckCircle2, MapPin, Phone, PackageCheck, Bell,
+  Truck, CheckCircle2, MapPin, Phone, PackageCheck, Bell, Bike,
   LogOut, User, Home, Map as MapIcon, Wallet, Info, Clock, AlertTriangle,
   Landmark, CreditCard, Lock, Loader2, Pencil,
 } from 'lucide-react';
@@ -147,13 +147,21 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
             {activeTab === 'earnings' && t('header.deliveries')}
             {activeTab === 'profile' && t('header.myProfile')}
           </h1>
-          <div className="relative">
-            <Bell className="w-6 h-6 text-gray-500" />
-            {notifications.length > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white text-[10px] font-black rounded-full flex items-center justify-center animate-bounce">
-                {notifications.length}
-              </span>
-            )}
+          <div className="flex items-center gap-3">
+            {/* The rider's own mark on the screen they actually work from —
+                the login hero already carries a bike badge, but that's the
+                one screen an on-duty rider never sees again. */}
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+              <Bike className="w-5 h-5" />
+            </span>
+            <div className="relative">
+              <Bell className="w-6 h-6 text-gray-500" />
+              {notifications.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white text-[10px] font-black rounded-full flex items-center justify-center animate-bounce">
+                  {notifications.length}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
