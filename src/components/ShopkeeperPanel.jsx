@@ -1267,7 +1267,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
       <header className="bg-white px-5 py-3 border-b border-gray-100 shadow-sm sticky top-0 z-40 flex items-center justify-between">
         <div>
           <h1 className="font-black text-lg text-gray-900 tracking-tight">
-            {activeTab === 'dashboard' && 'Vendor Dashboard'}
+            {activeTab === 'dashboard' && 'Shopkeeper Dashboard'}
             {activeTab === 'orders' && 'Order Management'}
             {activeTab === 'products' && 'Product Catalog'}
             {activeTab === 'analytics' && 'Analytics & Earnings'}
