@@ -281,13 +281,34 @@ router.get('/orders', ...riderGate, async (req, res) => {
   });
 });
 
+/**
+ * A rider accepts a pickup — either a market cascade offer, or an
+ * independent-shop assignment waiting on their confirmation.
+ *
+ * One route for both, branching on which kind of order this is, so the
+ * rider's app never has to know or care which engine is behind a given job —
+ * it just taps Accept. The two dispatch functions are otherwise unrelated:
+ * the market side hands over the full pickup record, the shop side generates
+ * the pickup code the shopkeeper will ask for at the counter.
+ */
 router.post(
   '/orders/:id/accept',
   ...riderGate,
   validate({ params: z.object({ id: fields.objectId }).strict() }),
   async (req, res) => {
-    const result = await dispatch.acceptOffer({ orderId: req.valid.params.id, riderId: req.user._id });
+    const orderId = req.valid.params.id;
+    const kind = await Order.findById(orderId).select('shop').lean();
+    if (!kind) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
 
+    if (kind.shop) {
+      const result = await dispatch.acceptShopAssignment({ orderId, riderId: req.user._id });
+      if (!result.accepted) {
+        throw new ApiError(409, 'That pickup is no longer available.', result.reason || 'ASSIGNMENT_GONE');
+      }
+      return res.json({ data: result.order.toJSON() });
+    }
+
+    const result = await dispatch.acceptOffer({ orderId, riderId: req.user._id });
     if (!result.accepted) {
       throw new ApiError(409, 'That pickup is no longer available.', 'OFFER_GONE');
     }
@@ -306,16 +327,23 @@ router.post(
 /**
  * Turn a pickup down.
  *
- * The refusal is remembered so the cascade never comes back to this rider for
- * this order, and the next nearest is asked immediately rather than after the
- * offer times out.
+ * Same branch as accept above. Either way the refusal is remembered so the
+ * cascade never comes back to this rider for this order, and the next
+ * nearest is asked immediately rather than after the offer times out.
  */
 router.post(
   '/orders/:id/decline',
   ...riderGate,
   validate({ params: z.object({ id: fields.objectId }).strict() }),
   async (req, res) => {
-    const result = await dispatch.declineOffer({ orderId: req.valid.params.id, riderId: req.user._id });
+    const orderId = req.valid.params.id;
+    const kind = await Order.findById(orderId).select('shop').lean();
+    if (!kind) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+
+    const result = kind.shop
+      ? await dispatch.declineShopAssignment({ orderId, riderId: req.user._id })
+      : await dispatch.declineOffer({ orderId, riderId: req.user._id });
+
     if (!result.declined) {
       throw new ApiError(409, 'That pickup was not offered to you.', 'NOT_YOURS');
     }

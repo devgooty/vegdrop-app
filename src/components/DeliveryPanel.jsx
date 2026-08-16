@@ -2,7 +2,7 @@ import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Truck, CheckCircle2, MapPin, Phone, PackageCheck, Bell, Bike,
   LogOut, User, Home, Map as MapIcon, Wallet, Info, Clock, AlertTriangle,
-  Landmark, CreditCard, Lock, Loader2, Pencil,
+  Landmark, CreditCard, Lock, Loader2, Pencil, KeyRound, X,
 } from 'lucide-react';
 import MarketPickups from './MarketPickups';
 import LanguagePicker from './LanguagePicker';
@@ -43,7 +43,7 @@ const DeliveryRouteMap = lazy(() => import('./DeliveryRouteMap'));
  * underneath to repair them to. What remains is driven by real endpoints, and
  * where the data genuinely does not exist the screen says so.
  */
-export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLogout, notifications = [], onClearNotification }) {
+export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onAcceptShopOrder, onDeclineShopOrder, onLogout, notifications = [], onClearNotification }) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('home');
   const [isOnline, setIsOnline] = useState(false);
@@ -125,12 +125,13 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
   const deliveredToday = delivered.filter((o) => isToday(o.timestamp));
 
   /**
-   * Legacy marketless orders.
+   * Independent-shop and legacy marketless orders — everything outside the
+   * market cascade `MarketPickups` renders.
    *
-   * The pre-market flow still exists — `marketId` is optional at checkout — and
-   * its orders reach a rider through the unclaimed pool. The one transition a
-   * delivery role may perform on them is `Delivered`; the shop is the one that
-   * moves an order to Out for Delivery. So that is the only control offered.
+   * An order the dispatch cascade picked this rider for shows up here already
+   * `assignedTo` them but with `riderAccepted: false` — that is the Accept /
+   * Decline prompt below. Once accepted it carries a pickup code to show at
+   * the shop; once `Out for Delivery` the only control left is `Delivered`.
    */
   const legacyJobs = orders.filter(
     (o) => !o.marketName && ['Preparing', 'Out for Delivery'].includes(o.status)
@@ -201,6 +202,8 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onLog
             agentCoords={agentCoords}
             legacyJobs={legacyJobs}
             onUpdateOrderStatus={onUpdateOrderStatus}
+            onAcceptShopOrder={onAcceptShopOrder}
+            onDeclineShopOrder={onDeclineShopOrder}
           />
         )}
 
@@ -340,7 +343,7 @@ function HomeTab({ user, isOnline, setIsOnline, agentCoords, locationError, deli
 // Orders
 // ---------------------------------------------------------------------------
 
-function OrdersTab({ isOnline, agentCoords, legacyJobs, onUpdateOrderStatus }) {
+function OrdersTab({ isOnline, agentCoords, legacyJobs, onUpdateOrderStatus, onAcceptShopOrder, onDeclineShopOrder }) {
   if (!isOnline) {
     return (
       <div className="text-center py-20 px-4">
@@ -371,6 +374,8 @@ function OrdersTab({ isOnline, agentCoords, legacyJobs, onUpdateOrderStatus }) {
               key={order.serverId || order.id}
               order={order}
               onDeliver={() => onUpdateOrderStatus(order.serverId || order.id, 'Delivered')}
+              onAccept={() => onAcceptShopOrder(order.serverId || order.id)}
+              onDecline={() => onDeclineShopOrder(order.serverId || order.id)}
             />
           ))}
         </section>
@@ -380,20 +385,45 @@ function OrdersTab({ isOnline, agentCoords, legacyJobs, onUpdateOrderStatus }) {
 }
 
 /**
- * An order from the pre-market flow.
+ * An order from the independent-shop or pre-market flow.
  *
- * Deliberately spare. A delivery role may only move one of these to
- * `Delivered`; the shop is what moves it to Out for Delivery, so an order still
- * in Preparing gets a status line rather than a button that would 403.
+ * Three states, in order:
+ *  1. `awaitingAccept` — dispatch picked this rider as nearest but they have
+ *     not yet said yes. Accept/Decline are the only controls; nothing about
+ *     the job is worth showing beyond what's already visible, because a
+ *     candidate who has not agreed is not yet committed to it.
+ *  2. `awaitingHandoff` — accepted, carrying a pickup code the shop will ask
+ *     for. `Delivered` stays disabled: the order is not out yet.
+ *  3. `readyToDeliver` — the shop verified the code. Same card as always.
+ *
+ * A true legacy order (no shop at all, `shopName` null) skips 1 and 2
+ * entirely and falls straight to the original spare treatment: a status
+ * line while `Preparing`, `Delivered` once the shop has manually moved it —
+ * there is no rider-side accept step for those and never was.
  */
-function LegacyJobCard({ order, onDeliver }) {
+function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
+  const [acting, setActing] = useState(false);
+  const isShopOrder = Boolean(order.shopName);
+  const awaitingAccept = isShopOrder && order.status === 'Preparing' && order.assignedTo && !order.riderAccepted;
+  const awaitingHandoff = isShopOrder && order.status === 'Preparing' && order.riderAccepted;
   const readyToDeliver = order.status === 'Out for Delivery';
+
+  const runAction = async (action) => {
+    setActing(true);
+    try {
+      await action();
+    } finally {
+      setActing(false);
+    }
+  };
 
   return (
     <article className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[13.5px] font-bold text-gray-900 truncate">{order.customerName}</p>
+          <p className="text-[13.5px] font-bold text-gray-900 truncate">
+            {awaitingAccept ? order.shopName : order.customerName}
+          </p>
           <p className="text-[11.5px] text-gray-500">{order.id}</p>
         </div>
         <span
@@ -401,59 +431,117 @@ function LegacyJobCard({ order, onDeliver }) {
             readyToDeliver ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
           }`}
         >
-          {order.status}
+          {awaitingAccept ? 'New pickup' : order.status}
         </span>
       </div>
 
-      <div className="px-4 py-3 space-y-2">
-        <div className="flex items-start gap-2.5">
-          <MapPin className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
-          <p className="text-[12.5px] text-gray-700 leading-snug">{order.address}</p>
-        </div>
-        {order.paymentMethod === 'cod' && (
-          <p className="text-[12px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-            Collect ₹{order.totalAmount} in cash on handover
-          </p>
-        )}
-        {!readyToDeliver && (
-          <p className="text-[11.5px] text-gray-500 flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 shrink-0" />
-            The shop has not handed this over yet.
-          </p>
-        )}
-      </div>
+      {awaitingAccept ? (
+        <>
+          <div className="px-4 py-3 space-y-2">
+            <p className="text-[12.5px] text-gray-700 leading-snug">
+              {order.shopName} wants a rider for {order.items?.length || 1} item
+              {order.items?.length === 1 ? '' : 's'}.
+            </p>
+            {order.paymentMethod === 'cod' && (
+              <p className="text-[12px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                Collect ₹{order.totalAmount} in cash on handover
+              </p>
+            )}
+          </div>
+          <div className="p-3 bg-gray-50 flex gap-2">
+            <button
+              type="button"
+              onClick={() => runAction(onDecline)}
+              disabled={acting}
+              className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[12.5px] font-bold disabled:opacity-50"
+            >
+              <X className="w-4 h-4" />
+              Decline
+            </button>
+            <button
+              type="button"
+              onClick={() => runAction(onAccept)}
+              disabled={acting}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[14px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:opacity-60"
+            >
+              <span className="flex items-center justify-center gap-2">
+                {acting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                Accept
+              </span>
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="px-4 py-3 space-y-2">
+            {awaitingHandoff && order.pickupCode && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 flex items-center gap-2.5">
+                <KeyRound className="w-4 h-4 text-emerald-700 shrink-0" />
+                <div>
+                  <p className="text-[10.5px] font-bold text-emerald-700 uppercase tracking-wide">
+                    Show this to the shop
+                  </p>
+                  <p className="text-lg font-black text-emerald-900 tracking-[0.25em]">{order.pickupCode}</p>
+                </div>
+              </div>
+            )}
+            <div className="flex items-start gap-2.5">
+              <MapPin className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
+              <p className="text-[12.5px] text-gray-700 leading-snug">{order.address}</p>
+            </div>
+            {order.paymentMethod === 'cod' && (
+              <p className="text-[12px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                Collect ₹{order.totalAmount} in cash on handover
+              </p>
+            )}
+            {awaitingHandoff ? (
+              <p className="text-[11.5px] text-gray-500 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 shrink-0" />
+                Waiting for the shop to confirm the code.
+              </p>
+            ) : (
+              !readyToDeliver && (
+                <p className="text-[11.5px] text-gray-500 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 shrink-0" />
+                  The shop has not handed this over yet.
+                </p>
+              )
+            )}
+          </div>
 
-      <div className="p-3 bg-gray-50 flex gap-2">
-        {order.phone && (
-          <a
-            href={`tel:${order.phone}`}
-            className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center"
-            aria-label="Call the customer"
-          >
-            <Phone className="w-4 h-4" />
-          </a>
-        )}
-        <a
-          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.address)}`}
-          target="_blank"
-          rel="noreferrer"
-          className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[12.5px] font-bold"
-        >
-          <MapPin className="w-4 h-4" />
-          Navigate
-        </a>
-        <button
-          type="button"
-          onClick={onDeliver}
-          disabled={!readyToDeliver}
-          className="flex-1 bg-gray-900 hover:bg-black text-white text-[14px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:bg-gray-200 disabled:text-gray-400"
-        >
-          <span className="flex items-center justify-center gap-2">
-            <PackageCheck className="w-4 h-4" />
-            Mark delivered
-          </span>
-        </button>
-      </div>
+          <div className="p-3 bg-gray-50 flex gap-2">
+            {order.phone && (
+              <a
+                href={`tel:${order.phone}`}
+                className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center"
+                aria-label="Call the customer"
+              >
+                <Phone className="w-4 h-4" />
+              </a>
+            )}
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.address)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[12.5px] font-bold"
+            >
+              <MapPin className="w-4 h-4" />
+              Navigate
+            </a>
+            <button
+              type="button"
+              onClick={onDeliver}
+              disabled={!readyToDeliver}
+              className="flex-1 bg-gray-900 hover:bg-black text-white text-[14px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:bg-gray-200 disabled:text-gray-400"
+            >
+              <span className="flex items-center justify-center gap-2">
+                <PackageCheck className="w-4 h-4" />
+                Mark delivered
+              </span>
+            </button>
+          </div>
+        </>
+      )}
     </article>
   );
 }

@@ -155,6 +155,28 @@ const orderSchema = new mongoose.Schema(
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
 
     /**
+     * When the assigned rider actively confirmed they are taking this job, as
+     * opposed to merely being the nearest candidate the cascade picked.
+     *
+     * Independent-shop orders only. Null the whole time for a market order,
+     * which has its own accept step recorded in `fulfillment.events` instead.
+     * This is what gates the shopkeeper (and the customer) ever seeing the
+     * rider's name, phone, or the pickup code below — a rider who has not yet
+     * agreed to come is not yet a person worth being told about.
+     */
+    riderAcceptedAt: { type: Date, default: null },
+
+    /**
+     * Shown to the rider once they accept, told to the shopkeeper in person,
+     * and typed into the shopkeeper's panel to confirm the right person is
+     * standing at the counter before the order moves to `Out for Delivery`.
+     *
+     * Cleared the moment it is used. A stale code left on a delivered order
+     * would be one more thing to accidentally trust.
+     */
+    pickupCode: { type: String, default: null, maxlength: 6 },
+
+    /**
      * The standing order that produced this, if any.
      *
      * Null for an order somebody placed by hand, which is the overwhelming

@@ -30,6 +30,22 @@ export function toUiOrder(order) {
     assignedTo: order.assignedTo || null,
 
     /**
+     * True only once the assigned rider has actively accepted an
+     * independent-shop pickup — not merely been picked as nearest. This is
+     * what gates the shopkeeper/customer seeing `riderName`/`riderPhone`
+     * below, and what tells the delivery app whether to show Accept/Decline
+     * or the pickup code.
+     */
+    riderAccepted: Boolean(order.riderAcceptedAt),
+    // The rider's own code to relay to the shopkeeper. Only ever present in
+    // the assigned rider's own view of the order — the server never sends it
+    // to anyone else.
+    pickupCode: order.pickupCode || null,
+    // Set once riderAccepted is true, for whoever is allowed to see it.
+    riderName: order.riderName || null,
+    riderPhone: order.riderPhone || null,
+
+    /**
      * Market fulfillment, when the order has it.
      *
      * `status` above stays the coarse label every existing screen renders.
@@ -223,4 +239,16 @@ export async function claimOrder(orderId) {
 export async function fetchRiderLocation(orderId) {
   const result = await api.get(`/orders/${orderId}/rider-location`);
   return result.data;
+}
+
+/**
+ * The shopkeeper types in what the rider just told them, standing at the
+ * counter. The only way an independent-shop order moves to Out for Delivery
+ * once a rider has accepted.
+ *
+ * @throws {ApiRequestError} 400 WRONG_CODE, 409 NOT_ACCEPTED_YET
+ */
+export async function verifyPickupCode(orderId, code) {
+  const result = await api.post(`/orders/${orderId}/verify-pickup`, { code });
+  return toUiOrder(result.data);
 }

@@ -10,6 +10,7 @@ const config = require('../config/env');
 const { ApiError } = require('../middleware/errors');
 const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { pickupVerifyLimiter } = require('../middleware/rateLimit');
 const wallet = require('../services/wallet');
 const sourcing = require('../services/sourcing');
 const checkout = require('../services/checkout');
@@ -183,8 +184,24 @@ async function visibilityFilter(user) {
  * door; a customer is reading their own order; `market_owner` and `developer`
  * are operator roles already scoped by the filter above.
  */
+/**
+ * Who may ever read `pickupCode` off an order.
+ *
+ * Only the rider it was generated for — told to them once, in the app, so
+ * they can say it out loud at the counter — and `developer` for support. Not
+ * even the shopkeeper who will type it in: the whole point of asking them to
+ * enter it is that the code came from the rider standing in front of them,
+ * not from a screen they could read themselves.
+ */
+function mayReadPickupCode(order, user) {
+  if (user.role === 'developer') return true;
+  return user.role === 'delivery' && order.assignedTo && String(order.assignedTo) === user._id.toHexString();
+}
+
 function redactForViewer(order, user) {
-  if (user.role !== 'shopkeeper') return order;
+  const withoutCode = mayReadPickupCode(order, user) ? order : { ...order, pickupCode: undefined };
+
+  if (user.role !== 'shopkeeper') return withoutCode;
 
   const {
     customerName: _name,
@@ -194,9 +211,37 @@ function redactForViewer(order, user) {
     // shopkeeper has no use for it.
     deliveryLocation: _location,
     ...rest
-  } = order;
+  } = withoutCode;
 
   return rest;
+}
+
+/**
+ * Once a rider has actively accepted an independent-shop pickup, both the
+ * shopkeeper and the customer have a real reason to know who is coming — the
+ * shopkeeper to expect them at the counter, the customer to expect the knock.
+ * Before that moment there is nothing to show: a rider merely picked as
+ * "nearest" has not agreed to anything yet.
+ *
+ * Runs after `redactForViewer`, on the shaped list, so it never has to repeat
+ * that function's role checks.
+ */
+async function attachRiderContact(shapedOrders, viewerRole) {
+  if (viewerRole !== 'shopkeeper' && viewerRole !== 'customer') return shapedOrders;
+
+  const riderIds = shapedOrders
+    .filter((o) => o.assignedTo && o.riderAcceptedAt)
+    .map((o) => o.assignedTo);
+  if (riderIds.length === 0) return shapedOrders;
+
+  const riders = await User.find({ _id: { $in: riderIds } }).select('name phone').lean();
+  const byId = new Map(riders.map((r) => [String(r._id), r]));
+
+  return shapedOrders.map((o) => {
+    if (!o.assignedTo || !o.riderAcceptedAt) return o;
+    const rider = byId.get(String(o.assignedTo));
+    return rider ? { ...o, riderName: rider.name, riderPhone: rider.phone } : o;
+  });
 }
 
 router.get(
@@ -217,7 +262,8 @@ router.get(
     if (status) filter.status = status;
 
     const orders = await Order.find(filter).sort({ createdAt: -1 }).limit(limit);
-    return res.json({ data: orders.map((o) => redactForViewer(o.toJSON(), req.user)) });
+    const shaped = orders.map((o) => redactForViewer(o.toJSON(), req.user));
+    return res.json({ data: await attachRiderContact(shaped, req.user.role) });
   }
 );
 
@@ -229,7 +275,8 @@ router.get(
     const order = await Order.findOne({ _id: req.valid.params.id, ...(await visibilityFilter(req.user)) });
     // 404 rather than 403 so order ids are not probeable.
     if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
-    return res.json({ data: redactForViewer(order.toJSON(), req.user) });
+    const [shaped] = await attachRiderContact([redactForViewer(order.toJSON(), req.user)], req.user.role);
+    return res.json({ data: shaped });
   }
 );
 
@@ -521,6 +568,23 @@ router.patch(
     }
 
     /**
+     * A shop order with an accepted rider moves to `Out for Delivery` only
+     * through POST /:id/verify-pickup, never by hand.
+     *
+     * Scoped tightly to orders that actually went through the accept flow —
+     * `assignedTo` AND `riderAcceptedAt` both set — so a shop order that never
+     * got a location-bound dispatch (and so relies on the older /claim path)
+     * is untouched by this and keeps working exactly as it always has.
+     */
+    if (order.shop && status === 'Out for Delivery' && order.assignedTo && order.riderAcceptedAt) {
+      throw new ApiError(
+        409,
+        "Enter the pickup code the rider gives you to confirm they've collected the order.",
+        'PICKUP_CODE_REQUIRED'
+      );
+    }
+
+    /**
      * A delivery agent may only complete an order that is theirs.
      *
      * The visibility filter above already hides another agent's assignment, so
@@ -626,6 +690,47 @@ router.patch(
     }
 
     return res.json({ data: redactForViewer(order.toJSON(), req.user) });
+  }
+);
+
+/**
+ * The shopkeeper types in what the rider just told them, standing at the
+ * counter, to confirm the right person collected the order.
+ *
+ * The only path from `Preparing` to `Out for Delivery` for a shop order once
+ * a rider has accepted — see the guard in PATCH /:id/status above. A wrong
+ * code is reported plainly rather than a generic failure: the shopkeeper is
+ * mistyping a number a real person just read out to them, not attacking
+ * anything, and `pickupVerifyLimiter` is what actually bounds guessing.
+ */
+router.post(
+  '/:id/verify-pickup',
+  requireAuth,
+  requireRole('shopkeeper', 'developer'),
+  pickupVerifyLimiter,
+  validate({
+    params: z.object({ id: fields.objectId }).strict(),
+    body: z.object({ code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code.') }).strict(),
+  }),
+  async (req, res) => {
+    const result = await dispatch.verifyShopPickup({
+      orderId: req.valid.params.id,
+      shopkeeperId: req.user._id,
+      code: req.valid.body.code,
+    });
+
+    if (!result.verified) {
+      if (result.reason === 'NOT_FOUND') throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+      if (result.reason === 'WRONG_CODE') {
+        throw new ApiError(400, "That code doesn't match. Ask the rider to read it again.", 'WRONG_CODE');
+      }
+      if (result.reason === 'NOT_ACCEPTED_YET') {
+        throw new ApiError(409, 'No rider has accepted this order yet.', 'NOT_ACCEPTED_YET');
+      }
+      throw new ApiError(409, 'This order is not ready to hand over.', result.reason || 'NOT_PREPARING');
+    }
+
+    return res.json({ data: redactForViewer(result.order.toJSON(), req.user) });
   }
 );
 

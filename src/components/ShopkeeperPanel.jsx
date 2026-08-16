@@ -2,7 +2,8 @@ import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Store, Package, ShoppingBag, CheckCircle2, Clock, Truck,
   MapPin, LogOut, User, LayoutDashboard, Plus, Edit, Trash2,
-  AlertTriangle, Navigation, Check, Camera, TrendingUp, BarChart3, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert, Bike
+  AlertTriangle, Navigation, Check, Camera, TrendingUp, BarChart3, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert, Bike,
+  Phone, KeyRound, Loader2,
 } from 'lucide-react';
 import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../services/auth';
 import { fetchShopEarnings, withdrawShopEarnings, fetchNearbyRider } from '../services/shops';
@@ -70,7 +71,7 @@ function KycGateBanner({ kyc, onOpenKyc }) {
   );
 }
 
-export default function ShopkeeperPanel({ user, orders, shopProfile = null, products, setProducts, categories = [], onAddProduct, onEditProduct, onUpdateOrderStatus, onOrderAccepted, onLogout, onSyncOrders, kyc = null, onOpenKyc, onUserUpdated }) {
+export default function ShopkeeperPanel({ user, orders, shopProfile = null, products, setProducts, categories = [], onAddProduct, onEditProduct, onUpdateOrderStatus, onVerifyPickup, onOrderAccepted, onLogout, onSyncOrders, kyc = null, onOpenKyc, onUserUpdated }) {
   const { t } = useLanguage();
 
   // UX gate only. Every catalog write is authorized again by the API.
@@ -789,8 +790,16 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                 <div key={order.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
                   <div className="flex justify-between items-start mb-2">
                     <span className="font-bold text-gray-900">Order #{order.id}</span>
-                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${order.assignedTo ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
-                      {order.assignedTo ? 'Rider assigned' : 'Waiting for Agent'}
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                        order.riderAccepted
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : order.assignedTo
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-blue-100 text-blue-700'
+                      }`}
+                    >
+                      {order.riderAccepted ? 'Rider assigned' : order.assignedTo ? 'Rider notified' : 'Waiting for Agent'}
                     </span>
                   </div>
                   <p className="text-xs text-gray-500 mb-3 line-clamp-1">{order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</p>
@@ -802,37 +811,74 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                     <p className="w-full py-2 bg-gray-100 text-gray-500 rounded-lg font-bold text-xs border border-gray-200 text-center">
                       Waiting for a rider to collect it
                     </p>
-                  ) : shopProfile?.hasLocation ? (
+                  ) : !order.riderAccepted ? (
                     /*
-                     * "Always" here means: visible the moment a rider is on the
-                     * order, no tap required — the same reasoning the delivery
-                     * app's own map follows, just watching the rider from the
-                     * shop's side of the pickup instead of the rider's own.
+                     * Dispatch picked someone nearest, but nobody has agreed
+                     * to anything yet — no name, no phone, no map. Showing
+                     * those now would tell the shopkeeper to expect a person
+                     * who has not actually said yes.
                      */
-                    <div className="rounded-2xl overflow-hidden border border-gray-200">
-                      {riderFix ? (
-                        <Suspense fallback={<div style={{ height: 160 }} className="bg-gray-100 animate-pulse" />}>
-                          <DeliveryRouteMap
-                            rider={riderFix}
-                            market={{ lat: shopProfile.lat, lng: shopProfile.lng }}
-                            customer={null}
-                            status={order.status}
-                            originLabel="Your shop"
-                            height={160}
-                          />
-                        </Suspense>
+                    <p className="w-full py-2.5 bg-amber-50 text-amber-800 rounded-lg font-semibold text-xs border border-amber-200 text-center">
+                      A rider has been notified and is deciding — hang tight.
+                    </p>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {(order.riderName || order.riderPhone) && (
+                        <div className="flex items-center justify-between gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Delivery partner</p>
+                            <p className="text-xs font-bold text-gray-900 truncate">{order.riderName || 'Rider'}</p>
+                          </div>
+                          {order.riderPhone && (
+                            <a
+                              href={`tel:${order.riderPhone}`}
+                              className="shrink-0 w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center active:scale-95 transition-transform"
+                              aria-label="Call the rider"
+                            >
+                              <Phone className="w-4 h-4" />
+                            </a>
+                          )}
+                        </div>
+                      )}
+
+                      {shopProfile?.hasLocation ? (
+                        /*
+                         * "Always" here means: visible the moment a rider is on
+                         * the order, no tap required — the same reasoning the
+                         * delivery app's own map follows, just watching the
+                         * rider from the shop's side of the pickup instead of
+                         * the rider's own.
+                         */
+                        <div className="rounded-2xl overflow-hidden border border-gray-200">
+                          {riderFix ? (
+                            <Suspense fallback={<div style={{ height: 160 }} className="bg-gray-100 animate-pulse" />}>
+                              <DeliveryRouteMap
+                                rider={riderFix}
+                                market={{ lat: shopProfile.lat, lng: shopProfile.lng }}
+                                customer={null}
+                                status={order.status}
+                                originLabel="Your shop"
+                                height={160}
+                              />
+                            </Suspense>
+                          ) : (
+                            <p className="text-[11px] text-amber-800 bg-amber-50 px-3 py-2.5 text-center leading-relaxed">
+                              {riderFix === null
+                                ? 'Rider is on the way — waiting for their GPS to come through.'
+                                : 'Locating your delivery partner…'}
+                            </p>
+                          )}
+                        </div>
                       ) : (
-                        <p className="text-[11px] text-amber-800 bg-amber-50 px-3 py-2.5 text-center leading-relaxed">
-                          {riderFix === null
-                            ? 'Rider is on the way — waiting for their GPS to come through.'
-                            : 'Locating your delivery partner…'}
+                        <p className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 leading-relaxed">
+                          Rider is on the way. Add your shop's location in Profile to see them live on a map.
                         </p>
                       )}
+
+                      {onVerifyPickup && (
+                        <PickupCodeForm orderId={order.serverId} onVerify={onVerifyPickup} />
+                      )}
                     </div>
-                  ) : (
-                    <p className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 leading-relaxed">
-                      Rider is on the way. Add your shop's location in Profile to see them live on a map.
-                    </p>
                   )}
                 </div>
                 );
@@ -1570,8 +1616,8 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
 }
 
 const NavButton = ({ icon: Icon, label, isActive, onClick }) => (
-  <button 
-    onClick={onClick} 
+  <button
+    onClick={onClick}
     className="flex flex-col items-center gap-1 p-2 active:scale-90 transition-transform"
   >
     <div className={`p-1.5 rounded-xl transition-colors ${isActive ? 'bg-green-100 text-green-700' : 'text-gray-400'}`}>
@@ -1580,3 +1626,50 @@ const NavButton = ({ icon: Icon, label, isActive, onClick }) => (
     <span className={`text-[10px] font-bold ${isActive ? 'text-green-700' : 'text-gray-400'}`}>{label}</span>
   </button>
 );
+
+/**
+ * Where the rider proves they're actually standing at the counter.
+ *
+ * `onVerify` returns a boolean rather than throwing — a wrong code is an
+ * ordinary, expected outcome here (a mistyped digit), not an error state the
+ * form needs to unwind from. The parent already toasts on both outcomes, so
+ * this only has to clear the field on success and let the shopkeeper try
+ * again on failure.
+ */
+function PickupCodeForm({ orderId, onVerify }) {
+  const [code, setCode] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (code.length !== 6 || submitting) return;
+    setSubmitting(true);
+    const ok = await onVerify(orderId, code);
+    setSubmitting(false);
+    if (ok) setCode('');
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="flex items-center gap-2">
+      <div className="flex-1 flex items-center gap-2 bg-white border border-gray-300 rounded-xl px-3 py-2 focus-within:border-emerald-600">
+        <KeyRound className="w-4 h-4 text-gray-400 shrink-0" />
+        <input
+          type="text"
+          inputMode="numeric"
+          maxLength={6}
+          placeholder="Code from rider"
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          className="w-full bg-transparent text-sm font-bold tracking-[0.2em] text-gray-900 focus:outline-none placeholder:tracking-normal placeholder:font-semibold placeholder:text-gray-400"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={code.length !== 6 || submitting}
+        className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-transform"
+      >
+        {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm'}
+      </button>
+    </form>
+  );
+}

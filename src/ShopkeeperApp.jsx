@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import ShopkeeperPanel from './components/ShopkeeperPanel';
 import LoginPage from './components/LoginPage';
 import SplashScreen from './components/SplashScreen';
@@ -8,7 +8,8 @@ import useSessionUser from './hooks/useSessionUser';
 import { fetchKycStatus } from './services/kyc';
 import { initialCategories } from './data/mockData';
 import { fetchProducts, updateStock, createProduct, updateProduct } from './services/products';
-import { fetchOrders, updateOrderStatus } from './services/orders';
+import { fetchOrders, updateOrderStatus, verifyPickupCode } from './services/orders';
+import { ApiRequestError } from './services/apiClient';
 import { fetchMyStall } from './services/stalls';
 import { fetchMyJoinRequest } from './services/markets';
 import { fetchMyShop } from './services/shops';
@@ -303,6 +304,23 @@ export default function ShopkeeperApp() {
     };
   }, [user]);
 
+  /**
+   * A rider accepting is the one transition on this screen nobody tapped a
+   * button for — it happens on the rider's phone, not this one — so it is the
+   * one worth a toast rather than just a badge quietly changing colour on the
+   * next poll.
+   */
+  const seenAcceptedRiders = useRef(new Set());
+  useEffect(() => {
+    for (const order of orders) {
+      if (!order.riderAccepted) continue;
+      const key = order.serverId || order.id;
+      if (seenAcceptedRiders.current.has(key)) continue;
+      seenAcceptedRiders.current.add(key);
+      if (order.riderName) toast.info(`${order.riderName} accepted order ${order.id} 🛵`);
+    }
+  }, [orders, toast]);
+
   const handleSyncOrders = useCallback(async () => {
     try {
       const list = await fetchOrders({ limit: 100 });
@@ -327,6 +345,31 @@ export default function ShopkeeperApp() {
       toast.success(`Order ${updated.id} → ${newStatus} ${emoji}`);
     } catch (err) {
       toast.error(err.message || 'Could not update the order.');
+    }
+  }, [orders, toast]);
+
+  /**
+   * The code the rider read out at the counter, typed in to confirm it's
+   * really them. Moves the order to `Out for Delivery` on the server; a wrong
+   * code comes back as a message the shopkeeper can act on rather than a
+   * generic failure, since a mistyped digit is the overwhelmingly likely case.
+   */
+  const handleVerifyPickup = useCallback(async (orderId, code) => {
+    const target = orders.find((o) => o.id === orderId || o.serverId === orderId);
+    if (!target?.serverId) {
+      toast.error('This order is not available on the server yet.');
+      return false;
+    }
+
+    try {
+      const updated = await verifyPickupCode(target.serverId, code);
+      setOrders((prev) => prev.map((o) => (o.serverId === updated.serverId ? updated : o)));
+      toast.success(`Order ${updated.id} → Out for Delivery 🚚`);
+      return true;
+    } catch (err) {
+      const message = err instanceof ApiRequestError ? err.message : 'Could not verify that code.';
+      toast.error(message);
+      return false;
     }
   }, [orders, toast]);
 
@@ -495,6 +538,7 @@ export default function ShopkeeperApp() {
         onAddProduct={handleAddProduct}
         onEditProduct={handleEditProduct}
         onUpdateOrderStatus={handleUpdateOrderStatus}
+        onVerifyPickup={handleVerifyPickup}
         onOrderAccepted={handleOrderAccepted}
         onLogout={handleLogout}
         onSyncOrders={handleSyncOrders}

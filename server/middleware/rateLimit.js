@@ -169,6 +169,19 @@ const stallActionLimiter = rateLimit({
   handler: jsonLimitHandler('Too many actions. Please slow down.', 'RATE_LIMITED'),
 });
 
+/**
+ * Guessing the six-digit pickup code, keyed on the order rather than the
+ * caller — the whole point is bounding how many guesses ONE order's code can
+ * take, same reasoning as `otpVerifyLimiter` keying on the challenge.
+ */
+const pickupVerifyLimiter = rateLimit({
+  ...base,
+  windowMs: 10 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) => `pickupv:${req.params?.id || ipKeyGenerator(req.ip)}`,
+  handler: jsonLimitHandler('Too many attempts. Ask the rider to read the code again.', 'PICKUP_CODE_RATE_LIMITED'),
+});
+
 /** A rider's own settlement details are rarely edited; this only guards retries. */
 const riderBankDetailsLimiter = rateLimit({
   ...base,
@@ -189,4 +202,5 @@ module.exports = {
   riderLocationLimiter,
   stallActionLimiter,
   riderBankDetailsLimiter,
+  pickupVerifyLimiter,
 };

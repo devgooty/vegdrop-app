@@ -214,6 +214,9 @@ async function sweepShopOrderAssignments() {
     shop: { $ne: null },
     status: 'Preparing',
     assignedTo: { $ne: null },
+    // An accepted rider is committed; from here the pickup code governs, not
+    // this clock — see the guard in dispatch.expireShopOrderAssignment.
+    riderAcceptedAt: null,
     'fulfillment.riderOffer.expiresAt': { $lte: now },
   })
     .select('_id orderNumber')

@@ -459,6 +459,46 @@ export default function App() {
     };
   }, [user]);
 
+  /**
+   * A toast for the transitions that happen on somebody else's phone.
+   *
+   * Everything else that changes an order in this app already toasts at the
+   * call site — placing one, cancelling one. These four do not: a shopkeeper
+   * confirming, a rider accepting, a pickup code being verified, and a
+   * delivery landing all happen outside this tab, and the poll above is the
+   * only way this screen ever finds out. Compared against the previous poll
+   * rather than fired from `setOrders` itself, so the very first load (every
+   * order "changing" from nothing) does not toast the customer's entire
+   * order history at once.
+   */
+  const previousOrderState = useRef(new Map());
+  useEffect(() => {
+    const previous = previousOrderState.current;
+    const next = new Map();
+
+    for (const order of orders) {
+      const id = order.serverId || order.id;
+      const prior = previous.get(id);
+      next.set(id, { status: order.status, riderAccepted: order.riderAccepted });
+
+      if (!prior) continue; // First time this order has been seen; nothing to compare.
+
+      if (order.riderAccepted && !prior.riderAccepted) {
+        toast.info(`${order.riderName ? order.riderName : 'A rider'} is on the way to collect order ${order.id} 🛵`);
+      }
+      if (order.status !== prior.status) {
+        const message = {
+          Preparing: `Order ${order.id} is being prepared 👨‍🍳`,
+          'Out for Delivery': `Order ${order.id} is out for delivery 🚚`,
+          Delivered: `Order ${order.id} delivered ✅`,
+        }[order.status];
+        if (message) toast.info(message);
+      }
+    }
+
+    previousOrderState.current = next;
+  }, [orders, toast]);
+
   const handleSyncOrders = useCallback(async () => {
     try {
       const serverOrders = await fetchOrders({ limit: 100 });
