@@ -141,7 +141,7 @@ export default function DeliveryApp() {
   }, [user, toast]);
 
   if (showSplash || isRestoringSession) {
-    return <SplashScreen onComplete={() => setShowSplash(false)} />;
+    return <SplashScreen edition="delivery" onComplete={() => setShowSplash(false)} />;
   }
 
   // Login Screen

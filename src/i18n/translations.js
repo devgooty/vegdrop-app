@@ -1321,6 +1321,23 @@ const STRINGS = {
     hi: '{count} क़ीमत बदलाव दर्ज हैं। दो बदलावों के बीच लकीर सपाट रहती है क्योंकि क़ीमत ने वही किया।',
     te: '{count} ధరల మార్పులు నమోదయ్యాయి. మార్పుల మధ్య గీత సమాంతరంగా ఉంటుంది, ఎందుకంటే ధర అలాగే ఉంది.',
   },
+
+  // --- Launch screen (SplashScreen.jsx) -------------------------------------
+  // "VegDrop" itself is never here: it is a logotype, not a label, and it is
+  // drawn the same way in every language.
+  'splash.brandline': {
+    en: 'Artisanal Fresh Basket',
+    hi: 'ताज़ी सब्ज़ियों की टोकरी',
+    te: 'తాజా కూరగాయల బుట్ట',
+  },
+  'splash.shopkeeper': { en: 'Shopkeeper', hi: 'दुकानदार', te: 'దుకాణదారు' },
+  'splash.delivery': { en: 'Delivery Partner', hi: 'डिलीवरी पार्टनर', te: 'డెలివరీ భాగస్వామి' },
+  'splash.tagline1': {
+    en: 'Fresh from the market',
+    hi: 'बाज़ार से सीधे ताज़ा',
+    te: 'మార్కెట్ నుండి తాజాగా',
+  },
+  'splash.tagline2': { en: 'to your door', hi: 'आपके दरवाज़े तक', te: 'మీ ఇంటి వరకు' },
 };
 
 /**

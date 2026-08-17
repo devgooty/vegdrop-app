@@ -35,8 +35,11 @@ export default function AppRouter() {
 
   return (
     // The splash doubles as the chunk-loading state, so switching routes never
-    // shows a blank frame.
-    <Suspense fallback={<SplashScreen onComplete={() => {}} />}>
+    // shows a blank frame. No `onComplete` here on purpose: there is nothing to
+    // hand over to until the chunk resolves, so the splash assembles and then
+    // holds. With a no-op it faded itself to transparent after ~2.5s and left a
+    // blank screen behind on any connection slower than that.
+    <Suspense fallback={<SplashScreen />}>
       <Active />
     </Suspense>
   );

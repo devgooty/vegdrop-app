@@ -386,7 +386,7 @@ export default function ShopkeeperApp() {
   // Hold the splash until the session check resolves, so an already-signed-in
   // shopkeeper never sees the login screen flash before being restored.
   if (showSplash || isRestoringSession) {
-    return <SplashScreen onComplete={() => setShowSplash(false)} />;
+    return <SplashScreen edition="shopkeeper" onComplete={() => setShowSplash(false)} />;
   }
 
   // Login Screen

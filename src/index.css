@@ -763,3 +763,207 @@
 .pt-safe-6 {
   padding-top: calc(1.5rem + env(safe-area-inset-top, 0px));
 }
+
+/* ── Splash screen ───────────────────────────────────────────────────────────
+
+   The launch animation, drawn entirely in CSS. It replaced a 1.5 MB
+   `public/splash.mp4` that every one of the three apps downloaded and played
+   before its first frame — the single largest asset on the critical path, for
+   three seconds of decoration. Vector art and keyframes cost about 3 KB inside
+   an already-downloaded stylesheet, so the animation now starts on the first
+   paint instead of after a video finishes buffering.
+
+   Losing the video also loses its failure modes. A muted autoplay is a request,
+   not a guarantee: iOS low-power mode, data saver and enterprise policies all
+   refuse it, and the old splash could sit on a frozen first frame with no way
+   to know. Keyframes have no such permission to be denied.
+
+   The sequence, and the reason it is shaped this way: the mark falls, lands and
+   settles at the centre of the screen, the tagline rises under it, and then the
+   mark shrinks and slides aside as the wordmark plate opens beside it — a
+   single lockup assembling itself, rather than a logo that merely fades in.
+   The slide is not animated: the row is centred, so the plate growing from zero
+   width pushes the mark left on its own, and the two stay optically balanced at
+   every frame in between.
+
+   EVERY RULE BELOW DESCRIBES THE SETTLED, FINAL STATE, and each keyframe runs
+   from the hidden state to that same final state. That is what makes the
+   reduced-motion block at the bottom a one-liner: switching the animations off
+   leaves the finished lockup on screen, never a half-built one. Keep it that
+   way — putting a final value only inside a `to {}` block would make
+   reduced-motion render whatever the base rule happened to say. */
+
+.vd-splash-field {
+  background:
+    radial-gradient(120% 80% at 50% 38%, rgba(52, 211, 153, 0.22) 0%, rgba(52, 211, 153, 0) 60%),
+    linear-gradient(170deg, #1B5643 0%, #133F31 45%, #0B2A20 100%);
+}
+
+/* The ripples the landing throws off. Sized in % of the mark so they scale with
+   it, and painted behind it — they read as impact, not as a loading spinner. */
+.vd-splash-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8.5rem;
+  height: 8.5rem;
+  margin: -4.25rem 0 0 -4.25rem;
+  border-radius: 999px;
+  border: 1.5px solid rgba(167, 243, 208, 0.5);
+  opacity: 0;
+  animation: vd-splash-ripple 1100ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.vd-splash-ring-1 { animation-delay: 600ms; }
+.vd-splash-ring-2 { animation-delay: 760ms; }
+
+@keyframes vd-splash-ripple {
+  0% { opacity: 0.55; transform: scale(0.45); }
+  100% { opacity: 0; transform: scale(2.6); }
+}
+
+/* Two nested elements because they animate two different transforms at
+   overlapping times: the inner one falls and bounces, the outer one shrinks out
+   of the centre once the plate opens. One element cannot hold both without the
+   later animation overwriting the earlier one's transform. */
+.vd-splash-mark {
+  display: block;
+  width: 4.75rem;
+  height: 4.75rem;
+  flex: none;
+  transform: scale(1);
+  animation: vd-splash-settle 620ms cubic-bezier(0.16, 1, 0.3, 1) 1150ms both;
+}
+/* 2.15, not more: at 4.75rem the mark is already half the width of a 375px
+   phone at this scale, and a bigger opening pose crops against the tagline. */
+@keyframes vd-splash-settle {
+  from { transform: scale(2.15); }
+  to { transform: scale(1); }
+}
+
+.vd-splash-drop {
+  display: block;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
+  animation: vd-splash-fall 780ms cubic-bezier(0.33, 1.02, 0.42, 1) 60ms both;
+}
+/* Overshoot then a small secondary bounce — a drop landing, not an object
+   easing into place. The squash on the way down is deliberate and slight; more
+   than this and a 4.75rem mark starts to read as a cartoon. */
+@keyframes vd-splash-fall {
+  0% { opacity: 0; transform: translateY(-38px) scale(0.5); }
+  45% { opacity: 1; }
+  58% { transform: translateY(2px) scale(1.06, 0.94); }
+  74% { transform: translateY(-4px) scale(0.98, 1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* The plate. Its width is fixed rather than intrinsic on purpose: `width: auto`
+   cannot be animated from 0, and the wordmark inside it is "VegDrop" in every
+   language — this is a logotype, so it is never translated and never reflows. */
+.vd-splash-plate {
+  position: relative;
+  width: 10.4rem;
+  margin-left: 0.6rem;
+  height: 3.05rem;
+  flex: none;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: vd-splash-open 560ms cubic-bezier(0.16, 1, 0.3, 1) 1250ms both;
+}
+/* The opacity step is not decoration. `width: 0` on a bordered, border-box
+   element still lays out at 3px — the two borders — so the closed plate drew a
+   thin white bar beside the mark for the whole 1.25s before it opened. It is
+   held hidden until the first frames of the open, by which point the easing has
+   already carried the width well past its own border. */
+@keyframes vd-splash-open {
+  0% { width: 0; margin-left: 0; opacity: 0; }
+  6% { opacity: 1; }
+  100% { width: 10.4rem; margin-left: 0.6rem; opacity: 1; }
+}
+
+/* The white fill arrives as a wipe under the outline, and the wordmark follows
+   ~120ms behind its edge, so the plate reads as filling up rather than as text
+   fading onto a box that was already white. */
+.vd-splash-plate-fill {
+  position: absolute;
+  inset: 0;
+  background: #FFFFFF;
+  border-radius: 999px;
+  animation: vd-splash-wipe 380ms cubic-bezier(0.4, 0, 0.2, 1) 1520ms both;
+}
+.vd-splash-wordmark {
+  position: relative;
+  font-family: 'Baloo 2', 'Plus Jakarta Sans', ui-sans-serif, sans-serif;
+  font-weight: 800;
+  font-size: 1.6rem;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  animation: vd-splash-wipe 400ms cubic-bezier(0.4, 0, 0.2, 1) 1640ms both;
+}
+@keyframes vd-splash-wipe {
+  from { clip-path: inset(0 100% 0 0 round 999px); }
+  to { clip-path: inset(0 0 0 0 round 999px); }
+}
+
+/* A slow sheen across the finished plate. It is what keeps the screen alive
+   when the splash is being used as the lazy-chunk fallback and has nothing to
+   count down to — see SplashScreen.jsx. */
+.vd-splash-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 35%,
+    rgba(27, 77, 62, 0.11) 50%,
+    rgba(255, 255, 255, 0) 65%
+  );
+  animation: vd-splash-sheen 2600ms ease-in-out 2050ms infinite;
+}
+@keyframes vd-splash-sheen {
+  0% { transform: translateX(-115%); }
+  45%, 100% { transform: translateX(115%); }
+}
+
+/* Absolutely positioned so it cannot add height to the lockup row — in flow it
+   would shift the mark and plate up as it appeared. */
+.vd-splash-sub {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 0.85rem);
+  text-align: center;
+  animation: vd-splash-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) 1950ms both;
+}
+
+.vd-splash-tag {
+  animation: vd-splash-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.vd-splash-tag-1 { animation-delay: 620ms; }
+.vd-splash-tag-2 { animation-delay: 760ms; }
+
+@keyframes vd-splash-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Decoration, and treated as such: with the animations off every element is
+   already sitting at its final value, so the lockup simply appears, holds for
+   the same duration and fades out on the same schedule. */
+@media (prefers-reduced-motion: reduce) {
+  .vd-splash-ring,
+  .vd-splash-mark,
+  .vd-splash-drop,
+  .vd-splash-plate,
+  .vd-splash-plate-fill,
+  .vd-splash-wordmark,
+  .vd-splash-sheen,
+  .vd-splash-sub,
+  .vd-splash-tag {
+    animation: none;
+  }
+  .vd-splash-ring { display: none; }
+}
