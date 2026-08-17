@@ -24,6 +24,9 @@ const FADE_MS = 700;
  */
 const BOOT = performance.now();
 
+/** Impact droplets. Each n has its own vector and lag in src/index.css. */
+const SPARKS = [1, 2, 3, 4, 5, 6];
+
 /**
  * The launch screen, shared by all three apps.
  *
@@ -122,6 +125,11 @@ export default function SplashScreen({ onComplete, edition }) {
         */}
         <div className="relative flex items-center">
           <span className="vd-splash-mark">
+            {/* Both before the droplet, so they sit behind it. */}
+            <span className="vd-splash-pad" aria-hidden="true" />
+            {SPARKS.map((n) => (
+              <span key={n} className={`vd-splash-spark vd-splash-spark-${n}`} aria-hidden="true" />
+            ))}
             <span className="vd-splash-drop">
               <VegDropMark />
             </span>
@@ -130,8 +138,8 @@ export default function SplashScreen({ onComplete, edition }) {
           <span className="vd-splash-plate">
             <span className="vd-splash-plate-fill" aria-hidden="true" />
             <span className="vd-splash-wordmark">
-              <span className="text-[#1B4D3E]">Veg</span>
-              <span className="text-[#C8372D]">Drop</span>
+              <span className="vd-splash-wordmark-veg text-[#1B4D3E]">Veg</span>
+              <span className="vd-splash-wordmark-drop text-[#C8372D]">Drop</span>
             </span>
             <span className="vd-splash-sheen" aria-hidden="true" />
           </span>
@@ -140,7 +148,9 @@ export default function SplashScreen({ onComplete, edition }) {
               line has to carry, and the warm grey only reaches 3.3:1 on cream.
               Same reasoning as .si-otp.is-filled's colour note. */}
           <span className={`vd-splash-sub font-bold text-[#2D6A4F] ${subCase}`}>
+            <span className="vd-splash-rule" aria-hidden="true" />
             {t(subKey)}
+            <span className="vd-splash-rule" aria-hidden="true" />
           </span>
         </div>
 
@@ -190,6 +200,29 @@ function VegDropMark() {
         <clipPath id="vd-lens-clip">
           <circle cx="32" cy="43" r="13" />
         </clipPath>
+
+        {/* Body clip, so the modelling passes below can be drawn as plain
+            shapes and cut to the silhouette instead of each one having to trace
+            the teardrop's own curves. */}
+        <clipPath id="vd-body-clip">
+          <path d="M32 4 C32 4 12 26 12 41 C12 52.05 20.95 61 32 61 C43.05 61 52 52.05 52 41 C52 26 32 4 32 4 Z" />
+        </clipPath>
+
+        {/* The broad soft catchlight down the upper left. A gradient, not a
+            shape with an edge — an edge here reads as a second object sitting
+            on the droplet. */}
+        <radialGradient id="vd-drop-gloss" cx="32%" cy="26%" r="52%">
+          <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.5" />
+          <stop offset="60%" stopColor="#FFFFFF" stopOpacity="0.1" />
+          <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
+        </radialGradient>
+
+        {/* Occlusion at the bottom edge. Without it the droplet is evenly lit
+            all the way round and reads flat however bright the top is. */}
+        <radialGradient id="vd-drop-depth" cx="50%" cy="88%" r="46%">
+          <stop offset="0%" stopColor="#0A5B30" stopOpacity="0.32" />
+          <stop offset="100%" stopColor="#0A5B30" stopOpacity="0" />
+        </radialGradient>
       </defs>
 
       {/* Teardrop: a circle of r=20 at (32,41), closed off with two long
@@ -199,20 +232,44 @@ function VegDropMark() {
         fill="url(#vd-drop-body)"
       />
 
-      {/* The white lens the leaves sit in, exactly as the logo has it. */}
+      {/* Modelling, in light-over-dark order, all cut to the silhouette. */}
+      <g clipPath="url(#vd-body-clip)">
+        <rect x="0" y="0" width="64" height="64" fill="url(#vd-drop-depth)" />
+        <rect x="0" y="0" width="64" height="64" fill="url(#vd-drop-gloss)" />
+        {/* A bright edge along the lit side, drawn by offsetting a stroked copy
+            of the silhouette up and left and keeping only what lands inside.
+            Same light source as the gloss and the specular pin, and most of
+            what makes the body read as glass rather than as filled vector. */}
+        <path
+          d="M32 4 C32 4 12 26 12 41 C12 52.05 20.95 61 32 61 C43.05 61 52 52.05 52 41 C52 26 32 4 32 4 Z"
+          fill="none"
+          stroke="#FFFFFF"
+          strokeOpacity="0.32"
+          strokeWidth="1.6"
+          transform="translate(-0.9 -1.1)"
+        />
+      </g>
+
+      {/* A hairline of shadow under the lens rim, so the white circle sits IN
+          the droplet rather than on top of it. */}
+      <circle cx="32" cy="43.5" r="13" fill="#0A5B30" opacity="0.18" />
       <circle cx="32" cy="43" r="13" fill="#FFFFFF" />
 
       {/* Mirrored about x=32, so the pair sits square in the lens. */}
       <g clipPath="url(#vd-lens-clip)">
         <path d="M32 52 C24.5 49.5 21.5 43 23 35.5 C29.5 38.5 32.5 45 32 52 Z" fill="url(#vd-leaf-left)" />
         <path d="M32 52 C39.5 49.5 42.5 43 41 35.5 C34.5 38.5 31.5 45 32 52 Z" fill="url(#vd-leaf-right)" />
+        {/* Midribs. At 4.75rem they are barely there; at the 2.15× opening pose
+            they are what keeps the leaves from reading as two plain wedges. */}
+        <path d="M32 51.5 C30.8 45 28.4 40.2 24.6 36.9" stroke="#FFFFFF" strokeOpacity="0.5" strokeWidth="0.7" fill="none" strokeLinecap="round" />
+        <path d="M32 51.5 C33.2 45 35.6 40.2 39.4 36.9" stroke="#FFFFFF" strokeOpacity="0.42" strokeWidth="0.7" fill="none" strokeLinecap="round" />
       </g>
 
-      {/* Specular highlight — the one thing the flat PNG has no room for, and
-          what stops the droplet reading as a sticker on a dark field. Narrow
-          and well off-centre; anything rounder reads as a smudge once the mark
-          is scaled up to fill the screen. */}
-      <ellipse cx="23.5" cy="25" rx="2.5" ry="5" fill="#FFFFFF" opacity="0.3" transform="rotate(-22 23.5 25)" />
+      {/* Specular pin — the small hard glint that sells a wet surface, sitting
+          inside the broad gloss above. Narrow and well off-centre; anything
+          rounder reads as a smudge once the mark is scaled up to fill the
+          screen. */}
+      <ellipse cx="23.5" cy="25" rx="2.3" ry="4.6" fill="#FFFFFF" opacity="0.72" transform="rotate(-22 23.5 25)" />
     </svg>
   );
 }
