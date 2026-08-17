@@ -56,6 +56,13 @@ export function toUiOrder(order) {
     marketName: order.marketName || null,
     // The independent shop it was placed with, when it was not a market.
     shopName: order.shopName || null,
+    // Where to physically go to collect it — only ever present for the rider
+    // who accepted the pickup, once they have accepted it. See the customer
+    // `address` above for the second leg, after handover.
+    shopAddress: order.shopAddress || null,
+    shopLat: order.shopLat ?? null,
+    shopLng: order.shopLng ?? null,
+    shopPhone: order.shopPhone || null,
     fulfillmentStatus: order.fulfillment?.status || null,
     sourcingDeadline: order.fulfillment?.sourcingDeadline || null,
     // The moment the stalls committed. Past this the cancel button should go.

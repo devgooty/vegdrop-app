@@ -244,6 +244,43 @@ async function attachRiderContact(shapedOrders, viewerRole) {
   });
 }
 
+/**
+ * Once a delivery agent has accepted a shop pickup, they need to physically
+ * get to the shop before they can get to the customer — but the order only
+ * ever carried the customer's drop-off point. Without this, the app's only
+ * "Navigate" button pointed a rider heading to collect an order at the door
+ * they are meant to deliver it to, not the shop holding it.
+ *
+ * Read live off the shopkeeper's own profile rather than snapshotted at order
+ * time, so it follows if the shopkeeper corrects a pin later. Gated the same
+ * way `attachRiderContact` gates rider contact details — only once accepted,
+ * since that is the only moment the UI has a use for it.
+ */
+async function attachShopLocation(shapedOrders, viewerRole) {
+  if (viewerRole !== 'delivery') return shapedOrders;
+
+  const shopIds = shapedOrders
+    .filter((o) => o.shop && o.assignedTo && o.riderAcceptedAt)
+    .map((o) => o.shop);
+  if (shopIds.length === 0) return shapedOrders;
+
+  const shops = await User.find({ _id: { $in: shopIds } }).select('phone shop.address shop.location').lean();
+  const byId = new Map(shops.map((s) => [String(s._id), s]));
+
+  return shapedOrders.map((o) => {
+    if (!o.shop || !o.assignedTo || !o.riderAcceptedAt) return o;
+    const shop = byId.get(String(o.shop));
+    if (!shop?.shop) return o;
+    return {
+      ...o,
+      shopAddress: shop.shop.address || null,
+      shopLat: shop.shop.location?.coordinates?.[1] ?? null,
+      shopLng: shop.shop.location?.coordinates?.[0] ?? null,
+      shopPhone: shop.phone || null,
+    };
+  });
+}
+
 router.get(
   '/',
   requireAuth,
@@ -263,7 +300,8 @@ router.get(
 
     const orders = await Order.find(filter).sort({ createdAt: -1 }).limit(limit);
     const shaped = orders.map((o) => redactForViewer(o.toJSON(), req.user));
-    return res.json({ data: await attachRiderContact(shaped, req.user.role) });
+    const withRider = await attachRiderContact(shaped, req.user.role);
+    return res.json({ data: await attachShopLocation(withRider, req.user.role) });
   }
 );
 
@@ -275,7 +313,8 @@ router.get(
     const order = await Order.findOne({ _id: req.valid.params.id, ...(await visibilityFilter(req.user)) });
     // 404 rather than 403 so order ids are not probeable.
     if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
-    const [shaped] = await attachRiderContact([redactForViewer(order.toJSON(), req.user)], req.user.role);
+    const [withRider] = await attachRiderContact([redactForViewer(order.toJSON(), req.user)], req.user.role);
+    const [shaped] = await attachShopLocation([withRider], req.user.role);
     return res.json({ data: shaped });
   }
 );
