@@ -32,11 +32,26 @@ const base = {
   skip: () => config.isTest,
 };
 
+/**
+ * Paths that carry their own, more appropriate budget and must not also draw on
+ * the shared one.
+ *
+ * Only the reverse-OTP status poll qualifies. It is called every few seconds for
+ * up to ten minutes, so a single verification would spend a third of the global
+ * allowance — and on a shared connection (one market, one wifi, several people
+ * signing in) it would lock everyone else out of the API entirely. It is metered
+ * per token by `reverseOtpStatusLimiter` below, which bounds it far more
+ * precisely than an IP count ever could.
+ */
+const GLOBAL_LIMIT_EXEMPT = new Set(['/auth/reverse/status']);
+
 /** Broad protection for the whole API surface. */
 const globalLimiter = rateLimit({
   ...base,
   windowMs: 15 * 60 * 1000,
   limit: 600,
+  // Mounted at /api, so req.path here is already relative to that prefix.
+  skip: (req) => config.isTest || GLOBAL_LIMIT_EXEMPT.has(req.path),
   handler: jsonLimitHandler('Too many requests. Please slow down.', 'RATE_LIMITED'),
 });
 
@@ -96,6 +111,61 @@ const otpVerifyLimiter = rateLimit({
     return `otpv:${challenge}`;
   },
   handler: jsonLimitHandler('Too many verification attempts. Request a new code.', 'OTP_RATE_LIMITED'),
+});
+
+/**
+ * Starting a reverse-OTP challenge sends nothing, so it cannot be turned into
+ * unsolicited messaging the way /otp/start can — there is no per-source twin of
+ * this limiter for that reason. What it does cost is a row, so it is still
+ * bounded per number to stop one phone accumulating thousands of open
+ * challenges. Looser than `otpRequestLimiter` because a free retry is a
+ * reasonable thing for a confused user to do several times.
+ */
+const reverseOtpStartLimiter = rateLimit({
+  ...base,
+  windowMs: 10 * 60 * 1000,
+  limit: 15,
+  keyGenerator: (req) => {
+    const raw = req.body?.phone;
+    if (typeof raw !== 'string' || raw.length === 0) {
+      return `rotps:${ipKeyGenerator(req.ip)}`;
+    }
+    return `rotps:${raw.replace(/\D/g, '').slice(-10)}`;
+  },
+  handler: jsonLimitHandler('Too many verification attempts. Please wait a moment.', 'OTP_RATE_LIMITED'),
+});
+
+/**
+ * The status poll. Generous on purpose — this is a client waiting politely, not
+ * an attacker guessing.
+ *
+ * Keyed on the token rather than the IP, which is the only key that works here.
+ * The token is 32 random bytes handed to one device, so it cannot be guessed or
+ * shared, and metering by it bounds each verification independently instead of
+ * making everyone behind one router compete. 300 covers a full ten minutes at
+ * the client's fastest polling rate with room to spare.
+ */
+const reverseOtpStatusLimiter = rateLimit({
+  ...base,
+  windowMs: 10 * 60 * 1000,
+  limit: 300,
+  keyGenerator: (req) => {
+    const token = typeof req.query?.token === 'string' ? req.query.token.slice(0, 80) : null;
+    return token ? `rotstat:${token}` : `rotstat:${ipKeyGenerator(req.ip)}`;
+  },
+  handler: jsonLimitHandler('Checking too often. Please wait a moment.', 'RATE_LIMITED'),
+});
+
+/**
+ * The inbound SMS relay. One authenticated device forwarding messages, so the
+ * budget suits a busy handset rather than a browser — but it is still bounded,
+ * because a leaked gateway secret should cost the attacker something.
+ */
+const smsGatewayLimiter = rateLimit({
+  ...base,
+  windowMs: 60 * 1000,
+  limit: 120,
+  handler: jsonLimitHandler('Too many messages. Slow down.', 'RATE_LIMITED'),
 });
 
 /**
@@ -196,6 +266,9 @@ module.exports = {
   otpRequestLimiter,
   otpStartIpLimiter,
   otpVerifyLimiter,
+  reverseOtpStartLimiter,
+  reverseOtpStatusLimiter,
+  smsGatewayLimiter,
   lookupLimiter,
   paymentLimiter,
   kycLimiter,

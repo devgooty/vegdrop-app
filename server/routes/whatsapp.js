@@ -3,6 +3,8 @@
 const crypto = require('crypto');
 const express = require('express');
 const config = require('../config/env');
+const { isConnected } = require('../db/connect');
+const reverseOtp = require('../services/reverseOtp');
 
 const router = express.Router();
 
@@ -151,16 +153,58 @@ router.post('/webhook', (req, res) => {
         }
 
         /**
-         * Inbound messages. Logged but not answered: a user replying to a code
-         * is usually a support question, and this integration has no template
-         * approved for anything except the code itself. The message body is
-         * deliberately not logged — it is user content we have no need to store.
+         * Inbound messages.
+         *
+         * These are how reverse OTP works: the user messages US the code we
+         * showed them, and Meta's signature above is what makes the sender it
+         * reports trustworthy enough to verify a number against.
+         *
+         * STILL NEVER ANSWERED. Two reasons now. A user replying to a code is
+         * usually a support question and this integration has no template
+         * approved for anything but the code itself — and a reply inside the
+         * 24-hour service window can be billable, which would turn a flow whose
+         * whole point is costing nothing into a paid one.
+         *
+         * The message body is never logged. It is user content, and during a
+         * verification it contains a live code.
          */
         for (const inbound of Array.isArray(value.messages) ? value.messages : []) {
-          console.info('[whatsapp] inbound message ignored', {
-            from: maskPhone(inbound?.from),
-            type: inbound?.type ?? 'unknown',
-          });
+          // Only text can carry a code; images, audio and reactions cannot.
+          if (inbound?.type !== 'text') {
+            console.info('[whatsapp] inbound message ignored', {
+              from: maskPhone(inbound?.from),
+              type: inbound?.type ?? 'unknown',
+            });
+            continue;
+          }
+
+          /**
+           * This route is mounted ABOVE the database gate on purpose (see
+           * app.js) so Meta never receives a 503 and never disables the
+           * subscription. Matching needs the database, so it is skipped rather
+           * than attempted when Mongo is down — the webhook still answers 200
+           * and the property that put it up there survives.
+           */
+          if (!isConnected()) {
+            console.warn('[whatsapp] inbound text skipped: database unavailable.');
+            continue;
+          }
+
+          /**
+           * Fire and forget. The 200 went out above, so a rejection here has
+           * nowhere to go — it must not reach the error handler, and Meta must
+           * not be made to wait on a database write it cannot act on.
+           */
+          reverseOtp
+            .matchInbound({
+              from: inbound.from,
+              // Cloud API shape for a text message: `{ text: { body } }`.
+              text: inbound.text?.body ?? '',
+              channel: 'whatsapp',
+            })
+            .catch((err) => {
+              console.error('[whatsapp] reverse otp matching failed', { message: err?.message });
+            });
         }
       }
     }

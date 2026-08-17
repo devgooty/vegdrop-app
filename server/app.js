@@ -16,6 +16,8 @@ const { errorHandler, notFoundHandler, ApiError } = require('./middleware/errors
 const { globalLimiter } = require('./middleware/rateLimit');
 
 const authRoutes = require('./routes/auth');
+const reverseOtpRoutes = require('./routes/reverseOtp');
+const smsGatewayRoutes = require('./routes/smsGateway');
 const kycRoutes = require('./routes/kyc');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
@@ -301,7 +303,20 @@ function createApp() {
   });
 
   // --- Routes --------------------------------------------------------------
+  /**
+   * Reverse OTP is mounted BEFORE /api/auth so its own /start and /status win
+   * over anything the auth router might later define under the same prefix.
+   * Unlike the WhatsApp webhook it sits below the database gate: every one of
+   * its routes reads or writes a challenge, so a 503 while Mongo is down is the
+   * honest answer.
+   */
+  app.use('/api/auth/reverse', reverseOtpRoutes);
   app.use('/api/auth', authRoutes);
+  /**
+   * The inbound SMS relay. Below the gate for the same reason — matching a code
+   * is a database write, and a relay that gets a 503 can retry.
+   */
+  app.use('/api/gateway', smsGatewayRoutes);
   app.use('/api/kyc', kycRoutes);
   app.use('/api/products', productRoutes);
   app.use('/api/orders', orderRoutes);

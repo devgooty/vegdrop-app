@@ -18,6 +18,7 @@ import AccountHistory from './components/AccountHistory';
 import AccountRewards from './components/AccountRewards';
 import PageTransition from './components/PageTransition';
 import OTPBoxGroup from './components/OTPBoxGroup';
+import ReverseOtpPanel from './components/ReverseOtpPanel';
 import MarketPicker from './components/MarketPicker';
 import NearbyShops from './components/NearbyShops';
 import LocationPrimer from './components/LocationPrimer';
@@ -258,6 +259,14 @@ export default function App() {
   const [showProfileOTP, setShowProfileOTP] = useState(false);
   const [profileMobileOTP, setProfileMobileOTP] = useState('');
   const [profileOtpError, setProfileOtpError] = useState('');
+  /**
+   * Whether the number leg is being proved in reverse — the user messaging us
+   * from the new number instead of reading back a code we sent to it.
+   *
+   * Only ever offered for `kind: 'phone'`. An email address has nothing to send
+   * from, so the address leg has no reverse equivalent.
+   */
+  const [profileReverse, setProfileReverse] = useState(false);
   /**
    * The challenge currently being answered, as `{ kind: 'email'|'phone', ... }`.
    *
@@ -741,11 +750,17 @@ export default function App() {
     setEditPhone(user.phone || '');
     setIsEditingProfile(true);
     setShowProfileOTP(false);
-    setProfileEmailOTP('');
+    /**
+     * Four more setters used to be called here — `setProfileEmailOTP`,
+     * `setProfilePrevEmailOTP`, `setProfilePrevMobileOTP` and
+     * `setActiveOtpStepIndex` — left behind when the multi-step profile OTP flow
+     * was removed. None of them existed any more, so every click on "Edit
+     * Profile Details" threw a ReferenceError partway through and the two resets
+     * below never ran: a stale code and, worse, a stale error message survived
+     * into the next edit.
+     */
     setProfileMobileOTP('');
-    setProfilePrevEmailOTP('');
-    setProfilePrevMobileOTP('');
-    setActiveOtpStepIndex(0);
+    setProfileReverse(false);
     setProfileOtpError('');
   }, [user]);
 
@@ -805,7 +820,9 @@ export default function App() {
 
       if (phoneChanged) {
         const issued = await startPhoneChange({ phone });
-        setProfileChallenge({ kind: 'phone', ...issued });
+        // `issued.destination` is masked, so the raw number is kept alongside —
+        // the reverse-OTP panel needs a real number to raise a challenge for.
+        setProfileChallenge({ kind: 'phone', rawPhone: phone, ...issued });
         setPendingPhoneChange(null);
         setProfileMobileOTP('');
         setProfileOtpError('');
@@ -857,7 +874,7 @@ export default function App() {
        */
       if (isEmail && pendingPhoneChange) {
         const issued = await startPhoneChange({ phone: pendingPhoneChange });
-        setProfileChallenge({ kind: 'phone', ...issued });
+        setProfileChallenge({ kind: 'phone', rawPhone: pendingPhoneChange, ...issued });
         setPendingPhoneChange(null);
         setProfileMobileOTP('');
         toast.success(t('toast.emailVerifiedNowPhone'));
@@ -2131,29 +2148,65 @@ export default function App() {
                                 )}
                               </div>
 
-                              <div className="space-y-2 border-t border-gray-100 pt-3">
-                                <label className="block font-bold text-gray-700 mb-2 text-[10px] uppercase tracking-wider text-center">
-                                  {profileChallenge?.kind === 'email' ? 'Email OTP' : 'WhatsApp OTP'}
-                                </label>
-                                <OTPBoxGroup value={profileMobileOTP} onChange={setProfileMobileOTP} />
-                              </div>
+                              {profileReverse && profileChallenge?.kind === 'phone' ? (
+                                <div className="border-t border-gray-100 pt-3">
+                                  <ReverseOtpPanel
+                                    phone={profileChallenge.rawPhone}
+                                    purpose="phone_change"
+                                    onVerified={({ user: updated }) => {
+                                      setUser(updated);
+                                      setRegisteredUsers((prev) =>
+                                        prev.map((u) => (u.id === updated.id ? updated : u))
+                                      );
+                                      setIsEditingProfile(false);
+                                      setShowProfileOTP(false);
+                                      setProfileChallenge(null);
+                                      setProfileReverse(false);
+                                      toast.success(t('toast.phoneUpdated'));
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="space-y-2 border-t border-gray-100 pt-3">
+                                  <label className="block font-bold text-gray-700 mb-2 text-[10px] uppercase tracking-wider text-center">
+                                    {profileChallenge?.kind === 'email' ? 'Email OTP' : 'WhatsApp OTP'}
+                                  </label>
+                                  <OTPBoxGroup value={profileMobileOTP} onChange={setProfileMobileOTP} />
+                                </div>
+                              )}
 
                               {profileOtpError && <p className="text-[10px] font-bold text-rose-600">{profileOtpError}</p>}
+
+                              {/* Offered only for the number leg — an email address
+                                  has nothing to send a message from. */}
+                              {profileChallenge?.kind === 'phone' && profileChallenge?.rawPhone && (
+                                <button
+                                  type="button"
+                                  onClick={() => { setProfileOtpError(''); setProfileReverse((on) => !on); }}
+                                  className="w-full text-[10px] font-bold text-[#1B4D3E] underline underline-offset-4 hover:text-[#143B2B]"
+                                >
+                                  {profileReverse
+                                    ? 'Type a code instead'
+                                    : "Didn't get a code? Send us one instead"}
+                                </button>
+                              )}
 
                               <div className="flex gap-2 pt-3 border-t border-gray-100">
                                 <button
                                   type="button"
-                                  onClick={() => { setShowProfileOTP(false); setProfileChallenge(null); setPendingPhoneChange(null); }}
+                                  onClick={() => { setShowProfileOTP(false); setProfileChallenge(null); setPendingPhoneChange(null); setProfileReverse(false); }}
                                   className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 rounded-xl text-center cursor-pointer transition-colors active:scale-95"
                                 >
                                   Cancel
                                 </button>
-                                <button
-                                  type="submit"
-                                  className="flex-[2] bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-extrabold py-2 rounded-xl text-center cursor-pointer transition-colors active:scale-95 shadow-sm"
-                                >
-                                  Verify &amp; Update
-                                </button>
+                                {!profileReverse && (
+                                  <button
+                                    type="submit"
+                                    className="flex-[2] bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-extrabold py-2 rounded-xl text-center cursor-pointer transition-colors active:scale-95 shadow-sm"
+                                  >
+                                    Verify &amp; Update
+                                  </button>
+                                )}
                               </div>
                             </form>
                           </div>

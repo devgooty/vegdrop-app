@@ -16,6 +16,15 @@ const {
 const otp = require('../services/otp');
 const notify = require('../services/notify');
 const tokens = require('../services/tokens');
+const reverseOtp = require('../services/reverseOtp');
+const {
+  placeholderName,
+  isEmailIdentifier,
+  APP_ROLE_SCOPE,
+  findByIdentifier,
+  sessionPayload,
+  establishSession,
+} = require('../services/authSession');
 
 const router = express.Router();
 
@@ -48,10 +57,12 @@ const router = express.Router();
  *     could redirect it at another number.
  */
 
-/** Fallback display name when someone signs up without supplying one. */
-function placeholderName(phone) {
-  return `Customer ${String(phone).slice(-4)}`;
-}
+/**
+ * `placeholderName`, `isEmailIdentifier`, `APP_ROLE_SCOPE`, `findByIdentifier`,
+ * `sessionPayload` and `establishSession` now live in services/authSession.js.
+ * Reverse OTP signs people in too, and one shared copy is what keeps the two
+ * flows from drifting apart. The reasoning behind each moved with it.
+ */
 
 /**
  * Extra destinations that receive a copy of a login code.
@@ -73,62 +84,6 @@ function loginCopyTargets(user) {
   if (!config.email.configured) return [];
   if (!user?.email || !user.emailVerifiedAt) return [];
   return [user.email];
-}
-
-function isEmailIdentifier(identifier) {
-  return String(identifier).includes('@');
-}
-
-/**
- * Which accounts a given app is willing to sign in.
- *
- * One phone or email can now back several accounts — one per role, since
- * `User`'s uniqueness moved from `(email)` to `(email, role)` (see the long
- * comment on models/User.js). That makes "find the account for this
- * identifier" ambiguous unless the caller also says which app is asking: the
- * shopkeeper app must never resolve to the customer account of someone who
- * also shops here, and the customer app must never hand a stranger's session
- * to their shopkeeper identity by accident.
- *
- * `market_owner` and `developer` are never self-registered — they only ever
- * arrive by promoting one of these three accounts via PATCH /api/users/:id/role
- * — and neither has a dedicated app of its own; both sign in through the
- * customer app, where `App.jsx` renders their extra panels inline. So they are
- * folded into the customer scope rather than given their own.
- */
-const APP_ROLE_SCOPE = Object.freeze({
-  customer: ['customer', 'market_owner', 'developer'],
-  shopkeeper: ['shopkeeper', 'developer'],
-  delivery: ['delivery', 'developer'],
-});
-
-/**
- * Resolve an account from whatever was typed into the single sign-in box.
- *
- * `pendingPhone` is matched too. Someone who registered while WhatsApp was down
- * knows only the number they typed; not matching it would tell them no account
- * exists, send them back through registration, and fail on the email already
- * being taken. They are found here and signed in through their verified email —
- * the unproven number still receives nothing.
- *
- * `roles`, when given, narrows the match to `APP_ROLE_SCOPE` for the calling
- * app — see there for why. Omitted entirely rather than defaulted to "every
- * role", because every caller in this file is updated to pass it; a caller
- * that forgets would otherwise resolve across apps exactly as before this
- * change, silently, which is the one failure mode worth refusing to default
- * away.
- */
-async function findByIdentifier(identifier, roles) {
-  const scope = roles ? { role: { $in: roles } } : {};
-
-  if (isEmailIdentifier(identifier)) {
-    return User.findOne({ email: identifier, status: { $ne: 'deleted' }, ...scope });
-  }
-  return User.findOne({
-    $or: [{ phone: identifier }, { pendingPhone: identifier }],
-    status: { $ne: 'deleted' },
-    ...scope,
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -179,21 +134,6 @@ router.post(
     });
   }
 );
-
-function sessionPayload(user, accessToken) {
-  return {
-    accessToken,
-    expiresIn: config.jwt.accessTtlSeconds,
-    user: user.toPublicJSON(),
-  };
-}
-
-async function establishSession(user, req, res) {
-  const accessToken = tokens.signAccessToken(user);
-  const refresh = await tokens.issueRefreshToken(user, req);
-  tokens.setRefreshCookie(res, refresh.token, refresh.expiresAt);
-  return sessionPayload(user, accessToken);
-}
 
 // ---------------------------------------------------------------------------
 // Sign in / sign up: one flow, one factor
@@ -487,13 +427,27 @@ async function startRegistrationChallenge({ phone, email, name, purpose, role })
 }
 
 /**
- * The email code is required; the phone code is optional and its absence is
- * what "WhatsApp was down" looks like on the wire. A phone proved here becomes
- * the account's `phone`; one that was not becomes `pendingPhone`.
+ * The email code is required. The phone leg has three shapes:
+ *
+ *   - an outbound code (`phoneChallengeId` + `phoneCode`) — the original;
+ *   - a reverse-OTP token (`phoneToken`) — the user messaged the number to us
+ *     instead, which works even when nothing can be delivered to them;
+ *   - neither, which is what "WhatsApp was down" looks like on the wire.
+ *
+ * A phone proved by either route becomes the account's `phone`; one that was not
+ * proved becomes `pendingPhone`.
  *
  * @param {string} role hardcoded by the caller, never derived from the request.
  */
-async function completeRegistration({ emailChallengeId, emailCode, phoneChallengeId, phoneCode, purpose, role }) {
+async function completeRegistration({
+  emailChallengeId,
+  emailCode,
+  phoneChallengeId,
+  phoneCode,
+  phoneToken,
+  purpose,
+  role,
+}) {
   const emailChallenge = await otp.verifyChallenge({ challengeId: emailChallengeId, code: emailCode, purpose });
 
   const email = emailChallenge.destination;
@@ -509,6 +463,38 @@ async function completeRegistration({ emailChallengeId, emailCode, phoneChalleng
     // code could be paired with another's email code.
     if (phoneChallenge.payload?.email !== email || phoneChallenge.destination !== phone) {
       throw new ApiError(400, 'These codes are from different registrations.', 'OTP_INVALID');
+    }
+    phoneVerified = true;
+  } else if (phoneToken) {
+    /**
+     * The reverse leg. Scoped to this flow's `purpose`, so a token raised for a
+     * customer sign-up can never be spent minting a shopkeeper — the same rule
+     * the outbound purposes enforce.
+     *
+     * Inspected before it is spent, so a token presented against the wrong
+     * registration is refused without being destroyed — see the same reasoning
+     * at /auth/reverse/complete/phone.
+     */
+    const pending = await reverseOtp.findRedeemable(phoneToken, { purpose });
+    if (!pending) {
+      throw new ApiError(400, 'This verification is no longer valid.', 'REVERSE_OTP_INVALID');
+    }
+
+    /**
+     * The same cross-check the outbound branch makes, and for the same reason:
+     * without it a reverse challenge proving one number could be attached to a
+     * registration for a different one, and the account would end up owning a
+     * number nobody proved.
+     */
+    if (pending.phone !== phone) {
+      throw new ApiError(400, 'These codes are from different registrations.', 'OTP_INVALID');
+    }
+
+    // Spend it with the number in the filter, so the check above cannot go stale
+    // between the read and the write.
+    const reverseChallenge = await reverseOtp.consumeVerified(phoneToken, { purpose, phone });
+    if (!reverseChallenge) {
+      throw new ApiError(400, 'This verification is no longer valid.', 'REVERSE_OTP_INVALID');
     }
     phoneVerified = true;
   }
@@ -580,11 +566,24 @@ router.post(
         emailCode: fields.otpCode,
         phoneChallengeId: fields.nonEmptyString(80).optional(),
         phoneCode: fields.otpCode.optional(),
+        // The reverse-OTP alternative: the user messaged their number to us
+        // rather than receiving a code. Replaces the pair above, never joins it.
+        phoneToken: fields.nonEmptyString(80).optional(),
       })
       .strict()
       .refine((data) => !data.phoneChallengeId === !data.phoneCode, {
         message: 'A phone challenge id and code must be supplied together.',
         path: ['phoneCode'],
+      })
+      /**
+       * One phone leg or none. Accepting both would leave which one actually
+       * proved the number ambiguous, and `completeRegistration` would silently
+       * honour the outbound pair and leave the reverse token unspent — still
+       * live, still redeemable elsewhere.
+       */
+      .refine((data) => !(data.phoneToken && data.phoneChallengeId), {
+        message: 'Supply either a phone code or a reverse verification, not both.',
+        path: ['phoneToken'],
       }),
   }),
   async (req, res) => {
@@ -643,11 +642,24 @@ router.post(
         emailCode: fields.otpCode,
         phoneChallengeId: fields.nonEmptyString(80).optional(),
         phoneCode: fields.otpCode.optional(),
+        // The reverse-OTP alternative: the user messaged their number to us
+        // rather than receiving a code. Replaces the pair above, never joins it.
+        phoneToken: fields.nonEmptyString(80).optional(),
       })
       .strict()
       .refine((data) => !data.phoneChallengeId === !data.phoneCode, {
         message: 'A phone challenge id and code must be supplied together.',
         path: ['phoneCode'],
+      })
+      /**
+       * One phone leg or none. Accepting both would leave which one actually
+       * proved the number ambiguous, and `completeRegistration` would silently
+       * honour the outbound pair and leave the reverse token unspent — still
+       * live, still redeemable elsewhere.
+       */
+      .refine((data) => !(data.phoneToken && data.phoneChallengeId), {
+        message: 'Supply either a phone code or a reverse verification, not both.',
+        path: ['phoneToken'],
       }),
   }),
   async (req, res) => {
@@ -719,11 +731,24 @@ router.post(
         emailCode: fields.otpCode,
         phoneChallengeId: fields.nonEmptyString(80).optional(),
         phoneCode: fields.otpCode.optional(),
+        // The reverse-OTP alternative: the user messaged their number to us
+        // rather than receiving a code. Replaces the pair above, never joins it.
+        phoneToken: fields.nonEmptyString(80).optional(),
       })
       .strict()
       .refine((data) => !data.phoneChallengeId === !data.phoneCode, {
         message: 'A phone challenge id and code must be supplied together.',
         path: ['phoneCode'],
+      })
+      /**
+       * One phone leg or none. Accepting both would leave which one actually
+       * proved the number ambiguous, and `completeRegistration` would silently
+       * honour the outbound pair and leave the reverse token unspent — still
+       * live, still redeemable elsewhere.
+       */
+      .refine((data) => !(data.phoneToken && data.phoneChallengeId), {
+        message: 'Supply either a phone code or a reverse verification, not both.',
+        path: ['phoneToken'],
       }),
   }),
   async (req, res) => {
