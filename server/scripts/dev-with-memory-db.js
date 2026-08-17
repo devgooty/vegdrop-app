@@ -32,6 +32,22 @@ async function main() {
   process.env.MONGODB_URI = replSet.getUri('vegdrop');
 
   /**
+   * Load .env HERE, before the demo fallbacks below.
+   *
+   * config/env.js calls dotenv itself, but not until it is required at the
+   * bottom of this function — and dotenv never overwrites a variable that is
+   * already set. So every `x || 'demo-…'` below would win over the real value in
+   * .env, and the fallback would silently replace real configuration rather than
+   * standing in for missing configuration.
+   *
+   * That is not theoretical: it substituted a placeholder WHATSAPP_APP_SECRET
+   * for the real one, so every webhook Meta signed failed its signature check
+   * and was rejected with a 403 — with the console still reporting the demo as
+   * fully configured.
+   */
+  require('dotenv').config();
+
+  /**
    * Registration needs BOTH contacts proved, so /register/start and
    * /vendor/register/start refuse outright when email delivery is
    * unconfigured (config.email.configured) rather than silently only proving
