@@ -473,6 +473,32 @@ export default function CustomerOrders({
                     </div>
                   )}
 
+                  {/*
+                    Shown as soon as a rider has actually accepted the pickup,
+                    which for an independent-shop order can be well before
+                    Out for Delivery — the shop still has to hand the bags
+                    over. Not shown before that: a rider merely picked as
+                    nearest has not agreed to anything yet.
+                  */}
+                  {order.riderName && (
+                    <div className="mt-3 flex items-center justify-between gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                          Delivery partner
+                        </p>
+                        <p className="text-xs font-bold text-gray-900 truncate">{order.riderName}</p>
+                      </div>
+                      {order.riderPhone && (
+                        <a
+                          href={`tel:${order.riderPhone}`}
+                          className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-bold active:scale-95 transition-transform"
+                        >
+                          Call
+                        </a>
+                      )}
+                    </div>
+                  )}
+
                   {order.fulfillmentStatus === 'packing' && (
                     <div className="mt-3 flex items-start gap-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
                       <Package className="w-3.5 h-3.5 shrink-0 mt-0.5" />

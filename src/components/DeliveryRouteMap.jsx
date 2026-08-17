@@ -211,8 +211,11 @@ function useRoadRoute(from, to) {
  * @param {{lat:number,lng:number}|null} props.market  pickup
  * @param {{lat:number,lng:number}|null} props.customer dropoff, null if never pinned
  * @param {string} props.status  the order's fulfilment status; picks the leg
+ * @param {string} [props.originLabel] what to call the pickup point on the
+ *   readout — 'Market' by default (the rider's view); a shop's own tracking
+ *   card passes 'Your shop', since that pin is not a market at all.
  */
-export default function DeliveryRouteMap({ rider, market, customer, status, height = 220 }) {
+export default function DeliveryRouteMap({ rider, market, customer, status, height = 220, originLabel = 'Market' }) {
   const leg = activeLeg(status);
   const destination = leg === 'dropoff' ? customer : market;
 
@@ -281,7 +284,7 @@ export default function DeliveryRouteMap({ rider, market, customer, status, heig
 
       <div className="absolute bottom-2 left-2 right-2 z-[400] flex items-center gap-2 pointer-events-none">
         <span className="bg-white/95 backdrop-blur px-2.5 py-1 rounded-lg text-[11.5px] font-bold text-gray-900 shadow">
-          {leg === 'dropoff' ? '→ Customer' : '→ Market'}
+          {leg === 'dropoff' ? '→ Customer' : `→ ${originLabel}`}
           {remainingMeters != null && ` · ${formatDistance(remainingMeters)}`}
           {road?.durationSeconds != null && ` · ${Math.max(1, Math.round(road.durationSeconds / 60))} min`}
         </span>

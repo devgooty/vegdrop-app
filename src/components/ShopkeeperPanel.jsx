@@ -1,15 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Store, Package, ShoppingBag, CheckCircle2, Clock, Truck,
   MapPin, LogOut, User, LayoutDashboard, Plus, Edit, Trash2,
-  AlertTriangle, Navigation, Check, Camera, TrendingUp, BarChart3, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert
+  AlertTriangle, Navigation, Check, Camera, TrendingUp, BarChart3, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert, Bike,
+  Phone, KeyRound, Loader2,
 } from 'lucide-react';
 import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../services/auth';
-import { fetchShopEarnings, withdrawShopEarnings } from '../services/shops';
+import { fetchShopEarnings, withdrawShopEarnings, fetchNearbyRider } from '../services/shops';
+import { fetchRiderLocation } from '../services/orders';
 import { ApiRequestError } from '../services/apiClient';
 import { useLanguage } from '../i18n/LanguageContext';
 import OTPBoxGroup from './OTPBoxGroup';
 import LanguagePicker from './LanguagePicker';
+
+/**
+ * Leaflet is heavy and only a shop with a rider actually en route ever needs
+ * it, same reasoning as MarketPickups.jsx lazy-loading the same component.
+ */
+const DeliveryRouteMap = lazy(() => import('./DeliveryRouteMap'));
 
 /** Server amounts are integer paise; ₹1,250.00 is what a shopkeeper reads. */
 const formatPaise = (paise) =>
@@ -63,7 +71,7 @@ function KycGateBanner({ kyc, onOpenKyc }) {
   );
 }
 
-export default function ShopkeeperPanel({ user, orders, products, setProducts, categories = [], onAddProduct, onEditProduct, onUpdateOrderStatus, onOrderAccepted, onLogout, onSyncOrders, kyc = null, onOpenKyc, onUserUpdated }) {
+export default function ShopkeeperPanel({ user, orders, shopProfile = null, products, setProducts, categories = [], onAddProduct, onEditProduct, onUpdateOrderStatus, onVerifyPickup, onOrderAccepted, onLogout, onSyncOrders, kyc = null, onOpenKyc, onUserUpdated }) {
   const { t } = useLanguage();
 
   // UX gate only. Every catalog write is authorized again by the API.
@@ -301,6 +309,76 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
   const preparingOrders = orders.filter((o) => o.status === 'Preparing');
   const deliveredOrders = orders.filter((o) => o.status === 'Delivered');
   const lowStockItems = products ? products.filter((p) => p.isOutofStock) : [];
+
+  /**
+   * The rider's live position, for every order currently waiting on one.
+   *
+   * Keyed by server id so a card can tell "not fetched yet" (key absent, shows
+   * a locating message) from "fetched, nobody there" (key present, value
+   * null — no fix yet or too stale to trust, see the server's own reasoning).
+   *
+   * Scoped to the Orders tab: nothing here is worth polling for while the
+   * shopkeeper is looking at their catalog or their earnings.
+   */
+  const [riderLocations, setRiderLocations] = useState({});
+  const trackedOrders = preparingOrders.filter((o) => o.assignedTo);
+  const trackedOrdersKey = trackedOrders.map((o) => `${o.serverId}:${o.assignedTo}`).join(',');
+
+  useEffect(() => {
+    if (activeTab !== 'orders' || !trackedOrdersKey) return undefined;
+    const ids = trackedOrdersKey.split(',').map((pair) => pair.split(':')[0]);
+    let cancelled = false;
+
+    const poll = async () => {
+      const entries = await Promise.all(
+        ids.map(async (id) => {
+          try {
+            return [id, await fetchRiderLocation(id)];
+          } catch {
+            return [id, null];
+          }
+        })
+      );
+      if (!cancelled) setRiderLocations((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+    };
+
+    poll();
+    const interval = setInterval(poll, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeTab, trackedOrdersKey]);
+
+  /**
+   * Is a delivery partner nearby right now — ambient, not tied to any one
+   * order, so unlike `riderLocations` above this polls on every tab: it is
+   * meant to be visible wherever the shopkeeper happens to be looking.
+   *
+   * `null` covers both "nobody's within 5 km" and "location not fetched yet";
+   * the banner only renders once a real distance comes back.
+   */
+  const [nearbyRider, setNearbyRider] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const data = await fetchNearbyRider();
+        if (!cancelled) setNearbyRider(data);
+      } catch {
+        if (!cancelled) setNearbyRider(null);
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   /**
    * Takings for the calendar day, which is what "Today's Revenue" claimed to be.
@@ -706,21 +784,105 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
           </h3>
           {preparingOrders.length === 0 ? <p className="text-xs text-gray-400 italic px-1">No orders being prepared.</p> : (
             <div className="space-y-3">
-              {preparingOrders.map(order => (
+              {preparingOrders.map(order => {
+                const riderFix = riderLocations[order.serverId];
+                return (
                 <div key={order.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
                   <div className="flex justify-between items-start mb-2">
                     <span className="font-bold text-gray-900">Order #{order.id}</span>
-                    <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md text-[10px] font-bold">Waiting for Agent</span>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                        order.riderAccepted
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : order.assignedTo
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-blue-100 text-blue-700'
+                      }`}
+                    >
+                      {order.riderAccepted ? 'Rider assigned' : order.assignedTo ? 'Rider notified' : 'Waiting for Agent'}
+                    </span>
                   </div>
                   <p className="text-xs text-gray-500 mb-3 line-clamp-1">{order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</p>
-                  {/* A status line, not a control — it was marked up as a
-                      button with pointer-events disabled, so assistive tech
-                      announced a button that could never be pressed. */}
-                  <p className="w-full py-2 bg-gray-100 text-gray-500 rounded-lg font-bold text-xs border border-gray-200 text-center">
-                    Waiting for a rider to collect it
-                  </p>
+
+                  {!order.assignedTo ? (
+                    /* A status line, not a control — it was marked up as a
+                       button with pointer-events disabled, so assistive tech
+                       announced a button that could never be pressed. */
+                    <p className="w-full py-2 bg-gray-100 text-gray-500 rounded-lg font-bold text-xs border border-gray-200 text-center">
+                      Waiting for a rider to collect it
+                    </p>
+                  ) : !order.riderAccepted ? (
+                    /*
+                     * Dispatch picked someone nearest, but nobody has agreed
+                     * to anything yet — no name, no phone, no map. Showing
+                     * those now would tell the shopkeeper to expect a person
+                     * who has not actually said yes.
+                     */
+                    <p className="w-full py-2.5 bg-amber-50 text-amber-800 rounded-lg font-semibold text-xs border border-amber-200 text-center">
+                      A rider has been notified and is deciding — hang tight.
+                    </p>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {(order.riderName || order.riderPhone) && (
+                        <div className="flex items-center justify-between gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Delivery partner</p>
+                            <p className="text-xs font-bold text-gray-900 truncate">{order.riderName || 'Rider'}</p>
+                          </div>
+                          {order.riderPhone && (
+                            <a
+                              href={`tel:${order.riderPhone}`}
+                              className="shrink-0 w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center active:scale-95 transition-transform"
+                              aria-label="Call the rider"
+                            >
+                              <Phone className="w-4 h-4" />
+                            </a>
+                          )}
+                        </div>
+                      )}
+
+                      {shopProfile?.hasLocation ? (
+                        /*
+                         * "Always" here means: visible the moment a rider is on
+                         * the order, no tap required — the same reasoning the
+                         * delivery app's own map follows, just watching the
+                         * rider from the shop's side of the pickup instead of
+                         * the rider's own.
+                         */
+                        <div className="rounded-2xl overflow-hidden border border-gray-200">
+                          {riderFix ? (
+                            <Suspense fallback={<div style={{ height: 160 }} className="bg-gray-100 animate-pulse" />}>
+                              <DeliveryRouteMap
+                                rider={riderFix}
+                                market={{ lat: shopProfile.lat, lng: shopProfile.lng }}
+                                customer={null}
+                                status={order.status}
+                                originLabel="Your shop"
+                                height={160}
+                              />
+                            </Suspense>
+                          ) : (
+                            <p className="text-[11px] text-amber-800 bg-amber-50 px-3 py-2.5 text-center leading-relaxed">
+                              {riderFix === null
+                                ? 'Rider is on the way — waiting for their GPS to come through.'
+                                : 'Locating your delivery partner…'}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 leading-relaxed">
+                          Rider is on the way. Add your shop's location in Profile to see them live on a map.
+                        </p>
+                      )}
+
+                      {onVerifyPickup && (
+                        <PickupCodeForm orderId={order.serverId} onVerify={onVerifyPickup} />
+                      )}
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1181,7 +1343,7 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
       <header className="bg-white px-5 py-3 border-b border-gray-100 shadow-sm sticky top-0 z-40 flex items-center justify-between">
         <div>
           <h1 className="font-black text-lg text-gray-900 tracking-tight">
-            {activeTab === 'dashboard' && 'Vendor Dashboard'}
+            {activeTab === 'dashboard' && 'Shopkeeper Dashboard'}
             {activeTab === 'orders' && 'Order Management'}
             {activeTab === 'products' && 'Product Catalog'}
             {activeTab === 'analytics' && 'Analytics & Earnings'}
@@ -1427,6 +1589,20 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
         </div>
       )}
 
+      {/* Nearby delivery partner — ambient, shown on every tab, only when someone is actually close */}
+      {nearbyRider && (
+        <div className="fixed bottom-[92px] left-0 right-0 mx-auto w-full max-w-md px-4 z-30 pointer-events-none">
+          <div className="bg-emerald-600 text-white rounded-2xl px-4 py-2 shadow-lg flex items-center gap-2 pointer-events-auto">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/20">
+              <Bike className="w-4 h-4" />
+            </span>
+            <p className="text-xs font-bold">
+              Delivery partner nearby · {(nearbyRider.distanceMeters / 1000).toFixed(1)} km away
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 mx-auto w-full max-w-md bg-white border-t border-gray-200 pb-safe pt-2 px-6 flex justify-between items-center shadow-[0_-10px_20px_rgba(0,0,0,0.03)] z-40 rounded-t-3xl">
         <NavButton icon={LayoutDashboard} label={t('nav.home')} isActive={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setActiveScreen('list'); }} />
@@ -1440,8 +1616,8 @@ export default function ShopkeeperPanel({ user, orders, products, setProducts, c
 }
 
 const NavButton = ({ icon: Icon, label, isActive, onClick }) => (
-  <button 
-    onClick={onClick} 
+  <button
+    onClick={onClick}
     className="flex flex-col items-center gap-1 p-2 active:scale-90 transition-transform"
   >
     <div className={`p-1.5 rounded-xl transition-colors ${isActive ? 'bg-green-100 text-green-700' : 'text-gray-400'}`}>
@@ -1450,3 +1626,50 @@ const NavButton = ({ icon: Icon, label, isActive, onClick }) => (
     <span className={`text-[10px] font-bold ${isActive ? 'text-green-700' : 'text-gray-400'}`}>{label}</span>
   </button>
 );
+
+/**
+ * Where the rider proves they're actually standing at the counter.
+ *
+ * `onVerify` returns a boolean rather than throwing — a wrong code is an
+ * ordinary, expected outcome here (a mistyped digit), not an error state the
+ * form needs to unwind from. The parent already toasts on both outcomes, so
+ * this only has to clear the field on success and let the shopkeeper try
+ * again on failure.
+ */
+function PickupCodeForm({ orderId, onVerify }) {
+  const [code, setCode] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (code.length !== 6 || submitting) return;
+    setSubmitting(true);
+    const ok = await onVerify(orderId, code);
+    setSubmitting(false);
+    if (ok) setCode('');
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="flex items-center gap-2">
+      <div className="flex-1 flex items-center gap-2 bg-white border border-gray-300 rounded-xl px-3 py-2 focus-within:border-emerald-600">
+        <KeyRound className="w-4 h-4 text-gray-400 shrink-0" />
+        <input
+          type="text"
+          inputMode="numeric"
+          maxLength={6}
+          placeholder="Code from rider"
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          className="w-full bg-transparent text-sm font-bold tracking-[0.2em] text-gray-900 focus:outline-none placeholder:tracking-normal placeholder:font-semibold placeholder:text-gray-400"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={code.length !== 6 || submitting}
+        className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-transform"
+      >
+        {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm'}
+      </button>
+    </form>
+  );
+}

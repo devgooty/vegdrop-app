@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import DeliveryPanel from './components/DeliveryPanel';
 import LoginPage from './components/LoginPage';
 import SplashScreen from './components/SplashScreen';
 import { useToast } from './components/Toast';
 import { logout } from './services/auth';
 import { fetchOrders, updateOrderStatus } from './services/orders';
+import { acceptPickup, declinePickup } from './services/rider';
+import { ApiRequestError } from './services/apiClient';
 import useSessionUser from './hooks/useSessionUser';
 
 const DELIVERY_ROLES = ['delivery', 'developer'];
@@ -115,9 +117,70 @@ export default function DeliveryApp() {
     }
   }, [orders, toast]);
 
+  /**
+   * Refetch rather than patch the one order in place.
+   *
+   * The accept/decline endpoints return the raw order document, not the
+   * shaped one `toUiOrder` produces — reusing the existing fetch keeps a
+   * single place that does that shaping, instead of a second copy of it here
+   * that would drift the first time either changed.
+   */
+  const refreshOrders = useCallback(async () => {
+    try {
+      const list = await fetchOrders({ limit: 100 });
+      setOrders(list);
+    } catch {
+      /* The next poll tick recovers. */
+    }
+  }, []);
+
+  const handleAcceptShopOrder = useCallback(async (orderId) => {
+    try {
+      await acceptPickup(orderId);
+      await refreshOrders();
+      toast.success('Pickup accepted — show the code at the shop 🔑');
+    } catch (err) {
+      const message = err instanceof ApiRequestError ? err.message : 'Could not accept this pickup.';
+      toast.error(message);
+      await refreshOrders();
+    }
+  }, [refreshOrders, toast]);
+
+  const handleDeclineShopOrder = useCallback(async (orderId) => {
+    try {
+      await declinePickup(orderId);
+      await refreshOrders();
+      toast.info('Pickup declined.');
+    } catch (err) {
+      const message = err instanceof ApiRequestError ? err.message : 'Could not decline this pickup.';
+      toast.error(message);
+      await refreshOrders();
+    }
+  }, [refreshOrders, toast]);
+
   const clearDeliveryNotification = useCallback((orderId) => {
     setDeliveryNotifications(prev => prev.filter(n => n.id !== orderId));
   }, []);
+
+  /**
+   * A shop order that just showed up assigned-but-not-yet-accepted is worth a
+   * bell notification — it is the one thing on this screen that is actually
+   * waiting on the rider to notice it, same reasoning as the emoji toast on
+   * every status change below, just surfaced where the bell already is.
+   */
+  const seenOfferIds = useRef(new Set());
+  useEffect(() => {
+    const pending = orders.filter((o) => o.assignedTo && !o.riderAccepted && o.status === 'Preparing');
+    for (const order of pending) {
+      const key = order.serverId || order.id;
+      if (seenOfferIds.current.has(key)) continue;
+      seenOfferIds.current.add(key);
+      setDeliveryNotifications((prev) => [
+        ...prev,
+        { id: key, message: `New pickup at ${order.shopName || 'a shop'} — accept or decline` },
+      ]);
+    }
+  }, [orders]);
 
   /**
    * UX gate on the server-verified role. The API authorizes every request
@@ -160,6 +223,8 @@ export default function DeliveryApp() {
     <DeliveryPanel
       orders={orders}
       onUpdateOrderStatus={handleUpdateOrderStatus}
+      onAcceptShopOrder={handleAcceptShopOrder}
+      onDeclineShopOrder={handleDeclineShopOrder}
       user={user}
       notifications={deliveryNotifications}
       onClearNotification={clearDeliveryNotification}

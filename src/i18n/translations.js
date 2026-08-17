@@ -599,6 +599,33 @@ const STRINGS = {
   },
   'login.whatsappLabel': { en: 'WhatsApp', hi: 'WhatsApp', te: 'WhatsApp' },
   'login.emailLabel': { en: 'Email', hi: 'ईमेल', te: 'ఇమెయిల్' },
+
+  // Reverse OTP — the user sends us the code instead of receiving one.
+  'login.sendCodeInstead': {
+    en: "Didn't get a code? Send us one instead",
+    hi: 'कोड नहीं मिला? इसके बजाय हमें एक भेजें',
+    te: 'కోడ్ రాలేదా? బదులుగా మాకు ఒకటి పంపండి',
+  },
+  'login.typeCodeInstead': {
+    en: 'Type a code instead',
+    hi: 'इसके बजाय कोड टाइप करें',
+    te: 'బదులుగా కోడ్ టైప్ చేయండి',
+  },
+  'login.reversePhoneLabel': {
+    en: 'Confirm your number',
+    hi: 'अपना नंबर पक्का करें',
+    te: 'మీ నంబర్‌ను నిర్ధారించండి',
+  },
+  'login.reverseVerified': {
+    en: 'Number confirmed. Now enter the code from your email to finish.',
+    hi: 'नंबर पक्का हो गया। पूरा करने के लिए अब अपने ईमेल वाला कोड डालें।',
+    te: 'నంబర్ నిర్ధారించబడింది. పూర్తి చేయడానికి ఇప్పుడు మీ ఇమెయిల్‌లోని కోడ్ నమోదు చేయండి.',
+  },
+  'login.errReversePending': {
+    en: 'Send us the message from your number first, then continue.',
+    hi: 'पहले अपने नंबर से हमें संदेश भेजें, फिर आगे बढ़ें।',
+    te: 'ముందుగా మీ నంబర్ నుండి మాకు సందేశం పంపండి, తర్వాత కొనసాగండి.',
+  },
   'login.errNetwork': {
     en: 'Could not reach the server. Check your connection and try again.',
     hi: 'सर्वर तक नहीं पहुँच सके। अपना कनेक्शन जाँचें और फिर कोशिश करें।',

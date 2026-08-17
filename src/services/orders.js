@@ -25,6 +25,25 @@ export function toUiOrder(order) {
     status: order.status,
     paymentMethod: order.paymentMethod,
     paymentStatus: order.paymentStatus,
+    // Present once a rider has claimed the order; who reads that from here
+    // decides what it does with it — see the shopkeeper's rider-location card.
+    assignedTo: order.assignedTo || null,
+
+    /**
+     * True only once the assigned rider has actively accepted an
+     * independent-shop pickup — not merely been picked as nearest. This is
+     * what gates the shopkeeper/customer seeing `riderName`/`riderPhone`
+     * below, and what tells the delivery app whether to show Accept/Decline
+     * or the pickup code.
+     */
+    riderAccepted: Boolean(order.riderAcceptedAt),
+    // The rider's own code to relay to the shopkeeper. Only ever present in
+    // the assigned rider's own view of the order — the server never sends it
+    // to anyone else.
+    pickupCode: order.pickupCode || null,
+    // Set once riderAccepted is true, for whoever is allowed to see it.
+    riderName: order.riderName || null,
+    riderPhone: order.riderPhone || null,
 
     /**
      * Market fulfillment, when the order has it.
@@ -37,6 +56,13 @@ export function toUiOrder(order) {
     marketName: order.marketName || null,
     // The independent shop it was placed with, when it was not a market.
     shopName: order.shopName || null,
+    // Where to physically go to collect it — only ever present for the rider
+    // who accepted the pickup, once they have accepted it. See the customer
+    // `address` above for the second leg, after handover.
+    shopAddress: order.shopAddress || null,
+    shopLat: order.shopLat ?? null,
+    shopLng: order.shopLng ?? null,
+    shopPhone: order.shopPhone || null,
     fulfillmentStatus: order.fulfillment?.status || null,
     sourcingDeadline: order.fulfillment?.sourcingDeadline || null,
     // The moment the stalls committed. Past this the cancel button should go.
@@ -209,5 +235,27 @@ export async function updateOrderStatus(orderId, status) {
 /** Delivery agents claim an unassigned order; first writer wins. */
 export async function claimOrder(orderId) {
   const result = await api.post(`/orders/${orderId}/claim`);
+  return toUiOrder(result.data);
+}
+
+/**
+ * The assigned rider's live GPS fix for one order, for the shop (or market
+ * office) waiting on them — `null` while unassigned, un-fixed, or stale.
+ * @returns {Promise<{lat: number, lng: number, updatedAt: string}|null>}
+ */
+export async function fetchRiderLocation(orderId) {
+  const result = await api.get(`/orders/${orderId}/rider-location`);
+  return result.data;
+}
+
+/**
+ * The shopkeeper types in what the rider just told them, standing at the
+ * counter. The only way an independent-shop order moves to Out for Delivery
+ * once a rider has accepted.
+ *
+ * @throws {ApiRequestError} 400 WRONG_CODE, 409 NOT_ACCEPTED_YET
+ */
+export async function verifyPickupCode(orderId, code) {
+  const result = await api.post(`/orders/${orderId}/verify-pickup`, { code });
   return toUiOrder(result.data);
 }

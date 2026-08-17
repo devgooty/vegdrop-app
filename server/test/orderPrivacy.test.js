@@ -187,6 +187,78 @@ test('the rider gets the address, because that is the job', async () => {
   assert.equal(order.phone, stored.phone ?? order.phone);
 });
 
+// ---------------------------------------------------------------------------
+// Rider location: the one rider fact the shop IS allowed to see
+// ---------------------------------------------------------------------------
+
+test('a shopkeeper sees the assigned rider\'s live location', async () => {
+  const { shop, orderId } = await placeShopOrder();
+  const rider = await authenticatedUser('delivery');
+
+  await api()
+    .patch(`/api/orders/${orderId}/status`)
+    .set(auth(shop.accessToken))
+    .send({ status: 'Preparing' });
+  await api().post(`/api/orders/${orderId}/claim`).set(auth(rider.accessToken));
+  await api()
+    .post('/api/rider/location')
+    .set(auth(rider.accessToken))
+    .send({ lat: HYD.lat, lng: HYD.lng });
+
+  const res = await api().get(`/api/orders/${orderId}/rider-location`).set(auth(shop.accessToken));
+  assert.equal(res.status, 200);
+  assert.equal(res.body.data.lat, HYD.lat);
+  assert.equal(res.body.data.lng, HYD.lng);
+  assert.ok(res.body.data.updatedAt);
+});
+
+test('rider location is null before a rider claims the order', async () => {
+  const { shop, orderId } = await placeShopOrder();
+
+  const res = await api().get(`/api/orders/${orderId}/rider-location`).set(auth(shop.accessToken));
+  assert.equal(res.status, 200);
+  assert.equal(res.body.data, null);
+});
+
+test('rider location is null once the fix goes stale', async () => {
+  const { shop, orderId } = await placeShopOrder();
+  const rider = await authenticatedUser('delivery');
+
+  await api()
+    .patch(`/api/orders/${orderId}/status`)
+    .set(auth(shop.accessToken))
+    .send({ status: 'Preparing' });
+  await api().post(`/api/orders/${orderId}/claim`).set(auth(rider.accessToken));
+  await User.updateOne(
+    { _id: rider.user._id },
+    {
+      $set: {
+        'rider.lastLocation': { type: 'Point', coordinates: [HYD.lng, HYD.lat] },
+        'rider.lastLocationAt': new Date(Date.now() - 10 * 60 * 1000),
+      },
+    }
+  );
+
+  const res = await api().get(`/api/orders/${orderId}/rider-location`).set(auth(shop.accessToken));
+  assert.equal(res.status, 200);
+  assert.equal(res.body.data, null, 'a ten-minute-old fix must read as gone, not live');
+});
+
+test('rider location is 404 for a shopkeeper who does not own the order', async () => {
+  const { orderId } = await placeShopOrder();
+  const otherShop = await authenticatedUser('shopkeeper');
+
+  const res = await api().get(`/api/orders/${orderId}/rider-location`).set(auth(otherShop.accessToken));
+  assert.equal(res.status, 404);
+});
+
+test('a customer cannot read rider location off their own order', async () => {
+  const { customer, orderId } = await placeShopOrder();
+
+  const res = await api().get(`/api/orders/${orderId}/rider-location`).set(auth(customer.accessToken));
+  assert.equal(res.status, 403);
+});
+
 test('the customer still sees their own order in full', async () => {
   const { customer, orderId } = await placeShopOrder();
 

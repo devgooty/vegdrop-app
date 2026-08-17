@@ -387,15 +387,15 @@
    heroes, but this artwork already has its own signage and border built
    in, so touching the screen edges read as a banner rather than a mark.
    Framing it with the page's own cream on all but the bottom edge (which
-   stays flush into the heading above) plus rounded corners and a lifted
-   shadow makes it read as a contained logo card instead. */
+   stays flush into the heading above) plus rounded corners reads as a
+   contained mark instead — no drop shadow, which was the part that made
+   it look like a photo pasted onto the page rather than built into it. */
 .si-scope-shopkeeper header {
   padding: 1rem 1rem 0;
 }
 
 .si-hero-img-shopkeeper {
   border-radius: 1.1rem;
-  box-shadow: 0 14px 30px -16px rgba(15, 31, 23, 0.4);
 }
 
 /* Shopkeeper-only: a warm cream instead of the shared white, picking up the

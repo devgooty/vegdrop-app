@@ -32,6 +32,22 @@ async function main() {
   process.env.MONGODB_URI = replSet.getUri('vegdrop');
 
   /**
+   * Load .env HERE, before the demo fallbacks below.
+   *
+   * config/env.js calls dotenv itself, but not until it is required at the
+   * bottom of this function — and dotenv never overwrites a variable that is
+   * already set. So every `x || 'demo-…'` below would win over the real value in
+   * .env, and the fallback would silently replace real configuration rather than
+   * standing in for missing configuration.
+   *
+   * That is not theoretical: it substituted a placeholder WHATSAPP_APP_SECRET
+   * for the real one, so every webhook Meta signed failed its signature check
+   * and was rejected with a 403 — with the console still reporting the demo as
+   * fully configured.
+   */
+  require('dotenv').config();
+
+  /**
    * Registration needs BOTH contacts proved, so /register/start and
    * /vendor/register/start refuse outright when email delivery is
    * unconfigured (config.email.configured) rather than silently only proving
@@ -43,6 +59,20 @@ async function main() {
   process.env.EMAIL_FROM = process.env.EMAIL_FROM || 'VegDrop Demo <demo@vegdrop.local>';
   process.env.SMTP_HOST = process.env.SMTP_HOST || 'smtp.demo.invalid';
   process.env.SMTP_FROM = process.env.SMTP_FROM || process.env.EMAIL_FROM;
+
+  /**
+   * Reverse OTP needs an inbox number per channel or `/auth/reverse/start`
+   * answers 503 and the sign-in screen hides the option — which would make the
+   * feature invisible in the demo. Both channels are faked on for the same
+   * reason email is above.
+   *
+   * There is nothing on the other end of these numbers, so the inbound leg is
+   * simulated by POSTing to /api/gateway/reverse-otp-sms with the secret below.
+   */
+  process.env.WHATSAPP_INBOX_NUMBER = process.env.WHATSAPP_INBOX_NUMBER || '919000000001';
+  process.env.WHATSAPP_APP_SECRET = process.env.WHATSAPP_APP_SECRET || 'demo-whatsapp-app-secret-000000000000';
+  process.env.SMS_GATEWAY_INBOX_NUMBER = process.env.SMS_GATEWAY_INBOX_NUMBER || '919000000002';
+  process.env.SMS_GATEWAY_SECRET = process.env.SMS_GATEWAY_SECRET || 'demo-sms-gateway-secret-0000000000000';
 
   const config = require('../config/env');
   const notify = require('../services/notify');
@@ -92,6 +122,13 @@ async function main() {
     console.info('  Shopkeeper →  http://localhost:3000/#/shopkeeper');
     console.info('  Delivery   →  http://localhost:3000/#/delivery\n');
     console.info('[dev] Sign-in needs the 6-digit code, which prints HERE in this console.');
+    console.info('[dev] For "send us one instead", simulate the inbound message with:');
+    console.info(
+      `      curl -X POST http://localhost:${config.port}/api/gateway/reverse-otp-sms \\\n` +
+        `        -H 'Content-Type: application/json' \\\n` +
+        `        -H 'X-Gateway-Secret: ${process.env.SMS_GATEWAY_SECRET}' \\\n` +
+        `        -d '{"from":"<your 10-digit number>","text":"<the code on screen>"}'`
+    );
     console.info('[dev] Data is in memory only and is lost when this process stops.\n');
   });
 

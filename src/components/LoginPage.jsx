@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, ArrowLeft, Loader2, Check, Info } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Loader2, Check, Info, Send } from 'lucide-react';
 import {
   lookupIdentifier,
   startIdentifierAuth,
@@ -20,6 +20,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { LANGUAGES } from '../i18n/translations';
 
 import OTPBoxGroup from './OTPBoxGroup';
+import ReverseOtpPanel from './ReverseOtpPanel';
 
 /**
  * Sign in and sign up — passwordless.
@@ -141,9 +142,15 @@ const SIGN_UP = {
   customer: {
     start: startRegistration,
     verify: verifyRegistration,
+    // The OTP purpose the reverse phone leg must be raised under. It has to
+    // match the role's own registration purpose exactly or the server refuses
+    // to spend the token — which is the mechanism stopping a code raised for a
+    // customer sign-up from minting a shopkeeper.
+    reversePurpose: 'registration',
   },
   shopkeeper: {
     start: startVendorRegistration,
+    reversePurpose: 'vendor_registration',
     // Also returns `nextStep: 'kyc'`, but the shopkeeper app already checks KYC
     // status on mount for every sign-in, not just a fresh signup, so there is
     // nothing extra to thread through here.
@@ -156,6 +163,7 @@ const SIGN_UP = {
   delivery: {
     start: startRiderRegistration,
     verify: verifyRiderRegistration,
+    reversePurpose: 'delivery_registration',
     headingKey: 'login.deliveryHeading',
     titleKey: 'login.deliveryTitle',
     subKey: 'login.deliverySub',
@@ -194,6 +202,33 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
   const [registration, setRegistration] = useState(null);
 
   /**
+   * Reverse OTP — "I'll send the code instead".
+   *
+   * An alternative, never a replacement. The outbound code stays the default
+   * because it is one step for the user; this is here for the cases where it is
+   * the better path: nothing arrived, or the user would rather not wait on a
+   * message that costs us money to send.
+   *
+   * `reverseLogin` swaps the sign-in code box for the panel. `reversePhoneLeg`
+   * does the same for the phone half of registration, where the email code is
+   * still typed as usual — the reverse token proves ONE contact, and
+   * registration deliberately proves two independently.
+   */
+  const [reverseLogin, setReverseLogin] = useState(false);
+  const [reversePhoneLeg, setReversePhoneLeg] = useState(false);
+  const [reversePhoneToken, setReversePhoneToken] = useState(null);
+
+  /**
+   * The number a reverse sign-in would be raised against.
+   *
+   * Only set when the user signed in with a phone number. Someone who typed an
+   * email has not told us a number to prove, and asking for one here would let
+   * anyone attach an arbitrary number to a sign-in — so the option is simply not
+   * offered on that path.
+   */
+  const [loginPhone, setLoginPhone] = useState(null);
+
+  /**
    * Turn any thrown error into something worth showing.
    * A network failure is reported as a failure — never as a reason to fall back
    * to local checking, which is what made the old flow bypassable offline.
@@ -213,6 +248,9 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     setCode('');
     setEmailCode('');
     setPhoneCode('');
+    setReverseLogin(false);
+    setReversePhoneLeg(false);
+    setReversePhoneToken(null);
     setStep(STEP.IDENTIFIER);
   };
 
@@ -246,6 +284,9 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
         const issued = await startIdentifierAuth({ identifier: typed, app: appType });
         setChallenge(issued);
         setCode('');
+        // Only a typed number gives us something to prove by reverse OTP.
+        setLoginPhone(type === 'phone' ? typed.replace(/\D/g, '').slice(-10) : null);
+        setReverseLogin(false);
         setStep(STEP.LOGIN_CODE);
         return;
       }
@@ -323,6 +364,15 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
       setRegistration(issued);
       setEmailCode('');
       setPhoneCode('');
+      setReversePhoneToken(null);
+      /**
+       * If nothing could be delivered to the number, reverse OTP is the only way
+       * left to prove it — so it is opened automatically rather than offered.
+       * This used to be the dead end where the number was kept unverified and
+       * the user had to confirm it later; sending us a message works even when
+       * we cannot send them one.
+       */
+      setReversePhoneLeg(!issued?.phone?.delivered);
       setStep(STEP.REGISTER_CODES);
     } catch (err) {
       setError(describeError(err, t('login.errSendCodes')));
@@ -336,14 +386,20 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     e.preventDefault();
     if (isSubmitting) return;
 
-    const phoneWasDelivered = Boolean(registration?.phone?.delivered);
+    // The typed-code path only applies when a code was delivered AND the user
+    // has not switched this leg over to sending us one instead.
+    const usingTypedPhoneCode = Boolean(registration?.phone?.delivered) && !reversePhoneLeg;
 
     if (!emailCode || emailCode.trim().length < 6) {
       setError(t('login.errSixEmail'));
       return;
     }
-    if (phoneWasDelivered && (!phoneCode || phoneCode.trim().length < 6)) {
+    if (usingTypedPhoneCode && (!phoneCode || phoneCode.trim().length < 6)) {
       setError(t('login.errSixWhatsapp'));
+      return;
+    }
+    if (reversePhoneLeg && !reversePhoneToken) {
+      setError(t('login.errReversePending'));
       return;
     }
 
@@ -354,10 +410,18 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
       const payload = {
         emailChallengeId: registration.email.challengeId,
         emailCode: emailCode.trim(),
-        // Omitted entirely when WhatsApp could not be reached; the server then
-        // keeps the number unverified rather than treating it as proved.
-        phoneChallengeId: phoneWasDelivered ? registration.phone.challengeId : undefined,
-        phoneCode: phoneWasDelivered ? phoneCode.trim() : undefined,
+        /**
+         * Exactly one phone leg, or none. The server rejects both at once —
+         * which of them proved the number would be ambiguous, and the unused
+         * reverse token would stay live and redeemable elsewhere.
+         *
+         * All three absent is still valid: it is what "nothing could be
+         * delivered and the user did not send us anything either" looks like,
+         * and the server keeps the number unverified rather than assuming it.
+         */
+        phoneChallengeId: usingTypedPhoneCode ? registration.phone.challengeId : undefined,
+        phoneCode: usingTypedPhoneCode ? phoneCode.trim() : undefined,
+        phoneToken: reversePhoneLeg ? reversePhoneToken : undefined,
       };
       // Each entry resolves to the user, whatever else its endpoint returns —
       // `user` is all onLogin needs.
@@ -582,17 +646,46 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                   </button>
                 </div>
 
-                <div>
-                  <label className={labelClass}>{t('login.sixDigitCode')}</label>
-                  <OTPBoxGroup tone="brand" value={code} onChange={setCode} />
-                </div>
+                {reverseLogin ? (
+                  <ReverseOtpPanel
+                    phone={loginPhone}
+                    purpose="login"
+                    app={appType}
+                    onVerified={({ user: signedIn }) => onLogin(signedIn)}
+                  />
+                ) : (
+                  <>
+                    <div>
+                      <label className={labelClass}>{t('login.sixDigitCode')}</label>
+                      <OTPBoxGroup tone="brand" value={code} onChange={setCode} />
+                    </div>
 
-                {error && <Notice tone="error">{error}</Notice>}
+                    {error && <Notice tone="error">{error}</Notice>}
 
-                <button type="submit" disabled={isSubmitting} className={primaryButton}>
-                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  <span>{t(isSubmitting ? 'login.checking' : 'login.verifyAndSignIn')}</span>
-                </button>
+                    <button type="submit" disabled={isSubmitting} className={primaryButton}>
+                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                      <span>{t(isSubmitting ? 'login.checking' : 'login.verifyAndSignIn')}</span>
+                    </button>
+                  </>
+                )}
+
+                {/* Only offered when we know a number to prove. Someone who
+                    signed in with an email has not given us one. */}
+                {loginPhone && (
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setError('');
+                        setReverseLogin((on) => !on);
+                      }}
+                      className={`${quietButton} inline-flex items-center gap-1.5`}
+                    >
+                      {!reverseLogin && <Send className="h-3 w-3" />}
+                      {t(reverseLogin ? 'login.typeCodeInstead' : 'login.sendCodeInstead')}
+                    </button>
+                  </div>
+                )}
               </form>
             )}
 
@@ -700,9 +793,31 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
             {step === STEP.REGISTER_CODES && (
               <form onSubmit={handleVerifyRegistration} className="si-step space-y-4">
 
-                {/* Hidden entirely when WhatsApp could not deliver. The number is
-                    still kept against the account, unverified, to confirm later. */}
-                {registration?.phone?.delivered ? (
+                {/* The phone leg, in one of three shapes: type the code we sent,
+                    send us one instead, or — when nothing could be delivered and
+                    the reverse panel is unavailable too — skip it and confirm the
+                    number later. */}
+                {reversePhoneLeg ? (
+                  <div>
+                    <label className={labelClass}>{t('login.reversePhoneLabel')}</label>
+                    {reversePhoneToken ? (
+                      <Notice tone="info">{t('login.reverseVerified')}</Notice>
+                    ) : (
+                      <ReverseOtpPanel
+                        phone={phone.trim()}
+                        purpose={signUp.reversePurpose}
+                        app={appType}
+                        name={name.trim() || undefined}
+                        // Registration proves two contacts independently, so this
+                        // token settles only the phone half. It is handed to the
+                        // verify call alongside the email code rather than being
+                        // spent here.
+                        completeHere={false}
+                        onVerified={({ token }) => setReversePhoneToken(token)}
+                      />
+                    )}
+                  </div>
+                ) : registration?.phone?.delivered ? (
                   <div>
                     <label className={labelClass}>
                       {t('login.whatsappLabel')}{' '}
@@ -712,6 +827,25 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                   </div>
                 ) : (
                   <Notice tone="info">{t('login.whatsappDown')}</Notice>
+                )}
+
+                {/* Toggle between the two. Hidden once the number is proved —
+                    switching away would silently drop a verification the user
+                    already completed. */}
+                {!reversePhoneToken && (
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setError('');
+                        setReversePhoneLeg((on) => !on);
+                      }}
+                      className={`${quietButton} inline-flex items-center gap-1.5`}
+                    >
+                      {!reversePhoneLeg && <Send className="h-3 w-3" />}
+                      {t(reversePhoneLeg ? 'login.typeCodeInstead' : 'login.sendCodeInstead')}
+                    </button>
+                  </div>
                 )}
 
                 <div>

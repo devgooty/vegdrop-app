@@ -136,8 +136,11 @@ WhatsApp is a **transport, not a channel**. `OtpChallenge.channel` stays
 `sms`/`email`, so the `phoneVerifiedAt` logic in `routes/auth.js` is untouched —
 a code delivered over WhatsApp still verifies the phone.
 
-**Because sign-in is passwordless, the transport is a hard dependency**: if codes
-cannot be delivered, nobody can sign in at all.
+**Because sign-in is passwordless, the transport is very nearly a hard
+dependency**: if codes cannot be delivered, the ordinary way in stops working for
+everyone. Reverse OTP (below) is the one path that survives it, because it never
+sends anything — but it is opt-in per sign-in, so an outbound outage still breaks
+the default flow for anyone who does not choose it.
 
 That is why there is no longer a `whatsapp_bot` option. An unofficial WhatsApp
 Web client (`server/bot/`, baileys, a second process behind a loopback bridge)
@@ -170,6 +173,73 @@ Things that are easy to get wrong here:
   `X-Hub-Signature-256` HMAC. That HMAC covers the exact bytes sent, which is why
   `app.js` retains `req.rawBody` for that one path — re-serialising the parsed
   body does not reproduce them.
+- **The webhook never replies to an inbound message.** Two reasons: no template
+  is approved for anything but the code, and a reply inside the 24-hour service
+  window can be billable — which would turn reverse OTP, whose whole point is
+  costing nothing, into a paid flow.
+
+### Reverse OTP — proving a number by receiving a message
+
+The flow above proves someone can *receive* at a number. Reverse OTP proves they
+can *send* from it: the server shows a 6-character code, the user messages it to
+our inbox from their own phone, and an inbound webhook matches it. It is an
+**alternative the user picks on the sign-in screen, never a replacement**, and it
+covers sign-in, the registration phone leg, and phone change.
+
+What it actually buys, stated precisely because the usual pitch overstates it:
+inbound messages are free, no `AUTHENTICATION` template approval is needed, and
+nothing can silently fail to deliver because nothing is delivered. It does **not**
+remove the Meta dependency — the app, the WABA number and `WHATSAPP_APP_SECRET`
+are all still required to receive and authenticate the webhook.
+
+**The code is not the secret.** It is displayed on screen and travels through the
+user's own messaging app. What proves the claim is that the message arrived FROM
+the number being claimed; the code only decides *which* pending session an
+arriving message settles, and stops an old message from settling a new login.
+Two things follow. `services/reverseOtp.js` HMACs the code **without** a
+per-challenge salt — unlike `services/otp.js`, which mixes the challenge id in —
+because the challenge has to be found *from* the code. And hashing here is
+defence in depth rather than load-bearing.
+
+**The two channels are not equally strong, and this is surfaced rather than
+buried.** WhatsApp webhooks are HMAC-signed by Meta over the raw body and the
+sender is Meta's own record. The SMS relay (`POST /api/gateway/reverse-otp-sms`,
+authenticated by a shared `X-Gateway-Secret`) reports whatever an Android app read
+out of an SMS header, on a network where sender IDs can be forged — the secret
+proves the *relay* is ours, not the sender it names. `/start` therefore returns
+`assurance: 'high'` / `'low'` per channel and the UI says so. That Android relay
+app is not part of this repository.
+
+Things worth knowing:
+
+- **Three KV keys collapse into one document.** A Redis design wants `code:`,
+  `token:` and a sender index written and expired together; `ReverseOtpChallenge`
+  makes them three indexes on one row, so they cannot drift and one TTL clears
+  all of it. Its TTL index is declared separately from the field, for the reason
+  spelled out on `OtpChallenge`.
+- **Every match is a single conditional `findOneAndUpdate`,** never a read then a
+  write. `verifiedAt: null` in each failure-flag filter is the whole of the
+  "verified always wins" rule: once a correct send lands, a concurrent
+  wrong-number message cannot paint a stale `mismatch` over it.
+- **Silence is the failure mode this feature exists to avoid.** A right code from
+  the wrong number sets `mismatch`; a message from a known number carrying no
+  valid code sets `badCode`. Without both, a typo leaves the user watching
+  "waiting" forever with nothing to act on.
+- **`app` is read from the stored challenge, never the completing request.** It
+  gates whether an unknown number may become an account — only the customer app
+  may, exactly as at `/otp/start`.
+- **Status and complete are separate calls.** `GET /status` is a plain read
+  called hundreds of times per verification; minting a session from it would make
+  a GET set a refresh cookie.
+- **Polling is exempted from `globalLimiter`** (see `GLOBAL_LIMIT_EXEMPT`) and
+  metered per token instead. At 2s for ten minutes one verification would spend a
+  third of the per-IP budget, and on a shared connection — one market, one wifi —
+  that locks everyone else out of the API.
+- **`config` is frozen at load, so channel settings cannot be toggled per test.**
+  `test/reverseOtp.test.js` sets `WHATSAPP_APP_SECRET` at the top of the file,
+  before requiring `./helpers`, because `node --test` gives each file its own
+  process. Setting it in `helpers.js` would flip `whatsapp.test.js`'s assertion
+  that an unsigned POST is refused with 503 *because* no secret is configured.
 
 ### Vendor KYC
 

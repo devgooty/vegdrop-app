@@ -89,6 +89,35 @@ const whatsappAccessToken = optional('WHATSAPP_ACCESS_TOKEN', '');
 const whatsappTemplateName = optional('WHATSAPP_OTP_TEMPLATE_NAME', '');
 const whatsappConfigured = Boolean(whatsappPhoneNumberId && whatsappAccessToken && whatsappTemplateName);
 
+// --- Inbound verification (reverse OTP) --------------------------------------
+
+/**
+ * Reverse OTP verifies a number by RECEIVING a message rather than sending one:
+ * the user messages our inbox from their own phone, quoting a code we showed
+ * them. Each channel is configured independently, because each is a different
+ * way for a message to reach us.
+ *
+ * WhatsApp needs the inbox number to build the wa.me link, plus the app secret
+ * — without the secret the inbound webhook cannot prove a call came from Meta,
+ * and an unverified webhook would let anyone assert that any number sent us
+ * anything. That is the whole security boundary, so an inbox number without an
+ * app secret is not a usable channel and is deliberately reported as off.
+ *
+ * SMS needs a relay: an Android app holding a SIM, forwarding what it receives
+ * to us. Its shared secret is what separates it from the open internet.
+ *
+ * Neither is fatal in production. Reverse OTP is an alternative to the outbound
+ * code, never the only way in, so an unconfigured channel means one fewer button
+ * on the sign-in screen — not a service that cannot start. The routes fail closed
+ * with a 503 instead.
+ */
+const whatsappInboxNumber = optional('WHATSAPP_INBOX_NUMBER', '').replace(/\D/g, '');
+const whatsappInboundConfigured = Boolean(whatsappInboxNumber && optional('WHATSAPP_APP_SECRET', ''));
+
+const smsGatewayInboxNumber = optional('SMS_GATEWAY_INBOX_NUMBER', '').replace(/\D/g, '');
+const smsGatewaySecret = optional('SMS_GATEWAY_SECRET', '');
+const smsGatewayConfigured = Boolean(smsGatewayInboxNumber && smsGatewaySecret);
+
 /**
  * SMTP, for copying a login code to a verified email address.
  *
@@ -347,6 +376,32 @@ const config = Object.freeze({
     webhookVerifyToken: optional('WHATSAPP_WEBHOOK_VERIFY_TOKEN', ''),
   }),
 
+  /**
+   * Reverse OTP: the user sends US the code, from the number they are claiming.
+   *
+   * The TTL is longer than the outbound one (10 min vs 5) because the user has
+   * more to do — switch app, send, switch back — and a code that dies mid-hop is
+   * a dead end rather than a retry.
+   */
+  reverseOtp: Object.freeze({
+    ttlSeconds: int('REVERSE_OTP_TTL_SECONDS', 10 * 60),
+    codeLength: 6,
+    /**
+     * No 0/O/1/I/L. The user reads this off a screen and it travels through a
+     * messaging app, so every ambiguous glyph is a support ticket.
+     */
+    alphabet: 'ABCDEFGHJKMNPQRSTUVWXYZ23456789',
+    whatsapp: Object.freeze({
+      configured: whatsappInboundConfigured,
+      inboxNumber: whatsappInboxNumber,
+    }),
+    sms: Object.freeze({
+      configured: smsGatewayConfigured,
+      inboxNumber: smsGatewayInboxNumber,
+      gatewaySecret: smsGatewaySecret,
+    }),
+  }),
+
   email: Object.freeze({
     configured: emailConfigured,
     from: emailFrom,
@@ -497,6 +552,13 @@ const config = Object.freeze({
      * a tap.
      */
     shopRiderAssignTimeoutSeconds: int('SHOP_RIDER_ASSIGN_TIMEOUT_SECONDS', 300),
+
+    /**
+     * How far counts as "nearby" for the shopkeeper dashboard's ambient rider
+     * indicator — a courtesy heads-up, not a dispatch decision, so it is a
+     * shorter radius than `riderSearchRadiusMeters`.
+     */
+    nearbyRiderRadiusMeters: int('NEARBY_RIDER_RADIUS_METERS', 5000),
   }),
 
   /**
@@ -590,6 +652,43 @@ if (razorpayConfigured && !razorpayWebhookSecret && !isTest) {
     '[config] Payments still work, but a customer whose browser closes between paying and\n' +
     '[config] returning will have been charged without being credited, and nothing will fix it.\n' +
     '[config] Register the endpoint in the Razorpay dashboard and set the secret it gives you.'
+  );
+}
+
+/**
+ * An inbox number with no app secret.
+ *
+ * This looks configured and cannot work. The number is real, the wa.me link
+ * opens, the user sends the message — and the webhook rejects every delivery
+ * because the signature is the only thing establishing a request came from Meta.
+ * Nothing is logged at the point of failure that mentions the missing secret, so
+ * the symptom is codes that sit at "waiting for your message" forever with a
+ * webhook returning 503 to Meta, which eventually disables the subscription.
+ *
+ * `whatsappInboundConfigured` already treats this combination as off, so the
+ * channel is correctly hidden from the sign-in screen. The warning exists
+ * because "I set the inbox number and the button never appeared" is otherwise a
+ * silent dead end.
+ */
+if (whatsappInboxNumber && !whatsappInboundConfigured && !isTest) {
+  console.warn(
+    '[config] WHATSAPP_INBOX_NUMBER is set but WHATSAPP_APP_SECRET is not, so reverse OTP over\n' +
+    '[config] WhatsApp is switched OFF and its button will not appear on the sign-in screen.\n' +
+    '[config] Inbound webhooks cannot be authenticated without the secret. Copy it from\n' +
+    '[config] App Settings -> Basic -> App Secret in the Meta dashboard.'
+  );
+}
+
+/**
+ * The mirror of the above for the SMS relay, where either half alone is useless:
+ * a number nothing forwards from, or a secret guarding an endpoint no number
+ * points at.
+ */
+if (!smsGatewayConfigured && (smsGatewayInboxNumber || smsGatewaySecret) && !isTest) {
+  console.warn(
+    `[config] Reverse OTP over SMS is switched OFF: ${smsGatewayInboxNumber ? 'SMS_GATEWAY_SECRET' : 'SMS_GATEWAY_INBOX_NUMBER'} is not set.\n` +
+    '[config] Both are required — one names the number users message, the other authenticates\n' +
+    '[config] the relay that forwards what it receives to POST /api/gateway/reverse-otp-sms.'
   );
 }
 
