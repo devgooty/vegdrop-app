@@ -183,9 +183,14 @@ export default function SplashScreen({ onComplete, edition }) {
         {/* The greeting sits in the empty third above the lockup, and arrives
             before the drop does — the screen is greeting you, then showing you
             whose app it is, rather than the other way round. */}
-        <div className="vd-splash-greet absolute top-[23%] left-0 right-0 flex items-center justify-center gap-2.5 px-8">
+        <div className="vd-splash-greet absolute top-[22%] left-0 right-0 flex items-center justify-center gap-3 px-8">
           <SkyMark art={sky.art} />
-          <span className="text-[13px] font-bold text-[#5E6B5A]">{t(sky.greet)}</span>
+          {/* Larger than the tagline at the foot of the screen, and second only
+              to the wordmark. It is the one line here addressed to a person
+              rather than about the product, so it should not be the smallest
+              thing on the screen. Muted sage rather than the brand green keeps
+              it from competing with the lockup at this size. */}
+          <span className="text-[19px] font-bold text-[#5E6B5A]">{t(sky.greet)}</span>
         </div>
 
         {/*
@@ -251,7 +256,7 @@ function SkyMark({ art }) {
 
   if (art === 'night') {
     return (
-      <svg viewBox="0 0 24 24" className="w-[1.15rem] h-[1.15rem] shrink-0" aria-hidden="true">
+      <svg viewBox="0 0 24 24" className="w-[1.5rem] h-[1.5rem] shrink-0" aria-hidden="true">
         {/* A crescent cut out of a disc rather than drawn as an arc — an arc
             has two tapering points that go muddy at 18px. */}
         <path
@@ -268,7 +273,7 @@ function SkyMark({ art }) {
   const overhead = art === 'day';
 
   return (
-    <svg viewBox="0 0 24 24" className="w-[1.15rem] h-[1.15rem] shrink-0" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className="w-[1.5rem] h-[1.5rem] shrink-0" aria-hidden="true">
       <circle cx="12" cy={overhead ? 12 : 13} r={overhead ? 4.6 : 4.9} fill={warm} />
       <g stroke={warm} strokeWidth="1.7" strokeLinecap="round">
         {overhead ? (
