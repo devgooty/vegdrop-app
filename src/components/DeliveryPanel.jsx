@@ -486,8 +486,17 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
               </div>
             )}
             <div className="flex items-start gap-2.5">
-              <MapPin className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
-              <p className="text-[12.5px] text-gray-700 leading-snug">{order.address}</p>
+              <MapPin className={`w-4 h-4 shrink-0 mt-0.5 ${awaitingHandoff ? 'text-blue-500' : 'text-orange-500'}`} />
+              <div>
+                {awaitingHandoff && (
+                  <p className="text-[10.5px] font-bold text-blue-600 uppercase tracking-wide">
+                    Pick up from {order.shopName}
+                  </p>
+                )}
+                <p className="text-[12.5px] text-gray-700 leading-snug">
+                  {awaitingHandoff ? order.shopAddress || order.shopName : order.address}
+                </p>
+              </div>
             </div>
             {order.paymentMethod === 'cod' && (
               <p className="text-[12px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
@@ -510,23 +519,29 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
           </div>
 
           <div className="p-3 bg-gray-50 flex gap-2">
-            {order.phone && (
+            {(awaitingHandoff ? order.shopPhone : order.phone) && (
               <a
-                href={`tel:${order.phone}`}
+                href={`tel:${awaitingHandoff ? order.shopPhone : order.phone}`}
                 className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center"
-                aria-label="Call the customer"
+                aria-label={awaitingHandoff ? 'Call the shop' : 'Call the customer'}
               >
                 <Phone className="w-4 h-4" />
               </a>
             )}
             <a
-              href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.address)}`}
+              href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+                awaitingHandoff
+                  ? order.shopLat && order.shopLng
+                    ? `${order.shopLat},${order.shopLng}`
+                    : order.shopAddress || order.shopName
+                  : order.address
+              )}`}
               target="_blank"
               rel="noreferrer"
               className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[12.5px] font-bold"
             >
               <MapPin className="w-4 h-4" />
-              Navigate
+              {awaitingHandoff ? 'Navigate to shop' : 'Navigate'}
             </a>
             <button
               type="button"
