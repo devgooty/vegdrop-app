@@ -838,8 +838,8 @@
   opacity: 0;
   animation: vd-splash-ripple 1100ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.vd-splash-ring-1 { animation-delay: calc(600ms + var(--vd-elapsed, 0ms)); }
-.vd-splash-ring-2 { animation-delay: calc(760ms + var(--vd-elapsed, 0ms)); }
+.vd-splash-ring-1 { animation-delay: 600ms; }
+.vd-splash-ring-2 { animation-delay: 760ms; }
 
 @keyframes vd-splash-ripple {
   0% { opacity: 0.55; transform: scale(0.45); }
@@ -857,7 +857,7 @@
   height: 4.75rem;
   flex: none;
   transform: scale(1);
-  animation: vd-splash-settle 620ms cubic-bezier(0.16, 1, 0.3, 1) calc(1150ms + var(--vd-elapsed, 0ms)) both;
+  animation: vd-splash-settle 580ms cubic-bezier(0.16, 1, 0.3, 1) 1020ms both;
 }
 /* 2.15, not more: at 4.75rem the mark is already half the width of a 375px
    phone at this scale, and a bigger opening pose crops against the tagline. */
@@ -874,7 +874,7 @@
      shadow both of these replaced was tuned for a dark field; on cream it read
      as dirt under the mark. */
   filter: drop-shadow(0 4px 7px rgba(45, 38, 25, 0.14));
-  animation: vd-splash-fall 780ms cubic-bezier(0.33, 1.02, 0.42, 1) calc(60ms + var(--vd-elapsed, 0ms)) both;
+  animation: vd-splash-fall 780ms cubic-bezier(0.33, 1.02, 0.42, 1) 60ms both;
 }
 
 /* The shadow the drop casts on whatever it lands on.
@@ -892,7 +892,7 @@
   margin-left: -1.6rem;
   border-radius: 999px;
   background: radial-gradient(closest-side, rgba(27, 77, 62, 0.26), rgba(27, 77, 62, 0));
-  animation: vd-splash-land 520ms cubic-bezier(0.16, 1, 0.3, 1) calc(300ms + var(--vd-elapsed, 0ms)) both;
+  animation: vd-splash-land 520ms cubic-bezier(0.16, 1, 0.3, 1) 300ms both;
 }
 @keyframes vd-splash-land {
   0% { opacity: 0; transform: scale(0.28, 0.8); }
@@ -922,7 +922,7 @@
   background: #2FB463;
   opacity: 0;
   animation: vd-splash-spark 640ms cubic-bezier(0.22, 0.7, 0.3, 1)
-    calc(455ms + var(--vd-spark-lag, 0ms) + var(--vd-elapsed, 0ms)) both;
+    calc(455ms + var(--vd-spark-lag, 0ms)) both;
 }
 /* Bright for the first half of the flight, then out. Fading from the 18% mark
    straight to zero — the obvious curve — left them faint for almost the whole
@@ -979,7 +979,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: vd-splash-open 560ms cubic-bezier(0.16, 1, 0.3, 1) calc(1250ms + var(--vd-elapsed, 0ms)) both;
+  animation: vd-splash-open 520ms cubic-bezier(0.16, 1, 0.3, 1) 1120ms both;
 }
 /* The opacity step is not decoration. `width: 0` on a bordered, border-box
    element still lays out at 3px — the two borders — so the closed plate drew a
@@ -1003,7 +1003,7 @@
      set instead of being the one pure-white shape in the product. */
   background: linear-gradient(145deg, #FFFFFF 0%, #FAFAF8 100%);
   border-radius: 999px;
-  animation: vd-splash-wipe 380ms cubic-bezier(0.4, 0, 0.2, 1) calc(1520ms + var(--vd-elapsed, 0ms)) both;
+  animation: vd-splash-wipe 380ms cubic-bezier(0.4, 0, 0.2, 1) 1370ms both;
 }
 /* Same face, weight and positive tracking as `.si-hero-wordmark` on the login
    screen, down to the 2px letterpress shadow each half carries — the two are
@@ -1016,7 +1016,7 @@
   font-size: 1.6rem;
   letter-spacing: 0.01em;
   line-height: 1;
-  animation: vd-splash-wipe 400ms cubic-bezier(0.4, 0, 0.2, 1) calc(1640ms + var(--vd-elapsed, 0ms)) both;
+  animation: vd-splash-wipe 400ms cubic-bezier(0.4, 0, 0.2, 1) 1480ms both;
 }
 .vd-splash-wordmark-veg { text-shadow: 0 2px 0 rgba(15, 31, 23, 0.06); }
 .vd-splash-wordmark-drop { text-shadow: 0 2px 0 rgba(200, 55, 45, 0.12); }
@@ -1044,7 +1044,7 @@
     rgba(27, 77, 62, 0.11) 50%,
     rgba(255, 255, 255, 0) 65%
   );
-  animation: vd-splash-sheen 2600ms ease-in-out calc(2050ms + var(--vd-elapsed, 0ms)) infinite;
+  animation: vd-splash-sheen 2600ms ease-in-out 1900ms infinite;
 }
 @keyframes vd-splash-sheen {
   0% { transform: translateX(-115%); }
@@ -1062,7 +1062,7 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  animation: vd-splash-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) calc(1950ms + var(--vd-elapsed, 0ms)) both;
+  animation: vd-splash-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) 1760ms both;
 }
 
 /* Hairlines flanking the small-caps line — the device a printed label uses to
@@ -1083,8 +1083,8 @@
 .vd-splash-tag {
   animation: vd-splash-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.vd-splash-tag-1 { animation-delay: calc(620ms + var(--vd-elapsed, 0ms)); }
-.vd-splash-tag-2 { animation-delay: calc(760ms + var(--vd-elapsed, 0ms)); }
+.vd-splash-tag-1 { animation-delay: 620ms; }
+.vd-splash-tag-2 { animation-delay: 760ms; }
 
 @keyframes vd-splash-rise {
   from { opacity: 0; transform: translateY(12px); }

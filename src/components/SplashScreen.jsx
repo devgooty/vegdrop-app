@@ -1,28 +1,31 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useLanguage } from '../i18n/LanguageContext';
 
 /** When the lockup has finished assembling and the screen may hand over. */
-const HOLD_UNTIL = 2450;
-/** Must stay in step with the wrapper's `duration-700` fade below. */
-const FADE_MS = 700;
+const HOLD_UNTIL = 2260;
+/** Must stay in step with the wrapper's `duration-500` fade below. */
+const FADE_MS = 500;
 
 /**
- * Module load — in practice the moment the page's JavaScript starts, since
- * AppRouter imports this eagerly.
+ * When this launch's animation started, shared by every instance of it.
  *
- * There is never one splash instance per launch. AppRouter shows one while a
- * role app's chunk downloads, and the app that chunk contains then renders its
- * own — a different position in the tree, so React unmounts the first and
- * mounts the second. CSS animations restart on mount, which put a visible
- * hitch mid-fall: the drop fell, snapped back, and fell again.
+ * There is never just one splash instance per launch. AppRouter shows one while
+ * a role app's chunk downloads, and the app inside that chunk renders its own —
+ * a different position in the tree, so React unmounts the first and mounts the
+ * second, and CSS animations start from zero on mount. Left alone that makes
+ * the drop fall, snap back and fall again.
  *
- * Every instance therefore dates its animations from here rather than from its
- * own mount, by way of a negative `--vd-elapsed` offset on each delay. The
- * second instance picks the sequence up exactly where the first left it, and
- * the countdown to hand-over is measured from here too, so a slow chunk no
- * longer adds its download time to how long the splash sits on screen.
+ * On `window` rather than in a module variable on purpose. A module variable is
+ * only shared if the bundler keeps this module in one chunk for both importers,
+ * which is a fact about the build rather than a guarantee; two copies would
+ * mean two clocks and the second instance restarting from zero. The document is
+ * the real scope of "when did this launch begin", so that is where it lives.
  */
-const BOOT = performance.now();
+function launchStart() {
+  if (typeof window === 'undefined') return 0;
+  if (window.__vdSplashT0 == null) window.__vdSplashT0 = performance.now();
+  return window.__vdSplashT0;
+}
 
 /** Impact droplets. Each n has its own vector and lag in src/index.css. */
 const SPARKS = [1, 2, 3, 4, 5, 6];
@@ -50,9 +53,40 @@ export default function SplashScreen({ onComplete, edition }) {
   const { t, language } = useLanguage();
   const [isFading, setIsFading] = useState(false);
   const finishedRef = useRef(false);
+  const rootRef = useRef(null);
+  /** How far into the sequence this instance actually started. Set at paint. */
+  const offsetRef = useRef(0);
 
-  /** How far into the sequence this instance is starting. Read once. */
-  const [elapsed] = useState(() => performance.now() - BOOT);
+  /**
+   * Wind this instance's animations forward to where the launch already is.
+   *
+   * The previous version computed the offset during render and fed it to CSS as
+   * a negative `animation-delay`. That was measurably wrong: an animation does
+   * not begin when React renders it, it begins when the browser paints it, and
+   * for the second instance those were ~200ms apart while the 200 KB app chunk
+   * evaluated. The sequence jumped back by that difference — which is precisely
+   * how long the drop appeared to fall a second time.
+   *
+   * Seeking with the Web Animations API instead removes the guess. This runs in
+   * a layout effect, so it is measured and applied after the DOM exists but
+   * before the frame is painted, and `currentTime` counts from the start of an
+   * animation's delay — so one value applied to every animation lands the whole
+   * sequence, ripples and sheen included, exactly where the last instance was.
+   */
+  useLayoutEffect(() => {
+    const offset = performance.now() - launchStart();
+    offsetRef.current = offset;
+    if (offset <= 0 || !rootRef.current) return;
+
+    for (const animation of rootRef.current.getAnimations({ subtree: true })) {
+      try {
+        animation.currentTime = offset;
+      } catch {
+        /* A finished or idle animation may refuse a seek; it is already where
+           it needs to be. */
+      }
+    }
+  }, []);
 
   /**
    * Held in a ref so the timer below does not depend on its identity. Every
@@ -79,11 +113,13 @@ export default function SplashScreen({ onComplete, edition }) {
   // is — see the ref above.
   const canFinish = Boolean(onComplete);
 
+  // Counted from the launch, not from this instance's mount, so a slow chunk
+  // does not add its own download time to how long the splash sits on screen.
   useEffect(() => {
     if (!canFinish) return undefined;
-    const timer = setTimeout(handleFinish, Math.max(0, HOLD_UNTIL - elapsed));
+    const timer = setTimeout(handleFinish, Math.max(0, HOLD_UNTIL - offsetRef.current));
     return () => clearTimeout(timer);
-  }, [canFinish, handleFinish, elapsed]);
+  }, [canFinish, handleFinish]);
 
   // Which app opened. The customer app carries the brand line; the two staff
   // apps say which one they are, because a rider and a shopkeeper install two
@@ -104,15 +140,13 @@ export default function SplashScreen({ onComplete, edition }) {
 
   return (
     <div
-      className={`fixed inset-0 z-[9999] flex justify-center bg-[#F8F5EF] transition-all duration-700 ease-out ${
+      className={`fixed inset-0 z-[9999] flex justify-center bg-[#F8F5EF] transition-all duration-500 ease-out ${
         isFading ? 'opacity-0 pointer-events-none blur-md scale-[1.02]' : 'opacity-100 blur-0 scale-100'
       }`}
+      ref={rootRef}
       role="status"
       aria-live="polite"
       aria-label="VegDrop"
-      // Negative, so every keyframe delay in src/index.css resolves to where
-      // the sequence already is rather than to zero. See BOOT above.
-      style={{ '--vd-elapsed': `-${Math.round(elapsed)}ms` }}
     >
       <div className="vd-splash-field w-full max-w-md h-full relative overflow-hidden flex flex-col items-center justify-center">
         <span className="vd-splash-ring vd-splash-ring-1" aria-hidden="true" />
