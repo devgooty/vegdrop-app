@@ -793,10 +793,16 @@
    way — putting a final value only inside a `to {}` block would make
    reduced-motion render whatever the base rule happened to say. */
 
+/* Cream, not the deep green this started as. The green looked good on its own
+   and was wrong in sequence: the splash handed straight over to a cream app, so
+   every launch ended in a full-screen colour flip. It is now the same surface
+   the app itself sits on (#F8F5EF, matching body in index.html and the white
+   `theme_color`), which makes the hand-off invisible — the lockup fades and the
+   storefront is already on the same paper. */
 .vd-splash-field {
   background:
-    radial-gradient(120% 80% at 50% 38%, rgba(52, 211, 153, 0.22) 0%, rgba(52, 211, 153, 0) 60%),
-    linear-gradient(170deg, #1B5643 0%, #133F31 45%, #0B2A20 100%);
+    radial-gradient(120% 80% at 50% 38%, rgba(27, 77, 62, 0.07) 0%, rgba(27, 77, 62, 0) 62%),
+    linear-gradient(170deg, #FDFBF6 0%, #F8F5EF 45%, #F0ECE2 100%);
 }
 
 /* The ripples the landing throws off. Sized in % of the mark so they scale with
@@ -809,7 +815,7 @@
   height: 8.5rem;
   margin: -4.25rem 0 0 -4.25rem;
   border-radius: 999px;
-  border: 1.5px solid rgba(167, 243, 208, 0.5);
+  border: 1.5px solid rgba(27, 77, 62, 0.22);
   opacity: 0;
   animation: vd-splash-ripple 1100ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -842,7 +848,9 @@
 
 .vd-splash-drop {
   display: block;
-  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
+  /* Warm and shallow. The near-black shadow this replaced was tuned for a dark
+     field; on cream it read as dirt under the mark rather than as lift. */
+  filter: drop-shadow(0 8px 16px rgba(45, 38, 25, 0.16));
   animation: vd-splash-fall 780ms cubic-bezier(0.33, 1.02, 0.42, 1) calc(60ms + var(--vd-elapsed, 0ms)) both;
 }
 /* Overshoot then a small secondary bounce — a drop landing, not an object
@@ -867,7 +875,17 @@
   flex: none;
   overflow: hidden;
   border-radius: 999px;
-  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  /* Green rather than the app's warm card border, and this is the one place the
+     splash departs from it deliberately. The sequence spends ~300ms on an EMPTY
+     plate before the fill wipes in, and that beat only exists if the outline
+     can be seen: a white hairline (from the green field this replaced) is
+     invisible on cream, and #DCD5C6 is barely better. Once filled it reads as a
+     white pill with a green rule, which is the same pairing the wordmark
+     inside it uses. */
+  border: 1.5px solid rgba(27, 77, 62, 0.3);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 8px 20px -5px rgba(27, 77, 62, 0.18);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -875,7 +893,7 @@
 }
 /* The opacity step is not decoration. `width: 0` on a bordered, border-box
    element still lays out at 3px — the two borders — so the closed plate drew a
-   thin white bar beside the mark for the whole 1.25s before it opened. It is
+   thin bar beside the mark for the whole 1.25s before it opened. It is
    held hidden until the first frames of the open, by which point the easing has
    already carried the width well past its own border. */
 @keyframes vd-splash-open {
@@ -915,6 +933,12 @@
   position: absolute;
   inset: 0;
   border-radius: 999px;
+  /* Parked off the plate. An infinite animation takes no fill mode, so during
+     its 2s delay the element renders its BASE style — with no transform here
+     that left the sheen's own gradient sitting across the middle of the plate,
+     which on cream reads as a grey seam down an otherwise empty outline. This
+     is also the correct resting state when reduced motion switches it off. */
+  transform: translateX(-115%);
   background: linear-gradient(
     100deg,
     rgba(255, 255, 255, 0) 35%,

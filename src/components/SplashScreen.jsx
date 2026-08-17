@@ -101,7 +101,7 @@ export default function SplashScreen({ onComplete, edition }) {
 
   return (
     <div
-      className={`fixed inset-0 z-[9999] flex justify-center transition-all duration-700 ease-out ${
+      className={`fixed inset-0 z-[9999] flex justify-center bg-[#F8F5EF] transition-all duration-700 ease-out ${
         isFading ? 'opacity-0 pointer-events-none blur-md scale-[1.02]' : 'opacity-100 blur-0 scale-100'
       }`}
       role="status"
@@ -136,16 +136,19 @@ export default function SplashScreen({ onComplete, edition }) {
             <span className="vd-splash-sheen" aria-hidden="true" />
           </span>
 
-          <span className={`vd-splash-sub font-bold text-emerald-200/90 ${subCase}`}>
+          {/* Brand green rather than the app's muted #8A7E6B: at 10px this
+              line has to carry, and the warm grey only reaches 3.3:1 on cream.
+              Same reasoning as .si-otp.is-filled's colour note. */}
+          <span className={`vd-splash-sub font-bold text-[#2D6A4F] ${subCase}`}>
             {t(subKey)}
           </span>
         </div>
 
         <div className="absolute bottom-[16%] left-0 right-0 px-8 text-center">
-          <p className="vd-splash-tag vd-splash-tag-1 text-[15px] font-bold text-white/95">
+          <p className="vd-splash-tag vd-splash-tag-1 text-[15px] font-bold text-[#1B4D3E]">
             {t('splash.tagline1')}
           </p>
-          <p className="vd-splash-tag vd-splash-tag-2 text-[15px] font-bold text-emerald-300/85">
+          <p className="vd-splash-tag vd-splash-tag-2 text-[15px] font-bold text-[#2D6A4F]">
             {t('splash.tagline2')}
           </p>
         </div>
@@ -157,20 +160,20 @@ export default function SplashScreen({ onComplete, edition }) {
 /**
  * The droplet from `public/logo.png`, redrawn as vector.
  *
- * The PNG is the wrong tool at this size — it is a 512px raster of a flat
- * shape, and it cannot be recoloured for a dark field. Here the droplet is
- * lightened well past the logo's green so it holds contrast against the deep
- * green background, while the white lens and the two leaves inside it stay
- * exactly as the brand mark has them.
+ * The PNG is the wrong tool at this size — it is a 512px raster of a flat shape
+ * blown up to fill half a phone, where the edges of the lens and the leaves go
+ * soft. Drawn here it stays sharp at any scale and carries the logo's own green
+ * rather than an approximation of it, which is what lets the mark sit on the
+ * app's cream without being restyled for the occasion.
  */
 function VegDropMark() {
   return (
     <svg viewBox="0 0 64 64" className="w-[4.75rem] h-[4.75rem]" aria-hidden="true">
       <defs>
         <linearGradient id="vd-drop-body" x1="20%" y1="0%" x2="80%" y2="100%">
-          <stop offset="0%" stopColor="#6EE7A8" />
-          <stop offset="55%" stopColor="#34C97A" />
-          <stop offset="100%" stopColor="#189B57" />
+          <stop offset="0%" stopColor="#3FBE73" />
+          <stop offset="55%" stopColor="#1F9D4D" />
+          <stop offset="100%" stopColor="#12793C" />
         </linearGradient>
         <linearGradient id="vd-leaf-left" x1="0%" y1="100%" x2="60%" y2="0%">
           <stop offset="0%" stopColor="#8CC63F" />
