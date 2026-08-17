@@ -1365,6 +1365,11 @@ const STRINGS = {
     te: 'మార్కెట్ నుండి తాజాగా',
   },
   'splash.tagline2': { en: 'to your door', hi: 'आपके दरवाज़े तक', te: 'మీ ఇంటి వరకు' },
+  // Three greetings for four skies — see readSky() in SplashScreen.jsx for why
+  // the late-night one is not "good night" in any of these languages.
+  'splash.greetMorning': { en: 'Good morning', hi: 'सुप्रभात', te: 'శుభోదయం' },
+  'splash.greetAfternoon': { en: 'Good afternoon', hi: 'नमस्कार', te: 'శుభ మధ్యాహ్నం' },
+  'splash.greetEvening': { en: 'Good evening', hi: 'शुभ संध्या', te: 'శుభ సాయంత్రం' },
 };
 
 /**

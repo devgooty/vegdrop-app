@@ -800,10 +800,20 @@
    `theme_color`), which makes the hand-off invisible — the lockup fades and the
    storefront is already on the same paper. */
 .vd-splash-field {
+  --vd-sky: rgba(27, 77, 62, 0.07);
   background:
-    radial-gradient(120% 80% at 50% 38%, rgba(27, 77, 62, 0.07) 0%, rgba(27, 77, 62, 0) 62%),
+    radial-gradient(120% 80% at 50% 38%, var(--vd-sky) 0%, rgba(27, 77, 62, 0) 62%),
     linear-gradient(170deg, #FDFBF6 0%, #F8F5EF 45%, #F0ECE2 100%);
 }
+
+/* The light in the room, by hour. Only the glow moves — the paper underneath
+   stays the app's own cream at every hour, because the whole point of that
+   colour is that the splash and the storefront are the same surface. Kept at
+   this strength on purpose: enough that 6am and 10pm are not the same picture,
+   nowhere near enough to read as a coloured background. */
+.vd-splash-field[data-sky='dawn'] { --vd-sky: rgba(232, 163, 61, 0.13); }
+.vd-splash-field[data-sky='dusk'] { --vd-sky: rgba(217, 119, 6, 0.14); }
+.vd-splash-field[data-sky='night'] { --vd-sky: rgba(90, 110, 145, 0.14); }
 
 /* Paper grain.
    Two thirds of this screen is empty cream, and a flat fill of it reads as a
@@ -1080,6 +1090,13 @@
   background: linear-gradient(90deg, rgba(45, 106, 79, 0.45) 0%, rgba(45, 106, 79, 0) 100%);
 }
 
+/* First thing on screen, ahead of the drop — the greeting is addressed to a
+   person, and a person should be greeted on arrival rather than after the
+   branding has had its turn. */
+.vd-splash-greet {
+  animation: vd-splash-rise 560ms cubic-bezier(0.16, 1, 0.3, 1) 180ms both;
+}
+
 .vd-splash-tag {
   animation: vd-splash-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -1096,6 +1113,7 @@
    the same duration and fades out on the same schedule. */
 @media (prefers-reduced-motion: reduce) {
   .vd-splash-ring,
+  .vd-splash-greet,
   .vd-splash-mark,
   .vd-splash-drop,
   .vd-splash-pad,

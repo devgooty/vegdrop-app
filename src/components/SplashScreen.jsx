@@ -31,6 +31,27 @@ function launchStart() {
 const SPARKS = [1, 2, 3, 4, 5, 6];
 
 /**
+ * What the sky is doing, so the launch screen is not the same picture at 6am
+ * and at 10pm.
+ *
+ * There are four skies and only three greetings, deliberately. "Good night" is
+ * a farewell in English and both `शुभ रात्रि` and `శుభ రాత్రి` are read the same
+ * way — saying it to someone who has just opened the app to order vegetables is
+ * telling them goodbye on arrival. Late hours therefore keep the evening
+ * greeting and change only the picture, which is the half that can say "it is
+ * night" without saying anything wrong.
+ *
+ * Read from the device clock: no network, no permission, nothing to fail. A
+ * wrong clock costs a wrong picture and nothing else.
+ */
+function readSky(hour) {
+  if (hour >= 5 && hour < 12) return { art: 'dawn', greet: 'splash.greetMorning' };
+  if (hour >= 12 && hour < 17) return { art: 'day', greet: 'splash.greetAfternoon' };
+  if (hour >= 17 && hour < 21) return { art: 'dusk', greet: 'splash.greetEvening' };
+  return { art: 'night', greet: 'splash.greetEvening' };
+}
+
+/**
  * The launch screen, shared by all three apps.
  *
  * This used to be a 1.5 MB `public/splash.mp4` playing full-bleed. It is now
@@ -138,6 +159,10 @@ export default function SplashScreen({ onComplete, edition }) {
   const subCase =
     language === 'en' ? 'text-[10px] uppercase tracking-[0.22em]' : 'text-[11px] tracking-normal';
 
+  // Read once per instance rather than per render, so the two instances of a
+  // single launch cannot disagree across a midnight or a 5am boundary.
+  const [sky] = useState(() => readSky(new Date().getHours()));
+
   return (
     <div
       className={`fixed inset-0 z-[9999] flex justify-center bg-[#F8F5EF] transition-all duration-500 ease-out ${
@@ -148,9 +173,20 @@ export default function SplashScreen({ onComplete, edition }) {
       aria-live="polite"
       aria-label="VegDrop"
     >
-      <div className="vd-splash-field w-full max-w-md h-full relative overflow-hidden flex flex-col items-center justify-center">
+      <div
+        className="vd-splash-field w-full max-w-md h-full relative overflow-hidden flex flex-col items-center justify-center"
+        data-sky={sky.art}
+      >
         <span className="vd-splash-ring vd-splash-ring-1" aria-hidden="true" />
         <span className="vd-splash-ring vd-splash-ring-2" aria-hidden="true" />
+
+        {/* The greeting sits in the empty third above the lockup, and arrives
+            before the drop does — the screen is greeting you, then showing you
+            whose app it is, rather than the other way round. */}
+        <div className="vd-splash-greet absolute top-[23%] left-0 right-0 flex items-center justify-center gap-2.5 px-8">
+          <SkyMark art={sky.art} />
+          <span className="text-[13px] font-bold text-[#5E6B5A]">{t(sky.greet)}</span>
+        </div>
 
         {/*
           The lockup row is centred, and the plate opens from zero width. That
@@ -198,6 +234,67 @@ export default function SplashScreen({ onComplete, edition }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The little sky beside the greeting.
+ *
+ * Four states off one 24-unit grid so they stay optically the same size next to
+ * the text. `dawn` and `dusk` are the same sun at the same height with the
+ * horizon rule under it — what separates them is which way the rays lean and
+ * the colour, because a sunrise and a sunset differ in warmth and direction,
+ * not in shape.
+ */
+function SkyMark({ art }) {
+  const warm = art === 'dusk' ? '#D97706' : '#E8A33D';
+
+  if (art === 'night') {
+    return (
+      <svg viewBox="0 0 24 24" className="w-[1.15rem] h-[1.15rem] shrink-0" aria-hidden="true">
+        {/* A crescent cut out of a disc rather than drawn as an arc — an arc
+            has two tapering points that go muddy at 18px. */}
+        <path
+          d="M19.2 15.2A8.2 8.2 0 0 1 8.9 4.9 8.2 8.2 0 1 0 19.2 15.2Z"
+          fill="#7C8AA6"
+        />
+        <circle cx="18.4" cy="5.6" r="1.15" fill="#A8B4C9" />
+        <circle cx="20.6" cy="9.4" r="0.7" fill="#A8B4C9" />
+      </svg>
+    );
+  }
+
+  const rising = art === 'dawn';
+  const overhead = art === 'day';
+
+  return (
+    <svg viewBox="0 0 24 24" className="w-[1.15rem] h-[1.15rem] shrink-0" aria-hidden="true">
+      <circle cx="12" cy={overhead ? 12 : 13} r={overhead ? 4.6 : 4.9} fill={warm} />
+      <g stroke={warm} strokeWidth="1.7" strokeLinecap="round">
+        {overhead ? (
+          <>
+            <path d="M12 3.4v2.1M12 18.5v2.1M3.4 12h2.1M18.5 12h2.1" />
+            <path d="M5.9 5.9l1.5 1.5M16.6 16.6l1.5 1.5M18.1 5.9l-1.5 1.5M7.4 16.6l-1.5 1.5" />
+          </>
+        ) : (
+          // Rays only above the horizon, and leaning the way the sun is going.
+          <>
+            <path d={rising ? 'M12 3.6v2' : 'M12 3.6v2'} />
+            <path d={rising ? 'M4.9 7.1l1.6 1.3' : 'M6.5 8.4L4.9 7.1'} />
+            <path d={rising ? 'M19.1 7.1l-1.6 1.3' : 'M17.5 8.4l1.6-1.3'} />
+          </>
+        )}
+      </g>
+      {!overhead && (
+        <path
+          d="M2.6 19.4h18.8"
+          stroke={warm}
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          opacity="0.75"
+        />
+      )}
+    </svg>
   );
 }
 
