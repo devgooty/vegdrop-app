@@ -39,7 +39,12 @@ export default function AppRouter() {
     // hand over to until the chunk resolves, so the splash assembles and then
     // holds. With a no-op it faded itself to transparent after ~2.5s and left a
     // blank screen behind on any connection slower than that.
-    <Suspense fallback={<SplashScreen />}>
+    //
+    // `edition` is passed even though the app inside the chunk will render its
+    // own splash with the same value: the route is known here and the chunk is
+    // not, so without it a shopkeeper's launch began under the customer brand
+    // line and changed word once the download landed.
+    <Suspense fallback={<SplashScreen edition={route === 'customer' ? undefined : route} />}>
       <Active />
     </Suspense>
   );

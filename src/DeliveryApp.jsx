@@ -204,7 +204,15 @@ export default function DeliveryApp() {
   }, [user, toast]);
 
   if (showSplash || isRestoringSession) {
-    return <SplashScreen edition="delivery" onComplete={() => setShowSplash(false)} />;
+    // No `onComplete` while the session check is in flight: there is nothing
+    // behind the splash to reveal yet, so it holds rather than fading out on
+    // schedule and leaving a blank screen until the restore answers.
+    return (
+      <SplashScreen
+        edition="delivery"
+        onComplete={isRestoringSession ? undefined : () => setShowSplash(false)}
+      />
+    );
   }
 
   // Login Screen

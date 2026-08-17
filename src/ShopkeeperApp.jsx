@@ -429,7 +429,16 @@ export default function ShopkeeperApp() {
   // Hold the splash until the session check resolves, so an already-signed-in
   // shopkeeper never sees the login screen flash before being restored.
   if (showSplash || isRestoringSession) {
-    return <SplashScreen edition="shopkeeper" onComplete={() => setShowSplash(false)} />;
+    // While the session check is still in flight there is nothing behind this
+    // to reveal, so the splash is given no `onComplete` and holds instead of
+    // fading — it used to fade out on schedule regardless and leave a blank
+    // screen until the restore answered.
+    return (
+      <SplashScreen
+        edition="shopkeeper"
+        onComplete={isRestoringSession ? undefined : () => setShowSplash(false)}
+      />
+    );
   }
 
   // Login Screen

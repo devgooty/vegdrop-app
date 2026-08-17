@@ -7,6 +7,24 @@ const HOLD_UNTIL = 2450;
 const FADE_MS = 700;
 
 /**
+ * Module load — in practice the moment the page's JavaScript starts, since
+ * AppRouter imports this eagerly.
+ *
+ * There is never one splash instance per launch. AppRouter shows one while a
+ * role app's chunk downloads, and the app that chunk contains then renders its
+ * own — a different position in the tree, so React unmounts the first and
+ * mounts the second. CSS animations restart on mount, which put a visible
+ * hitch mid-fall: the drop fell, snapped back, and fell again.
+ *
+ * Every instance therefore dates its animations from here rather than from its
+ * own mount, by way of a negative `--vd-elapsed` offset on each delay. The
+ * second instance picks the sequence up exactly where the first left it, and
+ * the countdown to hand-over is measured from here too, so a slow chunk no
+ * longer adds its download time to how long the splash sits on screen.
+ */
+const BOOT = performance.now();
+
+/**
  * The launch screen, shared by all three apps.
  *
  * This used to be a 1.5 MB `public/splash.mp4` playing full-bleed. It is now
@@ -30,20 +48,39 @@ export default function SplashScreen({ onComplete, edition }) {
   const [isFading, setIsFading] = useState(false);
   const finishedRef = useRef(false);
 
+  /** How far into the sequence this instance is starting. Read once. */
+  const [elapsed] = useState(() => performance.now() - BOOT);
+
+  /**
+   * Held in a ref so the timer below does not depend on its identity. Every
+   * call site passes an inline arrow, which is a new function on each render of
+   * the parent — as a dependency it cleared and re-armed the timeout on every
+   * one of those renders, so a parent that re-rendered faster than the hold
+   * would have kept the splash up indefinitely.
+   */
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  });
+
   const handleFinish = useCallback(() => {
-    if (!onComplete || finishedRef.current) return;
+    if (!onCompleteRef.current || finishedRef.current) return;
     finishedRef.current = true;
 
     setIsFading(true);
     // Unmount only once the fade has actually played out.
-    setTimeout(onComplete, FADE_MS);
-  }, [onComplete]);
+    setTimeout(() => onCompleteRef.current?.(), FADE_MS);
+  }, []);
+
+  // Only whether there is somewhere to hand over to, never which function it
+  // is — see the ref above.
+  const canFinish = Boolean(onComplete);
 
   useEffect(() => {
-    if (!onComplete) return undefined;
-    const timer = setTimeout(handleFinish, HOLD_UNTIL);
+    if (!canFinish) return undefined;
+    const timer = setTimeout(handleFinish, Math.max(0, HOLD_UNTIL - elapsed));
     return () => clearTimeout(timer);
-  }, [handleFinish, onComplete]);
+  }, [canFinish, handleFinish, elapsed]);
 
   // Which app opened. The customer app carries the brand line; the two staff
   // apps say which one they are, because a rider and a shopkeeper install two
@@ -70,6 +107,9 @@ export default function SplashScreen({ onComplete, edition }) {
       role="status"
       aria-live="polite"
       aria-label="VegDrop"
+      // Negative, so every keyframe delay in src/index.css resolves to where
+      // the sequence already is rather than to zero. See BOOT above.
+      style={{ '--vd-elapsed': `-${Math.round(elapsed)}ms` }}
     >
       <div className="vd-splash-field w-full max-w-md h-full relative overflow-hidden flex flex-col items-center justify-center">
         <span className="vd-splash-ring vd-splash-ring-1" aria-hidden="true" />

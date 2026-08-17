@@ -813,8 +813,8 @@
   opacity: 0;
   animation: vd-splash-ripple 1100ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.vd-splash-ring-1 { animation-delay: 600ms; }
-.vd-splash-ring-2 { animation-delay: 760ms; }
+.vd-splash-ring-1 { animation-delay: calc(600ms + var(--vd-elapsed, 0ms)); }
+.vd-splash-ring-2 { animation-delay: calc(760ms + var(--vd-elapsed, 0ms)); }
 
 @keyframes vd-splash-ripple {
   0% { opacity: 0.55; transform: scale(0.45); }
@@ -831,7 +831,7 @@
   height: 4.75rem;
   flex: none;
   transform: scale(1);
-  animation: vd-splash-settle 620ms cubic-bezier(0.16, 1, 0.3, 1) 1150ms both;
+  animation: vd-splash-settle 620ms cubic-bezier(0.16, 1, 0.3, 1) calc(1150ms + var(--vd-elapsed, 0ms)) both;
 }
 /* 2.15, not more: at 4.75rem the mark is already half the width of a 375px
    phone at this scale, and a bigger opening pose crops against the tagline. */
@@ -843,7 +843,7 @@
 .vd-splash-drop {
   display: block;
   filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
-  animation: vd-splash-fall 780ms cubic-bezier(0.33, 1.02, 0.42, 1) 60ms both;
+  animation: vd-splash-fall 780ms cubic-bezier(0.33, 1.02, 0.42, 1) calc(60ms + var(--vd-elapsed, 0ms)) both;
 }
 /* Overshoot then a small secondary bounce — a drop landing, not an object
    easing into place. The squash on the way down is deliberate and slight; more
@@ -871,7 +871,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: vd-splash-open 560ms cubic-bezier(0.16, 1, 0.3, 1) 1250ms both;
+  animation: vd-splash-open 560ms cubic-bezier(0.16, 1, 0.3, 1) calc(1250ms + var(--vd-elapsed, 0ms)) both;
 }
 /* The opacity step is not decoration. `width: 0` on a bordered, border-box
    element still lays out at 3px — the two borders — so the closed plate drew a
@@ -892,7 +892,7 @@
   inset: 0;
   background: #FFFFFF;
   border-radius: 999px;
-  animation: vd-splash-wipe 380ms cubic-bezier(0.4, 0, 0.2, 1) 1520ms both;
+  animation: vd-splash-wipe 380ms cubic-bezier(0.4, 0, 0.2, 1) calc(1520ms + var(--vd-elapsed, 0ms)) both;
 }
 .vd-splash-wordmark {
   position: relative;
@@ -901,7 +901,7 @@
   font-size: 1.6rem;
   letter-spacing: 0.01em;
   line-height: 1;
-  animation: vd-splash-wipe 400ms cubic-bezier(0.4, 0, 0.2, 1) 1640ms both;
+  animation: vd-splash-wipe 400ms cubic-bezier(0.4, 0, 0.2, 1) calc(1640ms + var(--vd-elapsed, 0ms)) both;
 }
 @keyframes vd-splash-wipe {
   from { clip-path: inset(0 100% 0 0 round 999px); }
@@ -921,7 +921,7 @@
     rgba(27, 77, 62, 0.11) 50%,
     rgba(255, 255, 255, 0) 65%
   );
-  animation: vd-splash-sheen 2600ms ease-in-out 2050ms infinite;
+  animation: vd-splash-sheen 2600ms ease-in-out calc(2050ms + var(--vd-elapsed, 0ms)) infinite;
 }
 @keyframes vd-splash-sheen {
   0% { transform: translateX(-115%); }
@@ -936,14 +936,14 @@
   right: 0;
   top: calc(100% + 0.85rem);
   text-align: center;
-  animation: vd-splash-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) 1950ms both;
+  animation: vd-splash-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) calc(1950ms + var(--vd-elapsed, 0ms)) both;
 }
 
 .vd-splash-tag {
   animation: vd-splash-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.vd-splash-tag-1 { animation-delay: 620ms; }
-.vd-splash-tag-2 { animation-delay: 760ms; }
+.vd-splash-tag-1 { animation-delay: calc(620ms + var(--vd-elapsed, 0ms)); }
+.vd-splash-tag-2 { animation-delay: calc(760ms + var(--vd-elapsed, 0ms)); }
 
 @keyframes vd-splash-rise {
   from { opacity: 0; transform: translateY(12px); }
