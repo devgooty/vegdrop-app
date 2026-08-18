@@ -286,18 +286,15 @@ test('a customer cannot reach the vendor KYC endpoints', async () => {
 test('vendor registration proves both contacts before creating an account', async () => {
   const start = await api()
     .post('/api/auth/vendor/register/start')
-    .send({ phone: '9876543210', email: 'newvendor@example.com', name: 'New Vendor' });
+    .send({ phone: '9876543210', name: 'New Vendor' });
 
   assert.equal(start.status, 202);
-  assert.equal(await User.countDocuments({ email: 'newvendor@example.com' }), 0);
-  assert.ok(start.body.email.delivered);
+  assert.equal(await User.countDocuments({ phone: '9876543210' }), 0);
   assert.ok(start.body.phone.delivered);
 
   const verify = await api()
     .post('/api/auth/vendor/register/verify')
     .send({
-      emailChallengeId: start.body.email.challengeId,
-      emailCode: start.body.devCodes.email,
       phoneChallengeId: start.body.phone.challengeId,
       phoneCode: start.body.devCodes.phone,
     });
@@ -306,7 +303,7 @@ test('vendor registration proves both contacts before creating an account', asyn
   assert.equal(verify.body.user.role, 'shopkeeper');
   assert.equal(verify.body.nextStep, 'kyc');
 
-  const created = await User.findOne({ email: 'newvendor@example.com' });
+  const created = await User.findOne({ phone: '9876543210' });
   assert.equal(created.role, 'shopkeeper');
   assert.equal(created.phone, '9876543210');
 });
@@ -314,13 +311,11 @@ test('vendor registration proves both contacts before creating an account', asyn
 test('a freshly registered vendor cannot write to the catalog until KYC clears', async () => {
   const start = await api()
     .post('/api/auth/vendor/register/start')
-    .send({ phone: '9876543211', email: 'inert@example.com' });
+    .send({ phone: '9876543211' });
 
   const verify = await api()
     .post('/api/auth/vendor/register/verify')
     .send({
-      emailChallengeId: start.body.email.challengeId,
-      emailCode: start.body.devCodes.email,
       phoneChallengeId: start.body.phone.challengeId,
       phoneCode: start.body.devCodes.phone,
     });
@@ -333,76 +328,73 @@ test('a freshly registered vendor cannot write to the catalog until KYC clears',
 test('a customer registration code cannot be redeemed as a vendor registration', async () => {
   const start = await api()
     .post('/api/auth/register/start')
-    .send({ phone: '9876543212', email: 'customer-not-vendor@example.com' });
+    .send({ phone: '9876543212' });
 
   // Same code, wrong endpoint: the OTP purpose differs (`registration` vs
   // `vendor_registration`), so verifyChallenge must refuse it outright.
   const res = await api()
     .post('/api/auth/vendor/register/verify')
     .send({
-      emailChallengeId: start.body.email.challengeId,
-      emailCode: start.body.devCodes.email,
+      phoneChallengeId: start.body.phone.challengeId,
+      phoneCode: start.body.devCodes.phone,
     });
 
   assert.equal(res.status, 400);
   assert.equal(res.body.error.code, 'OTP_INVALID');
 
-  const created = await User.findOne({ email: 'customer-not-vendor@example.com' });
+  const created = await User.findOne({ phone: '9876543212' });
   assert.equal(created, null);
 });
 
-test('vendor registration is not blocked by a customer account on the same email', async () => {
+test('vendor registration is not blocked by a customer account on the same number', async () => {
   // One contact, several roles: uniqueness on User is per (contact, role), not
   // per contact — see the long comment on models/User.js. A customer account
-  // must not stand in the way of the SAME email registering as a shopkeeper;
-  // that is the entire point of the change.
-  const { user } = await createUser({ role: 'customer' });
+  // must not stand in the way of the SAME number registering as a shopkeeper.
+  //
+  // The shared contact is the phone now. It used to be demonstrated with an
+  // email, back when registration collected one; it does not, so the number is
+  // the only contact a sign-up has.
+  const { user } = await createUser({ role: 'customer', phone: '9876543213' });
 
   const res = await api()
     .post('/api/auth/vendor/register/start')
-    .send({ phone: '9876543213', email: user.email });
+    .send({ phone: user.phone });
 
   assert.equal(res.status, 202);
-  assert.equal(res.body.email.delivered, true);
 
   // Still exactly one customer account, and the vendor registration has not
   // created a shopkeeper account yet either — /start only issues codes.
-  const accounts = await User.find({ email: user.email }).select('role').lean();
+  const accounts = await User.find({ phone: user.phone }).select('role').lean();
   assert.deepEqual(
     accounts.map((a) => a.role).sort(),
     ['customer']
   );
 });
 
-test('vendor registration still refuses a second shopkeeper account for the same email', async () => {
+test('vendor registration still refuses a second shopkeeper account for the same number', async () => {
   // The part of the old behaviour that must survive: a contact may back at
   // most ONE account per role. Two shopkeeper accounts fighting over the same
-  // email is still nonsense, even though a customer account with that email
-  // sharing it is not.
-  const { user } = await createUser({ role: 'shopkeeper' });
+  // number is still nonsense, even though a customer account sharing it is not.
+  const { user } = await createUser({ role: 'shopkeeper', phone: '9876543213' });
 
   const res = await api()
     .post('/api/auth/vendor/register/start')
-    .send({ phone: '9876543213', email: user.email });
+    .send({ phone: user.phone });
 
   assert.equal(res.status, 409);
   assert.equal(res.body.error.code, 'ALREADY_REGISTERED');
 });
 
-test('the same email can complete registration as a customer and a shopkeeper independently', async () => {
-  const email = 'multi-role@example.com';
-  const { user: customer } = await createUser({ role: 'customer', email });
+test('the same number can complete registration as a customer and a shopkeeper independently', async () => {
+  const phone = '9876543215';
+  const { user: customer } = await createUser({ role: 'customer', phone });
 
-  const start = await api()
-    .post('/api/auth/vendor/register/start')
-    .send({ phone: '9876543215', email });
+  const start = await api().post('/api/auth/vendor/register/start').send({ phone });
   assert.equal(start.status, 202);
 
   const verify = await api()
     .post('/api/auth/vendor/register/verify')
     .send({
-      emailChallengeId: start.body.email.challengeId,
-      emailCode: start.body.devCodes.email,
       phoneChallengeId: start.body.phone.challengeId,
       phoneCode: start.body.devCodes.phone,
     });
@@ -411,7 +403,7 @@ test('the same email can complete registration as a customer and a shopkeeper in
   assert.equal(verify.body.user.role, 'shopkeeper');
   assert.notEqual(verify.body.user.id, customer.id);
 
-  const accounts = await User.find({ email }).select('role').lean();
+  const accounts = await User.find({ phone }).select('role').lean();
   assert.deepEqual(
     accounts.map((a) => a.role).sort(),
     ['customer', 'shopkeeper']
@@ -421,7 +413,7 @@ test('the same email can complete registration as a customer and a shopkeeper in
 test('vendor registration cannot smuggle a privileged role through the body', async () => {
   const res = await api()
     .post('/api/auth/vendor/register/start')
-    .send({ phone: '9876543214', email: 'sneaky@example.com', role: 'developer' });
+    .send({ phone: '9876543214', role: 'developer' });
 
   assert.equal(res.status, 400);
   assert.equal(res.body.error.code, 'VALIDATION_ERROR');

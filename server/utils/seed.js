@@ -262,7 +262,6 @@ async function seedAccounts() {
       email: account.email,
       phone: account.phone,
       role: account.role,
-      emailVerifiedAt: new Date(),
       phoneVerifiedAt: new Date(),
     });
 

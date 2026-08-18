@@ -96,7 +96,6 @@ async function createUser({ role = 'customer', ...overrides } = {}) {
     email: overrides.email || `${role}${suffix}@example.com`,
     phone: overrides.phone || `9${String(suffix).padStart(9, '0')}`.slice(0, 10),
     role,
-    emailVerifiedAt: new Date(),
     phoneVerifiedAt: new Date(),
     ...(overrides.status ? { status: overrides.status } : {}),
   });

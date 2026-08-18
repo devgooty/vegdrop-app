@@ -108,16 +108,21 @@ router.patch(
     body: z
       .object({
         name: fields.nonEmptyString(120).optional(),
-        // `email` is intentionally absent, exactly as `phone` is.
-        //
-        // It was accepted here while nothing was ever delivered to an email, so
-        // an unverified address was harmless. Login codes are now copied to a
-        // verified address, which makes any address a way in: a stolen session
-        // could point it at the attacker and receive every future code —
-        // permanent ownership, the same attack that removing `phone` closed.
-        // .strict() turns an attempt to set it into a 400. Adding or changing an
-        // address goes through POST /api/auth/email/start, which proves control
-        // of the new one first.
+        /**
+         * `email` is accepted here. `phone` still is not, and the difference is
+         * the whole point.
+         *
+         * This field was refused for a while, because a login code was copied
+         * to a verified address: any address a session could set was a way in,
+         * and a stolen session could point it at the attacker and receive every
+         * future code. Nothing is delivered to an email now, so setting one
+         * grants nothing — it is where a stall notice goes, and that is all.
+         *
+         * `phone` stays out. It IS the credential, so changing it is changing
+         * who owns the account; that goes through POST /api/auth/phone/start,
+         * which proves control of the new number first.
+         */
+        email: fields.email.optional(),
       })
       .strict()
       .refine((data) => Object.keys(data).length > 0, { message: 'No fields to update.' }),
@@ -266,7 +271,6 @@ router.delete(
     user.email = undefined;
     user.phone = undefined;
     user.pendingPhone = undefined;
-    user.emailVerifiedAt = null;
     user.phoneVerifiedAt = null;
     await user.save();
     await revokeAllForUser(user._id);

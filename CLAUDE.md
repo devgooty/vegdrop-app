@@ -62,10 +62,13 @@ This is the part most likely to be misunderstood, because two earlier versions d
 
 **There are no passwords anywhere in this system.** No `passwordHash` field, no hashing service, no password policy, no change-password endpoint. Possession of the phone number is the credential of record: a challenge is bound to a phone, and that is the number a session is issued for.
 
-**A login code is additionally copied to a verified email when SMTP is configured** (`SMTP_HOST` + `SMTP_FROM`). This was asked for deliberately, and the trade it makes should be stated plainly rather than discovered: once a code reaches a mailbox, whoever reads that mailbox can sign in, so account security becomes the **weaker** of the two channels. Two rules keep that from being a takeover path, and neither is optional:
+**A code goes to the phone and nowhere else.** It was copied to a verified email for a while, and that was removed deliberately: once a code reaches a mailbox, whoever reads that mailbox can sign in, so account security became the **weaker** of the two channels. The case it insured against — a number the transport cannot reach — is covered properly by reverse OTP, which proves the number instead of routing around it.
 
-- **Only verified addresses receive copies.** `emailVerifiedAt` must be set, via `POST /api/auth/email/start` + `/verify`, which sends a code to the *new* address to prove control of it.
-- **`PATCH /api/users/:id` rejects `email`**, exactly as it rejects `phone`. It accepted `email` while nothing was delivered there. Now that codes arrive, an unverified address would let a briefly-stolen session redirect every future code to the attacker — the same attack that removing `phone` closed.
+What went with it: `POST /api/auth/email/start` and `/verify`, the `email_change` OTP purpose, `User.emailVerifiedAt`, and the email branch of `notify.sendOtp`.
+
+**Dropping the field needed a migration, not just a schema edit.** `db/migrations.js` → `migrateDroppedEmailVerification()` unsets `emailVerifiedAt` on every boot. Mongoose will not write an undeclared field, but it will not remove one either, so every account predating the change would have gone on carrying a timestamp asserting that someone proved an address — through a flow that no longer exists. `test/migrations.test.js` writes through the raw collection to reproduce that state, because the field can no longer be created through the model. The email **transport** is untouched and still live — `routes/markets.js` sends stall approval and suspension notices through `sendNotice`. It is codes that no longer go there.
+
+**`PATCH /api/users/:id` accepts `email` again; it still refuses `phone`.** The address was refused while codes were delivered to it, because any address a session could set was a way in: a briefly-stolen session could point it at the attacker and receive every future code. Nothing is delivered there now, so setting one grants nothing — it is where a stall notice goes. `phone` stays out, because it IS the credential; changing it goes through `POST /api/auth/phone/start`, which proves the new number first.
 
 Email delivery is **best effort**: `services/otp.js` sends the copy after the phone leg has already succeeded, and swallows failures. A dead mail server must not fail a sign-in whose code was already delivered. A phone failure is still fatal.
 
@@ -89,7 +92,13 @@ Two consequences that have already bitten:
 
 **Account administration is `developer` only.** `market_owner` used to share it, which was too much authority for what that role is: a market owner is a business partner running a marketplace, not platform staff. Because the role endpoint accepts any value in `ROLES` and only blocks *self*-modification, sharing it meant any market owner could promote a second account they controlled to `developer` and inherit everything `developer` bypasses. `GET /api/users` returns `toPublicJSON()`, which carries `email` and `phone`, so it also handed them the entire customer table — the same competitor-to-competitor leak `visibilityFilter` in `routes/orders.js` was rewritten to close. Nothing is lost by narrowing it: a market owner already gets every market-scoped view they need (the stall-request queue carries each applicant's name and number, `/:id/stalls` lists their traders, `/:id/analytics` reports performance), and the client only ever rendered the user list inside `DeveloperPanel`.
 
-**Vendor self-registration** (`/auth/vendor/register/start` → `/vendor/register/verify`) is the *same* dual-OTP flow as customer registration — both contacts required, each proved by its own code, phone-unreachable tolerated the same way — sharing an implementation (`startRegistrationChallenge`/`completeRegistration` in `routes/auth.js`). It differs only in which role the account gets and which OTP `purpose` guards it: `vendor_registration` is a distinct enum value on `OtpChallenge`, not `registration` plus a payload flag, so a code issued for a customer sign-up can never be redeemed to mint a `shopkeeper` account. The role is hardcoded in the route, never read from a body.
+**Registration proves the phone, and asks for nothing else but a name.** It used to prove two contacts, and the email leg was the *required* one — so an account could be created having proved only an address, which inverted the model: the credential of record was the contact nobody demonstrated control of.
+
+**No email is collected at sign-up, sign-in, or anywhere in `LoginPage`.** An account is created without one. An address is attached later from the profile, through `PATCH /api/users/:id`, by anyone who wants the stall notices in `routes/markets.js` — which in practice means shopkeepers, though nothing enforces that and customers may add one too. Optional for everyone, asked of no one.
+
+`POST /register/verify` takes either an outbound code pair or a reverse-OTP `phoneToken`, **exactly one, never neither**; there is no longer a shape of that request that mints an account without a proved number, and so no more `pendingPhone` for new accounts.
+
+**Vendor self-registration** (`/auth/vendor/register/start` → `/vendor/register/verify`) is the *same* flow as customer registration — phone proved, nothing else asked, phone-unreachable falling through to reverse OTP the same way — sharing an implementation (`startRegistrationChallenge`/`completeRegistration` in `routes/auth.js`). It differs only in which role the account gets and which OTP `purpose` guards it: `vendor_registration` is a distinct enum value on `OtpChallenge`, not `registration` plus a payload flag, so a code issued for a customer sign-up can never be redeemed to mint a `shopkeeper` account. The role is hardcoded in the route, never read from a body.
 
 A vendor account created this way is inert until two separate things are true. It has no KYC record, and `middleware/vendorVerified.js` refuses every catalog write in `routes/products.js` until the bank account is verified (see Vendor KYC, below). Clearing KYC then grants writes only to **its own listings**: `Product.createdBy` is stamped from the session at creation and checked on every later write, so one vendor cannot reprice, empty or delist another's range. A null `createdBy` — seeded catalog, and anything predating the field — is administrable by `market_owner`/`developer` only; "unowned" deliberately does not mean "claimable by the first vendor to ask".
 
@@ -111,10 +120,10 @@ Stateless access tokens are revoked by incrementing `user.tokenVersion`; `middle
 
 `services/notify.js` resolves a transport **per channel**, lazily. `email` and
 `sms` are separate because every real provider handles one or the other, never
-both — and that split now carries real weight, since a login code reaches both
-channels. A single global transport once meant configuring WhatsApp broke sign-in
-for every user with an email address; keyed by channel, an unconfigured or broken
-channel only affects what is addressed to it.
+both. A single global transport once meant configuring WhatsApp broke delivery
+for everything addressed to an inbox; keyed by channel, an unconfigured or broken
+channel only affects what is addressed to it. Codes go to `sms` only — `email`
+now carries stall notices and nothing else.
 
 The `sms` channel is WhatsApp (or the console stub); the `email` channel is SMTP
 via nodemailer (`services/transports/email.js`), active only when `SMTP_HOST` and
@@ -207,8 +216,15 @@ sender is Meta's own record. The SMS relay (`POST /api/gateway/reverse-otp-sms`,
 authenticated by a shared `X-Gateway-Secret`) reports whatever an Android app read
 out of an SMS header, on a network where sender IDs can be forged — the secret
 proves the *relay* is ours, not the sender it names. `/start` therefore returns
-`assurance: 'high'` / `'low'` per channel and the UI says so. That Android relay
-app is not part of this repository.
+`assurance: 'high'` / `'low'` per channel and the UI says so.
+
+That Android relay app is not part of this repository and should not become one.
+An off-the-shelf forwarder already satisfies the contract, and the endpoint
+assumes nothing about the relay beyond the shared secret precisely so that stays
+true. `docs/sms-relay-setup.md` names the app and the exact rule to configure —
+including the SIM-slot and text filters, which are together the only thing
+keeping the relay handset's personal SMS off our server, and which both default
+to off.
 
 Things worth knowing:
 

@@ -22,10 +22,6 @@ function placeholderName(phone) {
   return `Customer ${String(phone).slice(-4)}`;
 }
 
-function isEmailIdentifier(identifier) {
-  return String(identifier).includes('@');
-}
-
 /**
  * Which accounts a given app is willing to sign in.
  *
@@ -68,11 +64,12 @@ function appMayCreateAccount(app) {
 /**
  * Resolve an account from whatever was typed into the single sign-in box.
  *
- * `pendingPhone` is matched too. Someone who registered while WhatsApp was down
- * knows only the number they typed; not matching it would tell them no account
- * exists, send them back through registration, and fail on the email already
- * being taken. They are found here and signed in through their verified email —
- * the unproven number still receives nothing.
+ * `pendingPhone` is matched too, and is now the only reason a legacy account
+ * with an unproven number is findable at all. It exists for people who
+ * registered back when the email leg could carry a registration on its own; new
+ * accounts always have a proven `phone`, because the phone is the only thing
+ * registration proves. Not matching it would tell those users no account exists
+ * and push them into a registration that then collides on the number.
  *
  * `roles`, when given, narrows the match to `APP_ROLE_SCOPE` for the calling
  * app — see there for why. Omitted entirely rather than defaulted to "every
@@ -83,9 +80,11 @@ function appMayCreateAccount(app) {
 async function findByIdentifier(identifier, roles) {
   const scope = roles ? { role: { $in: roles } } : {};
 
-  if (isEmailIdentifier(identifier)) {
-    return User.findOne({ email: identifier, status: { $ne: 'deleted' }, ...scope });
-  }
+  /**
+   * Phone only. An email address used to resolve an account here, back when a
+   * code could be delivered to one; it no longer can, so matching an email
+   * would find an account nobody can then prove they own.
+   */
   return User.findOne({
     $or: [{ phone: identifier }, { pendingPhone: identifier }],
     status: { $ne: 'deleted' },
@@ -110,7 +109,6 @@ async function establishSession(user, req, res) {
 
 module.exports = {
   placeholderName,
-  isEmailIdentifier,
   APP_ROLE_SCOPE,
   appMayCreateAccount,
   findByIdentifier,

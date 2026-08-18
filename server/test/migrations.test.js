@@ -24,7 +24,10 @@ const assert = require('node:assert/strict');
 const { startTestServer, stopTestServer, resetDatabase, api, createUser } = require('./helpers');
 const User = require('../models/User');
 const notify = require('../services/notify');
-const { migrateUserContactIndexes } = require('../db/migrations');
+const {
+  migrateUserContactIndexes,
+  migrateDroppedEmailVerification,
+} = require('../db/migrations');
 
 test.before(startTestServer);
 test.after(stopTestServer);
@@ -158,27 +161,31 @@ test('per-role uniqueness actually holds once the migration and rebuild have run
  * Everything above proves the constraint at the model layer. What was reported
  * from production was not a constraint — it was a sentence: "An account already
  * exists for those details. Try signing in instead.", on the shopkeeper app,
- * for an email whose only account was a customer one. That message is raised in
+ * for a number whose only account was a customer one. That message is raised in
  * routes/auth.js from an E11000 on `User.create`, i.e. AFTER the role-scoped
  * application pre-check has already passed. So the failure only exists end to
  * end, and only a request that goes all the way to the insert can demonstrate
  * it is gone.
  *
- * Both legs of the dual-OTP flow have to deliver for this, so the transport is
- * stubbed the way kyc.test.js does it — the default test transport reports
+ * The phone code has to deliver for this, so the transport is stubbed the way
+ * kyc.test.js does it — the default test transport reports
  * `reachesRecipient: false`, which would silently skip the phone leg.
+ *
+ * Staged on the stale `phone_1` index rather than `email_1`: registration no
+ * longer collects an address, so a new shopkeeper account has none and could
+ * never collide on one. The number is the contact both accounts share.
  */
-test('the shopkeeper app can register an email that already has a customer account', async () => {
+test('the shopkeeper app can register a number that already has a customer account', async () => {
   notify.setTransport({ name: 'recording', async send() {} });
 
   try {
-    await installStaleContactIndex('email');
+    await installStaleContactIndex('phone');
     const { user } = await createUser({ role: 'customer' });
 
-    async function registerVendor(phone) {
+    async function registerVendor() {
       const start = await api()
         .post('/api/auth/vendor/register/start')
-        .send({ phone, email: user.email });
+        .send({ phone: user.phone });
 
       // The pre-check IS role-scoped, so this step succeeds either way. That is
       // exactly why the bug reached the second step before showing itself.
@@ -187,28 +194,72 @@ test('the shopkeeper app can register an email that already has a customer accou
       return api()
         .post('/api/auth/vendor/register/verify')
         .send({
-          emailChallengeId: start.body.email.challengeId,
-          emailCode: start.body.devCodes.email,
           phoneChallengeId: start.body.phone.challengeId,
           phoneCode: start.body.devCodes.phone,
         });
     }
 
-    const blocked = await registerVendor('9000000020');
+    const blocked = await registerVendor();
     assert.equal(blocked.status, 409, 'the stale index must still turn the insert into a 409');
     assert.equal(blocked.body.error.code, 'ALREADY_REGISTERED');
 
     await migrateUserContactIndexes();
     await User.createIndexes();
 
-    const allowed = await registerVendor('9000000021');
+    const allowed = await registerVendor();
     assert.equal(allowed.status, 201, JSON.stringify(allowed.body));
     assert.equal(allowed.body.user.role, 'shopkeeper');
-    assert.equal(allowed.body.user.email, user.email);
+    assert.equal(allowed.body.user.email, null, 'sign-up collects no address');
 
-    const roles = await User.find({ email: user.email }).select('role').lean();
+    const roles = await User.find({ phone: user.phone }).select('role').lean();
     assert.deepEqual(roles.map((r) => r.role).sort(), ['customer', 'shopkeeper']);
   } finally {
     notify.setTransport(null);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Dropped email verification
+// ---------------------------------------------------------------------------
+
+/**
+ * The model no longer declares `emailVerifiedAt`, which means Mongoose will not
+ * write one — and equally will not remove one already sitting in a document.
+ * These write through the raw collection for exactly that reason: the field
+ * cannot be created through the model any more, so the only way to reproduce a
+ * pre-migration account is to bypass it.
+ */
+test('clears emailVerifiedAt from accounts that still carry one', async () => {
+  const { user } = await createUser({ phone: '9000000030', email: 'legacy@example.com' });
+  await User.collection.updateOne({ _id: user._id }, { $set: { emailVerifiedAt: new Date() } });
+
+  const { cleared } = await migrateDroppedEmailVerification();
+
+  assert.equal(cleared, 1);
+
+  const after = await User.collection.findOne({ _id: user._id });
+  assert.equal('emailVerifiedAt' in after, false, 'the field must be gone, not set to null');
+  assert.equal(after.email, 'legacy@example.com', 'the address itself is kept — notices go there');
+});
+
+test('the migration is idempotent and writes nothing on a clean database', async () => {
+  const { user } = await createUser({ phone: '9000000031', email: 'clean@example.com' });
+  await User.collection.updateOne({ _id: user._id }, { $set: { emailVerifiedAt: new Date() } });
+
+  await migrateDroppedEmailVerification();
+
+  // Runs on every boot, including boots of a database already migrated, and
+  // including two instances starting at once.
+  const second = await migrateDroppedEmailVerification();
+  assert.equal(second.cleared, 0);
+});
+
+test('an account that never had the field is untouched', async () => {
+  const { user } = await createUser({ phone: '9000000032' });
+
+  const { cleared } = await migrateDroppedEmailVerification();
+
+  assert.equal(cleared, 0);
+  const after = await User.collection.findOne({ _id: user._id });
+  assert.equal('emailVerifiedAt' in after, false);
 });

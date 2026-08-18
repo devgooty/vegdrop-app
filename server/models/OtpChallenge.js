@@ -18,9 +18,8 @@ const otpChallengeSchema = new mongoose.Schema(
      * `login` covers signing up too — they are one flow, so a challenge issued
      * for a number with no account is the same kind of challenge as one for an
      * existing account. `phone_change` proves control of a new number before it
-     * becomes the account's credential. `email_change` does the same for an
-     * address before login codes are ever copied to it — an address nobody
-     * proved control of would be a way in, not a convenience. `vendor_registration`
+     * becomes the account's credential. There is no `email_change`: an address
+     * receives nothing, so there is no control to prove. `vendor_registration`
      * and `delivery_registration` are kept separate from `registration` rather
      * than reusing it with a payload flag, so a code issued for a customer
      * sign-up can never be redeemed to mint a `shopkeeper` or `delivery`
@@ -43,7 +42,6 @@ const otpChallengeSchema = new mongoose.Schema(
         'vendor_registration',
         'delivery_registration',
         'phone_change',
-        'email_change',
       ],
       index: true,
     },

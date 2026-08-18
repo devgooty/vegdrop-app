@@ -33,8 +33,15 @@ function hashCode(challengeId, code) {
     .digest('hex');
 }
 
-function channelFor(destination) {
-  return destination.includes('@') ? 'email' : 'sms';
+/**
+ * Always 'sms'. An OTP has exactly one kind of destination now — a phone.
+ *
+ * Kept as a function rather than inlined because `OtpChallenge.channel` is a
+ * stored enum that still has an `email` member for rows written before login
+ * codes stopped being copied to a mailbox.
+ */
+function channelFor() {
+  return 'sms';
 }
 
 /**
@@ -42,7 +49,7 @@ function channelFor(destination) {
  *
  * @returns {Promise<{ challengeId: string, channel: string, destination: string, expiresAt: Date, devCode?: string }>}
  */
-async function issueChallenge({ purpose, destination, user = null, payload = null, copyTo = [] }) {
+async function issueChallenge({ purpose, destination, user = null, payload = null }) {
   const normalized = String(destination).trim().toLowerCase();
   const channel = channelFor(normalized);
 
@@ -123,8 +130,6 @@ async function issueChallenge({ purpose, destination, user = null, payload = nul
       purpose,
       ttlSeconds: config.otp.ttlSeconds,
       role: user?.role,
-      // Absent during registration, where no account exists yet — the email
-      // template falls back to an unnamed greeting rather than inventing one.
       name: user?.name,
     });
   } catch (err) {
@@ -142,35 +147,13 @@ async function issueChallenge({ purpose, destination, user = null, payload = nul
   );
 
   /**
-   * Additional copies of the same code.
+   * There are no secondary copies of a code any more.
    *
-   * Best effort, and deliberately after the primary send has already succeeded.
-   * The challenge is bound to `destination` — the phone — and that is what
-   * verification issues a session for; a copy is a convenience, so a mail server
-   * being down must not fail a sign-in that has already been delivered. Failures
-   * are logged and swallowed.
-   *
-   * Callers decide what goes here, and only pass addresses that have been
-   * verified. Nothing derives a destination from unverified profile input.
+   * A verified email used to receive one. That made account security the weaker
+   * of the two channels — whoever read the mailbox could sign in — and it was
+   * insurance against a phone the transport could not reach. Reverse OTP covers
+   * that case properly, by proving the number instead of routing around it.
    */
-  for (const extra of copyTo) {
-    try {
-      await notify.sendOtp({
-        channel: channelFor(extra),
-        to: extra,
-        code,
-        purpose,
-        ttlSeconds: config.otp.ttlSeconds,
-        role: user?.role,
-      });
-    } catch (err) {
-      console.warn('[otp] secondary delivery failed', {
-        to: maskDestination(extra),
-        purpose,
-        message: err?.message,
-      });
-    }
-  }
 
   const result = { challengeId, channel, destination: maskDestination(normalized), expiresAt };
 

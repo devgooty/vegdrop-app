@@ -38,8 +38,6 @@ import {
   logoutEverywhere,
   startPhoneChange,
   verifyPhoneChange,
-  startEmailChange,
-  verifyEmailChange,
 } from './services/auth';
 import useLocalStorage from './hooks/useLocalStorage';
 import useSessionUser from './hooks/useSessionUser';
@@ -770,7 +768,15 @@ export default function App() {
     if (!user) return;
     setEditName(user.name);
     setEditEmail(user.email || '');
-    setEditPhone(user.phone || '');
+    /**
+     * Falls back to `pendingPhone`.
+     *
+     * An account registered while WhatsApp was down has its number there and
+     * not in `phone` — unproven, but it is still the number the person typed
+     * and expects to see. Reading only `phone` showed them an empty box and no
+     * explanation.
+     */
+    setEditPhone(user.phone || user.pendingPhone || '');
     setIsEditingProfile(true);
     setShowProfileOTP(false);
     /**
@@ -791,14 +797,13 @@ export default function App() {
    * The name is an ordinary profile field and saves directly. Neither contact
    * is.
    *
-   * This used to send `email` alongside `name` in the profile PATCH. That
-   * stopped working when login codes began being copied to a verified address:
-   * the server dropped `email` from the schema for the same reason it never
-   * accepted `phone`, and because the schema is `.strict()` an unknown key
-   * fails the WHOLE request — so a user with an address on file (the field is
-   * pre-filled from it, so that is everyone) got a 400 and could not even
-   * rename themselves. Both contacts now take the verified route they always
-   * should have.
+   * `email` goes in the PATCH again, alongside `name`. `phone` still does not.
+   *
+   * The address spent a while behind its own verify flow, because a login code
+   * was copied to it: any address a session could set was a way in. Codes no
+   * longer go to a mailbox, so an address grants nothing and is an ordinary
+   * profile field. The number is still the credential, so it still takes the
+   * proved route.
    */
   const handleSaveProfile = useCallback(async (e) => {
     e.preventDefault();
@@ -813,32 +818,25 @@ export default function App() {
     }
 
     const emailChanged = email !== (user.email || '').toLowerCase();
-    const phoneChanged = phone !== (user.phone || '');
+    const phoneChanged = phone !== (user.phone || user.pendingPhone || '');
 
     try {
-      // The name first, so it lands even if a contact change is abandoned at
-      // the code step.
-      if (name !== user.name) {
-        const updated = await updateUser(user.id, { name });
+      /**
+       * Name and email in one PATCH, first, so they land even if the number
+       * change is abandoned at the code step.
+       *
+       * An address can be cleared here too — sending an empty one removes it.
+       * Nothing depends on an address being present except stall notices, which
+       * simply do not get sent.
+       */
+      const patch = {};
+      if (name !== user.name) patch.name = name;
+      if (emailChanged) patch.email = email;
+
+      if (Object.keys(patch).length > 0) {
+        const updated = await updateUser(user.id, patch);
         setUser(updated);
         setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
-      }
-
-      // An address can be added or replaced, but not removed — there is no
-      // endpoint for dropping one, so say that rather than silently ignoring it.
-      if (emailChanged && !email) {
-        toast.warning(t('toast.emailRemovalUnsupported'));
-      }
-
-      if (emailChanged && email) {
-        const issued = await startEmailChange({ email });
-        setProfileChallenge({ kind: 'email', ...issued });
-        // Queued, not run in parallel: each code proves a different destination.
-        setPendingPhoneChange(phoneChanged ? phone : null);
-        setProfileMobileOTP('');
-        setProfileOtpError('');
-        setShowProfileOTP(true);
-        return;
       }
 
       if (phoneChanged) {
@@ -854,13 +852,11 @@ export default function App() {
       }
 
       setIsEditingProfile(false);
-      if (name !== user.name) toast.success(t('toast.profileUpdated'));
+      if (Object.keys(patch).length > 0) toast.success(t('toast.profileUpdated'));
     } catch (err) {
-      toast.error(
-        err.code === 'EMAIL_NOT_CONFIGURED'
-          ? t('toast.emailNotConfigured')
-          : err.message || t('toast.profileUpdateFailed')
-      );
+      // No EMAIL_NOT_CONFIGURED branch: nothing is delivered to an address, so
+      // saving one cannot depend on a mail server being reachable.
+      toast.error(err.message || t('toast.profileUpdateFailed'));
     }
   }, [user, editName, editEmail, editPhone, setUser, setRegisteredUsers, toast, t]);
 
@@ -877,32 +873,17 @@ export default function App() {
       return;
     }
 
-    const isEmail = profileChallenge.kind === 'email';
+    // Only ever a phone now. The email leg was removed with the flow that
+    // delivered codes to an address.
     const code = profileMobileOTP.trim();
 
     try {
       // The server is the only writer; adopt exactly what it returns rather
       // than optimistically assuming the edit applied.
-      const updated = isEmail
-        ? await verifyEmailChange({ challengeId: profileChallenge.challengeId, code })
-        : await verifyPhoneChange({ challengeId: profileChallenge.challengeId, code });
+      const updated = await verifyPhoneChange({ challengeId: profileChallenge.challengeId, code });
 
       setUser(updated);
       setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
-
-      /**
-       * The address is proved; now do the number, without closing the modal.
-       * Started only after the email leg succeeded, so abandoning here costs
-       * the user the number change and not the address they just confirmed.
-       */
-      if (isEmail && pendingPhoneChange) {
-        const issued = await startPhoneChange({ phone: pendingPhoneChange });
-        setProfileChallenge({ kind: 'phone', rawPhone: pendingPhoneChange, ...issued });
-        setPendingPhoneChange(null);
-        setProfileMobileOTP('');
-        toast.success(t('toast.emailVerifiedNowPhone'));
-        return;
-      }
     } catch (err) {
       setProfileOtpError(err.message || 'Could not verify that code.');
       return;
@@ -912,8 +893,8 @@ export default function App() {
     setShowProfileOTP(false);
     setProfileChallenge(null);
     setPendingPhoneChange(null);
-    toast.success(t(isEmail ? 'toast.emailVerified' : 'toast.phoneUpdated'));
-  }, [profileChallenge, pendingPhoneChange, profileMobileOTP, setUser, setRegisteredUsers, toast, t]);
+    toast.success(t('toast.phoneUpdated'));
+  }, [profileChallenge, profileMobileOTP, setUser, setRegisteredUsers, toast, t]);
 
   /**
    * Stock edits are optimistic, then reconciled against the server's response.
@@ -2140,7 +2121,7 @@ export default function App() {
                           </div>
                           <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center py-1.5 sm:py-2 border-b border-emerald-900/5 group gap-0.5 sm:gap-0">
                             <span className="text-slate-400 font-extrabold text-[10px] uppercase tracking-wider group-hover:text-slate-600 transition-colors">Mobile Number</span>
-                            <span className="font-black text-[#1B4D3E] drop-shadow-sm break-words max-w-full">{user.phone}</span>
+                            <span className="font-black text-[#1B4D3E] drop-shadow-sm break-words max-w-full">{user.phone || user.pendingPhone || '—'}</span>
                           </div>
                           <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center py-1.5 sm:py-2 border-b border-emerald-900/5 group bg-emerald-50/50 -mx-2 px-2 rounded-xl gap-0.5 sm:gap-0">
                             <span className="text-emerald-700 font-extrabold text-[10px] uppercase tracking-wider">VegWallet Balance</span>
@@ -2182,22 +2163,10 @@ export default function App() {
 
                             <form onSubmit={handleVerifyProfileOTP} className="space-y-3">
                               <div className="bg-blue-50/80 p-2.5 rounded-xl border border-blue-100 text-[10px] text-blue-900 font-semibold leading-relaxed">
-                                {profileChallenge?.kind === 'email' ? (
-                                  <>
-                                    We sent a 6-digit code to{' '}
-                                    <span className="font-extrabold">{profileChallenge?.destination || editEmail}</span>.
-                                    Enter it to attach that address. Sign-in codes will then arrive
-                                    there as well as on WhatsApp, so keep the mailbox secure.
-                                    {pendingPhoneChange && ' Your new number is confirmed after this.'}
-                                  </>
-                                ) : (
-                                  <>
-                                    We sent a 6-digit code on WhatsApp to{' '}
-                                    <span className="font-extrabold">{profileChallenge?.destination || editPhone}</span>.
-                                    Enter it to move your account to that number — every other
-                                    device will be signed out.
-                                  </>
-                                )}
+                                We sent a 6-digit code on WhatsApp to{' '}
+                                <span className="font-extrabold">{profileChallenge?.destination || editPhone}</span>.
+                                Enter it to move your account to that number — every other device
+                                will be signed out.
                               </div>
 
                               {profileReverse && profileChallenge?.kind === 'phone' ? (
