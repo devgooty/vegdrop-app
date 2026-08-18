@@ -242,9 +242,16 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
    * `reverseLogin` swaps the sign-in code box for the panel. `reversePhoneLeg`
    * does the same for registration, which now proves the number and nothing
    * else — so a reverse token is the whole of that proof, not half of it.
+   *
+   * BOTH DEFAULT ON. Sending us a message is the ordinary way to verify a
+   * number here, not the fallback it started as. It costs nothing, cannot fail
+   * to deliver because nothing is delivered, and asks the user to press send
+   * rather than to read six characters off one screen and type them into
+   * another. The outbound code is still there behind "Type a code instead",
+   * for anyone whose messaging app will not open.
    */
-  const [reverseLogin, setReverseLogin] = useState(false);
-  const [reversePhoneLeg, setReversePhoneLeg] = useState(false);
+  const [reverseLogin, setReverseLogin] = useState(true);
+  const [reversePhoneLeg, setReversePhoneLeg] = useState(true);
   const [reversePhoneToken, setReversePhoneToken] = useState(null);
 
   /**
@@ -274,8 +281,8 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     setRegistration(null);
     setCode('');
     setPhoneCode('');
-    setReverseLogin(false);
-    setReversePhoneLeg(false);
+    setReverseLogin(true);
+    setReversePhoneLeg(true);
     setReversePhoneToken(null);
     setStep(STEP.IDENTIFIER);
   };
@@ -312,7 +319,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
         setCode('');
         // Only a typed number gives us something to prove by reverse OTP.
         setLoginPhone(typed.replace(/\D/g, '').slice(-10));
-        setReverseLogin(false);
+        setReverseLogin(true);
         setStep(STEP.LOGIN_CODE);
         return;
       }
@@ -383,13 +390,13 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
       setPhoneCode('');
       setReversePhoneToken(null);
       /**
-       * If nothing could be delivered to the number, reverse OTP is the only way
-       * left to prove it — so it is opened automatically rather than offered.
-       * This used to be the dead end where the number was kept unverified and
-       * the user had to confirm it later; sending us a message works even when
-       * we cannot send them one.
+       * On regardless of whether a code went out.
+       *
+       * It is the default path now, and when delivery failed it is the only one
+       * — there is no longer a dead end where the number is kept unverified,
+       * because an unproved number no longer becomes an account.
        */
-      setReversePhoneLeg(!issued?.phone?.delivered);
+      setReversePhoneLeg(true);
       setStep(STEP.REGISTER_CODES);
     } catch (err) {
       setError(describeError(err, t('login.errSendCodes')));
