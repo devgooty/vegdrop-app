@@ -207,8 +207,15 @@ sender is Meta's own record. The SMS relay (`POST /api/gateway/reverse-otp-sms`,
 authenticated by a shared `X-Gateway-Secret`) reports whatever an Android app read
 out of an SMS header, on a network where sender IDs can be forged — the secret
 proves the *relay* is ours, not the sender it names. `/start` therefore returns
-`assurance: 'high'` / `'low'` per channel and the UI says so. That Android relay
-app is not part of this repository.
+`assurance: 'high'` / `'low'` per channel and the UI says so.
+
+That Android relay app is not part of this repository and should not become one.
+An off-the-shelf forwarder already satisfies the contract, and the endpoint
+assumes nothing about the relay beyond the shared secret precisely so that stays
+true. `docs/sms-relay-setup.md` names the app and the exact rule to configure —
+including the SIM-slot and text filters, which are together the only thing
+keeping the relay handset's personal SMS off our server, and which both default
+to off.
 
 Things worth knowing:
 
