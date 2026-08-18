@@ -1359,10 +1359,18 @@
   display: block;
 }
 
+/* What the splash hands over is a bare droplet, so the badge is not there yet
+   — through the flight's opening wait as well as the flight itself, which is
+   why the two states are separate. `is-arriving` is the whole arrival;
+   `is-dressing` starts when the mark actually begins to move. */
+.vd-home-mark.is-arriving .vd-home-mark-shell {
+  opacity: 0;
+}
+
 /* Behind the mark and after the flight has carried it most of the way, so the
    droplet reads as arriving and then being framed, rather than as a badge that
    was there all along and merely grew. */
-.vd-home-mark.is-arriving .vd-home-mark-shell {
+.vd-home-mark.is-dressing .vd-home-mark-shell {
   animation: vd-badge-form 400ms ease-out 220ms both;
 }
 @keyframes vd-badge-form {
@@ -1381,8 +1389,10 @@
 @media (prefers-reduced-motion: reduce) {
   /* Belt and braces, as on the login arrival: `claimBrandFlight` already
      refuses under reduced motion, so `is-arriving` is never set. */
-  .vd-home-mark.is-arriving .vd-home-mark-shell {
+  .vd-home-mark.is-arriving .vd-home-mark-shell,
+  .vd-home-mark.is-dressing .vd-home-mark-shell {
     animation: none;
+    opacity: 1;
   }
 }
 

@@ -45,22 +45,61 @@
 /** How long a mark takes to fly to its new home, unless a caller says otherwise. */
 export const FLIGHT_MS = 560;
 
-/**
- * Fast out of the gate and a long settle — the mark should look like it is
- * arriving somewhere, not sliding on a rail.
- *
- * How front-loaded this can be depends on the journey, which is why it is
- * overridable. Almost all of the distance is covered in the first quarter of
- * the timeline, so a single dropped frame at the start costs a lot of visible
- * travel — and a frame IS dropped at the start, reliably, because that is the
- * moment the arriving screen is doing its first layout and paint. The wordmark
- * absorbs it (230px onto a light screen); the droplet does not (322px onto the
- * shop), so the header asks for a gentler one.
- */
-export const FLIGHT_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
+/** Fast out of the gate and a long settle — arriving somewhere, not sliding on a rail. */
+const FLIGHT_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
-/** The longest flight plus the tail of any arrival played around it. */
-export const ARRIVAL_MS = 880;
+/**
+ * A frame gap at or under this is taken as evidence the browser is keeping up.
+ * Generously above 16.7ms, because the job is to tell a working frame from a
+ * 90ms one, not to hold out for a perfect 60Hz.
+ */
+const SMOOTH_FRAME_MS = 26;
+
+/** How long to wait for that evidence before going anyway. */
+const SETTLE_CAP_MS = 280;
+
+/**
+ * The longest flight, plus whatever it may spend waiting to start, plus the
+ * tail of any arrival played around it.
+ */
+export const ARRIVAL_MS = 1400;
+
+/**
+ * Hold the mark at its origin until the browser can actually draw it moving.
+ *
+ * The arriving screen's first layout and paint land in exactly the frames the
+ * flight would be starting in, and that frame is long: 94ms on the shop,
+ * measured on production. Against a front-loaded curve one dropped frame like
+ * that swallows more than half the journey, so the mark appears to teleport and
+ * then ease the last little way — the opposite of what carrying it is for.
+ *
+ * So the flight waits for evidence that frames are flowing: the first pair of
+ * consecutive ones close enough together to be a real frame. Adaptive rather
+ * than a fixed delay, because the wait a fast device needs is nearly nothing
+ * and the wait a slow one needs is longer than anything worth hard-coding.
+ * Capped, because a device that never manages a smooth frame must still get its
+ * mark home.
+ *
+ * The waiting costs nothing to look at: `fill: 'backwards'` holds the mark
+ * exactly where the last screen left it, which is the frame already on screen.
+ */
+function playWhenSmooth(animation, onStart) {
+  const startedAt = performance.now();
+  let previous = startedAt;
+
+  const check = () => {
+    const now = performance.now();
+    if (now - previous <= SMOOTH_FRAME_MS || now - startedAt >= SETTLE_CAP_MS) {
+      animation.play();
+      if (onStart) onStart();
+      return;
+    }
+    previous = now;
+    requestAnimationFrame(check);
+  };
+
+  requestAnimationFrame(check);
+}
 
 /**
  * How long a published position stays claimable.
@@ -145,8 +184,9 @@ function takeBrandOrigin(key) {
  * its frame works because the two are concentric — scaling the badge about its
  * own centre scales the glyph about that same centre.
  *
- * `options.duration` and `options.easing` are how a longer journey asks for
- * more room; see FLIGHT_EASING above for why the two differ.
+ * `options.duration` is how a longer journey asks for more room, and
+ * `options.onStart` fires when the flight actually begins moving — which is not
+ * when this returns; see `playWhenSmooth`.
  *
  * Call it from a layout effect. It measures, so it needs the DOM laid out; and
  * it must apply before the frame is painted, or the mark shows for one frame at
@@ -175,15 +215,20 @@ export function claimBrandFlight(key, el, options = {}) {
   // its staggered arrival, for a move nobody can see.
   if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(scale - 1) < 0.02) return null;
 
-  return el.animate(
+  const animation = el.animate(
     [{ transform: `translate(${dx}px, ${dy}px) scale(${scale})` }, { transform: 'none' }],
     {
       duration: options.duration || FLIGHT_MS,
-      easing: options.easing || FLIGHT_EASING,
+      easing: FLIGHT_EASING,
       // Without this the element paints at its destination for the frame
       // between `animate()` and the animation's own start time, which is the
-      // single-frame flicker this whole approach exists to avoid.
+      // single-frame flicker this whole approach exists to avoid. It is also
+      // what makes the wait below invisible.
       fill: 'backwards',
     },
   );
+
+  animation.pause();
+  playWhenSmooth(animation, options.onStart);
+  return animation;
 }

@@ -36,24 +36,48 @@ export default function Header({
      published is a bare droplet, and the badge is the squircle around one. */
   const badgeRef = useRef(null);
   const glyphRef = useRef(null);
+  /** Undressed and in flight — the badge is oversized and out over the page. */
   const [isArriving, setIsArriving] = useState(false);
+  /** Putting its squircle on, which happens on the flight's clock, not the page's. */
+  const [isDressing, setIsDressing] = useState(false);
 
   useLayoutEffect(() => {
     const flight = claimBrandFlight('mark', badgeRef.current, {
       measure: glyphRef.current,
-      // Longer and gentler than the default: this mark travels about half again
-      // as far as the login screen's wordmark does, shrinks to a third rather
-      // than growing, and lands on the heaviest screen in the app — so the
-      // frame the browser drops at the start of the flight has to cost less
-      // distance here than it does there.
+      // Longer than the default: this mark travels about half again as far as
+      // the login screen's wordmark does, and shrinks to a third of its size
+      // rather than growing by half.
       duration: 680,
-      easing: 'cubic-bezier(0.32, 0.72, 0, 1)',
+      // Not a CSS delay, because the flight can hold at its origin for a moment
+      // before it moves (see `playWhenSmooth`) and the length of that wait is
+      // not known here. On a timer the badge would finish forming while the
+      // droplet was still sitting where the splash left it.
+      onStart: () => setIsDressing(true),
     });
     if (!flight) return undefined;
 
     setIsArriving(true);
-    const timer = setTimeout(() => setIsArriving(false), ARRIVAL_MS);
-    return () => clearTimeout(timer);
+
+    /*
+      No cleanup, deliberately, and it is StrictMode that decides this.
+
+      A claim is single use. In development every effect is mounted, cleaned up
+      and mounted again — and the second run has nothing left to claim, so it
+      cannot re-arm anything the first run's cleanup cancelled. Clearing this
+      timeout there left both classes on for good, which holds the shell at
+      opacity 0: a header whose badge is a bare droplet with no squircle, for
+      the rest of the session.
+
+      What is left behind is two setState calls on a component that has almost
+      certainly not gone anywhere — the header outlives a second and a half of
+      launch animation — and which are a no-op in React 18 if it has.
+    */
+    setTimeout(() => {
+      setIsArriving(false);
+      setIsDressing(false);
+    }, ARRIVAL_MS);
+
+    return undefined;
   }, []);
 
   // Role-based header accent
@@ -217,7 +241,11 @@ export default function Header({
           ref={badgeRef}
           role="img"
           aria-label="VegDrop"
-          className={`vd-home-mark group-hover:scale-105 transition-transform${isArriving ? ' is-arriving' : ''}`}
+          className={
+            'vd-home-mark group-hover:scale-105 transition-transform' +
+            (isArriving ? ' is-arriving' : '') +
+            (isDressing ? ' is-dressing' : '')
+          }
         >
           {/* The squircle and its cream face are drawn BEHIND the droplet
               rather than as boxes around it, so the badge can fade itself in

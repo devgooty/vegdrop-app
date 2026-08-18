@@ -197,9 +197,12 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
     setIsArriving(true);
     // Dropped once the arrival is over rather than left on, because it lifts
-    // the hero's own overflow clip while it is set.
-    const timer = setTimeout(() => setIsArriving(false), ARRIVAL_MS);
-    return () => clearTimeout(timer);
+    // the hero's own overflow clip while it is set. Uncancelled on purpose —
+    // see the matching note in Header.jsx: a claim is single use, so under
+    // StrictMode the second run cannot re-arm what the first run's cleanup
+    // would have cancelled, and the class would stay on for good.
+    setTimeout(() => setIsArriving(false), ARRIVAL_MS);
+    return undefined;
   }, []);
 
   const [step, setStep] = useState(STEP.IDENTIFIER);
