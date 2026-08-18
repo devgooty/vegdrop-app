@@ -50,6 +50,45 @@ async function loadWritableProduct(id, user) {
 }
 
 /**
+ * Check a proposed `catalogItem` link before it is written.
+ *
+ * Two invariants, both of which would otherwise be enforceable only by reading
+ * the collection and hoping (see `Product.catalogItem`):
+ *
+ * 1. Only a SHOP-OWNED listing may carry one. A shared catalog row already is
+ *    the canonical item, so pointing one at another would make "the same item"
+ *    a chain rather than a fact, and basket coverage would have to resolve it.
+ * 2. The target must be an active SHARED row. Linking to another shop's listing
+ *    would make coverage transitive between competitors; linking to a withdrawn
+ *    row would make a listing invisible for a reason nobody can see.
+ *
+ * @param {any} catalogItem the proposed value; null/undefined short-circuits
+ * @param {boolean} isShopOwned whether the row being written belongs to a shop
+ */
+async function assertLinkableCatalogItem(catalogItem, isShopOwned) {
+  if (catalogItem === undefined || catalogItem === null) return;
+
+  if (!isShopOwned) {
+    throw new ApiError(
+      400,
+      'Only a shop’s own listing can be linked to a catalog item.',
+      'VALIDATION_ERROR',
+      [{ field: 'catalogItem', message: 'This row is part of the shared catalog.' }]
+    );
+  }
+
+  const target = await Product.findById(catalogItem).select('owner isActive').lean();
+  if (!target || !target.isActive || target.owner !== null) {
+    throw new ApiError(
+      400,
+      'That catalog item does not exist.',
+      'VALIDATION_ERROR',
+      [{ field: 'catalogItem', message: 'Pick an item from the shared catalog.' }]
+    );
+  }
+}
+
+/**
  * Prices are stored and validated in integer paise. The API accepts rupees at
  * the boundary and converts once, so no float ever reaches persistence.
  */
@@ -89,15 +128,38 @@ router.get(
          * (by `owner`, for browsing) rather than the caller's write scope.
          */
         mine: z.coerce.boolean().optional(),
+
+        /**
+         * The shared catalog alone — the `owner: null` rows every shop's
+         * listing is measured against (see `Product.catalogItem`).
+         *
+         * The vendor's "which item is this?" picker needs exactly these and
+         * nothing else. Without it that picker would have to pull the whole
+         * catalog, including every competitor's listings, and discard most of
+         * a 200-row budget client-side.
+         *
+         * Mutually exclusive with `shopId`, which names one owner; asking for
+         * both is a contradiction rather than an intersection.
+         */
+        catalogOnly: z.coerce.boolean().optional(),
       })
       .strict(),
   }),
   async (req, res) => {
-    const { categoryId, search, limit, shopId, mine } = req.valid.query;
+    const { categoryId, search, limit, shopId, mine, catalogOnly } = req.valid.query;
+
+    if (shopId !== undefined && catalogOnly) {
+      throw new ApiError(
+        400,
+        'Ask for one shop’s listings or the shared catalog, not both.',
+        'VALIDATION_ERROR'
+      );
+    }
 
     const filter = { isActive: true };
     if (categoryId !== undefined) filter.categoryId = categoryId;
     if (shopId !== undefined) filter.owner = shopId;
+    if (catalogOnly) filter.owner = null;
     if (search) {
       // Escape regex metacharacters: an unescaped user string is a ReDoS vector.
       filter.name = { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
@@ -191,11 +253,21 @@ router.post(
         image: z.string().trim().url().max(2000).optional(),
         isOrganic: z.boolean().optional(),
         stock: z.number().int().min(0).max(1_000_000),
+        /**
+         * Which shared-catalog item this listing is an instance of. Optional,
+         * because a vendor can list something the catalog does not carry — but
+         * then it never appears in basket coverage, which is why the panel says
+         * so rather than leaving them to wonder.
+         */
+        catalogItem: fields.objectId.optional(),
       })
       .strict(),
   }),
   async (req, res) => {
     const { price, oldPrice, ...rest } = req.valid.body;
+    // Mirrors the `owner` rule below: only a shopkeeper's row is shop-owned.
+    await assertLinkableCatalogItem(rest.catalogItem, req.user.role === 'shopkeeper');
+
     const product = await Product.create({
       ...rest,
       /**
@@ -239,6 +311,9 @@ router.patch(
         isOrganic: z.boolean().optional(),
         stock: z.number().int().min(0).max(1_000_000).optional(),
         isActive: z.boolean().optional(),
+        // Nullable on purpose: null is how a wrong link is withdrawn, the same
+        // way '' withdraws a wrong translation above.
+        catalogItem: fields.objectId.nullable().optional(),
       })
       .strict(),
   }),
@@ -253,6 +328,13 @@ router.patch(
     }
 
     const product = await loadWritableProduct(req.valid.params.id, req.user);
+
+    /**
+     * Checked against the row being edited, not the caller's role. An admin may
+     * legitimately edit a shop's listing, and the question is whether THAT row
+     * is shop-owned — not who is holding the pen.
+     */
+    await assertLinkableCatalogItem(update.catalogItem, product.owner !== null);
 
     const updated = await Product.findByIdAndUpdate(
       product._id,

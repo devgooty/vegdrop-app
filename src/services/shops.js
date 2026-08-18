@@ -28,6 +28,51 @@ export async function fetchNearbyShops({ lat, lng, radius }) {
 }
 
 /**
+ * Which nearby shops can fill this basket, best first.
+ *
+ * `fetchNearbyShops` answers "who is close"; this answers "who can actually
+ * serve me", which is the question that matters once there is a basket. Checkout
+ * requires every line to belong to the one shop being ordered from, so a shop
+ * missing a single item cannot take the order at all — which is why coverage
+ * outranks distance in the server's ordering.
+ *
+ * `items` are SHARED-CATALOG ids. Each shop keeps its own product rows, so the
+ * same tomato is a different document at every shop; `shop.lines` maps each
+ * catalog item to that shop's own product id, and that is what checkout must be
+ * given. Use `linesForShop` below rather than sending the catalog ids.
+ *
+ * @param {{lat, lng, radius?, items: Array<{productId, quantity}>}} query
+ * @returns {Promise<Array<{id, name, address, distanceMeters, distanceKm,
+ *   deliverable, isOpen, covered, total, canFillBasket, lines}>>}
+ */
+export async function fetchShopsForBasket({ lat, lng, radius, items }) {
+  const result = await api.post('/shops/nearby/coverage', {
+    lat,
+    lng,
+    ...(radius ? { radius } : {}),
+    items,
+  });
+  return result.data.map((shop) => ({
+    ...shop,
+    distanceKm: Math.round((shop.distanceMeters / 1000) * 10) / 10,
+  }));
+}
+
+/**
+ * Translate a basket of catalog items into one shop's own product ids.
+ *
+ * Returns null when the shop cannot supply every line. That is deliberately not
+ * a partial list: an order placed with missing lines is refused by checkout as a
+ * whole, so handing back "most of it" would only move the failure later.
+ *
+ * @returns {Array<{productId: string, quantity: number}> | null}
+ */
+export function linesForShop(shop) {
+  if (!shop?.canFillBasket) return null;
+  return shop.lines.map(({ productId, quantity }) => ({ productId, quantity }));
+}
+
+/**
  * The caller's own shop.
  *
  * Carries `hasStall` and `kycVerified` as well as the pin, so the dashboard can

@@ -22,6 +22,108 @@ if (portFlagIndex !== -1 && process.argv[portFlagIndex + 1]) {
 
 const { MongoMemoryReplSet } = require('mongodb-memory-server');
 
+/**
+ * Three independent shops stocking different amounts of the same few items.
+ *
+ * Lives HERE rather than in utils/seed.js on purpose. That seeder also runs at
+ * real boots — it only skips when `config.isProduction` — and there is a whole
+ * `remove-demo-seed` script and contract built around exactly which documents it
+ * creates. This harness is the one place demo-only data belongs.
+ *
+ * Without it there is nothing to see: the shared seed creates no shop-owned
+ * listings at all, so every independent shop stocks nothing and the basket
+ * coverage ranking has no data to rank.
+ *
+ * Coverage is 5, 4 and 3 of the same five items, and the best-stocked shop is
+ * deliberately the FURTHEST away — otherwise "ranked by coverage" and "ranked by
+ * distance" would produce the same order and the demo would prove nothing.
+ */
+async function seedDemoShops() {
+  const mongoose = require('mongoose');
+  const User = require('../models/User');
+  const Product = require('../models/Product');
+  const VendorKyc = require('../models/VendorKyc');
+
+  // Near the first demo market, so one set of coordinates finds everything.
+  const NEAR = { lat: 17.3947, lng: 78.4383 };
+
+  const shops = [
+    { name: 'Anand Vegetables', phone: '9000000011', covers: 5, offsetKm: 2.0 },
+    { name: 'Ravi Fresh Store', phone: '9000000012', covers: 4, offsetKm: 1.0 },
+    { name: 'Sri Balaji Veg', phone: '9000000013', covers: 3, offsetKm: 0.4 },
+  ];
+
+  if (await User.exists({ phone: shops[0].phone })) return [];
+
+  // Five real catalog rows, whichever the seed happens to have created.
+  const basket = await Product.find({ owner: null, isActive: true })
+    .sort({ name: 1 })
+    .limit(5)
+    .lean();
+  if (basket.length < 5) return [];
+
+  const created = [];
+
+  for (const shop of shops) {
+    const user = await User.create({
+      name: shop.name,
+      email: `${shop.phone}@example.com`,
+      phone: shop.phone,
+      role: 'shopkeeper',
+      phoneVerifiedAt: new Date(),
+      shop: {
+        name: shop.name,
+        address: `${shop.name}, Hyderabad`,
+        isOpen: true,
+        serviceRadiusMeters: 8000,
+        // ~0.009 degrees of latitude is roughly 1 km.
+        location: { type: 'Point', coordinates: [NEAR.lng, NEAR.lat + shop.offsetKm * 0.009] },
+      },
+    });
+
+    /**
+     * A shop is only listed to customers once its settlement account is proved
+     * (routes/shops.js `listingExclusions`), so the demo has to clear KYC or
+     * none of these would ever appear. Written straight in rather than driven
+     * through the penny drop, which kyc.test.js already covers properly.
+     */
+    await VendorKyc.create({
+      user: user._id,
+      legalName: shop.name,
+      bankName: 'HDFC Bank',
+      ifsc: 'HDFC0001234',
+      upiVpa: `${shop.phone}@okhdfcbank`,
+      ...VendorKyc.buildSecrets({ bankAccount: '123456789012' }),
+      status: 'verified',
+      verifiedAt: new Date(),
+    });
+
+    await Product.insertMany(
+      basket.slice(0, shop.covers).map((item, index) => ({
+        sku: `DEMO-${shop.phone}-${index}`,
+        categoryId: item.categoryId,
+        name: item.name,
+        nameTe: item.nameTe,
+        nameHi: item.nameHi,
+        weight: item.weight,
+        image: item.image,
+        // A little above the catalog price, so a shop reads as its own seller
+        // rather than a mirror of the platform.
+        pricePaise: item.pricePaise + 200,
+        stock: 40,
+        owner: user._id,
+        createdBy: user._id,
+        // The whole point: what this listing IS, across shops.
+        catalogItem: item._id,
+      }))
+    );
+
+    created.push({ ...shop, id: String(user._id) });
+  }
+
+  return created;
+}
+
 async function main() {
   console.info('[dev] starting in-memory MongoDB replica set…');
   const replSet = await MongoMemoryReplSet.create({
@@ -108,6 +210,7 @@ async function main() {
   await ensureIndexes();
 
   await seedIfEmpty();
+  const demoShops = await seedDemoShops();
 
   /**
    * The clock. Without it a demo silently loses three behaviours that only
@@ -129,6 +232,15 @@ async function main() {
         `        -H 'X-Gateway-Secret: ${process.env.SMS_GATEWAY_SECRET}' \\\n` +
         `        -d '{"from":"<your 10-digit number>","text":"<the code on screen>"}'`
     );
+    if (demoShops.length > 0) {
+      console.info('\n[seed] independent shops, stocking different amounts of the same 5 items:');
+      for (const shop of demoShops) {
+        console.info(`  ${shop.name.padEnd(20)} ${shop.phone}  ${shop.covers}/5 items  ~${shop.offsetKm}km`);
+      }
+      console.info('[seed] The best-stocked one is the furthest away on purpose, so');
+      console.info('[seed] "ranked by coverage" cannot be mistaken for "ranked by distance".');
+    }
+
     console.info('[dev] Data is in memory only and is lost when this process stops.\n');
   });
 

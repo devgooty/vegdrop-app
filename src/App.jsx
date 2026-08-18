@@ -27,6 +27,7 @@ import { useLanguage } from './i18n/LanguageContext';
 import { LANGUAGES } from './i18n/translations';
 import { productName, dateLocale } from './i18n/catalog';
 import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
+import { fetchShopsForBasket, linesForShop } from './services/shops';
 import { savedCustomerAddress } from './services/address';
 import { productSkuFromHash } from './services/share';
 import { mergeCartLines, cartItemCount } from './services/cart';
@@ -70,6 +71,21 @@ const MarketOwnerPanel = lazy(() => import('./components/MarketOwnerPanel'));
  * the splash should leave.
  */
 const HEADER_TABS = ['home', 'account', 'prices'];
+
+/**
+ * What a cart line IS, independent of who is selling it.
+ *
+ * Three ids can name the same thing. A shop's listing is its own row and points
+ * at the shared catalog item through `catalogItem`; a weight variant's `id` is a
+ * synthetic `<catalogId>-500g` key with the real id on `originalId`; a plain
+ * catalog row is simply itself. Resolving them here means "the same item" has
+ * one definition rather than one per call site — the basket sent for coverage,
+ * the line matched when re-pricing, and the line merged when adding all have to
+ * agree, and they only do if they ask the same question.
+ */
+function catalogKeyOf(item) {
+  return String(item.catalogItem || item.originalId || item.id);
+}
 
 /**
  * The name each account sub-view carries in the nav bar. A map rather than a
@@ -1088,15 +1104,45 @@ export default function App() {
   const handleSelectShop = useCallback(
     (shop) => {
       const { market, shop: current } = sellerRef.current;
-      switchSeller(
-        current?.id !== shop.id || Boolean(market),
-        t('toast.switchedShop', { shop: shop.name })
-      );
+      const changed = current?.id !== shop.id || Boolean(market);
+
+      /**
+       * A basket this shop can fill MOVES with the customer instead of being
+       * thrown away.
+       *
+       * Emptying it was right while a basket named one seller's product rows and
+       * meant nothing at any other. It no longer does: the basket is held as
+       * shared-catalog items and translated to the seller's own rows at
+       * checkout. Clearing it here would also make the whole point of ranking
+       * shops by coverage self-defeating — picking the shop that has everything
+       * would discard the basket that ranking was computed from.
+       *
+       * The price objection in `switchSeller` still stands and is answered
+       * rather than ignored: each line is re-priced from what THIS shop charges,
+       * so the basket shows the shop's prices from the moment it is chosen and
+       * checkout charges the same. Showing one number and charging another is
+       * the thing being avoided, not the carrying-over itself.
+       */
+      const canCarry = Boolean(shop.canFillBasket && shop.lines?.length);
+      if (changed && canCarry) {
+        const priceByItem = new Map(shop.lines.map((line) => [String(line.catalogItemId), line.price]));
+        setCartItems((prev) =>
+          prev.map((item) => {
+            const price = priceByItem.get(catalogKeyOf(item));
+            return price === undefined ? item : { ...item, price };
+          })
+        );
+      }
+
+      // Still emptied when the basket genuinely cannot move — a shop that
+      // cannot supply every line cannot be given the order at all.
+      switchSeller(changed && !canCarry, t('toast.switchedShop', { shop: shop.name }));
+
       setSelectedShop(shop);
       setSelectedMarket(null);
       setMarketProducts([]);
     },
-    [switchSeller, t]
+    [switchSeller, setCartItems, t]
   );
 
   /** One shop's own listings. Empty until a shop is chosen. */
@@ -1209,11 +1255,20 @@ export default function App() {
        * `prev` is the only view that reflects the updates already queued ahead
        * of this one.
        */
-      const existing = prev.find((item) => item.id === product.id);
+      /**
+       * Matched on what the item IS, not on which row was tapped.
+       *
+       * A basket now survives being carried to a shop, so the same item can be
+       * reached through two different rows in one session: the catalog row it
+       * was added from, and that shop's own listing of it. Comparing raw ids put
+       * both in the basket as separate lines at two different prices.
+       */
+      const key = catalogKeyOf(product);
+      const existing = prev.find((item) => catalogKeyOf(item) === key);
 
       if (existing) {
         return prev.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          catalogKeyOf(item) === key ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
       /**
@@ -1238,6 +1293,17 @@ export default function App() {
          */
         nameTe: product.nameTe || '',
         nameHi: product.nameHi || '',
+        /**
+         * And the catalog link, for the third time in this object and the same
+         * reason as the two above: a fixed field list drops anything not named
+         * here.
+         *
+         * This is what makes the line mean something outside the shop it came
+         * from. A shop's listings are its own rows, so asking "which other shop
+         * stocks this" needs the shared-catalog item it is an instance of.
+         * Null on a platform catalog row, which already IS that item.
+         */
+        catalogItem: product.catalogItem || null,
         price: product.price,
         quantity: 1,
         image: product.image,
@@ -1391,12 +1457,46 @@ export default function App() {
       quantities.set(productId, (quantities.get(productId) || 0) + item.quantity);
     }
 
-    const items = [...quantities.entries()].map(([productId, quantity]) => ({ productId, quantity }));
+    let items = [...quantities.entries()].map(([productId, quantity]) => ({ productId, quantity }));
 
     // Coordinates let the server hop to the next nearest market if this one's
     // stalls cannot fill the order. Without them it falls back to searching
     // outward from the market itself, which still works.
     const coords = customerCoords || savedCustomerCoords();
+
+    /**
+     * Ordering from a shop means ordering THAT SHOP'S rows.
+     *
+     * Every line of a shop order must belong to the shop, and each shop keeps
+     * its own product documents — so the catalog ids collected above name
+     * nothing this shop sells. The mapping is re-fetched here rather than reused
+     * from the shop card, because the basket can have changed since it was
+     * chosen and a stale mapping would post an order missing whatever was added
+     * after. It costs one request at the one moment correctness matters most.
+     *
+     * Failing here is a real answer, not an inconvenience: the alternative is a
+     * MIXED_SELLERS rejection from checkout, which tells the customer nothing
+     * they can act on.
+     */
+    if (selectedShop && coords) {
+      try {
+        const ranked = await fetchShopsForBasket({
+          lat: coords.lat,
+          lng: coords.lng,
+          radius: 20000,
+          items: catalogBasket,
+        });
+        const shopLines = linesForShop(ranked.find((s) => s.id === selectedShop.id));
+        if (!shopLines) {
+          toast.warning(t('toast.shopCannotFill', { shop: selectedShop.name }));
+          return false;
+        }
+        items = shopLines;
+      } catch {
+        toast.error(t('toast.shopCheckFailed'));
+        return false;
+      }
+    }
 
     try {
       const order = await createOrder({
@@ -1665,6 +1765,28 @@ export default function App() {
 
   const activeCartItems = shoppingMode === 'scheduled' ? scheduledCartItems : cartItems;
 
+  /**
+   * The basket expressed as SHARED-CATALOG items.
+   *
+   * The only shop-independent way to say what is in it. Every shop keeps its own
+   * product rows, so a basket built while browsing one shop names ids that mean
+   * nothing at any other, and "which shop stocks most of this" would be
+   * unanswerable. Resolved per line: a shop listing carries the catalog item it
+   * is an instance of; a platform or market row already IS that item.
+   *
+   * `originalId` before `id` for the same reason checkout does it — for a
+   * weight-based product `id` is a variant key and the catalog id is on
+   * `originalId`.
+   */
+  const catalogBasket = useMemo(() => {
+    const lines = new Map();
+    for (const item of cartItems) {
+      const id = catalogKeyOf(item);
+      lines.set(id, (lines.get(id) || 0) + item.quantity);
+    }
+    return [...lines.entries()].map(([productId, quantity]) => ({ productId, quantity }));
+  }, [cartItems]);
+
   const sectionLabel = accountSectionLabel(language);
 
   // Its own native name, never a translated one, for the same reason
@@ -1872,11 +1994,14 @@ export default function App() {
                       onSelectMarket={handleSelectMarket}
                     />
 
-                    {/* And the shops that are nobody's stall. */}
+                    {/* And the shops that are nobody's stall. Given the basket,
+                        because once there is one it decides which of them can
+                        actually take the order — see NearbyShops. */}
                     <NearbyShops
                       coords={customerCoords}
                       selectedShop={selectedShop}
                       onSelectShop={handleSelectShop}
+                      basket={catalogBasket}
                     />
 
                     {/* 3. DYNAMIC 2-COLUMN CATEGORIES SECTION */}

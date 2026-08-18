@@ -291,6 +291,85 @@ async function migrateDroppedEmailVerification() {
   return { cleared: result?.modifiedCount ?? 0 };
 }
 
+/**
+ * Link each shop's own listings to the shared-catalog item they are an instance
+ * of, so basket coverage can be asked across shops (see `Product.catalogItem`).
+ *
+ * NAME MATCHING LIVES HERE AND NOWHERE ELSE, AND IT NEVER GUESSES.
+ *
+ * A listing predating `catalogItem` records what it is only in its name, so a
+ * one-time backfill has nothing else to go on. That is acceptable exactly once,
+ * under two rules: the match must be unambiguous — one catalog row, one shop row,
+ * for a given normalised name — and anything else is LEFT NULL rather than
+ * linked to a best guess. A wrong link is worse than no link: it makes a shop
+ * look like it stocks something it does not, and routes an order there that the
+ * shop then cannot fill. Unlinked is merely invisible, which is recoverable by a
+ * vendor picking the right item.
+ *
+ * Nothing at runtime matches on names. Coverage is an exact `catalogItem` match.
+ *
+ * Idempotent: only rows with `catalogItem: null` are considered and every write
+ * is guarded on it still being null, so a second run — or a second instance
+ * booting at the same moment — writes nothing rather than relinking.
+ */
+async function migrateProductCatalogItem() {
+  const Products = mongoose.connection.collection('products');
+
+  // Only shop-owned rows need linking. A shared row IS the canonical item.
+  const unlinked = await Products.find(
+    { owner: { $ne: null }, catalogItem: null },
+    { projection: { _id: 1, name: 1 } }
+  ).toArray();
+
+  if (unlinked.length === 0) return { linked: 0, unmatched: 0, ambiguous: 0 };
+
+  const normalise = (name) => String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+  const catalog = await Products.find(
+    { owner: null },
+    { projection: { _id: 1, name: 1 } }
+  ).toArray();
+
+  /**
+   * Names that appear on more than one catalog row are unusable: there is no
+   * way to tell which was meant. Recorded as ambiguous and skipped, never
+   * resolved by taking the first.
+   */
+  const byName = new Map();
+  const duplicated = new Set();
+  for (const row of catalog) {
+    const key = normalise(row.name);
+    if (!key) continue;
+    if (byName.has(key)) duplicated.add(key);
+    byName.set(key, row._id);
+  }
+
+  let linked = 0;
+  let unmatched = 0;
+  let ambiguous = 0;
+
+  for (const row of unlinked) {
+    const key = normalise(row.name);
+    if (!key || !byName.has(key)) {
+      unmatched += 1;
+      continue;
+    }
+    if (duplicated.has(key)) {
+      ambiguous += 1;
+      continue;
+    }
+
+    // Guarded on still being null, so a concurrent boot cannot double-write.
+    const result = await Products.updateOne(
+      { _id: row._id, catalogItem: null },
+      { $set: { catalogItem: byName.get(key) } }
+    );
+    if (result?.modifiedCount) linked += 1;
+  }
+
+  return { linked, unmatched, ambiguous };
+}
+
 async function runMigrations() {
   const started = Date.now();
   let ok = true;
@@ -356,6 +435,29 @@ async function runMigrations() {
     ok = false;
   }
 
+  try {
+    const { linked, unmatched, ambiguous } = await migrateProductCatalogItem();
+
+    if (linked > 0) {
+      console.info(`[db] migration: linked ${linked} shop listing(s) to a shared catalog item`);
+    }
+    /**
+     * Reported, never swallowed. These listings are invisible to basket
+     * coverage until a vendor links them by hand, and a silent zero here would
+     * read as "every shop's catalog is searchable" when it is not.
+     */
+    if (unmatched > 0 || ambiguous > 0) {
+      console.warn(
+        `[db] migration: ${unmatched + ambiguous} shop listing(s) left unlinked ` +
+          `(${unmatched} matched no catalog item, ${ambiguous} matched more than one). ` +
+          'They will not appear in basket coverage until a vendor links them.'
+      );
+    }
+  } catch (err) {
+    console.error(`[db] migration (product catalog item) failed: ${err?.message}`);
+    ok = false;
+  }
+
   console.info(`[db] migrations ready (${Date.now() - started}ms)`);
   return { ok };
 }
@@ -366,4 +468,5 @@ module.exports = {
   migrateUserContactIndexes,
   migrateWalletLedgerSequence,
   migrateDroppedEmailVerification,
+  migrateProductCatalogItem,
 };

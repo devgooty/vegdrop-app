@@ -512,6 +512,37 @@ const STRINGS = {
   'shops.withAddress': { en: '{km} km · {address}', hi: '{km} किमी · {address}', te: '{km} కి.మీ · {address}' },
   'shops.distanceOnly': { en: '{km} km', hi: '{km} किमी', te: '{km} కి.మీ' },
 
+  // Basket coverage. A shop can only take an order it can fill completely, so
+  // these say what a shop HAS rather than only how far away it is.
+  'shops.canFillCount': {
+    en: '{count} can fill your basket',
+    hi: '{count} आपकी पूरी टोकरी दे सकती हैं',
+    te: '{count} మీ బుట్ట మొత్తం ఇవ్వగలవు',
+  },
+  'shops.hasWholeBasket': {
+    en: 'Has all {total} items · {km} km',
+    hi: 'सभी {total} चीज़ें हैं · {km} किमी',
+    te: 'మొత్తం {total} వస్తువులు ఉన్నాయి · {km} కి.మీ',
+  },
+  'shops.hasSomeOfBasket': {
+    en: 'Has {covered} of your {total} items',
+    hi: 'आपकी {total} में से {covered} चीज़ें हैं',
+    te: 'మీ {total} వస్తువులలో {covered} ఉన్నాయి',
+  },
+  'shops.bestMatch': { en: 'Best match', hi: 'सबसे बेहतर', te: 'ఉత్తమం' },
+  'shops.noneCanFill': {
+    en: 'No shop has your whole basket',
+    hi: 'किसी दुकान के पास पूरी टोकरी नहीं है',
+    te: 'ఏ దుకాణంలోనూ మీ బుట్ట మొత్తం లేదు',
+  },
+  // Points at the market above, which splits one order across several stalls
+  // and so can fill a basket no single shop can.
+  'shops.noneCanFillHint': {
+    en: 'Order from a market instead, or remove an item',
+    hi: 'इसके बजाय मंडी से ऑर्डर करें, या कोई चीज़ हटाएँ',
+    te: 'బదులుగా మార్కెట్ నుండి ఆర్డర్ చేయండి, లేదా ఒక వస్తువును తీసివేయండి',
+  },
+
   // --- Sign in / sign up (LoginPage.jsx) ---------------------------------------
   //
   // Shared by all three apps, including the role-specific wording. The
@@ -822,6 +853,18 @@ const STRINGS = {
   'toast.anotherMarket': { en: 'another market', hi: 'दूसरे बाज़ार', te: 'మరో మార్కెట్' },
   'toast.marketClosed': { en: '{market} has closed. Pick another one.', hi: '{market} बंद हो गया। दूसरा चुनें।', te: '{market} మూసేశారు. వేరేది ఎంచుకోండి.' },
   'toast.shopClosed': { en: '{shop} has closed. Pick another one.', hi: '{shop} बंद हो गई। दूसरी चुनें।', te: '{shop} మూసేశారు. వేరేది ఎంచుకోండి.' },
+  // Named rather than generic: which shop, and what the customer can do about
+  // it. A shop order is all-or-nothing, so there is no partial to fall back on.
+  'toast.shopCannotFill': {
+    en: '{shop} no longer has everything in your basket. Pick another shop or a market.',
+    hi: '{shop} के पास अब आपकी पूरी टोकरी नहीं है। दूसरी दुकान या मंडी चुनें।',
+    te: '{shop} వద్ద ఇప్పుడు మీ బుట్ట మొత్తం లేదు. వేరే దుకాణం లేదా మార్కెట్ ఎంచుకోండి.',
+  },
+  'toast.shopCheckFailed': {
+    en: 'Could not check what that shop has in stock. Try again.',
+    hi: 'उस दुकान का स्टॉक जाँच नहीं सके। दोबारा कोशिश करें।',
+    te: 'ఆ దుకాణం స్టాక్‌ను తనిఖీ చేయలేకపోయాం. మళ్లీ ప్రయత్నించండి.',
+  },
   'toast.shopJoinedMarket': {
     en: '{shop} has moved into a market. Pick the market instead.',
     hi: '{shop} अब एक बाज़ार में चली गई है। उसकी जगह बाज़ार चुनें।',

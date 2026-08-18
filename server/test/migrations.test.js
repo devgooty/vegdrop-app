@@ -23,10 +23,12 @@ const assert = require('node:assert/strict');
 
 const { startTestServer, stopTestServer, resetDatabase, api, createUser } = require('./helpers');
 const User = require('../models/User');
+const Product = require('../models/Product');
 const notify = require('../services/notify');
 const {
   migrateUserContactIndexes,
   migrateDroppedEmailVerification,
+  migrateProductCatalogItem,
 } = require('../db/migrations');
 
 test.before(startTestServer);
@@ -262,4 +264,130 @@ test('an account that never had the field is untouched', async () => {
   assert.equal(cleared, 0);
   const after = await User.collection.findOne({ _id: user._id });
   assert.equal('emailVerifiedAt' in after, false);
+});
+
+// ---------------------------------------------------------------------------
+// Product.catalogItem — linking a shop's listings to the shared catalog
+// ---------------------------------------------------------------------------
+
+/**
+ * Written through the raw collection, exactly as the email-verification cases
+ * above are, because that is the point of these tests: `catalogItem` now has a
+ * default, so a row created through the model can never reproduce the state a
+ * database predating the field is actually in.
+ */
+let catalogSeq = 0;
+async function rawProduct({ name, owner = null, catalogItem }) {
+  catalogSeq += 1;
+  const doc = {
+    sku: `MIG-${catalogSeq}`,
+    categoryId: 1,
+    name,
+    pricePaise: 4000,
+    stock: 10,
+    owner,
+    createdBy: owner,
+    isActive: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  // Omitted entirely rather than set to null when unspecified: a row written
+  // before the field existed has no such key at all.
+  if (catalogItem !== undefined) doc.catalogItem = catalogItem;
+  const { insertedId } = await Product.collection.insertOne(doc);
+  return insertedId;
+}
+
+test('links a shop listing to the catalog item of the same name', async () => {
+  const { user: shopkeeper } = await createUser({ role: 'shopkeeper', phone: '9000000040' });
+  const catalogId = await rawProduct({ name: 'Desi Tomatoes' });
+  const listingId = await rawProduct({ name: 'desi   tomatoes', owner: shopkeeper._id });
+
+  const { linked, unmatched, ambiguous } = await migrateProductCatalogItem();
+
+  assert.equal(linked, 1, 'case and whitespace are normalised before matching');
+  assert.equal(unmatched, 0);
+  assert.equal(ambiguous, 0);
+
+  const after = await Product.collection.findOne({ _id: listingId });
+  assert.equal(String(after.catalogItem), String(catalogId));
+});
+
+/**
+ * The rule that matters: a name matching two catalog rows is left alone, never
+ * resolved by taking the first. A wrong link makes a shop look like it stocks
+ * something it does not and routes an order there that it cannot fill — strictly
+ * worse than the listing staying invisible until a vendor picks the right item.
+ */
+test('a name matching two catalog items is left unlinked, not guessed', async () => {
+  const { user: shopkeeper } = await createUser({ role: 'shopkeeper', phone: '9000000041' });
+  await rawProduct({ name: 'Tomato' });
+  await rawProduct({ name: 'tomato' });
+  const listingId = await rawProduct({ name: 'Tomato', owner: shopkeeper._id });
+
+  const { linked, ambiguous } = await migrateProductCatalogItem();
+
+  assert.equal(linked, 0);
+  assert.equal(ambiguous, 1);
+
+  const after = await Product.collection.findOne({ _id: listingId });
+  assert.equal(after.catalogItem ?? null, null);
+});
+
+test('a listing matching no catalog item is reported, not linked', async () => {
+  const { user: shopkeeper } = await createUser({ role: 'shopkeeper', phone: '9000000042' });
+  await rawProduct({ name: 'Tomato' });
+  const listingId = await rawProduct({ name: 'Dragon Fruit', owner: shopkeeper._id });
+
+  const { linked, unmatched } = await migrateProductCatalogItem();
+
+  assert.equal(linked, 0);
+  assert.equal(unmatched, 1, 'counted so the boot log can say it out loud');
+
+  const after = await Product.collection.findOne({ _id: listingId });
+  assert.equal(after.catalogItem ?? null, null);
+});
+
+/** A shared catalog row IS the canonical item; it must never point at another. */
+test('shared catalog rows are never linked to anything', async () => {
+  await rawProduct({ name: 'Tomato' });
+  const otherId = await rawProduct({ name: 'Tomato' });
+
+  const { linked } = await migrateProductCatalogItem();
+
+  assert.equal(linked, 0);
+  const after = await Product.collection.findOne({ _id: otherId });
+  assert.equal(after.catalogItem ?? null, null);
+});
+
+test('is idempotent: a second run relinks nothing', async () => {
+  const { user: shopkeeper } = await createUser({ role: 'shopkeeper', phone: '9000000043' });
+  await rawProduct({ name: 'Onion' });
+  await rawProduct({ name: 'Onion', owner: shopkeeper._id });
+
+  const first = await migrateProductCatalogItem();
+  assert.equal(first.linked, 1);
+
+  // Runs on every boot, including boots of a database already migrated, and
+  // including two instances starting at once.
+  const second = await migrateProductCatalogItem();
+  assert.equal(second.linked, 0);
+});
+
+test('an already-linked listing is left exactly as it was', async () => {
+  const { user: shopkeeper } = await createUser({ role: 'shopkeeper', phone: '9000000044' });
+  const realId = await rawProduct({ name: 'Potato' });
+  const decoyId = await rawProduct({ name: 'Potato Deluxe' });
+  const listingId = await rawProduct({
+    name: 'Potato Deluxe',
+    owner: shopkeeper._id,
+    catalogItem: realId,
+  });
+
+  const { linked } = await migrateProductCatalogItem();
+
+  assert.equal(linked, 0, 'a hand-made link outranks anything a name would suggest');
+  const after = await Product.collection.findOne({ _id: listingId });
+  assert.equal(String(after.catalogItem), String(realId));
+  assert.notEqual(String(after.catalogItem), String(decoyId));
 });

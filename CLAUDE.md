@@ -271,6 +271,22 @@ The bank account number is encrypted with AES-256-GCM (`services/fieldCrypto.js`
 
 `services/payouts.js` is a provider interface: RazorpayX when `RAZORPAYX_*` is configured, a console-logging mock otherwise. Production boot refuses the mock. Provider failures surface as **502, never the upstream status** — RazorpayX rejecting our request is our integration fault, and reporting it as a 400 would tell the vendor they typed something wrong when they did not.
 
+### Sourcing — which seller fills an order
+
+Two different things are called a shop here, and only one of them is ranked the same way.
+
+**Market stalls.** `services/sourcing.js` → `planRound()` ranks every open, approved stall in a market against the lines still needing a taker: **coverage first** (a stall holding four of five items beats one holding a single item, because an order split across fewer stalls is one a rider can actually collect), then `activeLoad`, then stall number for determinism. Greedy set cover, capped at `maxStallsPerOrder`. Stalls with `autoAccept` and declared `StallInventory` are claimed for outright; the rest are offered and a human taps accept. Runs from `checkout.js` the moment a market order is placed.
+
+**Independent shops** get the same idea and none of the same machinery, because an order placed with one is **all-or-nothing** — `checkout.js` refuses a basket whose lines are not all owned by that shop (`MIXED_SELLERS`). So there is nothing to split and no cascade; `POST /api/shops/nearby/coverage` simply ranks nearby shops by how much of the basket each holds, and only a shop that holds **all** of it can be ordered from. Distance is the last tiebreak, not the first: a nearer shop that cannot complete the order cannot be ordered from at all.
+
+Things that are easy to get wrong here:
+
+- **`Product.catalogItem` is what makes "the same item" mean anything across shops.** Each shop's listings are its own rows and `sku` is globally unique, so Ravi's tomatoes and Anand's tomatoes share nothing but a word. A shop-owned row points at the `owner: null` catalog row it is an instance of; a shared row's stays null because it already IS that item. **Nothing at runtime matches on names.** `migrateProductCatalogItem` does, once, to backfill — and leaves anything ambiguous or unmatched null rather than guessing, because a wrong link advertises produce a shop does not have and routes an order it cannot fill. It logs what it left unlinked; those listings are invisible to coverage until a vendor links them, which is why the vendor form says so.
+- **A listing with no `catalogItem` is invisible to basket coverage** but perfectly visible to someone already browsing that shop. That is the intended shape, not a bug.
+- **The basket is held as catalog items and translated at checkout.** `catalogKeyOf()` in `App.jsx` is the single definition of what a cart line is — a shop listing, a weight variant (`<catalogId>-500g`) and a plain catalog row all resolve through it. The coverage response carries a `catalogItem → this shop's productId` mapping, re-fetched at checkout rather than reused from the shop card, because the basket can change after a shop is picked. This is why `checkout.js` needed no change at all.
+- **Choosing a shop no longer empties the basket, and that reversal has a condition.** It used to, because a basket named one seller's rows. It now carries over *only when the shop can fill it*, and every line is re-priced from that shop's own price — the original objection ("would show one price and charge another") is answered rather than dropped. A shop that cannot fill the basket still clears it.
+- **The seed creates no shop-owned listings**, so independent-shop coverage has nothing to rank on a fresh database. `scripts/dev-with-memory-db.js` seeds three demo shops at 5/5, 4/5 and 3/5 — deliberately with the best-stocked one furthest away, so "ranked by coverage" cannot be mistaken for "ranked by distance". It lives there rather than in `utils/seed.js` because that seeder also runs at real boots and has the `remove-demo-seed` contract built around exactly what it creates.
+
 ### Money
 
 **All amounts are integer paise on the server** (`pricePaise`, `amountPaise`, `totalAmountPaise`). Rupees exist only at the API boundary and as presentation virtuals. Floats invite rounding drift that surfaces as unreconcilable balances.

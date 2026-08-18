@@ -166,3 +166,148 @@ test('createdBy cannot be supplied by the caller', async () => {
   assert.equal(res.status, 400, 'strict schemas reject an unknown key outright');
   assert.equal(res.body.error.code, 'VALIDATION_ERROR');
 });
+
+// ---------------------------------------------------------------------------
+// catalogItem — what a listing may claim to be
+// ---------------------------------------------------------------------------
+
+/** A shared, unowned row: the only legitimate target of a link. */
+async function seedCatalogItem(name = 'Tomato') {
+  return Product.create({
+    sku: `CAT-${uniq()}`,
+    categoryId: 1,
+    name,
+    pricePaise: 4000,
+    stock: 500,
+    owner: null,
+    createdBy: null,
+  });
+}
+
+test('a vendor can link a new listing to a shared catalog item', async () => {
+  const vendor = await verifiedVendor();
+  const item = await seedCatalogItem();
+
+  const res = await api()
+    .post('/api/products')
+    .set(auth(vendor.accessToken))
+    .send({
+      sku: `SKU-${uniq()}`,
+      categoryId: 1,
+      name: 'Tomato',
+      price: 42,
+      stock: 20,
+      catalogItem: item._id.toHexString(),
+    });
+
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  assert.equal(String(res.body.data.catalogItem), item._id.toHexString());
+});
+
+test('a vendor can withdraw a wrong link by setting it to null', async () => {
+  const vendor = await verifiedVendor();
+  const item = await seedCatalogItem();
+  const listing = await listProduct(vendor);
+
+  await api()
+    .patch(`/api/products/${listing.id}`)
+    .set(auth(vendor.accessToken))
+    .send({ catalogItem: item._id.toHexString() });
+
+  const res = await api()
+    .patch(`/api/products/${listing.id}`)
+    .set(auth(vendor.accessToken))
+    .send({ catalogItem: null });
+
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.data.catalogItem, null);
+});
+
+/**
+ * Linking to a competitor's listing would make coverage transitive between
+ * shops: ask whether Ravi stocks a thing and get an answer about Anand's shelf.
+ */
+test('a listing cannot be linked to another shop listing', async () => {
+  const alice = await verifiedVendor();
+  const mallory = await verifiedVendor();
+  const aliceListing = await listProduct(alice, 'Alice Tomato');
+
+  const res = await api()
+    .post('/api/products')
+    .set(auth(mallory.accessToken))
+    .send({
+      sku: `SKU-${uniq()}`,
+      categoryId: 1,
+      name: 'Tomato',
+      price: 40,
+      stock: 10,
+      catalogItem: aliceListing.id,
+    });
+
+  assert.equal(res.status, 400, JSON.stringify(res.body));
+  assert.equal(res.body.error.code, 'VALIDATION_ERROR');
+});
+
+/** A withdrawn item would make the listing invisible for an unreadable reason. */
+test('a listing cannot be linked to a delisted catalog item', async () => {
+  const vendor = await verifiedVendor();
+  const item = await seedCatalogItem();
+  await Product.updateOne({ _id: item._id }, { $set: { isActive: false } });
+
+  const res = await api()
+    .post('/api/products')
+    .set(auth(vendor.accessToken))
+    .send({
+      sku: `SKU-${uniq()}`,
+      categoryId: 1,
+      name: 'Tomato',
+      price: 40,
+      stock: 10,
+      catalogItem: item._id.toHexString(),
+    });
+
+  assert.equal(res.status, 400, JSON.stringify(res.body));
+});
+
+/**
+ * A shared row already IS the canonical item. Letting one point at another would
+ * make "the same item" a chain that coverage would have to walk.
+ */
+test('a shared catalog row cannot be linked to a catalog item', async () => {
+  const admin = await authenticatedUser('market_owner');
+  const item = await seedCatalogItem();
+
+  const res = await api()
+    .post('/api/products')
+    .set(auth(admin.accessToken))
+    .send({
+      sku: `SKU-${uniq()}`,
+      categoryId: 1,
+      name: 'Tomato Two',
+      price: 40,
+      stock: 10,
+      catalogItem: item._id.toHexString(),
+    });
+
+  assert.equal(res.status, 400, JSON.stringify(res.body));
+});
+
+/**
+ * Checked against the row being edited, not the caller's role — an admin
+ * legitimately edits a shop's listing, and the question is whether THAT row is
+ * shop-owned.
+ */
+test('an admin editing a shop listing may still link it', async () => {
+  const vendor = await verifiedVendor();
+  const admin = await authenticatedUser('market_owner');
+  const item = await seedCatalogItem();
+  const listing = await listProduct(vendor);
+
+  const res = await api()
+    .patch(`/api/products/${listing.id}`)
+    .set(auth(admin.accessToken))
+    .send({ catalogItem: item._id.toHexString() });
+
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(String(res.body.data.catalogItem), item._id.toHexString());
+});

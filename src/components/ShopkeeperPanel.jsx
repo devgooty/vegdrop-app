@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../services/auth';
 import { fetchShopEarnings, withdrawShopEarnings, fetchNearbyRider } from '../services/shops';
+import { fetchProducts } from '../services/products';
 import { fetchRiderLocation } from '../services/orders';
 import { ApiRequestError } from '../services/apiClient';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -274,12 +275,39 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
     price: '',
     weight: '1 Kg',
     stock: '',
-    image: ''
+    image: '',
+    // '' means unlinked, which is a legitimate answer — see the picker below.
+    catalogItem: ''
   };
   const [productForm, setProductForm] = useState(initialProductState);
   const [productFormError, setProductFormError] = useState('');
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [imagePreviewError, setImagePreviewError] = useState(false);
+
+  /**
+   * The shared catalog, for the "which item is this?" picker.
+   *
+   * A listing that names no catalog item cannot be matched against a shopper's
+   * basket, so it never appears when they ask which shop stocks what they want
+   * — it can only be found by someone already browsing this shop. That is the
+   * whole reason this control exists, and why the form says so out loud rather
+   * than leaving a vendor to wonder where their customers went.
+   *
+   * Fetched once for the panel rather than per form open: it changes rarely and
+   * a vendor adds products in bursts.
+   */
+  const [catalogItems, setCatalogItems] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchProducts({ catalogOnly: true, limit: 200 })
+      .then((items) => !cancelled && setCatalogItems(items))
+      // Soft: the picker degrades to "not linked", which is the existing
+      // behaviour of every listing made before this field existed.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /** sku is globally unique (this catalog has no per-vendor scoping), so a
    * pure name-slug would let two vendors' identical product names collide.
@@ -425,6 +453,9 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
       price: parseFloat(productForm.price),
       stock: parseInt(productForm.stock, 10) || 0,
       ...(productForm.image ? { image: productForm.image } : {}),
+      // Omitted rather than sent empty: the server's schema takes an id or
+      // nothing, and "" is neither.
+      ...(productForm.catalogItem ? { catalogItem: productForm.catalogItem } : {}),
     });
     setIsSavingProduct(false);
     if (ok) {
@@ -449,6 +480,9 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
       price: parseFloat(productForm.price),
       stock: parseInt(productForm.stock, 10) || 0,
       image: productForm.image || undefined,
+      // null, not undefined: clearing the picker has to reach the server as an
+      // instruction to unlink, and PATCH ignores anything undefined.
+      catalogItem: productForm.catalogItem || null,
     });
     setIsSavingProduct(false);
     if (ok) {
@@ -504,6 +538,9 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
       weight: product.weight || '',
       stock: product.stock || 0,
       image: product.image || '',
+      // '' rather than null, because that is what the empty <option> carries;
+      // a null value would leave the select showing nothing selected at all.
+      catalogItem: product.catalogItem || '',
     });
     setActiveScreen('edit-product');
   };
@@ -664,6 +701,33 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                 <input type="number" value={productForm.stock} onChange={e => setProductForm({...productForm, stock: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold" placeholder="e.g. 100" />
               </div>
             </div>
+
+            {/* What this product IS, as opposed to what you call it. Shoppers
+                search the shared catalog, so an unlinked listing can only be
+                found by someone already looking at this shop — which is worth
+                stating plainly rather than letting a vendor discover it by
+                never being picked. */}
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Catalog Item</label>
+              <select
+                value={productForm.catalogItem}
+                onChange={e => setProductForm({...productForm, catalogItem: e.target.value})}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold"
+              >
+                <option value="">Not linked</option>
+                {catalogItems.map(item => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}{item.weight ? ` · ${item.weight}` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className={`text-[11px] mt-1 ${productForm.catalogItem ? 'text-gray-400' : 'text-amber-600 font-bold'}`}>
+                {productForm.catalogItem
+                  ? 'Shoppers looking for this item will see your shop.'
+                  : 'Not linked — shoppers searching for this item won’t find your shop.'}
+              </p>
+            </div>
+
             <button
               onClick={activeScreen === 'add-product' ? handleAddProduct : handleEditProduct}
               disabled={!canUpdateStock || isSavingProduct}

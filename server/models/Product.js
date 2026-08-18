@@ -17,6 +17,36 @@ const productSchema = new mongoose.Schema(
      */
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
 
+    /**
+     * Which shared-catalog item this listing IS.
+     *
+     * A shop's listings are its own rows — `owner` is the shopkeeper and `sku` is
+     * globally unique — so Ravi's tomatoes and Anand's tomatoes are two
+     * documents with nothing in common but the word "tomatoes". That was fine
+     * while a basket was built from one shop's catalog and could only ever be
+     * ordered from that shop. It is not enough to answer "which nearby shop
+     * stocks most of this basket", which needs the same item recognised across
+     * shops.
+     *
+     * So a shop-owned row points at the `owner: null` catalog row it is an
+     * instance of, and coverage becomes an exact indexed match rather than a
+     * guess at names — which matter here, because names are free text in three
+     * scripts and a WRONG match is worse than none: it routes an order to a shop
+     * that then cannot fill it.
+     *
+     * Null on a shared catalog row, because such a row already IS the canonical
+     * item. Null on a shop row means "not linked yet" — that listing is
+     * invisible to coverage until someone links it, which is why
+     * `migrateProductCatalogItem` reports how many it could not match and the
+     * vendor panel flags them.
+     */
+    catalogItem: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product',
+      default: null,
+      index: true,
+    },
+
     categoryId: { type: Number, required: true, index: true },
     name: { type: String, required: true, trim: true, maxlength: 200 },
 
@@ -102,6 +132,16 @@ const productSchema = new mongoose.Schema(
     toObject: { virtuals: true, versionKey: false },
   }
 );
+
+/**
+ * The coverage query: of these catalog items, which does each of these shops
+ * hold? Both fields are equality-matched together every time, so one compound
+ * index serves it where the two single-field ones above cannot.
+ *
+ * New, so the `IndexKeySpecsConflict` trap in CLAUDE.md does not apply here —
+ * there is no older definition of this index on any database to conflict with.
+ */
+productSchema.index({ catalogItem: 1, owner: 1 });
 
 productSchema.virtual('id').get(function getId() {
   return this._id.toHexString();
