@@ -15,8 +15,11 @@ const fieldCrypto = require('../services/fieldCrypto');
 const riderBankDetailsSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
-    // As it appears on the rider's PAN card, so it can be matched against the
-    // bank account by whoever settles payouts manually.
+    // As it appears on the bank account, so whoever settles payouts manually
+    // can match the two. Deliberately NOT "as it appears on the PAN card",
+    // which is what this said and what the form asked for: no PAN is collected
+    // anywhere in this system, there is nothing to check a name against, and
+    // saying so only made riders hunt for a document to copy from.
     legalName: { type: String, required: true, trim: true, maxlength: 120 },
     bankName: { type: String, required: true, trim: true, maxlength: 120 },
     bankAccountEncrypted: { type: String, required: true, select: false },

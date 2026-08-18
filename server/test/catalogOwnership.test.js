@@ -204,6 +204,46 @@ test('a vendor can link a new listing to a shared catalog item', async () => {
   assert.equal(String(res.body.data.catalogItem), item._id.toHexString());
 });
 
+/**
+ * The oldest catalog rows have no `owner` KEY at all, not an `owner` of null —
+ * they predate the field. `.lean()` hands those back raw, so the link check's
+ * `target.owner !== null` was true for `undefined` and refused them: the seeded
+ * produce every shop listing actually wants to point at was the one thing that
+ * could not be linked, while newer rows worked fine.
+ *
+ * Written through the raw collection because the model would supply the default
+ * and there would be nothing to reproduce — the same reason
+ * test/migrations.test.js goes around Mongoose.
+ */
+test('a catalog row predating the owner field can still be linked to', async () => {
+  const vendor = await verifiedVendor();
+
+  const { insertedId } = await Product.collection.insertOne({
+    sku: `LEGACY-${uniq()}`,
+    categoryId: 1,
+    name: 'Legacy Tomato',
+    pricePaise: 4000,
+    stock: 500,
+    isActive: true,
+    // No `owner`, and no `catalogItem`. This is what the field's absence means.
+  });
+
+  const res = await api()
+    .post('/api/products')
+    .set(auth(vendor.accessToken))
+    .send({
+      sku: `SKU-${uniq()}`,
+      categoryId: 1,
+      name: 'Legacy Tomato',
+      price: 42,
+      stock: 20,
+      catalogItem: insertedId.toHexString(),
+    });
+
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  assert.equal(String(res.body.data.catalogItem), insertedId.toHexString());
+});
+
 test('a vendor can withdraw a wrong link by setting it to null', async () => {
   const vendor = await verifiedVendor();
   const item = await seedCatalogItem();

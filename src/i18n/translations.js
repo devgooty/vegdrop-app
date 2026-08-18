@@ -874,6 +874,13 @@ const STRINGS = {
     hi: '{shop} के पास अब आपकी पूरी टोकरी नहीं है। दूसरी दुकान या मंडी चुनें।',
     te: '{shop} వద్ద ఇప్పుడు మీ బుట్ట మొత్తం లేదు. వేరే దుకాణం లేదా మార్కెట్ ఎంచుకోండి.',
   },
+  // Ordering from one shop means ordering that shop's own rows, and finding
+  // out which they are is a question answered from a point on the map.
+  'toast.shopNeedsLocation': {
+    en: 'Set your delivery location so we can order from this shop.',
+    hi: 'अपनी डिलीवरी जगह चुनें ताकि हम इस दुकान से ऑर्डर कर सकें।',
+    te: 'ఈ దుకాణం నుండి ఆర్డర్ చేయడానికి మీ డెలివరీ ప్రాంతాన్ని ఎంచుకోండి.',
+  },
   'toast.shopCheckFailed': {
     en: 'Could not check what that shop has in stock. Try again.',
     hi: 'उस दुकान का स्टॉक जाँच नहीं सके। दोबारा कोशिश करें।',

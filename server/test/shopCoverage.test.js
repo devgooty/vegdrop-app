@@ -70,10 +70,10 @@ async function stockItem(shop, catalogItem, { stock = 50, linked = true } = {}) 
   });
 }
 
-function coverage(items, { lat = HYD.lat, lng = HYD.lng, token } = {}) {
+function coverage(items, { lat = HYD.lat, lng = HYD.lng, token, limit } = {}) {
   const req = api().post('/api/shops/nearby/coverage');
   if (token) req.set(auth(token));
-  return req.send({ lat, lng, items });
+  return req.send({ lat, lng, items, ...(limit ? { limit } : {}) });
 }
 
 const basketOf = (catalogItems, quantity = 1) =>
@@ -146,6 +146,42 @@ test('a full basket beats a closer shop that is missing something', async () => 
   assert.ok(
     res.body.data[0].distanceMeters > res.body.data[1].distanceMeters,
     'and it really is the further of the two'
+  );
+});
+
+/**
+ * `limit` caps the ANSWER, not the shops that get weighed for it.
+ *
+ * `$geoNear` returns nearest-first, so applying `limit` inside the aggregation
+ * let distance decide the result before coverage was computed at all: ask for
+ * two, and the two nearest are the only shops ever considered — even when both
+ * are missing half the basket and the shop behind them has all of it. Twenty
+ * unusable shops would be ranked meticulously against each other while the one
+ * that could take the order was never read.
+ */
+test('the shop that can fill the basket is found past the limit, not cut off by it', async () => {
+  const catalog = await Promise.all(['Tomato', 'Onion'].map(seedCatalogItem));
+
+  // Two right on top of the customer, each missing half the basket, and the
+  // complete one further out — so nearest-first puts it third of three.
+  const nearA = await seedListedShop({ name: 'NearA', lat: HYD.lat + 0.001 });
+  const nearB = await seedListedShop({ name: 'NearB', lat: HYD.lat + 0.002 });
+  const farComplete = await seedListedShop({ name: 'FarComplete', lat: HYD.lat + 0.02 });
+
+  await stockItem(nearA, catalog[0]);
+  await stockItem(nearB, catalog[0]);
+  await Promise.all(catalog.map((item) => stockItem(farComplete, item)));
+
+  const res = await coverage(basketOf(catalog), { limit: 2 });
+  assert.equal(res.status, 200);
+
+  // Still only two answers — the cap is honoured, it is just applied last.
+  assert.equal(res.body.data.length, 2);
+  assert.equal(res.body.data[0].name, 'FarComplete');
+  assert.equal(res.body.data[0].canFillBasket, true);
+  assert.ok(
+    res.body.data[0].distanceMeters > res.body.data[1].distanceMeters,
+    'and it is genuinely the further shop, so distance did not choose it'
   );
 });
 

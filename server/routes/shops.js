@@ -15,6 +15,18 @@ const config = require('../config/env');
 const router = express.Router();
 
 /**
+ * How many shops `/nearby/coverage` will WEIGH to return `limit` of them.
+ *
+ * Coverage cannot be known until each shop's holdings are read, so the pool
+ * has to be wider than the answer or distance decides the ranking by proxy.
+ * Three times is enough for the case that matters — a well-stocked shop a
+ * little further out than a crowd of poorly-stocked near ones — without
+ * turning one request into a scan of every shop in the city.
+ */
+const COVERAGE_CANDIDATE_FACTOR = 3;
+const MAX_COVERAGE_CANDIDATES = 60;
+
+/**
  * Independent shops — shopkeepers who sell from their own premises rather than
  * from a stall inside a market.
  *
@@ -217,7 +229,20 @@ router.post(
           },
         },
       },
-      { $limit: limit },
+      /**
+       * A CANDIDATE pool, not the answer — `limit` is applied after ranking.
+       *
+       * `$geoNear` returns nearest-first, so cutting to `limit` here would
+       * decide the result by distance before coverage was even computed: in a
+       * dense area, the one shop holding the whole basket sits at position 21
+       * and is never seen, while twenty shops that cannot take the order at
+       * all are ranked carefully against each other. That is the exact
+       * inversion this endpoint exists to undo.
+       *
+       * Still bounded, because the alternative is loading every shop inside a
+       * 50km radius and pulling their whole product range.
+       */
+      { $limit: Math.min(limit * COVERAGE_CANDIDATE_FACTOR, MAX_COVERAGE_CANDIDATES) },
       {
         // Same allowlist as /nearby, for the same reason: the shopkeeper's own
         // name, phone and email share this document and must never be public.
@@ -338,7 +363,9 @@ router.post(
         a.distanceMeters - b.distanceMeters
     );
 
-    return res.json({ data });
+    // Cut to what was asked for only NOW, so what survives is the best of the
+    // candidates rather than the nearest of them.
+    return res.json({ data: data.slice(0, limit) });
   }
 );
 

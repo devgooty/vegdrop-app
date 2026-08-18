@@ -127,11 +127,17 @@ export default function NearbyShops({ coords, selectedShop, onSelectShop, basket
             {t('shops.nearYou')}
           </span>
           <span className="block text-[14px] font-extrabold text-gray-900 truncate">
+            {/* How many shops are NEARBY, which is always `shops.length`.
+                This counted `usableShops` once there was a basket, so three
+                shops down the road announced themselves as "1 nearby" — the
+                title repeating the subtitle underneath it and hiding the other
+                two, which are still worth knowing about and still listed when
+                this opens. How many can fill the basket is the line below. */}
             {selectedShop
               ? selectedShop.name
               : noneCanFill
                 ? t('shops.noneCanFill')
-                : t('shops.nearbyCount', { count: usableShops.length || shops.length })}
+                : t('shops.nearbyCount', { count: shops.length })}
           </span>
           <span className="block text-[11.5px] text-gray-500 truncate">
             {noneCanFill

@@ -87,7 +87,9 @@ export async function saveRiderBankDetails({ legalName, bankName, bankAccount, i
 // rules and its answer is the one that counts.
 
 export function describeLegalNameProblem(value) {
-  if (!value || !value.trim()) return 'Enter the name exactly as it appears on your PAN card.';
+  // The bank account, not a PAN — nothing here asks for or stores one, and
+  // naming it sent riders looking for a document they do not need.
+  if (!value || !value.trim()) return 'Enter the name exactly as it appears on your bank account.';
   return null;
 }
 

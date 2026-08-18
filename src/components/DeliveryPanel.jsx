@@ -849,7 +849,11 @@ function BankDetailsCard() {
 
       {!isEditing && details && (
         <div className="space-y-1.5">
-          <Row label="Name (PAN)" value={details.legalName} />
+          {/* No PAN is collected anywhere in this system — see the KYC section
+              in CLAUDE.md. What is stored is `legalName`, and what proves the
+              account is the penny drop, not an identity document. Naming a card
+              nobody asks for invited riders to go and find one. */}
+          <Row label="Account holder" value={details.legalName} />
           <Row label="Bank" value={details.bankName} />
           <Row label="Account" value={details.bankAccount} />
           <Row label="IFSC" value={details.ifsc} />
@@ -865,7 +869,7 @@ function BankDetailsCard() {
       {isEditing && (
         <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
           <div>
-            <label className="block font-bold text-gray-800 mb-1">Name (as per PAN card)</label>
+            <label className="block font-bold text-gray-800 mb-1">Name on the bank account</label>
             <div className="relative">
               <input
                 type="text"

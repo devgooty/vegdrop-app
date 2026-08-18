@@ -1527,7 +1527,23 @@ export default function App() {
      * MIXED_SELLERS rejection from checkout, which tells the customer nothing
      * they can act on.
      */
-    if (selectedShop && coords) {
+    if (selectedShop) {
+      /**
+       * No coordinates means the translation cannot be done at all — the
+       * coverage endpoint is the only thing that knows this shop's own product
+       * ids, and it is answered from a point.
+       *
+       * This used to read `if (selectedShop && coords)`, so a missing location
+       * skipped the whole block and posted CATALOG ids against a shop id. Every
+       * line then belongs to someone else and checkout answers MIXED_SELLERS —
+       * a message about mixing sellers, for a basket the customer built from
+       * one shop. Refusing here says the true thing instead.
+       */
+      if (!coords) {
+        toast.error(t('toast.shopNeedsLocation'));
+        return false;
+      }
+
       try {
         const ranked = await fetchShopsForBasket({
           lat: coords.lat,

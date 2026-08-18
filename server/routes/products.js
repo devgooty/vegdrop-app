@@ -78,7 +78,14 @@ async function assertLinkableCatalogItem(catalogItem, isShopOwned) {
   }
 
   const target = await Product.findById(catalogItem).select('owner isActive').lean();
-  if (!target || !target.isActive || target.owner !== null) {
+  /**
+   * `?? null` because `.lean()` hands back the raw document, and a catalog row
+   * written before `owner` existed simply has no such key. `undefined !== null`
+   * is true, so the strict check refused to link against exactly the oldest and
+   * most canonical rows in the catalog — the seeded produce every shop's
+   * listing wants to point at. Absent and null both mean unowned.
+   */
+  if (!target || !target.isActive || (target.owner ?? null) !== null) {
     throw new ApiError(
       400,
       'That catalog item does not exist.',
