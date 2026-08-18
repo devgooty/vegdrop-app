@@ -1207,6 +1207,26 @@ const STRINGS = {
     te: 'అన్ని పరికరాల నుండి లాగ్ అవుట్ చేయండి',
   },
 
+  // The headings that separate one group of account settings from the next.
+  // Short on purpose: they are signposts between groups, not titles anyone
+  // reads twice.
+  'account.sectionPreferences': { en: 'Preferences', hi: 'प्राथमिकताएँ', te: 'ప్రాధాన్యతలు' },
+  'account.sectionSession': { en: 'Session', hi: 'सत्र', te: 'సెషన్' },
+  'account.dangerZone': {
+    // Not a literal translation of "danger zone" in either — the English is an
+    // idiom from developer tooling, and what it has to communicate here is that
+    // what follows cannot be undone.
+    en: 'Danger Zone',
+    hi: 'ख़तरनाक कार्रवाई',
+    te: 'ప్రమాదకర చర్యలు',
+  },
+  'account.dangerZoneSub': {
+    en: 'Deleting your account is permanent. Your orders, wallet balance and reward tokens go with it.',
+    hi: 'खाता हटाना स्थायी है। आपके ऑर्डर, वॉलेट बैलेंस और रिवॉर्ड टोकन भी चले जाएंगे।',
+    te: 'ఖాతా తొలగింపు శాశ్వతం. మీ ఆర్డర్లు, వాలెట్ బ్యాలెన్స్ మరియు రివార్డ్ టోకెన్లు కూడా పోతాయి.',
+  },
+  'account.deleteAccount': { en: 'Delete Account', hi: 'खाता हटाएँ', te: 'ఖాతా తొలగించండి' },
+
   'list.harvested': { en: '{count} Harvested', hi: '{count} उपज', te: '{count} పంటలు' },
   'list.onlyLeft': { en: 'Only {count} left', hi: 'सिर्फ़ {count} बचे', te: 'కేవలం {count} మిగిలాయి' },
   'list.seeAll': { en: 'See All', hi: 'सभी देखें', te: 'అన్నీ చూడండి' },

@@ -72,6 +72,21 @@ const MarketOwnerPanel = lazy(() => import('./components/MarketOwnerPanel'));
  */
 const HEADER_TABS = ['home', 'account', 'prices'];
 
+/**
+ * The heading that marks off one group of account settings.
+ *
+ * The small-caps treatment is English-only, the same rule and for the same
+ * reason as the launch screen's strapline: Telugu and Devanagari have no
+ * capital forms, so `uppercase` buys nothing, while wide tracking pulls their
+ * conjuncts apart. They also carry vowel marks above and below the line that
+ * 10px throws away, hence the extra pixel.
+ */
+function accountSectionLabel(language) {
+  return language === 'en'
+    ? 'px-1 mb-2 text-[10px] font-black uppercase tracking-wider'
+    : 'px-1 mb-2 text-[11px] font-black tracking-normal';
+}
+
 export default function App() {
   // Globally unique ID generator to avoid React key collisions
   const _idCounter = React.useRef(Date.now());
@@ -1656,6 +1671,8 @@ export default function App() {
 
   const activeCartItems = shoppingMode === 'scheduled' ? scheduledCartItems : cartItems;
 
+  const sectionLabel = accountSectionLabel(language);
+
   if (showSplash) {
     /*
       Which piece of the lockup the launch screen should hand over instead of
@@ -2248,29 +2265,6 @@ export default function App() {
                         </div>
                       )}
                       
-                      {/* Deleting the account lives here and nowhere else.
-                          Hidden while the edit form is open: that form's own
-                          Save/Cancel pair is what the eye is on, and a
-                          destructive button directly beneath it is the one
-                          most likely to be hit by mistake. */}
-                      {!isEditingProfile && (
-                        <div className="mt-4 sm:mt-6 pt-4 border-t border-rose-200/60 text-left relative z-10">
-                          <h4 className="font-black text-rose-700 text-[11px] uppercase tracking-wider mb-1.5">
-                            Danger Zone
-                          </h4>
-                          <p className="text-[10px] font-bold text-slate-400 mb-2.5 leading-relaxed">
-                            Deleting your account is permanent. Your orders, wallet balance and
-                            reward tokens go with it.
-                          </p>
-                          <button
-                            onClick={handleDeleteAccount}
-                            className="w-full bg-gradient-to-br from-rose-50 to-rose-100 hover:from-rose-100 hover:to-rose-200 text-rose-600 text-xs sm:text-sm font-black px-4 py-2.5 rounded-2xl transition-all border border-rose-200/50 cursor-pointer active:scale-95 shadow-[inset_1px_1px_2px_rgba(255,255,255,0.9),4px_4px_8px_rgba(225,29,72,0.15),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(225,29,72,0.2),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
-                          >
-                            Delete Account
-                          </button>
-                        </div>
-                      )}
-
                       {/* End of Profile View */}
                       </>
                     )}
@@ -2332,39 +2326,87 @@ export default function App() {
                         </div>
                       )}
 
-                        {/* Same reasoning as Log Out below: a setting someone
-                            may want from wherever they are on this tab, not
-                            just from the plain profile view. */}
-                        <div className="pt-2 sm:pt-3 relative z-10 max-w-sm mx-auto">
-                          <LanguagePicker />
-                        </div>
+                        {/*
+                          The tail of the account tab: settings that belong to
+                          the account rather than to whichever view is open, so
+                          they sit below all of them.
 
-                        {/* Log Out stays on every account view — it is the one
-                            control someone may want from wherever they are.
-                            Deleting the account does NOT: it lives inside
-                            Profile Details, one deliberate step away, because
-                            it is irreversible and sat one mis-tap from the menu. */}
-                        <div className="pt-2 sm:pt-3 flex relative z-10 max-w-sm mx-auto">
-                          <button
-                            onClick={handleLogout}
-                            className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] sm:text-sm font-extrabold px-2 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all cursor-pointer shadow-[inset_1px_1px_2px_rgba(255,255,255,0.8),4px_4px_8px_rgba(166,180,200,0.3),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(166,180,200,0.4),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
-                          >
-                            {t('common.signOut')}
-                          </button>
-                        </div>
+                          Grouped under headings rather than stacked, because
+                          stacked is what they were and it read as one
+                          undifferentiated column — the language card directly
+                          under the Delete Account button looked like part of
+                          the danger zone. Each group answers a different
+                          question (how the app talks to me, this sign-in,
+                          this account), so each is labelled and spaced apart.
+                        */}
+                        <div className="max-w-sm mx-auto text-left space-y-5 pt-4 sm:pt-6 relative z-10">
+                          <section>
+                            <h4 className={`${sectionLabel} text-slate-400`}>
+                              {t('account.sectionPreferences')}
+                            </h4>
+                            <LanguagePicker />
+                          </section>
 
-                        {/* Deliberately quieter than Log Out and directly below
-                            it. With no password this is the only way to end a
-                            session someone else is holding, so it has to be
-                            findable — but it signs out every device including
-                            this one, which is not what most taps here mean. */}
-                        <div className="pt-1.5 flex relative z-10 max-w-sm mx-auto">
-                          <button
-                            onClick={handleLogoutEverywhere}
-                            className="flex-1 text-rose-600/80 hover:text-rose-700 text-[10px] sm:text-xs font-bold px-2 py-1.5 rounded-xl transition-colors cursor-pointer hover:bg-rose-50/60"
-                          >
-                            {t('account.signOutAllDevices')}
-                          </button>
+                          {/* Sign Out is on every account view — it is the one
+                              control someone may want from wherever they are.
+                              Deleting the account is not; see below. */}
+                          <section>
+                            <h4 className={`${sectionLabel} text-slate-400`}>
+                              {t('account.sectionSession')}
+                            </h4>
+                            <button
+                              onClick={handleLogout}
+                              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] sm:text-sm font-extrabold px-2 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all cursor-pointer text-center shadow-[inset_1px_1px_2px_rgba(255,255,255,0.8),4px_4px_8px_rgba(166,180,200,0.3),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(166,180,200,0.4),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
+                            >
+                              {t('common.signOut')}
+                            </button>
+
+                            {/* Deliberately quieter than Sign Out and directly
+                                below it. With no password this is the only way
+                                to end a session someone else is holding, so it
+                                has to be findable — but it signs out every
+                                device including this one, which is not what
+                                most taps here mean. */}
+                            <button
+                              onClick={handleLogoutEverywhere}
+                              className="mt-1.5 w-full text-rose-600/80 hover:text-rose-700 text-[10px] sm:text-xs font-bold px-2 py-1.5 rounded-xl transition-colors cursor-pointer text-center hover:bg-rose-50/60"
+                            >
+                              {t('account.signOutAllDevices')}
+                            </button>
+                          </section>
+
+                          {/* Deleting the account lives on Profile Details and
+                              nowhere else — one deliberate step away from the
+                              menu, because it is irreversible and it sat one
+                              mis-tap from it.
+
+                              Last of the three rather than first, which is
+                              where it used to be. A destructive action above
+                              the ordinary settings puts it in the path of
+                              someone on their way to the language picker, and
+                              nothing that cannot be undone should be passed
+                              through to reach something that can.
+
+                              Hidden while the edit form is open: that form's
+                              own Save/Cancel pair is what the eye is on. */}
+                          {activeAccountView === 'profile' && !isEditingProfile && (
+                            <section>
+                              <h4 className={`${sectionLabel} text-rose-600`}>
+                                {t('account.dangerZone')}
+                              </h4>
+                              <div className="rounded-2xl border border-rose-200/60 bg-rose-50/40 p-4">
+                                <p className="text-[10px] font-bold text-slate-500 mb-2.5 leading-relaxed">
+                                  {t('account.dangerZoneSub')}
+                                </p>
+                                <button
+                                  onClick={handleDeleteAccount}
+                                  className="w-full bg-gradient-to-br from-rose-50 to-rose-100 hover:from-rose-100 hover:to-rose-200 text-rose-600 text-xs sm:text-sm font-black px-4 py-2.5 rounded-2xl transition-all border border-rose-200/50 cursor-pointer active:scale-95 shadow-[inset_1px_1px_2px_rgba(255,255,255,0.9),4px_4px_8px_rgba(225,29,72,0.15),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(225,29,72,0.2),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
+                                >
+                                  {t('account.deleteAccount')}
+                                </button>
+                              </div>
+                            </section>
+                          )}
                         </div>
                       </div>
                   ) : (
