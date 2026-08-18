@@ -1190,7 +1190,6 @@ const STRINGS = {
   // The headings that separate one group of account settings from the next.
   // Short on purpose: they are signposts between groups, not titles anyone
   // reads twice.
-  'account.sectionPreferences': { en: 'Preferences', hi: 'प्राथमिकताएँ', te: 'ప్రాధాన్యతలు' },
   'account.sectionSession': { en: 'Session', hi: 'सत्र', te: 'సెషన్' },
   'account.dangerZone': {
     // Not a literal translation of "danger zone" in either — the English is an

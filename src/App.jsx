@@ -24,6 +24,7 @@ import NearbyShops from './components/NearbyShops';
 import LocationPrimer from './components/LocationPrimer';
 import LanguagePicker from './components/LanguagePicker';
 import { useLanguage } from './i18n/LanguageContext';
+import { LANGUAGES } from './i18n/translations';
 import { productName, dateLocale } from './i18n/catalog';
 import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
 import { savedCustomerAddress } from './services/address';
@@ -32,7 +33,7 @@ import { mergeCartLines, cartItemCount } from './services/cart';
 import { createSchedule, fetchSchedules, recurrenceFromDates, describeRecurrence } from './services/schedules';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
-import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon } from 'lucide-react';
+import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon } from 'lucide-react';
 import {
   logout,
   logoutEverywhere,
@@ -69,6 +70,18 @@ const MarketOwnerPanel = lazy(() => import('./components/MarketOwnerPanel'));
  * the splash should leave.
  */
 const HEADER_TABS = ['home', 'account', 'prices'];
+
+/**
+ * The name each account sub-view carries in the nav bar. A map rather than a
+ * ternary that grows a branch per destination — adding one is now a row in the
+ * menu and a line here.
+ */
+const ACCOUNT_VIEW_TITLES = {
+  profile: 'account.profileDetails',
+  history: 'account.purchaseHistory',
+  rewards: 'rewards.title',
+  language: 'settings.language',
+};
 
 /**
  * The heading that marks off one group of account settings.
@@ -1654,6 +1667,11 @@ export default function App() {
 
   const sectionLabel = accountSectionLabel(language);
 
+  // Its own native name, never a translated one, for the same reason
+  // LanguagePicker lists them that way: it has to be readable by someone who
+  // cannot read the language currently active.
+  const currentLanguageName = (LANGUAGES.find((lang) => lang.code === language) || LANGUAGES[0]).nativeName;
+
   if (showSplash) {
     /*
       Which piece of the lockup the launch screen should hand over instead of
@@ -1959,11 +1977,9 @@ export default function App() {
                             <ArrowLeft className="w-5 h-5" />
                           </button>
                           <h2 className="flex-1 text-center font-black text-lg text-[#1B4D3E] mr-9 drop-shadow-sm">
-                            {activeAccountView === 'profile'
-                              ? t('account.profileDetails')
-                              : activeAccountView === 'rewards'
-                                ? t('rewards.title')
-                                : t('account.purchaseHistory')}
+                            {/* Falls back to the profile title because the
+                                view below falls back to the profile body. */}
+                            {t(ACCOUNT_VIEW_TITLES[activeAccountView] || ACCOUNT_VIEW_TITLES.profile)}
                           </h2>
                         </div>
                       )}
@@ -2019,11 +2035,38 @@ export default function App() {
                               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
                             </div>
                           </button>
+
+                          {/* Language is a destination like the three above it,
+                              rather than a card repeated at the foot of every
+                              account screen, which is what it was. The subtitle
+                              is the setting's current value, so the row answers
+                              "which language am I in" without being opened. */}
+                          <button
+                            onClick={() => setActiveAccountView('language')}
+                            className="p-4 bg-white/90 backdrop-blur-sm rounded-2xl flex items-center gap-4 shadow-sm border border-white/50 active:scale-95 transition-all cursor-pointer group"
+                          >
+                            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-50 to-fuchsia-50 text-violet-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(139,92,246,0.12)]">
+                              <LanguagesIcon className="w-5 h-5 drop-shadow-sm" />
+                            </div>
+                            <div className="flex-1">
+                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('settings.language')}</h3>
+                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">{currentLanguageName}</p>
+                            </div>
+                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
+                              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
+                            </div>
+                          </button>
                         </div>
                       ) : activeAccountView === 'history' ? (
                         <AccountHistory user={user} orders={orders} />
                       ) : activeAccountView === 'rewards' ? (
                         <AccountRewards user={user} orders={orders} />
+                      ) : activeAccountView === 'language' ? (
+                        /* Bare: the list is the whole point of this screen, and
+                           the nav bar above it already names the setting. */
+                        <div className="text-left">
+                          <LanguagePicker standalone />
+                        </div>
                       ) : (
                         <>
                           {!isEditingProfile && (
@@ -2295,88 +2338,77 @@ export default function App() {
                         </div>
                       )}
 
-                        {/*
-                          The tail of the account tab: settings that belong to
-                          the account rather than to whichever view is open, so
-                          they sit below all of them.
+                      {/*
+                        Signing out closes the account tab, and belongs to no
+                        one screen inside it — so it sits at the foot of the
+                        menu that leads to all of them.
 
-                          Grouped under headings rather than stacked, because
-                          stacked is what they were and it read as one
-                          undifferentiated column — the language card directly
-                          under the Delete Account button looked like part of
-                          the danger zone. Each group answers a different
-                          question (how the app talks to me, this sign-in,
-                          this account), so each is labelled and spaced apart.
-                        */}
-                        <div className="max-w-sm mx-auto text-left space-y-5 pt-4 sm:pt-6 relative z-10">
-                          <section>
-                            <h4 className={`${sectionLabel} text-slate-400`}>
-                              {t('account.sectionPreferences')}
-                            </h4>
-                            <LanguagePicker />
-                          </section>
+                        It used to render below every account view, on the
+                        reasoning that it is the one control someone may want
+                        from wherever they are. The language card was repeated
+                        with it, so Purchase History and Rewards each ended in
+                        two settings that had nothing to do with what was above
+                        them, and the picker read as part of whatever it landed
+                        under. Each has one home now.
+                      */}
+                      {activeAccountView === 'menu' && (
+                        <div className="max-w-sm mx-auto text-left pt-5 relative z-10">
+                          <h4 className={`${sectionLabel} text-slate-400`}>
+                            {t('account.sectionSession')}
+                          </h4>
+                          <button
+                            onClick={handleLogout}
+                            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] sm:text-sm font-extrabold px-2 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all cursor-pointer text-center shadow-[inset_1px_1px_2px_rgba(255,255,255,0.8),4px_4px_8px_rgba(166,180,200,0.3),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(166,180,200,0.4),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
+                          >
+                            {t('common.signOut')}
+                          </button>
 
-                          {/* Sign Out is on every account view — it is the one
-                              control someone may want from wherever they are.
-                              Deleting the account is not; see below. */}
-                          <section>
-                            <h4 className={`${sectionLabel} text-slate-400`}>
-                              {t('account.sectionSession')}
-                            </h4>
-                            <button
-                              onClick={handleLogout}
-                              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] sm:text-sm font-extrabold px-2 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all cursor-pointer text-center shadow-[inset_1px_1px_2px_rgba(255,255,255,0.8),4px_4px_8px_rgba(166,180,200,0.3),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(166,180,200,0.4),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
-                            >
-                              {t('common.signOut')}
-                            </button>
-
-                            {/* Deliberately quieter than Sign Out and directly
-                                below it. With no password this is the only way
-                                to end a session someone else is holding, so it
-                                has to be findable — but it signs out every
-                                device including this one, which is not what
-                                most taps here mean. */}
-                            <button
-                              onClick={handleLogoutEverywhere}
-                              className="mt-1.5 w-full text-rose-600/80 hover:text-rose-700 text-[10px] sm:text-xs font-bold px-2 py-1.5 rounded-xl transition-colors cursor-pointer text-center hover:bg-rose-50/60"
-                            >
-                              {t('account.signOutAllDevices')}
-                            </button>
-                          </section>
-
-                          {/* Deleting the account lives on Profile Details and
-                              nowhere else — one deliberate step away from the
-                              menu, because it is irreversible and it sat one
-                              mis-tap from it.
-
-                              Last of the three rather than first, which is
-                              where it used to be. A destructive action above
-                              the ordinary settings puts it in the path of
-                              someone on their way to the language picker, and
-                              nothing that cannot be undone should be passed
-                              through to reach something that can.
-
-                              Hidden while the edit form is open: that form's
-                              own Save/Cancel pair is what the eye is on. */}
-                          {activeAccountView === 'profile' && !isEditingProfile && (
-                            <section>
-                              <h4 className={`${sectionLabel} text-rose-600`}>
-                                {t('account.dangerZone')}
-                              </h4>
-                              <div className="rounded-2xl border border-rose-200/60 bg-rose-50/40 p-4">
-                                <p className="text-[10px] font-bold text-slate-500 mb-2.5 leading-relaxed">
-                                  {t('account.dangerZoneSub')}
-                                </p>
-                                <button
-                                  onClick={handleDeleteAccount}
-                                  className="w-full bg-gradient-to-br from-rose-50 to-rose-100 hover:from-rose-100 hover:to-rose-200 text-rose-600 text-xs sm:text-sm font-black px-4 py-2.5 rounded-2xl transition-all border border-rose-200/50 cursor-pointer active:scale-95 shadow-[inset_1px_1px_2px_rgba(255,255,255,0.9),4px_4px_8px_rgba(225,29,72,0.15),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(225,29,72,0.2),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
-                                >
-                                  {t('account.deleteAccount')}
-                                </button>
-                              </div>
-                            </section>
-                          )}
+                          {/* Deliberately quieter than Sign Out and directly
+                              below it. With no password this is the only way to
+                              end a session someone else is holding, so it has
+                              to be findable — but it signs out every device
+                              including this one, which is not what most taps
+                              here mean. */}
+                          <button
+                            onClick={handleLogoutEverywhere}
+                            className="mt-1.5 w-full text-rose-600/80 hover:text-rose-700 text-[10px] sm:text-xs font-bold px-2 py-1.5 rounded-xl transition-colors cursor-pointer text-center hover:bg-rose-50/60"
+                          >
+                            {t('account.signOutAllDevices')}
+                          </button>
                         </div>
+                      )}
+
+                      {/* Deleting the account lives on Profile Details and
+                          nowhere else — one deliberate step away from the menu,
+                          because it is irreversible and it sat one mis-tap from
+                          it.
+
+                          Below the profile rather than above it, which is where
+                          it used to be. A destructive action above the rest of
+                          a screen is passed through by everyone on their way to
+                          something ordinary, and nothing that cannot be undone
+                          should sit in that path.
+
+                          Hidden while the edit form is open: that form's own
+                          Save/Cancel pair is what the eye is on. */}
+                      {activeAccountView === 'profile' && !isEditingProfile && (
+                        <div className="max-w-sm mx-auto text-left pt-5 relative z-10">
+                          <h4 className={`${sectionLabel} text-rose-600`}>
+                            {t('account.dangerZone')}
+                          </h4>
+                          <div className="rounded-2xl border border-rose-200/60 bg-rose-50/40 p-4">
+                            <p className="text-[10px] font-bold text-slate-500 mb-2.5 leading-relaxed">
+                              {t('account.dangerZoneSub')}
+                            </p>
+                            <button
+                              onClick={handleDeleteAccount}
+                              className="w-full bg-gradient-to-br from-rose-50 to-rose-100 hover:from-rose-100 hover:to-rose-200 text-rose-600 text-xs sm:text-sm font-black px-4 py-2.5 rounded-2xl transition-all border border-rose-200/50 cursor-pointer active:scale-95 shadow-[inset_1px_1px_2px_rgba(255,255,255,0.9),4px_4px_8px_rgba(225,29,72,0.15),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(225,29,72,0.2),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
+                            >
+                              {t('account.deleteAccount')}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       </div>
                   ) : (
                     <div className="py-6 space-y-4">

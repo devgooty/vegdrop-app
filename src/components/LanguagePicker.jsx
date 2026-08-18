@@ -19,39 +19,52 @@ import { LANGUAGES } from '../i18n/translations';
  * `LANGUAGES` carries each language's own native name, never translated, so a
  * language can be found in the list by someone who cannot read whichever one
  * is active now.
+ *
+ * `standalone` is for the one caller where this card is the entire screen
+ * rather than a row on a busier one. There the collapse is worse than useless:
+ * it puts a tap between arriving and the only thing there is to do, and its
+ * header repeats the title the screen already carries. So that caller gets the
+ * list and nothing above it.
  */
-export default function LanguagePicker() {
+export default function LanguagePicker({ standalone = false }) {
   const { language, setLanguage, t } = useLanguage();
   const [expanded, setExpanded] = useState(false);
+  const open = standalone || expanded;
 
   const current = LANGUAGES.find((lang) => lang.code === language) || LANGUAGES[0];
 
   return (
     <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setExpanded((open) => !open)}
-        aria-expanded={expanded}
-        className="w-full flex items-center gap-3 p-5 text-left cursor-pointer"
-      >
-        <span className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
-          <Languages className="w-4.5 h-4.5 text-emerald-700" />
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="block text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
-            {t('settings.language')}
+      {!standalone && (
+        <button
+          type="button"
+          onClick={() => setExpanded((isOpen) => !isOpen)}
+          aria-expanded={expanded}
+          className="w-full flex items-center gap-3 p-5 text-left cursor-pointer"
+        >
+          <span className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
+            <Languages className="w-4.5 h-4.5 text-emerald-700" />
           </span>
-          <span className="block text-[14px] font-extrabold text-gray-900 truncate">
-            {current.nativeName}
+          <span className="flex-1 min-w-0">
+            <span className="block text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+              {t('settings.language')}
+            </span>
+            <span className="block text-[14px] font-extrabold text-gray-900 truncate">
+              {current.nativeName}
+            </span>
           </span>
-        </span>
-        <ChevronDown
-          className={`w-5 h-5 text-gray-400 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
-        />
-      </button>
+          <ChevronDown
+            className={`w-5 h-5 text-gray-400 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          />
+        </button>
+      )}
 
-      {expanded && (
-        <div className="border-t border-gray-100 px-5 pb-5 pt-3 animate-fade-in">
+      {open && (
+        <div
+          className={`px-5 pb-5 animate-fade-in ${
+            standalone ? 'pt-5' : 'border-t border-gray-100 pt-3'
+          }`}
+        >
           <p className="text-xs text-gray-500 leading-relaxed mb-3">{t('settings.languageHint')}</p>
 
           <ul className="divide-y divide-gray-100 rounded-xl border border-gray-100 overflow-hidden">
