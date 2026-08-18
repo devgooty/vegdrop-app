@@ -227,6 +227,15 @@ export default function Header({
     }
   };
 
+  /*
+    One row: the lockup, the search box, the wallet.
+
+    The box is the only thing here that can give ground — the name and the
+    wallet are both `shrink-0`, so on a narrow phone the search box absorbs the
+    whole squeeze and ends up around a third of the width. That is why its type
+    and padding are as tight as they are, and why the suggestion panel is
+    anchored to the header rather than to the input.
+  */
   return (
     <header
       className={`bg-[#FAF7F2] p-3 px-4 pt-safe-3 flex items-center justify-between gap-2 sticky top-0 z-20 border-b transition-all duration-300 ${
@@ -266,9 +275,22 @@ export default function Header({
             <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full border-2 border-[#FAF7F2] animate-pulse-glow" />
           )}
         </div>
+
+        {/* The same logotype the launch and login screens draw — same face,
+            weight and tracking, same two colours — because three slightly
+            different wordmarks read as three different products.
+
+            `aria-hidden`, because the badge beside it is already labelled
+            "VegDrop"; without this a screen reader announces the name twice.
+
+            Never translated: it is a name, not a string. */}
+        <span className="vd-home-wordmark" aria-hidden="true">
+          <span className="vd-home-wordmark-veg">Veg</span>
+          <span className="vd-home-wordmark-drop">Drop</span>
+        </span>
       </div>
 
-      {/* Inset Cutout Search Input */}
+      {/* Inset Cutout Search Input, between the name and the wallet */}
       <div ref={searchRef} className="flex-1 min-w-0">
         <label htmlFor="header-search" className="sr-only">{t('header.searchLabel')}</label>
         <div className="relative">
@@ -291,7 +313,7 @@ export default function Header({
             placeholder={t('header.searchPlaceholder')}
             className="w-full skeuo-inset-input rounded-full py-1.5 pl-7 pr-7 text-xs font-medium text-[#2D2A26] placeholder-[#9A8F7C] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30 transition-all"
           />
-          <Search className="w-3.5 h-3.5 text-[#8A7E6B] absolute left-2 top-2.5 pointer-events-none" />
+          <Search className="w-3.5 h-3.5 text-[#8A7E6B] absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
 
           {searchVal && (
             <button
@@ -323,7 +345,7 @@ export default function Header({
       </div>
 
       {/* Anchored to the header rather than to the input: the box sits between
-          the logo and the wallet and is far too narrow to read a suggestion in. */}
+          the name and the wallet and is far too narrow to read a suggestion in. */}
       {isOpen && (
         <SearchSuggestions
           panelRef={panelRef}

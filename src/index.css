@@ -1359,6 +1359,36 @@
   display: block;
 }
 
+/* The name beside the mark.
+
+   Same face, weight, positive tracking and two-tone split as `.si-hero-wordmark`
+   on the login screen and `.vd-splash-wordmark` on the launch screen, down to
+   the 2px letterpress shadow each half carries. There is one logotype in this
+   app drawn at three sizes; any drift between them shows up as three products.
+
+   Sized to the badge rather than to the surrounding UI text — 36px of mark
+   wants a cap height near 1.05rem beside it, and the app's 12px header text
+   would read as a caption stuck to a logo. */
+.vd-home-wordmark {
+  font-family: 'Baloo 2', 'Plus Jakarta Sans', ui-sans-serif, sans-serif;
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+  /* The name is not what gives way when the row runs out of room; the address
+     line below and the search box do their own truncating. */
+  flex: none;
+}
+.vd-home-wordmark-veg {
+  color: #1B4D3E;
+  text-shadow: 0 2px 0 rgba(15, 31, 23, 0.06);
+}
+.vd-home-wordmark-drop {
+  color: #C8372D;
+  text-shadow: 0 2px 0 rgba(200, 55, 45, 0.12);
+}
+
 /* What the splash hands over is a bare droplet, so the badge is not there yet
    — through the flight's opening wait as well as the flight itself, which is
    why the two states are separate. `is-arriving` is the whole arrival;
@@ -1378,6 +1408,22 @@
   to { opacity: 1; }
 }
 
+/* The name arrives on the badge's clock, not the page's — the launch screen
+   wipes its own wordmark away before handing the droplet over, so without this
+   the name it just erased would pop back the instant the header painted, while
+   the droplet was still in the air. On the same keyframes and the same delay as
+   the squircle, so what lands is one lockup reassembling rather than three
+   pieces each doing their own thing.
+
+   A sibling selector because the two states live on the badge, which is what
+   the flight measures and moves; the name only follows it. */
+.vd-home-mark.is-arriving ~ .vd-home-wordmark {
+  opacity: 0;
+}
+.vd-home-mark.is-dressing ~ .vd-home-wordmark {
+  animation: vd-badge-form 400ms ease-out 220ms both;
+}
+
 /* The badge would otherwise be clipped by nothing and painted over by plenty:
    it flies from the middle of the screen, well below the header it belongs to,
    and the header's own stacking context is what keeps it above the page it
@@ -1390,7 +1436,9 @@
   /* Belt and braces, as on the login arrival: `claimBrandFlight` already
      refuses under reduced motion, so `is-arriving` is never set. */
   .vd-home-mark.is-arriving .vd-home-mark-shell,
-  .vd-home-mark.is-dressing .vd-home-mark-shell {
+  .vd-home-mark.is-dressing .vd-home-mark-shell,
+  .vd-home-mark.is-arriving ~ .vd-home-wordmark,
+  .vd-home-mark.is-dressing ~ .vd-home-wordmark {
     animation: none;
     opacity: 1;
   }
