@@ -55,6 +55,16 @@ const FLIGHT_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
  */
 const SMOOTH_FRAME_MS = 26;
 
+/**
+ * How many of those in a row before believing it.
+ *
+ * One is not evidence. A screen coming up does not stall once and recover — it
+ * alternates, and the shop's opening frames measured 35, 30, 8, 27, 7, 7 on
+ * production. A single good frame at that third position starts the flight
+ * straight into the 27ms one after it, which is most of the problem again.
+ */
+const SMOOTH_FRAMES_NEEDED = 2;
+
 /** How long to wait for that evidence before going anyway. */
 const SETTLE_CAP_MS = 280;
 
@@ -73,28 +83,40 @@ export const ARRIVAL_MS = 1400;
  * that swallows more than half the journey, so the mark appears to teleport and
  * then ease the last little way — the opposite of what carrying it is for.
  *
- * So the flight waits for evidence that frames are flowing: the first pair of
- * consecutive ones close enough together to be a real frame. Adaptive rather
+ * So the flight waits for evidence that frames are flowing: a run of
+ * consecutive ones close enough together to be real frames. Adaptive rather
  * than a fixed delay, because the wait a fast device needs is nearly nothing
  * and the wait a slow one needs is longer than anything worth hard-coding.
- * Capped, because a device that never manages a smooth frame must still get its
+ * Capped, because a device that never manages a smooth run must still get its
  * mark home.
+ *
+ * The first callback only takes a reading. Measuring it against the time this
+ * was called would be measuring the gap from a layout effect to the next paint,
+ * which is not a frame gap at all and is short often enough to wave the flight
+ * through before a single frame has been looked at.
  *
  * The waiting costs nothing to look at: `fill: 'backwards'` holds the mark
  * exactly where the last screen left it, which is the frame already on screen.
  */
 function playWhenSmooth(animation, onStart) {
   const startedAt = performance.now();
-  let previous = startedAt;
+  let previous = null;
+  let smoothRun = 0;
 
   const check = () => {
     const now = performance.now();
-    if (now - previous <= SMOOTH_FRAME_MS || now - startedAt >= SETTLE_CAP_MS) {
+
+    if (previous !== null) {
+      smoothRun = now - previous <= SMOOTH_FRAME_MS ? smoothRun + 1 : 0;
+    }
+    previous = now;
+
+    if (smoothRun >= SMOOTH_FRAMES_NEEDED || now - startedAt >= SETTLE_CAP_MS) {
       animation.play();
       if (onStart) onStart();
       return;
     }
-    previous = now;
+
     requestAnimationFrame(check);
   };
 
