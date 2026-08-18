@@ -12,7 +12,6 @@ import {
   verifyRiderRegistration,
   describeIdentifierProblem,
   describePhoneProblem,
-  describeEmailProblem,
 } from '../services/auth';
 import { ApiRequestError, NetworkError } from '../services/apiClient';
 import { claimBrandFlight, ARRIVAL_MS } from '../lib/brandFlight';
@@ -28,11 +27,14 @@ import ReverseOtpPanel from './ReverseOtpPanel';
  *
  * FLOW
  *
- * One box first: a mobile number OR an email address. The server is asked
- * whether that identifier has an account, and the flow forks:
+ * One box first: a mobile number. The server is asked whether it has an
+ * account, and the flow forks:
  *
- *   existing → one code, delivered to every verified contact
- *   new      → both contacts collected, each proved by its OWN code
+ *   existing → one code, to the phone
+ *   new      → a name, and the same one code to prove the same number
+ *
+ * No email address is collected anywhere here. An account is created without
+ * one; anyone who wants stall notices adds it from their profile later.
  *
  * Two things about that fork matter if you change it. The lookup call reveals
  * whether an identifier is registered, which the rest of this flow is careful
@@ -216,11 +218,9 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
   // Registration inputs, pre-filled from whatever was typed in the first box.
   const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
   const [name, setName] = useState('');
 
   const [code, setCode] = useState('');
-  const [emailCode, setEmailCode] = useState('');
   const [phoneCode, setPhoneCode] = useState('');
 
   const [error, setError] = useState('');
@@ -240,9 +240,8 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
    * message that costs us money to send.
    *
    * `reverseLogin` swaps the sign-in code box for the panel. `reversePhoneLeg`
-   * does the same for the phone half of registration, where the email code is
-   * still typed as usual — the reverse token proves ONE contact, and
-   * registration deliberately proves two independently.
+   * does the same for registration, which now proves the number and nothing
+   * else — so a reverse token is the whole of that proof, not half of it.
    */
   const [reverseLogin, setReverseLogin] = useState(false);
   const [reversePhoneLeg, setReversePhoneLeg] = useState(false);
@@ -251,10 +250,8 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
   /**
    * The number a reverse sign-in would be raised against.
    *
-   * Only set when the user signed in with a phone number. Someone who typed an
-   * email has not told us a number to prove, and asking for one here would let
-   * anyone attach an arbitrary number to a sign-in — so the option is simply not
-   * offered on that path.
+   * Always set now that the sign-in box takes nothing but a number. Kept as its
+   * own piece of state because the reverse panel needs the normalised form.
    */
   const [loginPhone, setLoginPhone] = useState(null);
 
@@ -276,7 +273,6 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     setChallenge(null);
     setRegistration(null);
     setCode('');
-    setEmailCode('');
     setPhoneCode('');
     setReverseLogin(false);
     setReversePhoneLeg(false);
@@ -315,21 +311,14 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
         setChallenge(issued);
         setCode('');
         // Only a typed number gives us something to prove by reverse OTP.
-        setLoginPhone(type === 'phone' ? typed.replace(/\D/g, '').slice(-10) : null);
+        setLoginPhone(typed.replace(/\D/g, '').slice(-10));
         setReverseLogin(false);
         setStep(STEP.LOGIN_CODE);
         return;
       }
 
-      // New here. Carry across whichever contact they already gave us so they
-      // only have to fill in the other one.
-      if (type === 'email') {
-        setEmail(typed);
-        setPhone('');
-      } else {
-        setPhone(typed.replace(/\D/g, '').slice(-10));
-        setEmail('');
-      }
+      // New here. Carry the number across so it does not have to be typed again.
+      setPhone(typed.replace(/\D/g, '').slice(-10));
       setStep(STEP.REGISTER);
     } catch (err) {
       setError(describeError(err, t('login.errContinue')));
@@ -376,7 +365,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     e.preventDefault();
     if (isSubmitting) return;
 
-    const problem = describePhoneProblem(phone) || describeEmailProblem(email);
+    const problem = describePhoneProblem(phone);
     if (problem) {
       setError(problem);
       return;
@@ -388,11 +377,9 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     try {
       const issued = await signUp.start({
         phone: phone.trim(),
-        email: email.trim(),
         name: name.trim() || undefined,
       });
       setRegistration(issued);
-      setEmailCode('');
       setPhoneCode('');
       setReversePhoneToken(null);
       /**
@@ -411,7 +398,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     }
   };
 
-  /** New account: prove each contact that actually received a code. */
+  /** New account: prove the number, which is the whole of registration now. */
   const handleVerifyRegistration = async (e) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -420,15 +407,20 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     // has not switched this leg over to sending us one instead.
     const usingTypedPhoneCode = Boolean(registration?.phone?.delivered) && !reversePhoneLeg;
 
-    if (!emailCode || emailCode.trim().length < 6) {
-      setError(t('login.errSixEmail'));
-      return;
-    }
     if (usingTypedPhoneCode && (!phoneCode || phoneCode.trim().length < 6)) {
       setError(t('login.errSixWhatsapp'));
       return;
     }
     if (reversePhoneLeg && !reversePhoneToken) {
+      setError(t('login.errReversePending'));
+      return;
+    }
+    /**
+     * Neither leg is no longer a valid shape. It used to be — the email code
+     * carried the registration and the number was stored unproved. Nothing
+     * carries it but the number now, so there is nothing to submit yet.
+     */
+    if (!usingTypedPhoneCode && !reversePhoneLeg) {
       setError(t('login.errReversePending'));
       return;
     }
@@ -438,20 +430,17 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
     try {
       const payload = {
-        emailChallengeId: registration.email.challengeId,
-        emailCode: emailCode.trim(),
         /**
-         * Exactly one phone leg, or none. The server rejects both at once —
-         * which of them proved the number would be ambiguous, and the unused
-         * reverse token would stay live and redeemable elsewhere.
-         *
-         * All three absent is still valid: it is what "nothing could be
-         * delivered and the user did not send us anything either" looks like,
-         * and the server keeps the number unverified rather than assuming it.
+         * Exactly one leg. The server rejects both at once — which of them
+         * proved the number would be ambiguous, and the unused reverse token
+         * would stay live and redeemable elsewhere — and it rejects neither,
+         * because an unproved number no longer becomes an account.
          */
         phoneChallengeId: usingTypedPhoneCode ? registration.phone.challengeId : undefined,
         phoneCode: usingTypedPhoneCode ? phoneCode.trim() : undefined,
         phoneToken: reversePhoneLeg ? reversePhoneToken : undefined,
+        // Only the reverse path needs this — see services/auth.js.
+        name: reversePhoneLeg ? name.trim() || undefined : undefined,
       };
       // Each entry resolves to the user, whatever else its endpoint returns —
       // `user` is all onLogin needs.
@@ -625,7 +614,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               <p className="mt-1 text-[13.5px] leading-relaxed text-[#5B6B62]">{sub}</p>
             </div>
 
-            {/* STEP 1 — one box, number or email */}
+            {/* STEP 1 — the mobile number */}
             {step === STEP.IDENTIFIER && (
               <form onSubmit={handleContinue} className="si-step space-y-4">
                 <div>
@@ -634,12 +623,12 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                   </label>
                   <input
                     id="identifier"
-                    type="text"
-                    inputMode="email"
-                    autoComplete="username"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    maxLength={254}
+                    maxLength={20}
                     className={fieldClass}
                     required
                     disabled={isSubmitting}
@@ -706,8 +695,8 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                   </>
                 )}
 
-                {/* Only offered when we know a number to prove. Someone who
-                    signed in with an email has not given us one. */}
+                {/* The sign-in box only takes a number, so there is always one
+                    to prove. */}
                 {loginPhone && (
                   <div className="text-center">
                     <button
@@ -749,22 +738,6 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                       disabled={isSubmitting}
                     />
                   </div>
-                </div>
-
-                <div>
-                  <label htmlFor="email" className={labelClass}>{t('login.emailAddress')}</label>
-                  <input
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    maxLength={254}
-                    className={fieldClass}
-                    required
-                    disabled={isSubmitting}
-                  />
                 </div>
 
                 <div>
@@ -845,10 +818,9 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                         purpose={signUp.reversePurpose}
                         app={appType}
                         name={name.trim() || undefined}
-                        // Registration proves two contacts independently, so this
-                        // token settles only the phone half. It is handed to the
-                        // verify call alongside the email code rather than being
-                        // spent here.
+                        // Handed to the verify call rather than spent here:
+                        // that endpoint is what creates the account, and it needs
+                        // the token unredeemed.
                         completeHere={false}
                         onVerified={({ token }) => setReversePhoneToken(token)}
                       />
@@ -884,14 +856,6 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                     </button>
                   </div>
                 )}
-
-                <div>
-                  <label className={labelClass}>
-                    {t('login.emailLabel')}{' '}
-                    <span className="si-num font-medium text-[#5B6B62]">{registration?.email?.destination}</span>
-                  </label>
-                  <OTPBoxGroup tone="brand" value={emailCode} onChange={setEmailCode} />
-                </div>
 
                 {error && <Notice tone="error">{error}</Notice>}
 

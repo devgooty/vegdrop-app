@@ -1,7 +1,6 @@
 'use strict';
 
 const config = require('../config/env');
-const { renderOtpEmail, PURPOSE_ACTION } = require('./templates/otpEmail');
 
 /**
  * Outbound message delivery.
@@ -231,31 +230,32 @@ function reachesRecipient(channel) {
   return transportFor(channel).reachesRecipient !== false;
 }
 
+/**
+ * Purpose → the verb that finishes "…verification code to __ your account".
+ *
+ * Lived in services/templates/otpEmail.js while codes were also composed as
+ * email. They are not any more — nothing but a phone receives one — so the
+ * template is gone and this map, the only part still used, moved here.
+ */
+const PURPOSE_ACTION = Object.freeze({
+  login: 'sign in to',
+  registration: 'create',
+  vendor_registration: 'create',
+  delivery_registration: 'create',
+  phone_change: 'move',
+});
+
 async function sendOtp({ channel, to, code, purpose, ttlSeconds, role, name }) {
   const minutes = Math.round(ttlSeconds / 60);
 
   /**
-   * Email gets its own composition, including an HTML part.
+   * A code only ever goes to a phone now, so there is one composition.
    *
-   * An inbox is not a notification shade: the message has to identify itself
-   * among everything else in the list, which is why it carries a greeting, an
-   * expiry and the "we will never ask for this" warning that the SMS line has no
-   * room for. The plain-text alternative is built alongside it, so a client that
-   * refuses HTML shows that same copy rather than an empty body.
+   * The email branch that used to sit here — greeting, HTML part, expiry line —
+   * went with the decision to stop copying login codes to a mailbox. The email
+   * TRANSPORT is untouched and still live: routes/markets.js sends stall
+   * notices through `sendNotice` below. It is codes that no longer go there.
    */
-  if (channel === 'email') {
-    const { subject, text, html } = renderOtpEmail({ code, purpose, minutes, role, name });
-
-    await transportFor(channel).send({
-      channel,
-      to,
-      subject,
-      text,
-      html,
-      otp: { code, purpose, ttlSeconds },
-    });
-    return;
-  }
 
   /**
    * One line, because the whole message is a notification preview.
@@ -266,8 +266,6 @@ async function sendOtp({ channel, to, code, purpose, ttlSeconds, role, name }) {
    * template takes only the code (see resolvePhoneTransport), so this text is
    * what the SMS console stub prints.
    *
-   * The purpose→verb map is shared with the email template rather than copied,
-   * so adding a purpose cannot leave one channel saying "verify".
    */
   const text =
     purpose === 'login' && role === 'shopkeeper'

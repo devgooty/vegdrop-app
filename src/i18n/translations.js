@@ -742,35 +742,15 @@ const STRINGS = {
     hi: 'नाम और मोबाइल नंबर ज़रूरी हैं।',
     te: 'పేరు, మొబైల్ నంబర్ తప్పనిసరి.',
   },
-  'toast.emailRemovalUnsupported': {
-    en: 'Removing an email address is not supported yet.',
-    hi: 'ईमेल पता हटाने की सुविधा अभी नहीं है।',
-    te: 'ఇమెయిల్ చిరునామాను తీసేసే సదుపాయం ఇంకా లేదు.',
-  },
   'toast.profileUpdated': {
     en: 'Profile updated successfully!',
     hi: 'प्रोफ़ाइल सफलतापूर्वक बदल गई!',
     te: 'ప్రొఫైల్ విజయవంతంగా మారింది!',
   },
-  'toast.emailNotConfigured': {
-    en: 'Email is not set up on this server yet, so an address cannot be verified.',
-    hi: 'इस सर्वर पर ईमेल अभी सेट नहीं है, इसलिए पता सत्यापित नहीं हो सकता।',
-    te: 'ఈ సర్వర్‌లో ఇమెయిల్ ఇంకా సెటప్ కాలేదు, కాబట్టి చిరునామాను ధృవీకరించలేం.',
-  },
   'toast.profileUpdateFailed': {
     en: 'Could not update your profile.',
     hi: 'आपकी प्रोफ़ाइल बदली नहीं जा सकी।',
     te: 'మీ ప్రొఫైల్‌ను మార్చలేకపోయాం.',
-  },
-  'toast.emailVerifiedNowPhone': {
-    en: 'Email verified. Now confirm your new mobile number.',
-    hi: 'ईमेल सत्यापित। अब अपना नया मोबाइल नंबर पक्का करें।',
-    te: 'ఇమెయిల్ ధృవీకరించారు. ఇప్పుడు మీ కొత్త మొబైల్ నంబర్‌ను నిర్ధారించండి.',
-  },
-  'toast.emailVerified': {
-    en: 'Email verified. Login codes will be copied there too. ✉️',
-    hi: 'ईमेल सत्यापित। लॉगिन कोड वहाँ भी भेजे जाएँगे। ✉️',
-    te: 'ఇమెయిల్ ధృవీకరించారు. లాగిన్ కోడ్‌లు అక్కడికీ వస్తాయి. ✉️',
   },
   'toast.phoneUpdated': {
     en: 'Mobile number updated. Other devices have been signed out. 🔒',

@@ -3,13 +3,24 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+/**
+ * Configure reverse OTP before anything reads config.
+ *
+ * `config/env.js` freezes at load and `node --test` gives each file its own
+ * process, so this is set here rather than in ./helpers — see the same note at
+ * the top of reverseOtp.test.js. Without it, a phone code that cannot be
+ * delivered has no fallback at all and /register/start answers 503, which is
+ * correct but is not the shape any real deployment runs in.
+ */
+process.env.WHATSAPP_INBOX_NUMBER = '919000000000';
+process.env.WHATSAPP_APP_SECRET = 'test-app-secret';
+
 const {
   startTestServer,
   stopTestServer,
   resetDatabase,
   api,
   createUser,
-  signIn,
 } = require('./helpers');
 
 const notify = require('../services/notify');
@@ -45,18 +56,17 @@ test.beforeEach(async () => {
 
 test.afterEach(() => notify.setTransport(null));
 
-async function register({ phone, email, name } = {}) {
-  const start = await api()
+async function register({ phone, name } = {}) {
+  return api()
     .post('/api/auth/register/start')
-    .send({ phone, email, ...(name ? { name } : {}) });
-  return start;
+    .send({ phone, ...(name ? { name } : {}) });
 }
 
 // ---------------------------------------------------------------------------
 // Lookup
 // ---------------------------------------------------------------------------
 
-test('lookup reports an existing phone and an unknown one differently', async () => {
+test('lookup reports whether a number has an account', async () => {
   const { user } = await createUser({ phone: '9876543210' });
 
   const known = await api().post('/api/auth/lookup').send({ identifier: user.phone });
@@ -68,44 +78,51 @@ test('lookup reports an existing phone and an unknown one differently', async ()
   assert.equal(unknown.body.exists, false);
 });
 
-test('lookup accepts an email and reports its type', async () => {
-  const { user } = await createUser({ email: 'known@example.com' });
+test('lookup no longer resolves an account from an email address', async () => {
+  // An address used to find an account here. It cannot any more: no code is
+  // delivered to one, so a match would name an account nobody could then prove
+  // they own.
+  await createUser({ email: 'known@example.com', phone: '9876543210' });
 
   const res = await api().post('/api/auth/lookup').send({ identifier: 'known@example.com' });
 
-  assert.equal(res.body.exists, true);
-  assert.equal(res.body.type, 'email');
-  assert.ok(user);
+  assert.equal(res.status, 400);
 });
 
-test('lookup rejects something that is neither', async () => {
+test('lookup rejects something that is not a number', async () => {
   const res = await api().post('/api/auth/lookup').send({ identifier: 'not-a-contact' });
   assert.equal(res.status, 400);
 });
 
 // ---------------------------------------------------------------------------
-// Registration, both codes deliverable
+// Registration
 // ---------------------------------------------------------------------------
 
-test('registration sends two DIFFERENT codes, one per contact', async () => {
+test('registration sends exactly one code, to the phone', async () => {
   recorder.sent.length = 0;
-  const res = await register({ phone: '9876543210', email: 'new@example.com' });
+  const res = await register({ phone: '9876543210' });
 
   assert.equal(res.status, 202);
   assert.equal(res.body.phone.delivered, true);
-  assert.equal(res.body.email.delivered, true);
-  assert.equal(recorder.sent.length, 2);
-
-  const codes = new Set(recorder.sent.map((m) => m.otp.code));
-  assert.equal(codes.size, 2, 'each contact must be proved independently');
+  assert.equal(res.body.email, undefined, 'no email leg exists');
+  assert.equal(recorder.sent.length, 1);
+  assert.equal(recorder.sent[0].channel, 'sms');
 });
 
-test('verifying both codes creates an account with both contacts verified', async () => {
-  const start = await register({ phone: '9876543210', email: 'new@example.com', name: 'Asha' });
+test('registration refuses an email address in the body', async () => {
+  // .strict() is what enforces it. An address is a profile detail now, set
+  // afterwards through PATCH /api/users/:id, and never collected at sign-up.
+  const res = await api()
+    .post('/api/auth/register/start')
+    .send({ phone: '9876543210', email: 'new@example.com' });
+
+  assert.equal(res.status, 400);
+});
+
+test('verifying the phone code creates an account with no email at all', async () => {
+  const start = await register({ phone: '9876543210', name: 'Asha' });
 
   const res = await api().post('/api/auth/register/verify').send({
-    emailChallengeId: start.body.email.challengeId,
-    emailCode: start.body.devCodes.email,
     phoneChallengeId: start.body.phone.challengeId,
     phoneCode: start.body.devCodes.phone,
   });
@@ -113,17 +130,15 @@ test('verifying both codes creates an account with both contacts verified', asyn
   assert.equal(res.status, 201);
   assert.equal(res.body.user.name, 'Asha');
   assert.equal(res.body.user.phone, '9876543210');
-  assert.equal(res.body.user.email, 'new@example.com');
   assert.equal(res.body.user.phoneVerified, true);
-  assert.equal(res.body.user.emailVerified, true);
+  assert.equal(res.body.user.email, null);
+  assert.equal(res.body.user.emailVerified, undefined, 'the field is gone entirely');
   assert.ok(res.body.accessToken);
 });
 
 test('a self-registered account is always a customer', async () => {
-  const start = await register({ phone: '9876543210', email: 'new@example.com' });
+  const start = await register({ phone: '9876543210' });
   const res = await api().post('/api/auth/register/verify').send({
-    emailChallengeId: start.body.email.challengeId,
-    emailCode: start.body.devCodes.email,
     phoneChallengeId: start.body.phone.challengeId,
     phoneCode: start.body.devCodes.phone,
   });
@@ -131,56 +146,70 @@ test('a self-registered account is always a customer', async () => {
   assert.equal(res.body.user.role, 'customer');
 });
 
-test('codes from two different registrations cannot be combined', async () => {
-  const mine = await register({ phone: '9876543210', email: 'mine@example.com' });
-  const theirs = await register({ phone: '9876543211', email: 'theirs@example.com' });
+test('a code from another registration cannot complete this one', async () => {
+  const mine = await register({ phone: '9876543210' });
+  const theirs = await register({ phone: '9876543211' });
 
+  // The challenge id and the code belong to different registrations, so the
+  // code does not match the challenge it is presented against.
   const res = await api().post('/api/auth/register/verify').send({
-    emailChallengeId: mine.body.email.challengeId,
-    emailCode: mine.body.devCodes.email,
-    phoneChallengeId: theirs.body.phone.challengeId,
+    phoneChallengeId: mine.body.phone.challengeId,
     phoneCode: theirs.body.devCodes.phone,
   });
+
+  assert.equal(res.status, 400);
+});
+
+test('a number that already has a customer account cannot register again', async () => {
+  await createUser({ phone: '9876543210' });
+
+  const res = await register({ phone: '9876543210' });
+
+  assert.equal(res.status, 409);
+  assert.equal(res.body.error.code, 'ALREADY_REGISTERED');
+});
+
+test('registration cannot complete without proving the number', async () => {
+  /**
+   * This shape used to be valid — the email code carried the registration and
+   * the number was stored unproved. Nothing carries it but the number now, so a
+   * request with neither leg is refused rather than creating an account.
+   */
+  await register({ phone: '9876543210' });
+
+  const res = await api().post('/api/auth/register/verify').send({});
 
   assert.equal(res.status, 400);
   assert.equal(await User.countDocuments({}), 0);
 });
 
-test('registering against an already-verified contact is refused', async () => {
-  await createUser({ phone: '9876543210', email: 'taken@example.com' });
-
-  const byPhone = await register({ phone: '9876543210', email: 'other@example.com' });
-  const byEmail = await register({ phone: '9000000002', email: 'taken@example.com' });
-
-  assert.equal(byPhone.status, 409);
-  assert.equal(byEmail.status, 409);
-});
-
 // ---------------------------------------------------------------------------
-// Registration while WhatsApp is down
+// Registration when the phone code cannot be delivered
 // ---------------------------------------------------------------------------
 
-test('registration continues when the phone code cannot be delivered', async () => {
+test('an undeliverable code leaves reverse OTP as the way through', async () => {
   notify.setTransport(recordingTransport({ failOn: 'sms' }).transport);
 
-  const start = await register({ phone: '9876543210', email: 'new@example.com' });
+  const start = await register({ phone: '9876543210' });
 
   assert.equal(start.status, 202);
-  assert.equal(start.body.phone.delivered, false, 'the client hides the phone code input on this');
+  assert.equal(start.body.phone.delivered, false, 'the client offers reverse OTP on this');
   assert.equal(start.body.phone.challengeId, null);
-  assert.equal(start.body.email.delivered, true);
 
-  const res = await api().post('/api/auth/register/verify').send({
-    emailChallengeId: start.body.email.challengeId,
-    emailCode: start.body.devCodes.email,
-  });
+  // And there is nothing else to submit: no account without a proved number.
+  const res = await api().post('/api/auth/register/verify').send({});
+  assert.equal(res.status, 400);
+  assert.equal(await User.countDocuments({}), 0);
+});
 
-  assert.equal(res.status, 201);
-  assert.equal(res.body.user.emailVerified, true);
-  assert.equal(res.body.user.phoneVerified, false);
-  // Stored for the courier and for a later retry, but not as the credential.
-  assert.equal(res.body.user.phone, null);
-  assert.equal(res.body.user.pendingPhone, '9876543210');
+test('with no fallback configured either, registration says so at the start', async () => {
+  // Guarded rather than asserted here: with reverse OTP on, this branch cannot
+  // be reached, and it is the branch that stops a user being handed a screen
+  // that can never advance.
+  assert.ok(
+    require('../config/env').reverseOtp.whatsapp.configured,
+    'this file runs with reverse OTP configured; the 503 branch is unreachable here'
+  );
 });
 
 test('a transport that only prints codes counts as undelivered', async () => {
@@ -189,93 +218,62 @@ test('a transport that only prints codes counts as undelivered', async () => {
   // to type something they never received.
   notify.setTransport(notify.consoleTransport);
 
-  const start = await register({ phone: '9876543210', email: 'new@example.com' });
+  const start = await register({ phone: '9876543210' });
 
   assert.equal(start.body.phone.delivered, false);
   assert.equal(start.body.phone.challengeId, null);
 });
 
-test('an unproven number reserves nothing and the real owner can still claim it', async () => {
-  // A squatter registers someone else's number while WhatsApp is down.
-  notify.setTransport(recordingTransport({ failOn: 'sms' }).transport);
-  const squat = await register({ phone: '9876543210', email: 'squatter@example.com' });
-  await api().post('/api/auth/register/verify').send({
-    emailChallengeId: squat.body.email.challengeId,
-    emailCode: squat.body.devCodes.email,
+// ---------------------------------------------------------------------------
+// Legacy accounts whose number was never proved
+// ---------------------------------------------------------------------------
+
+test('a pendingPhone account can still sign in, and the number is promoted', async () => {
+  /**
+   * These exist because registration once completed on the email code alone.
+   * A verified email was how they signed in; with email OTP gone, sending to
+   * the pending number is the only way back — and it is also the repair, since
+   * a code that comes back from that number proves it.
+   */
+  await User.create({
+    name: 'Legacy',
+    email: 'legacy@example.com',
+    pendingPhone: '9876543210',
+    role: 'customer',
   });
 
-  // WhatsApp recovers; the real owner registers the same number.
-  notify.setTransport(recorder.transport);
-  const owner = await register({ phone: '9876543210', email: 'owner@example.com' });
-  assert.equal(owner.status, 202, 'an unproven number must not block the real owner');
-
-  const res = await api().post('/api/auth/register/verify').send({
-    emailChallengeId: owner.body.email.challengeId,
-    emailCode: owner.body.devCodes.email,
-    phoneChallengeId: owner.body.phone.challengeId,
-    phoneCode: owner.body.devCodes.phone,
-  });
-
-  assert.equal(res.status, 201);
-  assert.equal(res.body.user.phone, '9876543210');
-  assert.equal(res.body.user.phoneVerified, true);
-});
-
-test('an unproven number never receives a login code', async () => {
-  notify.setTransport(recordingTransport({ failOn: 'sms' }).transport);
-  const start = await register({ phone: '9876543210', email: 'new@example.com' });
-  await api().post('/api/auth/register/verify').send({
-    emailChallengeId: start.body.email.challengeId,
-    emailCode: start.body.devCodes.email,
-  });
-
-  notify.setTransport(recorder.transport);
   recorder.sent.length = 0;
+  const start = await api().post('/api/auth/otp/start').send({ identifier: '9876543210' });
 
-  await api().post('/api/auth/otp/start').send({ identifier: 'new@example.com' });
-
+  assert.equal(start.status, 202);
+  assert.ok(start.body.challengeId, 'a challenge must actually be issued');
   assert.equal(recorder.sent.length, 1);
-  assert.equal(recorder.sent[0].to, 'new@example.com');
-});
-
-test('someone who registered without a proven phone can sign in by typing it', async () => {
-  notify.setTransport(recordingTransport({ failOn: 'sms' }).transport);
-  const start = await register({ phone: '9876543210', email: 'new@example.com' });
-  await api().post('/api/auth/register/verify').send({
-    emailChallengeId: start.body.email.challengeId,
-    emailCode: start.body.devCodes.email,
-  });
-
-  notify.setTransport(recorder.transport);
-  recorder.sent.length = 0;
-
-  // They only know the number they typed, so lookup has to find them by it.
-  const found = await api().post('/api/auth/lookup').send({ identifier: '9876543210' });
-  assert.equal(found.body.exists, true);
-
-  const login = await api().post('/api/auth/otp/start').send({ identifier: '9876543210' });
-  assert.equal(login.status, 202);
-
-  // Delivered to the verified email, not to the unproven number.
-  assert.equal(recorder.sent.length, 1);
-  assert.equal(recorder.sent[0].to, 'new@example.com');
+  assert.equal(recorder.sent[0].to, '9876543210');
 
   const verify = await api()
     .post('/api/auth/otp/verify')
-    .send({ challengeId: login.body.challengeId, code: login.body.devCode });
+    .send({ challengeId: start.body.challengeId, code: start.body.devCode });
 
   assert.equal(verify.status, 200);
+  assert.equal(verify.body.user.phone, '9876543210');
+  assert.equal(verify.body.user.phoneVerified, true);
+  assert.equal(verify.body.user.pendingPhone, null, 'promoted, not left in both places');
 });
 
 // ---------------------------------------------------------------------------
-// Signing in with either identifier
+// Signing in
 // ---------------------------------------------------------------------------
 
-test('an existing user can sign in by email', async () => {
+test('a login code goes to the phone and nowhere else', async () => {
   const { user } = await createUser({ phone: '9876543210', email: 'known@example.com' });
 
-  const start = await api().post('/api/auth/otp/start').send({ identifier: 'known@example.com' });
+  recorder.sent.length = 0;
+  const start = await api().post('/api/auth/otp/start').send({ identifier: user.phone });
+
   assert.equal(start.status, 202);
+  assert.equal(recorder.sent.length, 1, 'no copy is sent to the address on the account');
+  assert.equal(recorder.sent[0].to, '9876543210');
+  assert.equal(recorder.sent[0].channel, 'sms');
 
   const verify = await api()
     .post('/api/auth/otp/verify')
@@ -285,23 +283,19 @@ test('an existing user can sign in by email', async () => {
   assert.equal(verify.body.user.id, user._id.toHexString());
 });
 
-test('signing in by either identifier reaches both verified contacts with one code', async () => {
-  const { user } = await createUser({ phone: '9876543210', email: 'known@example.com' });
-  await signIn({ phone: user.phone });
+test('signing in with an email address is refused', async () => {
+  await createUser({ phone: '9876543210', email: 'known@example.com' });
 
-  recorder.sent.length = 0;
-  await api().post('/api/auth/otp/start').send({ identifier: 'known@example.com' });
+  const res = await api().post('/api/auth/otp/start').send({ identifier: 'known@example.com' });
 
-  assert.equal(recorder.sent.length, 2);
-  const codes = new Set(recorder.sent.map((m) => m.otp.code));
-  assert.equal(codes.size, 1, 'a login code is shared across channels');
+  assert.equal(res.status, 400);
 });
 
-test('an unknown email is answered like a known one', async () => {
-  const res = await api().post('/api/auth/otp/start').send({ identifier: 'nobody@example.com' });
+test('an unknown number is answered like a known one', async () => {
+  const res = await api().post('/api/auth/otp/start').send({ identifier: '9000000001' });
 
-  // 202 with no code sent: /lookup is the only place existence is disclosed, and
-  // it is rate limited far more tightly than this endpoint.
+  // 202 with no account created: /lookup is the only place existence is
+  // disclosed, and it is rate limited far more tightly than this endpoint.
   assert.equal(res.status, 202);
   assert.equal(await User.countDocuments({}), 0);
 });

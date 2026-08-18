@@ -85,7 +85,6 @@ test('a real account is not touched', async () => {
     email: 'real@realdomain.example',
     phone: '9777777777',
     role: 'customer',
-    emailVerifiedAt: new Date(),
     phoneVerifiedAt: new Date(),
   });
 

@@ -31,7 +31,7 @@ export async function startPhoneAuth({ phone, name }) {
 }
 
 /**
- * Does this mobile number or email already have an account?
+ * Does this mobile number already have an account?
  *
  * Used to decide whether to show the sign-in code screen or the registration
  * form. Note what this costs: unlike every other call here, the answer differs
@@ -43,21 +43,22 @@ export async function startPhoneAuth({ phone, name }) {
  * `app` scopes which account "exists" means. One contact can now back a
  * separate customer, shopkeeper and delivery account, so a bare identifier is
  * ambiguous — the shopkeeper app asking must not learn about a customer
- * account with the same email and route into signing in as it. Pass the
+ * account on the same number and route into signing in as it. Pass the
  * `appType` this LoginPage was rendered with; the three values match the
  * server's `APP_ROLE_SCOPE` exactly, so nothing here decides anything.
  *
- * @returns {Promise<{exists: boolean, type: 'phone'|'email'}>}
+ * @returns {Promise<{exists: boolean, type: 'phone'}>}
  */
 export async function lookupIdentifier({ identifier, app }) {
   return api.post('/auth/lookup', { identifier, ...(app ? { app } : {}) }, { auth: false });
 }
 
 /**
- * Step 1 of signing in with either a mobile number or an email address.
+ * Step 1 of signing in. A mobile number, and only a mobile number.
  *
- * One code is issued and delivered to every verified contact the account has, so
- * whichever the user typed, the same code arrives on WhatsApp and by email.
+ * The code goes to the phone. It used to be copied to a verified email as well,
+ * which made account security the weaker of the two channels; if WhatsApp
+ * cannot reach the user, reverse OTP is the way through, not a mailbox.
  *
  * `app` scopes the resolved account exactly as it does on `lookupIdentifier` —
  * see there. Always pass the same one used for the lookup that preceded this,
@@ -68,29 +69,37 @@ export async function startIdentifierAuth({ identifier, app }) {
 }
 
 /**
- * Step 1 of registration. Both contacts are required, and each receives its OWN
- * code — proving one must not prove the other.
+ * Step 1 of registration. The mobile number, and that is all that is asked for.
  *
- * `phone.delivered === false` means WhatsApp could not be reached. That is not an
- * error: registration continues on the email code alone, and the number is kept
- * against the account unverified. Hide the WhatsApp code input in that case.
+ * No email address: an account is created without one, and anyone who wants
+ * stall notices adds it from their profile afterwards through `updateUser`.
  *
- * @returns {Promise<{email: {challengeId: string, destination: string, delivered: boolean},
- *                    phone: {challengeId: string|null, destination: string, delivered: boolean}}>}
+ * `phone.delivered === false` means WhatsApp could not be reached. That is not
+ * an error and no longer means the number goes unproved — offer reverse OTP
+ * instead, and pass its token to `verifyRegistration` as `phoneToken`.
+ *
+ * @returns {Promise<{phone: {challengeId: string|null, destination: string, delivered: boolean}}>}
  */
-export async function startRegistration({ phone, email, name }) {
-  const payload = { phone, email };
+export async function startRegistration({ phone, name }) {
+  const payload = { phone };
   if (name) payload.name = name;
   return api.post('/auth/register/start', payload, { auth: false });
 }
 
 /**
- * Step 2 of registration. Omit the phone pair when WhatsApp delivery failed.
+ * Step 2 of registration. Supply either the outbound pair
+ * (`phoneChallengeId` + `phoneCode`) or a reverse-OTP `phoneToken` — exactly
+ * one, never both and never neither. The number is the only thing proved here.
  * @returns {Promise<object>} the authenticated user
  */
-export async function verifyRegistration({ emailChallengeId, emailCode, phoneChallengeId, phoneCode }) {
-  const payload = { emailChallengeId, emailCode };
-  if (phoneChallengeId && phoneCode) {
+export async function verifyRegistration({ phoneChallengeId, phoneCode, phoneToken, name }) {
+  const payload = {};
+  if (phoneToken) {
+    payload.phoneToken = phoneToken;
+    // Only the reverse path needs this: there is no stored challenge holding
+    // what was typed at /start. Cosmetic, and proved by nothing.
+    if (name) payload.name = name;
+  } else {
     payload.phoneChallengeId = phoneChallengeId;
     payload.phoneCode = phoneCode;
   }
@@ -109,11 +118,10 @@ export async function verifyRegistration({ emailChallengeId, emailCode, phoneCha
 /**
  * Step 1 of vendor registration. Both contacts are required, each proved with
  * its own code.
- * @returns {Promise<{email: {challengeId: string, destination: string, delivered: boolean},
- *                    phone: {challengeId: string|null, destination: string, delivered: boolean}}>}
+ * @returns {Promise<{phone: {challengeId: string|null, destination: string, delivered: boolean}}>}
  */
-export async function startVendorRegistration({ phone, email, name }) {
-  const payload = { phone, email };
+export async function startVendorRegistration({ phone, name }) {
+  const payload = { phone };
   if (name) payload.name = name;
   return api.post('/auth/vendor/register/start', payload, { auth: false });
 }
@@ -125,9 +133,14 @@ export async function startVendorRegistration({ phone, email, name }) {
  * nothing until it verifies a settlement account.
  * @returns {Promise<{user: object, nextStep: string}>}
  */
-export async function verifyVendorRegistration({ emailChallengeId, emailCode, phoneChallengeId, phoneCode }) {
-  const payload = { emailChallengeId, emailCode };
-  if (phoneChallengeId && phoneCode) {
+export async function verifyVendorRegistration({ phoneChallengeId, phoneCode, phoneToken, name }) {
+  const payload = {};
+  if (phoneToken) {
+    payload.phoneToken = phoneToken;
+    // Only the reverse path needs this: there is no stored challenge holding
+    // what was typed at /start. Cosmetic, and proved by nothing.
+    if (name) payload.name = name;
+  } else {
     payload.phoneChallengeId = phoneChallengeId;
     payload.phoneCode = phoneCode;
   }
@@ -146,11 +159,10 @@ export async function verifyVendorRegistration({ emailChallengeId, emailCode, ph
 /**
  * Step 1 of delivery agent registration. Both contacts are required, each
  * proved with its own code.
- * @returns {Promise<{email: {challengeId: string, destination: string, delivered: boolean},
- *                    phone: {challengeId: string|null, destination: string, delivered: boolean}}>}
+ * @returns {Promise<{phone: {challengeId: string|null, destination: string, delivered: boolean}}>}
  */
-export async function startRiderRegistration({ phone, email, name }) {
-  const payload = { phone, email };
+export async function startRiderRegistration({ phone, name }) {
+  const payload = { phone };
   if (name) payload.name = name;
   return api.post('/auth/delivery/register/start', payload, { auth: false });
 }
@@ -160,9 +172,14 @@ export async function startRiderRegistration({ phone, email, name }) {
  * establishes the session.
  * @returns {Promise<object>} the authenticated user
  */
-export async function verifyRiderRegistration({ emailChallengeId, emailCode, phoneChallengeId, phoneCode }) {
-  const payload = { emailChallengeId, emailCode };
-  if (phoneChallengeId && phoneCode) {
+export async function verifyRiderRegistration({ phoneChallengeId, phoneCode, phoneToken, name }) {
+  const payload = {};
+  if (phoneToken) {
+    payload.phoneToken = phoneToken;
+    // Only the reverse path needs this: there is no stored challenge holding
+    // what was typed at /start. Cosmetic, and proved by nothing.
+    if (name) payload.name = name;
+  } else {
     payload.phoneChallengeId = phoneChallengeId;
     payload.phoneCode = phoneCode;
   }
@@ -202,36 +219,12 @@ export async function verifyPhoneChange({ challengeId, code }) {
   return result.user;
 }
 
-/**
- * Step 1 of attaching or moving an email address. The code goes to the NEW
- * address, which is the whole point: once an address is on the account it
- * receives copies of every login code, so it has to be proved first.
- *
- * Not part of the profile PATCH, and that is deliberate on the server's side —
- * `PATCH /api/users/:id` rejects `email` exactly as it rejects `phone`, because
- * a briefly-stolen session that could point either at itself would own the
- * account permanently.
- *
- * Throws with code `EMAIL_NOT_CONFIGURED` (503) where the deployment has no
- * mail provider, since there would be nowhere to send the code.
- */
-export async function startEmailChange({ email }) {
-  return api.post('/auth/email/start', { email });
-}
-
-/**
- * Step 2 of attaching an email.
- *
- * Unlike a phone change this does NOT sign other devices out and issues no new
- * token: the phone remains the credential, and adding a place for copies to
- * arrive does not invalidate a session that authenticated against the number.
- *
- * @returns {Promise<object>} the updated user
- */
-export async function verifyEmailChange({ challengeId, code }) {
-  const result = await api.post('/auth/email/verify', { challengeId, code });
-  return result.user;
-}
+// There is no startEmailChange/verifyEmailChange any more.
+//
+// They existed because an address on the account received copies of every login
+// code, which made attaching one a security action needing proof of control.
+// Nothing is delivered to an email now, so an address is an ordinary profile
+// field again — set it through `updateUser` like a name.
 
 /**
  * Restore a session on app start from the httpOnly refresh cookie.
@@ -271,15 +264,15 @@ export async function logoutEverywhere() {
  * @returns {string|null} a problem description, or null when acceptable
  */
 /**
- * Advisory check for the single sign-in box, which accepts either kind of
- * contact. The server's `fields.identifier` is the authoritative rule.
+ * Advisory check for the single sign-in box.
+ *
+ * It used to accept an email address as well. It does not any more: a code goes
+ * only to a phone, so an address would resolve an account nobody could then
+ * prove they own.
  * @returns {string|null} a problem description, or null when acceptable
  */
 export function describeIdentifierProblem(identifier) {
-  const raw = String(identifier ?? '').trim();
-  if (raw.length === 0) return 'Enter your mobile number or email address.';
-  if (raw.includes('@')) return describeEmailProblem(raw);
-  return describePhoneProblem(raw);
+  return describePhoneProblem(String(identifier ?? '').trim());
 }
 
 /** @returns {string|null} a problem description, or null when acceptable */

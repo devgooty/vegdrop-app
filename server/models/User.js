@@ -97,7 +97,12 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
 
-    emailVerifiedAt: { type: Date, default: null },
+    /**
+     * There is no `emailVerifiedAt`. Nothing can set one: no code is ever
+     * delivered to an address, so there is no act of control to record. An
+     * email here is self-asserted and treated as such — see toPublicJSON below,
+     * which reports no verification state for it.
+     */
     phoneVerifiedAt: { type: Date, default: null },
 
     /**
@@ -258,7 +263,6 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
     pendingPhone: this.pendingPhone || null,
     role: this.role,
     status: this.status,
-    emailVerified: Boolean(this.emailVerifiedAt),
     phoneVerified: Boolean(this.phoneVerifiedAt),
     // Duty status only — never the position. A rider's live coordinates are
     // dispatch input, not something to hand back out on a profile read.
@@ -277,7 +281,8 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
 userSchema.methods.verifiedContacts = function verifiedContacts() {
   const contacts = [];
   if (this.phone && this.phoneVerifiedAt) contacts.push(this.phone);
-  if (this.email && this.emailVerifiedAt) contacts.push(this.email);
+  // Email is deliberately absent: it is proved by nothing, and a login code is
+  // never sent to one. Returning it here is what used to make a mailbox a way in.
   return contacts;
 };
 

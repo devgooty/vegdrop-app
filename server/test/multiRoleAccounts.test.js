@@ -41,22 +41,22 @@ test.afterEach(() => notify.setTransport(null));
 // Uniqueness is per (contact, role), not per contact
 // ---------------------------------------------------------------------------
 
-test('the same email can hold a customer, a shopkeeper and a delivery account at once', async () => {
-  const email = 'triple@example.com';
-  await createUser({ role: 'customer', email });
-  await createUser({ role: 'shopkeeper', email });
-  await createUser({ role: 'delivery', email });
+test('the same number can hold a customer, a shopkeeper and a delivery account at once', async () => {
+  const phone = '9876500010';
+  await createUser({ role: 'customer', phone });
+  await createUser({ role: 'shopkeeper', phone });
+  await createUser({ role: 'delivery', phone });
 
-  const accounts = await User.find({ email }).select('role').lean();
+  const accounts = await User.find({ phone }).select('role').lean();
   assert.deepEqual(accounts.map((a) => a.role).sort(), ['customer', 'delivery', 'shopkeeper']);
 });
 
-test('registering a second delivery account for an email that already has one is still refused', async () => {
+test('registering a second delivery account for a number that already has one is still refused', async () => {
   const { user } = await createUser({ role: 'delivery' });
 
   const res = await api()
     .post('/api/auth/delivery/register/start')
-    .send({ phone: '9876500001', email: user.email });
+    .send({ phone: user.phone });
 
   assert.equal(res.status, 409);
   assert.equal(res.body.error.code, 'ALREADY_REGISTERED');
@@ -93,36 +93,34 @@ for (const existingRole of SELF_SERVICE_ROLES_UNDER_TEST) {
   for (const registeringRole of SELF_SERVICE_ROLES_UNDER_TEST) {
     if (existingRole === registeringRole) continue; // the same-role block is covered separately, per role
 
-    test(`an existing ${existingRole} account does not block registering a ${registeringRole} account for the same email`, async () => {
+    test(`an existing ${existingRole} account does not block registering a ${registeringRole} account for the same number`, async () => {
       const { user } = await createUser({ role: existingRole });
 
       const res = await api()
         .post(REGISTER_START_ENDPOINT[registeringRole])
-        .send({ phone: nextTestPhone(), email: user.email });
+        .send({ phone: user.phone });
 
       assert.equal(
         res.status,
         202,
-        `registering ${registeringRole} should succeed when only a ${existingRole} account holds this email`
+        `registering ${registeringRole} should succeed when only a ${existingRole} account holds this number`
       );
     });
   }
 }
 
-test('a delivery account can be completed for an email that already has a shopkeeper account, and lands as a separate document', async () => {
-  const email = 'shop-then-rider@example.com';
-  const { user: shopkeeper } = await createUser({ role: 'shopkeeper', email });
+test('a delivery account can be completed for a number that already has a shopkeeper account, and lands as a separate document', async () => {
+  const phone = '9876500011';
+  const { user: shopkeeper } = await createUser({ role: 'shopkeeper', phone });
 
   const start = await api()
     .post('/api/auth/delivery/register/start')
-    .send({ phone: '9876500099', email });
+    .send({ phone });
   assert.equal(start.status, 202);
 
   const verify = await api()
     .post('/api/auth/delivery/register/verify')
     .send({
-      emailChallengeId: start.body.email.challengeId,
-      emailCode: start.body.devCodes.email,
       phoneChallengeId: start.body.phone.challengeId,
       phoneCode: start.body.devCodes.phone,
     });
@@ -131,7 +129,7 @@ test('a delivery account can be completed for an email that already has a shopke
   assert.equal(verify.body.user.role, 'delivery');
   assert.notEqual(verify.body.user.id, shopkeeper.id);
 
-  const accounts = await User.find({ email }).select('role').lean();
+  const accounts = await User.find({ phone }).select('role').lean();
   assert.deepEqual(accounts.map((a) => a.role).sort(), ['delivery', 'shopkeeper']);
 });
 
@@ -139,46 +137,46 @@ test('a delivery account can be completed for an email that already has a shopke
 // Sign-in resolves the account for the asking app, not just any account
 // ---------------------------------------------------------------------------
 
-test('lookup on the shopkeeper app does not see a customer-only email', async () => {
+test('lookup on the shopkeeper app does not see a customer-only number', async () => {
   const { user } = await createUser({ role: 'customer' });
 
   const res = await api()
     .post('/api/auth/lookup')
-    .send({ identifier: user.email, app: 'shopkeeper' });
+    .send({ identifier: user.phone, app: 'shopkeeper' });
 
   assert.equal(res.status, 200);
   assert.equal(res.body.exists, false);
 });
 
-test('lookup on the customer app does not see a shopkeeper-only email', async () => {
+test('lookup on the customer app does not see a shopkeeper-only number', async () => {
   const { user } = await createUser({ role: 'shopkeeper' });
 
   const res = await api()
     .post('/api/auth/lookup')
-    .send({ identifier: user.email, app: 'customer' });
+    .send({ identifier: user.phone, app: 'customer' });
 
   assert.equal(res.status, 200);
   assert.equal(res.body.exists, false);
 });
 
 test('lookup on the shopkeeper app finds the shopkeeper account when both exist', async () => {
-  const email = 'both@example.com';
-  await createUser({ role: 'customer', email });
-  await createUser({ role: 'shopkeeper', email });
+  const phone = '9876500012';
+  await createUser({ role: 'customer', phone });
+  await createUser({ role: 'shopkeeper', phone });
 
-  const res = await api().post('/api/auth/lookup').send({ identifier: email, app: 'shopkeeper' });
+  const res = await api().post('/api/auth/lookup').send({ identifier: phone, app: 'shopkeeper' });
 
   assert.equal(res.body.exists, true);
 });
 
-test('signing in on the shopkeeper app reaches the shopkeeper account, not the customer one sharing its email', async () => {
-  const email = 'both-signin@example.com';
-  const { user: customer } = await createUser({ role: 'customer', email });
-  const { user: shopkeeper } = await createUser({ role: 'shopkeeper', email });
+test('signing in on the shopkeeper app reaches the shopkeeper account, not the customer one sharing its number', async () => {
+  const phone = '9876500013';
+  const { user: customer } = await createUser({ role: 'customer', phone });
+  const { user: shopkeeper } = await createUser({ role: 'shopkeeper', phone });
 
   const start = await api()
     .post('/api/auth/otp/start')
-    .send({ identifier: email, app: 'shopkeeper' });
+    .send({ identifier: phone, app: 'shopkeeper' });
   assert.equal(start.status, 202);
   assert.ok(start.body.challengeId, 'a real challenge is issued for the scoped match');
 
@@ -227,7 +225,7 @@ test('a bare phone with no account on the customer app still auto-creates, uncha
 test('omitting app entirely keeps the old unrestricted lookup, for callers that predate scoping', async () => {
   const { user } = await createUser({ role: 'shopkeeper' });
 
-  const res = await api().post('/api/auth/lookup').send({ identifier: user.email });
+  const res = await api().post('/api/auth/lookup').send({ identifier: user.phone });
 
   assert.equal(res.body.exists, true);
 });
@@ -236,10 +234,10 @@ test('omitting app entirely keeps the old unrestricted lookup, for callers that 
 // Promoting an account into a role its own identity already holds elsewhere
 // ---------------------------------------------------------------------------
 
-test('promoting an account into a role its own email already holds elsewhere is refused', async () => {
-  const email = 'promote-collision@example.com';
-  const { user: customer } = await createUser({ role: 'customer', email });
-  await createUser({ role: 'shopkeeper', email });
+test('promoting an account into a role its own number already holds elsewhere is refused', async () => {
+  const phone = '9876500014';
+  const { user: customer } = await createUser({ role: 'customer', phone });
+  await createUser({ role: 'shopkeeper', phone });
 
   const admin = await authenticatedUser('developer');
 

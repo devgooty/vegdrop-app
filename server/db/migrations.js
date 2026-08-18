@@ -259,6 +259,38 @@ async function migrateWalletLedgerSequence() {
  * start leaves the service down, which is not — and these run on every boot, so
  * the next one retries anyway.
  */
+/**
+ * Login codes stopped being delivered to email, so `emailVerifiedAt` records
+ * something that can no longer happen.
+ *
+ * WHY IT HAS TO GO RATHER THAN JUST BEING IGNORED
+ *
+ * A stale timestamp here is not inert. `verifiedContacts()` used to read it,
+ * and the field is exactly the kind of thing a future change reads again
+ * without checking whether anything still sets it — at which point every
+ * pre-migration account claims a verified address that nobody has proved
+ * control of since the flow that proved it was deleted. Removing the data is
+ * what makes the schema comment true.
+ *
+ * The ADDRESS is kept. `email` is still a live field: routes/markets.js sends
+ * stall approval and suspension notices to it, and PATCH /api/users/:id sets
+ * it. Only the claim that someone proved it is dropped.
+ *
+ * Idempotent by construction: `$unset` on documents that still have the field
+ * matches nothing on a second run, so two instances booting at once race
+ * harmlessly and a database that has already been migrated does no writes.
+ */
+async function migrateDroppedEmailVerification() {
+  const User = mongoose.connection.collection('users');
+
+  const result = await User.updateMany(
+    { emailVerifiedAt: { $exists: true } },
+    { $unset: { emailVerifiedAt: '' } }
+  );
+
+  return { cleared: result?.modifiedCount ?? 0 };
+}
+
 async function runMigrations() {
   const started = Date.now();
   let ok = true;
@@ -311,6 +343,19 @@ async function runMigrations() {
     ok = false;
   }
 
+  try {
+    const { cleared } = await migrateDroppedEmailVerification();
+
+    if (cleared > 0) {
+      console.info(
+        `[db] migration: cleared emailVerifiedAt from ${cleared} account(s) — nothing proves an address any more`
+      );
+    }
+  } catch (err) {
+    console.error(`[db] migration (dropped email verification) failed: ${err?.message}`);
+    ok = false;
+  }
+
   console.info(`[db] migrations ready (${Date.now() - started}ms)`);
   return { ok };
 }
@@ -320,4 +365,5 @@ module.exports = {
   migrateStallApproval,
   migrateUserContactIndexes,
   migrateWalletLedgerSequence,
+  migrateDroppedEmailVerification,
 };

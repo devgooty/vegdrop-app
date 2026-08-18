@@ -29,25 +29,22 @@ test.beforeEach(() => {
 });
 test.afterEach(() => notify.setTransport(null));
 
-test('delivery registration proves both contacts before creating an account', async () => {
+test('delivery registration proves the number before creating an account', async () => {
   const start = await api()
     .post('/api/auth/delivery/register/start')
-    .send({ phone: '9876543210', email: 'newrider@example.com', name: 'New Rider' });
+    .send({ phone: '9876543210', name: 'New Rider' });
 
   assert.equal(start.status, 202);
-  assert.ok(start.body.email.delivered);
   assert.ok(start.body.phone.delivered);
   assert.equal(
-    await User.countDocuments({ email: 'newrider@example.com' }),
+    await User.countDocuments({ phone: '9876543210' }),
     0,
-    'the account must not exist until both codes are proved'
+    'the account must not exist until the number is proved'
   );
 
   const verify = await api()
     .post('/api/auth/delivery/register/verify')
     .send({
-      emailChallengeId: start.body.email.challengeId,
-      emailCode: start.body.devCodes.email,
       phoneChallengeId: start.body.phone.challengeId,
       phoneCode: start.body.devCodes.phone,
     });
@@ -55,7 +52,7 @@ test('delivery registration proves both contacts before creating an account', as
   assert.equal(verify.status, 201);
   assert.equal(verify.body.user.role, 'delivery');
 
-  const created = await User.findOne({ email: 'newrider@example.com' });
+  const created = await User.findOne({ phone: '9876543210' });
   assert.equal(created.role, 'delivery');
   assert.equal(created.phone, '9876543210');
 });
@@ -63,7 +60,7 @@ test('delivery registration proves both contacts before creating an account', as
 test('a customer registration code cannot be redeemed as a delivery registration', async () => {
   const start = await api()
     .post('/api/auth/register/start')
-    .send({ phone: '9876543212', email: 'customer-not-rider@example.com' });
+    .send({ phone: '9876543212' });
 
   // Same code, wrong endpoint: the OTP purpose differs (`registration` vs
   // `delivery_registration`), so verifyChallenge must refuse it outright.
@@ -71,19 +68,19 @@ test('a customer registration code cannot be redeemed as a delivery registration
   const res = await api()
     .post('/api/auth/delivery/register/verify')
     .send({
-      emailChallengeId: start.body.email.challengeId,
-      emailCode: start.body.devCodes.email,
+      phoneChallengeId: start.body.phone.challengeId,
+      phoneCode: start.body.devCodes.phone,
     });
 
   assert.equal(res.status, 400);
   assert.equal(res.body.error.code, 'OTP_INVALID');
-  assert.equal(await User.findOne({ email: 'customer-not-rider@example.com' }), null);
+  assert.equal(await User.findOne({ phone: '9876543212' }), null);
 });
 
 test('a vendor registration code cannot be redeemed as a delivery registration', async () => {
   const start = await api()
     .post('/api/auth/vendor/register/start')
-    .send({ phone: '9876543213', email: 'vendor-not-rider@example.com' });
+    .send({ phone: '9876543213' });
 
   // The two privileged sign-ups must be isolated from EACH OTHER, not merely
   // from the customer one — otherwise whichever is vetted more loosely becomes
@@ -91,30 +88,30 @@ test('a vendor registration code cannot be redeemed as a delivery registration',
   const res = await api()
     .post('/api/auth/delivery/register/verify')
     .send({
-      emailChallengeId: start.body.email.challengeId,
-      emailCode: start.body.devCodes.email,
+      phoneChallengeId: start.body.phone.challengeId,
+      phoneCode: start.body.devCodes.phone,
     });
 
   assert.equal(res.status, 400);
   assert.equal(res.body.error.code, 'OTP_INVALID');
-  assert.equal(await User.findOne({ email: 'vendor-not-rider@example.com' }), null);
+  assert.equal(await User.findOne({ phone: '9876543213' }), null);
 });
 
 test('a delivery registration code cannot be redeemed as a customer registration', async () => {
   const start = await api()
     .post('/api/auth/delivery/register/start')
-    .send({ phone: '9876543214', email: 'rider-not-customer@example.com' });
+    .send({ phone: '9876543214' });
 
   const res = await api()
     .post('/api/auth/register/verify')
     .send({
-      emailChallengeId: start.body.email.challengeId,
-      emailCode: start.body.devCodes.email,
+      phoneChallengeId: start.body.phone.challengeId,
+      phoneCode: start.body.devCodes.phone,
     });
 
   assert.equal(res.status, 400);
   assert.equal(res.body.error.code, 'OTP_INVALID');
-  assert.equal(await User.findOne({ email: 'rider-not-customer@example.com' }), null);
+  assert.equal(await User.findOne({ phone: '9876543214' }), null);
 });
 
 test('the delivery role comes from the route, never from the request body', async () => {
@@ -122,22 +119,20 @@ test('the delivery role comes from the route, never from the request body', asyn
     .post('/api/auth/delivery/register/start')
     // A body field that must be ignored rather than honoured. `.strict()`
     // refuses it outright, which is the strongest form of ignoring it.
-    .send({ phone: '9876543215', email: 'norole@example.com', role: 'developer' });
+    .send({ phone: '9876543215', role: 'developer' });
 
   assert.equal(res.status, 400, 'an unexpected body field must be refused, not silently dropped');
-  assert.equal(await User.findOne({ email: 'norole@example.com' }), null);
+  assert.equal(await User.findOne({ phone: '9876543215' }), null);
 });
 
 test('a self-registered rider starts off duty and holds no location', async () => {
   const start = await api()
     .post('/api/auth/delivery/register/start')
-    .send({ phone: '9876543216', email: 'offduty@example.com' });
+    .send({ phone: '9876543216' });
 
   const verify = await api()
     .post('/api/auth/delivery/register/verify')
     .send({
-      emailChallengeId: start.body.email.challengeId,
-      emailCode: start.body.devCodes.email,
       phoneChallengeId: start.body.phone.challengeId,
       phoneCode: start.body.devCodes.phone,
     });
@@ -150,7 +145,7 @@ test('a self-registered rider starts off duty and holds no location', async () =
    * name, phone, address and COD cash — at the moment it is created.
    */
   assert.equal(verify.status, 201);
-  const created = await User.findOne({ email: 'offduty@example.com' });
+  const created = await User.findOne({ phone: '9876543216' });
   assert.equal(created.rider?.dutyStatus || 'offline', 'offline');
   assert.equal(created.rider?.lastLocation, undefined);
   assert.equal(verify.body.user.dutyStatus, 'offline');
@@ -159,13 +154,11 @@ test('a self-registered rider starts off duty and holds no location', async () =
 test('a rider who registered can sign in again and keeps the delivery role', async () => {
   const start = await api()
     .post('/api/auth/delivery/register/start')
-    .send({ phone: '9876543217', email: 'returning@example.com' });
+    .send({ phone: '9876543217' });
 
   await api()
     .post('/api/auth/delivery/register/verify')
     .send({
-      emailChallengeId: start.body.email.challengeId,
-      emailCode: start.body.devCodes.email,
       phoneChallengeId: start.body.phone.challengeId,
       phoneCode: start.body.devCodes.phone,
     });

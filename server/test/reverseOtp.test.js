@@ -537,33 +537,21 @@ test('a rejected phone-change attempt does not destroy the verification', async 
   assert.equal(done.body.user.phone, '9000011111');
 });
 
-test('a reverse token refused by one registration still works for its own', async () => {
+test('a reverse token is single use', async () => {
   const reverse = await start({ phone: '9876543210', purpose: 'registration' });
   await relaySms({ from: '9876543210', text: reverse.code });
 
-  // Presented against a registration for a different number, and refused.
-  const wrong = await api()
-    .post('/api/auth/register/start')
-    .send({ phone: '9111122222', email: 'other@example.com', name: 'Other' });
-  const rejected = await api().post('/api/auth/register/verify').send({
-    emailChallengeId: wrong.body.email.challengeId,
-    emailCode: wrong.body.devCodes.email,
+  const first = await api().post('/api/auth/register/verify').send({
+    phoneToken: reverse.token,
+    name: 'Asha Rao',
+  });
+  assert.equal(first.status, 201);
+
+  // Spent. A second attempt cannot mint a duplicate account on the same number.
+  const second = await api().post('/api/auth/register/verify').send({
     phoneToken: reverse.token,
   });
-  assert.equal(rejected.status, 400);
-
-  // The number it actually proved can still complete its own sign-up.
-  const mine = await api()
-    .post('/api/auth/register/start')
-    .send({ phone: '9876543210', email: 'asha@example.com', name: 'Asha Rao' });
-  const accepted = await api().post('/api/auth/register/verify').send({
-    emailChallengeId: mine.body.email.challengeId,
-    emailCode: mine.body.devCodes.email,
-    phoneToken: reverse.token,
-  });
-
-  assert.equal(accepted.status, 201);
-  assert.equal(accepted.body.user.phoneVerified, true);
+  assert.equal(second.status, 400);
 });
 
 test('two apps can verify the same unregistered number at once', async () => {
@@ -601,15 +589,13 @@ test('a login token cannot be redeemed as a phone change, or the reverse', async
 test('registration completes with a reverse token instead of a phone code', async () => {
   const started = await api()
     .post('/api/auth/register/start')
-    .send({ phone: '9876543210', email: 'asha@example.com', name: 'Asha Rao' });
+    .send({ phone: '9876543210', name: 'Asha Rao' });
   assert.equal(started.status, 202);
 
   const reverse = await start({ phone: '9876543210', purpose: 'registration' });
   await relaySms({ from: '9876543210', text: reverse.code });
 
   const res = await api().post('/api/auth/register/verify').send({
-    emailChallengeId: started.body.email.challengeId,
-    emailCode: started.body.devCodes.email,
     phoneToken: reverse.token,
   });
 
@@ -618,36 +604,44 @@ test('registration completes with a reverse token instead of a phone code', asyn
   assert.equal(res.body.user.phoneVerified, true, 'the number was proved, so it is the account phone');
 });
 
-test('registration refuses a reverse token for a different number', async () => {
-  const started = await api()
-    .post('/api/auth/register/start')
-    .send({ phone: '9876543210', email: 'asha@example.com', name: 'Asha Rao' });
+test('the account is created for the number the token proved, not the one /start named', async () => {
+  /**
+   * There is nothing left to cross-check against.
+   *
+   * The old flow paired the reverse token with a phone carried in the EMAIL
+   * challenge's payload, and refused a mismatch — otherwise a challenge proving
+   * one number could be attached to a registration for another. With the email
+   * leg gone the token is the only claim about a number there is, so it is the
+   * whole answer: the account is created for what was actually proved, which is
+   * exactly what a mismatch would have had to fall back to anyway.
+   */
+  await api().post('/api/auth/register/start').send({ phone: '9876543210', name: 'Asha Rao' });
 
-  // A challenge proving a number that has nothing to do with this sign-up.
   const reverse = await start({ phone: '9111122222', purpose: 'registration' });
   await relaySms({ from: '9111122222', text: reverse.code });
 
   const res = await api().post('/api/auth/register/verify').send({
-    emailChallengeId: started.body.email.challengeId,
-    emailCode: started.body.devCodes.email,
     phoneToken: reverse.token,
   });
 
-  assert.equal(res.status, 400);
-  assert.equal(await User.countDocuments({ email: 'asha@example.com' }), 0);
+  assert.equal(res.status, 201);
+  assert.equal(res.body.user.phone, '9111122222', 'the proved number, not the typed one');
+  assert.equal(
+    await User.countDocuments({ phone: '9876543210' }),
+    0,
+    'the number nobody proved gets no account'
+  );
 });
 
 test('registration refuses an unverified reverse token', async () => {
   const started = await api()
     .post('/api/auth/register/start')
-    .send({ phone: '9876543210', email: 'asha@example.com', name: 'Asha Rao' });
+    .send({ phone: '9876543210', name: 'Asha Rao' });
 
   // Issued, but no message was ever sent.
   const reverse = await start({ phone: '9876543210', purpose: 'registration' });
 
   const res = await api().post('/api/auth/register/verify').send({
-    emailChallengeId: started.body.email.challengeId,
-    emailCode: started.body.devCodes.email,
     phoneToken: reverse.token,
   });
 
@@ -657,15 +651,13 @@ test('registration refuses an unverified reverse token', async () => {
 test('a customer registration token cannot mint a shopkeeper', async () => {
   const started = await api()
     .post('/api/auth/vendor/register/start')
-    .send({ phone: '9876543210', email: 'vendor@example.com', name: 'Vendor' });
+    .send({ phone: '9876543210', name: 'Vendor' });
 
   // Raised for the customer sign-up flow, redeemed against the vendor one.
   const reverse = await start({ phone: '9876543210', purpose: 'registration' });
   await relaySms({ from: '9876543210', text: reverse.code });
 
   const res = await api().post('/api/auth/vendor/register/verify').send({
-    emailChallengeId: started.body.email.challengeId,
-    emailCode: started.body.devCodes.email,
     phoneToken: reverse.token,
   });
 
@@ -676,14 +668,12 @@ test('a customer registration token cannot mint a shopkeeper', async () => {
 test('a registration cannot supply both phone legs at once', async () => {
   const started = await api()
     .post('/api/auth/register/start')
-    .send({ phone: '9876543210', email: 'asha@example.com', name: 'Asha Rao' });
+    .send({ phone: '9876543210', name: 'Asha Rao' });
 
   const reverse = await start({ phone: '9876543210', purpose: 'registration' });
   await relaySms({ from: '9876543210', text: reverse.code });
 
   const res = await api().post('/api/auth/register/verify').send({
-    emailChallengeId: started.body.email.challengeId,
-    emailCode: started.body.devCodes.email,
     phoneChallengeId: started.body.phone.challengeId,
     phoneCode: started.body.devCodes.phone,
     phoneToken: reverse.token,
