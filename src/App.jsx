@@ -1649,7 +1649,24 @@ export default function App() {
   const activeCartItems = shoppingMode === 'scheduled' ? scheduledCartItems : cartItems;
 
   if (showSplash) {
-    return <SplashScreen onComplete={() => setShowSplash(false)} />;
+    /*
+      Whether the launch screen should hand its wordmark to the login screen
+      instead of fading out — the two carry the same logotype in the same face,
+      and cutting between them redraws a mark the user is already looking at.
+
+      Only when the login screen is genuinely next, because that exit ends on a
+      bare wordmark and the login screen is the only thing with somewhere to put
+      it. `isRestoringSession` is part of that question rather than an
+      afterthought: a session still being restored may yet resolve into the shop
+      instead, and the splash holds long enough that this has almost always
+      settled by the time it is read.
+    */
+    const handingOverToLogin =
+      !isRestoringSession && !user && (activeTab === 'login' || activeTab === 'signup');
+
+    return (
+      <SplashScreen onComplete={() => setShowSplash(false)} handoff={handingOverToLogin} />
+    );
   }
 
   // One screen for both. Signing in with a number that has no account creates

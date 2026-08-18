@@ -1,10 +1,18 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { publishBrandFlight, prefersReducedMotion } from '../lib/brandFlight';
 
 /** When the lockup has finished assembling and the screen may hand over. */
 const HOLD_UNTIL = 2260;
 /** Must stay in step with the wrapper's `duration-500` fade below. */
 const FADE_MS = 500;
+/**
+ * The other exit: how long the lockup takes to come apart so the login screen
+ * can pick the wordmark up. Shorter than the fade because nothing is waiting on
+ * it — the next screen is not revealed by this ending, it continues it.
+ * Must stay in step with the `.vd-splash-handoff` rules in src/index.css.
+ */
+const HANDOFF_MS = 380;
 
 /**
  * When this launch's animation started, shared by every instance of it.
@@ -70,11 +78,13 @@ function readSky(hour) {
  * and React swaps it out. Passing a no-op instead would fade it to transparent
  * over a page that has not rendered yet, which is a blank screen.
  */
-export default function SplashScreen({ onComplete, edition }) {
+export default function SplashScreen({ onComplete, edition, handoff = false }) {
   const { t, language } = useLanguage();
-  const [isFading, setIsFading] = useState(false);
+  /** null while the screen is up, then which of the two exits is playing. */
+  const [exit, setExit] = useState(null);
   const finishedRef = useRef(false);
   const rootRef = useRef(null);
+  const wordmarkRef = useRef(null);
   /** How far into the sequence this instance actually started. Set at paint. */
   const offsetRef = useRef(0);
 
@@ -117,17 +127,40 @@ export default function SplashScreen({ onComplete, edition }) {
    * would have kept the splash up indefinitely.
    */
   const onCompleteRef = useRef(onComplete);
+  /**
+   * Read through a ref for the same reason, and it matters more here: the
+   * customer app derives `handoff` from a session restore that can land at any
+   * point during the hold, so as a dependency it would re-arm the timeout in
+   * the middle of the countdown.
+   */
+  const handoffRef = useRef(handoff);
   useEffect(() => {
     onCompleteRef.current = onComplete;
+    handoffRef.current = handoff;
   });
 
   const handleFinish = useCallback(() => {
     if (!onCompleteRef.current || finishedRef.current) return;
     finishedRef.current = true;
 
-    setIsFading(true);
-    // Unmount only once the fade has actually played out.
-    setTimeout(() => onCompleteRef.current?.(), FADE_MS);
+    /*
+      Two ways to leave.
+
+      The ordinary one fades the whole screen out over whatever is behind it.
+      The other only happens when the login screen is next: the furniture comes
+      apart — the greeting and taglines go, the plate dissolves, the droplet
+      drains back down the way it fell in — and the wordmark is left standing
+      alone on white, which is what the login screen then flies into place.
+      `publishBrandFlight` is what makes that possible, and its answer is what
+      decides which exit plays: if there is no position to hand over there is
+      nothing to continue, so the screen fades as it always did.
+    */
+    const carrying =
+      handoffRef.current && !prefersReducedMotion() && publishBrandFlight(wordmarkRef.current);
+
+    setExit(carrying ? 'handoff' : 'fade');
+    // Unmount only once that ending has actually played out.
+    setTimeout(() => onCompleteRef.current?.(), carrying ? HANDOFF_MS : FADE_MS);
   }, []);
 
   // Only whether there is somewhere to hand over to, never which function it
@@ -165,9 +198,12 @@ export default function SplashScreen({ onComplete, edition }) {
 
   return (
     <div
+      /* The handoff exit deliberately changes nothing on the root: the cream
+         here is the same cream the login screen's page background is, so the
+         only thing that should move is what is drawn on top of it. */
       className={`fixed inset-0 z-[9999] flex justify-center bg-[#F8F5EF] transition-all duration-500 ease-out ${
-        isFading ? 'opacity-0 pointer-events-none blur-md scale-[1.02]' : 'opacity-100 blur-0 scale-100'
-      }`}
+        exit === 'fade' ? 'opacity-0 pointer-events-none blur-md scale-[1.02]' : 'opacity-100 blur-0 scale-100'
+      } ${exit === 'handoff' ? 'vd-splash-handoff pointer-events-none' : ''}`}
       ref={rootRef}
       role="status"
       aria-live="polite"
@@ -177,6 +213,12 @@ export default function SplashScreen({ onComplete, edition }) {
         className="vd-splash-field w-full max-w-md h-full relative overflow-hidden flex flex-col items-center justify-center"
         data-sky={sky.art}
       >
+        {/* First child of the field on purpose — it has to cover the cream
+            and its grain while staying under everything below. Invisible
+            unless the screen is handing the wordmark over; see
+            `.vd-splash-blanch` in src/index.css. */}
+        <span className="vd-splash-blanch" aria-hidden="true" />
+
         <span className="vd-splash-ring vd-splash-ring-1" aria-hidden="true" />
         <span className="vd-splash-ring vd-splash-ring-2" aria-hidden="true" />
 
@@ -212,7 +254,7 @@ export default function SplashScreen({ onComplete, edition }) {
 
           <span className="vd-splash-plate">
             <span className="vd-splash-plate-fill" aria-hidden="true" />
-            <span className="vd-splash-wordmark">
+            <span className="vd-splash-wordmark" ref={wordmarkRef}>
               <span className="vd-splash-wordmark-veg text-[#1B4D3E]">Veg</span>
               <span className="vd-splash-wordmark-drop text-[#C8372D]">Drop</span>
             </span>

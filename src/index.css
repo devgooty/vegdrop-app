@@ -538,6 +538,11 @@
    sans reads tight-and-confident. */
 .si-hero-wordmark {
   text-align: center;
+  /* So it paints over the produce row below it while it is flying in from the
+     launch screen — in flow that row comes after it and would cross in front
+     of the mark halfway through. */
+  position: relative;
+  z-index: 2;
   font-family: 'Baloo 2', 'Plus Jakarta Sans', ui-sans-serif, sans-serif;
   font-weight: 800;
   font-size: clamp(2.1rem, 8.5vw, 2.75rem);
@@ -551,6 +556,50 @@
 .si-hero-wordmark-drop {
   color: #C8372D;
   text-shadow: 0 2px 0 rgba(200, 55, 45, 0.12);
+}
+
+/* ── Arriving from the launch screen ─────────────────────────────────────────
+
+   When the splash hands over rather than fading out (see src/lib/brandFlight.js
+   and the `.vd-splash-handoff` rules further down) the wordmark it was holding
+   is not redrawn here — it travels. The move itself is one Web Animations
+   transform applied to `.si-hero-wordmark-text` at mount; these are the two
+   things around it that only CSS can give: somewhere to fly through, and a page
+   that assembles behind it instead of being there first. */
+
+/* An inline-block wrapper, so the flight has the WORDS to measure. The div
+   above it stretches the full width of the hero, and scaling from the splash's
+   text box to a full-width box would compute a size ratio of about a quarter
+   and throw the mark across the screen. */
+.si-hero-wordmark-text {
+  display: inline-block;
+}
+
+/* The mark starts its flight from the middle of the screen, well below this
+   band, and clipped to it would appear out of thin air halfway through the
+   journey. Safe to lift: each produce row clips itself (`.si-veg-row`), so this
+   is not what is holding them in. */
+.si-scope.is-brand-arriving .si-hero-veg {
+  overflow: visible;
+}
+
+/* Behind the mark, and after it: the shop assembles around a wordmark that has
+   already landed, rather than the whole screen appearing at once with the
+   wordmark somewhere inside it. */
+.si-scope.is-brand-arriving .si-veg-row {
+  animation: si-arrive-fade 380ms ease-out 90ms both;
+}
+.si-scope.is-brand-arriving > main {
+  animation: si-arrive-rise 440ms cubic-bezier(0.16, 1, 0.3, 1) 130ms both;
+}
+
+@keyframes si-arrive-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes si-arrive-rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
 }
 
 /* Delivery-only: the scooter icon is a static badge, and this is the cheap
@@ -631,7 +680,15 @@
 @media (prefers-reduced-motion: reduce) {
   .si-hero-img-bob,
   .si-speed-line,
-  .si-veg-track {
+  .si-veg-track,
+  /* Belt and braces. `claimBrandFlight` already refuses under reduced motion,
+     so the class that drives these is never applied — but the guarantee is
+     worth stating where the animations are and not only where they are turned
+     on. The flight itself has to be declined in JS rather than here: it is a
+     transform between two measured boxes, so there is no resting value for a
+     stylesheet to fall back to. */
+  .si-scope.is-brand-arriving .si-veg-row,
+  .si-scope.is-brand-arriving > main {
     animation: none;
   }
 }
@@ -1106,6 +1163,115 @@
 @keyframes vd-splash-rise {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Handing the wordmark to the login screen ────────────────────────────────
+
+   The other ending. Everything above assembles a lockup; this takes it apart
+   again, and it runs only when the login screen is what comes next — see
+   `handoff` in SplashScreen.jsx, which is also where the choice between the two
+   exits is made.
+
+   The furniture leaves roughly in the order it arrived, reversed: the greeting
+   up, the taglines and strapline down, the plate's outline and fill dissolving
+   off the words they were built around, and the droplet draining back down the
+   way it fell in. What is left standing is the wordmark, alone on white — which
+   is exactly what the login screen's own wordmark then flies out of.
+
+   Nothing here moves the wordmark, and nothing here changes the layout around
+   it: the mark keeps its 4.75rem of space as the droplet inside it drains, and
+   the plate keeps its width as its outline goes. The position published to
+   `brandFlight` is measured once, at the start of all this, and has to still be
+   true at the end of it.
+
+   These are the only keyframes in the section that run outward, away from a
+   settled value rather than towards it. They can, because they apply only while
+   `.vd-splash-handoff` is set, which is only ever true on the way out — the
+   base-state invariant everything above depends on is untouched. Reduced motion
+   never reaches them at all, since it picks the plain fade instead. */
+
+/* Flat white under the mark, because flat white is what the login screen's own
+   background is, and arriving on a different colour to the one the last frame
+   ended on is the seam this whole handoff exists to remove. A real element
+   rather than a pseudo one: as the field's first child it covers both the cream
+   gradient and the grain over it while still painting under the lockup, which
+   neither ::before (under the grain) nor ::after (over the mark) can do. */
+.vd-splash-blanch {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: #FFFFFF;
+  opacity: 0;
+}
+.vd-splash-handoff .vd-splash-blanch {
+  animation: vd-splash-blanch 300ms ease-out both;
+}
+@keyframes vd-splash-blanch {
+  to { opacity: 1; }
+}
+
+.vd-splash-handoff .vd-splash-greet {
+  animation: vd-splash-leave-up 220ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+.vd-splash-handoff .vd-splash-sub,
+.vd-splash-handoff .vd-splash-tag {
+  animation: vd-splash-leave-down 220ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+.vd-splash-handoff .vd-splash-tag-2 {
+  animation-delay: 50ms;
+}
+@keyframes vd-splash-leave-up {
+  to { opacity: 0; transform: translateY(-10px); }
+}
+@keyframes vd-splash-leave-down {
+  to { opacity: 0; transform: translateY(10px); }
+}
+
+/* The ripples and droplets are long finished by now and already sit at opacity
+   0; they are listed so that a handoff triggered early — a chunk that resolved
+   late, a hold cut short — takes them with it too. */
+.vd-splash-handoff .vd-splash-ring,
+.vd-splash-handoff .vd-splash-spark,
+.vd-splash-handoff .vd-splash-pad,
+.vd-splash-handoff .vd-splash-plate-fill {
+  animation: vd-splash-vanish 200ms linear both;
+}
+@keyframes vd-splash-vanish {
+  to { opacity: 0; }
+}
+
+/* Not faded but stopped: replacing the sweep returns the sheen to its parked
+   base transform, which is off the plate entirely, so there is nothing left to
+   fade. Fading it in place would keep a highlight sliding across a plate that
+   is in the middle of dissolving. */
+.vd-splash-handoff .vd-splash-sheen {
+  animation: none;
+  opacity: 0;
+}
+
+/* Back down the way it came, and accelerating — the same read as the fall that
+   opened the sequence, and the one exit a drop can make that does not look like
+   a logo being switched off. */
+.vd-splash-handoff .vd-splash-drop {
+  animation: vd-splash-drain 320ms cubic-bezier(0.5, 0, 0.75, 0) both;
+}
+@keyframes vd-splash-drain {
+  to { opacity: 0; transform: translateY(26px) scale(0.86); }
+}
+
+/* Outline and shadow only. Width and margin fall back to the base rule, which
+   is the open plate — so the words inside do not move by a pixel while the
+   plate stops being a plate. */
+.vd-splash-handoff .vd-splash-plate {
+  animation: vd-splash-unplate 260ms ease-out both;
+}
+@keyframes vd-splash-unplate {
+  to {
+    border-color: rgba(27, 77, 62, 0);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0) inset,
+      0 8px 20px -5px rgba(27, 77, 62, 0);
+  }
 }
 
 /* Decoration, and treated as such: with the animations off every element is

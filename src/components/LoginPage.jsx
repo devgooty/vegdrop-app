@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useLayoutEffect } from 'react';
 import { ArrowRight, ArrowLeft, Loader2, Check, Info, Send } from 'lucide-react';
 import {
   lookupIdentifier,
@@ -15,6 +15,7 @@ import {
   describeEmailProblem,
 } from '../services/auth';
 import { ApiRequestError, NetworkError } from '../services/apiClient';
+import { claimBrandFlight, ARRIVAL_MS } from '../lib/brandFlight';
 import { marketVegetables } from '../data/mockData';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LANGUAGES } from '../i18n/translations';
@@ -174,6 +175,32 @@ const SIGN_UP = {
 export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegdrop_' }) {
   const signUp = SIGN_UP[appType] || SIGN_UP.customer;
   const { language, setLanguage, t } = useLanguage();
+
+  /**
+   * Whether this screen is continuing the launch screen rather than replacing
+   * it. Answered by whether there is a wordmark position waiting to be claimed
+   * — the splash publishes one only when the login screen is what comes next,
+   * so nothing here has to be told where the user came from.
+   *
+   * Only the customer hero has a wordmark in the DOM to fly; the shopkeeper and
+   * delivery heroes have theirs painted into the artwork, so the ref stays null
+   * and this stays false for them. Signing out and coming back lands here the
+   * same way, with no flight to claim and nothing to arrive from.
+   */
+  const wordmarkRef = useRef(null);
+  const [isArriving, setIsArriving] = useState(false);
+
+  // A layout effect because it measures and then paints: the wordmark has to be
+  // put back at its origin before the browser draws it at its destination.
+  useLayoutEffect(() => {
+    if (!claimBrandFlight(wordmarkRef.current)) return undefined;
+
+    setIsArriving(true);
+    // Dropped once the arrival is over rather than left on, because it lifts
+    // the hero's own overflow clip while it is set.
+    const timer = setTimeout(() => setIsArriving(false), ARRIVAL_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   const [step, setStep] = useState(STEP.IDENTIFIER);
 
@@ -482,7 +509,8 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
       <div
         className={
           'si-scope relative flex h-[100dvh] w-full max-w-md flex-col overflow-y-auto border-x border-gray-200/60 shadow-xl' +
-          (appType === 'shopkeeper' ? ' si-scope-shopkeeper' : '')
+          (appType === 'shopkeeper' ? ' si-scope-shopkeeper' : '') +
+          (isArriving ? ' is-brand-arriving' : '')
         }
       >
 
@@ -538,9 +566,15 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               </div>
             </div>
 
+            {/* The inner span is what flies: it shrink-wraps the letters,
+                where the div around it is as wide as the hero. Measuring the
+                div would make the size ratio a ratio of two different things
+                — see `.si-hero-wordmark-text` in src/index.css. */}
             <div className="si-hero-wordmark">
-              <span className="si-hero-wordmark-veg">Veg</span>
-              <span className="si-hero-wordmark-drop">Drop</span>
+              <span className="si-hero-wordmark-text" ref={wordmarkRef}>
+                <span className="si-hero-wordmark-veg">Veg</span>
+                <span className="si-hero-wordmark-drop">Drop</span>
+              </span>
             </div>
 
             <div className="si-veg-row" aria-hidden="true">
