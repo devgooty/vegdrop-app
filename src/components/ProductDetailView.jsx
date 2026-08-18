@@ -4,6 +4,7 @@ import RelatedProducts from './RelatedProducts';
 import { shareProduct } from '../services/share';
 import { useLanguage } from '../i18n/LanguageContext';
 import { productName, productWeight, categoryTitle } from '../i18n/catalog';
+import { packOptions, packLineId } from '../services/packs';
 
 export default function ProductDetailView({
   product,
@@ -29,44 +30,25 @@ export default function ProductDetailView({
     else if (result === 'failed') onShared?.('failed');
   };
 
-  // Weight Variants Logic
-  const isWeightBased = product.weight && (product.weight.toLowerCase().includes('g') || product.weight.toLowerCase().includes('kg')) && !product.weight.toLowerCase().includes('pack');
-  
-  const weightVariants = [
-    { label: '250g', factor: 0.25 },
-    { label: '500g', factor: 0.5 },
-    { label: '750g', factor: 0.75 },
-    { label: '1kg', factor: 1 }
-  ];
+  // Sizes are whole multiples of the pack, or there are none — services/packs.js.
+  const variants = packOptions(product);
+  const isWeightBased = variants.length > 0;
 
-  let nativeFactor = 1;
-  const weightStr = product.weight ? product.weight.toLowerCase() : '';
-  if (weightStr.includes('250g')) nativeFactor = 0.25;
-  else if (weightStr.includes('500g')) nativeFactor = 0.5;
-  else if (weightStr.includes('750g')) nativeFactor = 0.75;
-  else if (weightStr.includes('100g')) nativeFactor = 0.1;
-
-  const basePricePerKg = product.price / nativeFactor;
-  const oldBasePricePerKg = product.oldPrice ? product.oldPrice / nativeFactor : null;
-
-  const initialVariant = isWeightBased 
-    ? weightVariants.find(v => v.label === product.selectedVariantLabel) || 
-      weightVariants.find(v => v.label.toLowerCase() === weightStr.replace('gm', 'g')) || 
-      weightVariants[3]
-    : null;
+  /**
+   * Whatever size the card that opened this was showing, so tapping through
+   * does not silently change what the shopper had chosen. Falls back to the
+   * pack itself.
+   */
+  const initialVariant =
+    variants.find((v) => v.label === product.selectedVariantLabel) || variants[0] || null;
 
   const [selectedVariant, setSelectedVariant] = useState(initialVariant);
 
-  const displayPrice = isWeightBased && selectedVariant 
-    ? Math.round(basePricePerKg * selectedVariant.factor) 
-    : product.price;
-    
-  const displayOldPrice = isWeightBased && selectedVariant && oldBasePricePerKg
-    ? Math.round(oldBasePricePerKg * selectedVariant.factor)
-    : product.oldPrice;
+  const displayPrice = selectedVariant ? selectedVariant.price : product.price;
+  const displayOldPrice = selectedVariant ? selectedVariant.oldPrice : product.oldPrice;
 
-  const variantId = isWeightBased && selectedVariant ? `${product.id}-${selectedVariant.label}` : product.id;
-  const variantWeightStr = isWeightBased && selectedVariant ? selectedVariant.label : product.weight;
+  const variantId = selectedVariant ? packLineId(product.id, selectedVariant.units) : product.id;
+  const variantWeightStr = selectedVariant ? selectedVariant.label : product.weight;
 
   const inCart = cartItems.find((c) => c.id === variantId);
 
@@ -80,6 +62,8 @@ export default function ProductDetailView({
       ...product,
       id: variantId,
       originalId: product.id,
+      // Packs, not kilos — checkout multiplies the order quantity by this.
+      units: selectedVariant?.units ?? 1,
       price: displayPrice,
       oldPrice: displayOldPrice,
       weight: variantWeightStr,
@@ -226,7 +210,7 @@ export default function ProductDetailView({
                 {t('product.selectWeight')}
               </p>
               <div className="flex items-center gap-2 bg-[#F3EFE6] p-1.5 rounded-xl border border-[#E5DFD1]">
-                {weightVariants.map(v => (
+                {variants.map(v => (
                   <button
                     key={v.label}
                     onClick={() => setSelectedVariant(v)}

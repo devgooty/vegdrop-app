@@ -559,29 +559,43 @@ const STRINGS = {
     te: 'మేము మీకు ఒక్కసారి వాడే కోడ్ పంపుతాం.',
   },
   'login.enterCode': { en: 'Enter your code', hi: 'अपना कोड डालें', te: 'మీ కోడ్ నమోదు చేయండి' },
+  /*
+    Codes go to the phone and nowhere else. This said "sent to WhatsApp and
+    email" long after the email leg was removed on purpose — once a code
+    reaches a mailbox, whoever reads that mailbox can sign in — and it was also
+    the line standing above the reverse-OTP panel, where nothing is sent to the
+    user at all. Naming only the phone is true of both ways in.
+  */
   'login.enterCodeSub': {
-    en: 'Six digits, sent to WhatsApp and email.',
-    hi: 'छह अंक, WhatsApp और ईमेल पर भेजे गए।',
-    te: 'ఆరు అంకెలు, WhatsApp మరియు ఇమెయిల్‌కు పంపాం.',
+    en: 'Six digits, sent to your phone.',
+    hi: 'छह अंक, आपके फ़ोन पर भेजे गए।',
+    te: 'ఆరు అంకెలు, మీ ఫోన్‌కు పంపాం.',
   },
   'login.createAccount': { en: 'Create account', hi: 'खाता बनाएँ', te: 'ఖాతా సృష్టించండి' },
+  /*
+    Registration proves the phone and asks for nothing else but a name. It used
+    to prove two contacts and this line still asked for both, so it named a
+    field the form no longer has.
+  */
   'login.createAccountSub': {
-    en: 'You’re new here. We need both contacts.',
-    hi: 'आप यहाँ नए हैं। हमें दोनों संपर्क चाहिए।',
-    te: 'మీరు ఇక్కడ కొత్త. మాకు రెండు సంప్రదింపు వివరాలు కావాలి.',
+    en: 'You’re new here. Just your name and number.',
+    hi: 'आप यहाँ नए हैं। बस अपना नाम और नंबर।',
+    te: 'మీరు ఇక్కడ కొత్త. మీ పేరు, నంబర్ చాలు.',
   },
   'login.checkMessages': { en: 'Check your messages', hi: 'अपने संदेश देखें', te: 'మీ సందేశాలు చూడండి' },
+  // One code now, not one per contact.
   'login.checkMessagesSub': {
-    en: 'Type the code from each one below.',
-    hi: 'हर एक का कोड नीचे लिखें।',
-    te: 'ప్రతిదాని కోడ్‌ను కింద టైప్ చేయండి.',
+    en: 'Type the code we sent you below.',
+    hi: 'हमने जो कोड भेजा है उसे नीचे लिखें।',
+    te: 'మేము పంపిన కోడ్‌ను కింద టైప్ చేయండి.',
   },
   'login.shopkeeperHeading': { en: 'Shopkeeper', hi: 'दुकानदार', te: 'దుకాణదారు' },
   'login.shopkeeperTitle': { en: 'Register your stall', hi: 'अपनी दुकान रजिस्टर करें', te: 'మీ దుకాణాన్ని నమోదు చేయండి' },
+  // Vendor sign-up is the customer flow plus the bank check — one contact.
   'login.shopkeeperSub': {
-    en: 'You’re new here. We need both contacts, then a quick account check.',
-    hi: 'आप यहाँ नए हैं। हमें दोनों संपर्क चाहिए, फिर एक छोटी खाता जाँच।',
-    te: 'మీరు ఇక్కడ కొత్త. మాకు రెండు సంప్రదింపు వివరాలు కావాలి, ఆ తర్వాత చిన్న ఖాతా తనిఖీ.',
+    en: 'You’re new here. Your name and number, then a quick account check.',
+    hi: 'आप यहाँ नए हैं। अपना नाम और नंबर, फिर एक छोटी खाता जाँच।',
+    te: 'మీరు ఇక్కడ కొత్త. మీ పేరు, నంబర్, ఆ తర్వాత చిన్న ఖాతా తనిఖీ.',
   },
   'login.shopkeeperCodesSub': {
     en: 'Type the code from each one below. You’ll verify your bank account next.',

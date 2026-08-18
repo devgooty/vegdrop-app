@@ -46,7 +46,6 @@ export default function ShopkeeperApp() {
    */
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
-  const [registeredUsers, setRegisteredUsers] = useState([]);
 
   /**
    * Session state lives in memory and is restored from the httpOnly refresh
@@ -62,13 +61,29 @@ export default function ShopkeeperApp() {
    */
   const { user, setUser, isRestoringSession } = useSessionUser({
     allowedRoles: SHOPKEEPER_ROLES,
+    /**
+     * Everything below belongs to ONE shopkeeper account.
+     *
+     * `products`, `kyc`, `stall`, `joinRequest` and `shopProfile` were left
+     * behind. That was not merely untidy: the catalog fetch below only calls
+     * `setProducts` when it comes back non-empty, so a second shopkeeper
+     * signing in on this origin with nothing listed yet inherited the previous
+     * account's catalog — under their own name, with edit controls that 403.
+     *
+     * Back to the loading sentinels rather than to empty, so the render gate
+     * holds instead of flashing the wrong panel at the new account.
+     */
     onIdentityLost: () => {
       setOrders([]);
-      setRegisteredUsers([]);
+      setProducts([]);
+      setKyc(null);
+      setShopProfile(null);
+      setStall(undefined);
+      setJoinRequest(undefined);
+      seenAcceptedRiders.current.clear();
     },
   });
   const [showSplash, setShowSplash] = useState(true);
-  const [isAppLoading, setIsAppLoading] = useState(true);
 
   // Delivery Notifications
   const [deliveryNotifications, setDeliveryNotifications] = useState([]);
@@ -241,9 +256,17 @@ export default function ShopkeeperApp() {
          * one 403s; scoped to the shared catalog too, it would let a brand new
          * account reprice inventory nobody here added.
          */
+        /*
+         * An empty answer is an answer.
+         *
+         * This used to skip `setProducts` unless the list came back non-empty,
+         * which meant a vendor who has listed nothing yet kept whatever was on
+         * screen — and after a second account signs in on this origin, what
+         * was on screen is the previous shopkeeper's catalog.
+         */
         fetchProducts({ limit: 200, mine: true })
           .then((items) => {
-            if (!cancelled && items.length > 0) setProducts(items);
+            if (!cancelled) setProducts(items);
           })
           .catch((err) => console.warn('catalog unavailable:', err.message)),
 
@@ -253,8 +276,6 @@ export default function ShopkeeperApp() {
           })
           .catch((err) => console.warn('orders unavailable:', err.message)),
       ]);
-
-      if (!cancelled) setIsAppLoading(false);
     }
 
     loadInitialData();

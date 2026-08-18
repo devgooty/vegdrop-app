@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Star, Plus, Minus, Camera } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { productName, productWeight } from '../i18n/catalog';
+import { packOptions, packLineId } from '../services/packs';
 
 /**
  * The two-per-row product card.
@@ -23,41 +24,22 @@ export default function ProductGridCard({
   onSelectProduct
 }) {
   const { t, language } = useLanguage();
-  const isWeightBased = item.weight && (item.weight.toLowerCase().includes('g') || item.weight.toLowerCase().includes('kg')) && !item.weight.toLowerCase().includes('pack');
+  /**
+   * Sizes are whole multiples of the pack this shop sells, or there are none.
+   * See services/packs.js for why a quarter of a 1kg pack is not on the menu
+   * and a bunch of coriander no longer has a per-kilo price.
+   */
+  const variants = packOptions(item);
+  const isWeightBased = variants.length > 0;
 
-  const weightVariants = [
-    { label: '250g', factor: 0.25 },
-    { label: '500g', factor: 0.5 },
-    { label: '750g', factor: 0.75 },
-    { label: '1kg', factor: 1 }
-  ];
+  // The pack itself, which is what a shopper reaching for "one of those" means.
+  const [selectedVariant, setSelectedVariant] = useState(variants[0] || null);
 
-  let nativeFactor = 1;
-  const weightStr = item.weight.toLowerCase();
-  if (weightStr.includes('250g')) nativeFactor = 0.25;
-  else if (weightStr.includes('500g')) nativeFactor = 0.5;
-  else if (weightStr.includes('750g')) nativeFactor = 0.75;
-  else if (weightStr.includes('100g')) nativeFactor = 0.1;
+  const displayPrice = selectedVariant ? selectedVariant.price : item.price;
+  const displayOldPrice = selectedVariant ? selectedVariant.oldPrice : item.oldPrice;
 
-  const basePricePerKg = item.price / nativeFactor;
-  const oldBasePricePerKg = item.oldPrice ? item.oldPrice / nativeFactor : null;
-
-  const [selectedVariant, setSelectedVariant] = useState(
-    isWeightBased
-      ? weightVariants.find(v => v.label.toLowerCase() === weightStr.replace('gm', 'g')) || weightVariants[3]
-      : null
-  );
-
-  const displayPrice = isWeightBased && selectedVariant
-    ? Math.round(basePricePerKg * selectedVariant.factor)
-    : item.price;
-
-  const displayOldPrice = isWeightBased && selectedVariant && oldBasePricePerKg
-    ? Math.round(oldBasePricePerKg * selectedVariant.factor)
-    : item.oldPrice;
-
-  const variantId = isWeightBased && selectedVariant ? `${item.id}-${selectedVariant.label}` : item.id;
-  const variantWeightStr = isWeightBased && selectedVariant ? selectedVariant.label : item.weight;
+  const variantId = selectedVariant ? packLineId(item.id, selectedVariant.units) : item.id;
+  const variantWeightStr = selectedVariant ? selectedVariant.label : item.weight;
 
   const inCart = cartItems.find((c) => c.id === variantId);
 
@@ -67,6 +49,10 @@ export default function ProductGridCard({
       ...item,
       id: variantId,
       originalId: item.id,
+      // How many packs this line stands for. Checkout multiplies by it, which
+      // is the whole of what makes the shown price and the charged price the
+      // same number — see services/packs.js.
+      units: selectedVariant?.units ?? 1,
       price: displayPrice,
       oldPrice: displayOldPrice,
       weight: variantWeightStr,
@@ -140,7 +126,7 @@ export default function ProductGridCard({
           {/* Weight Variants Selector */}
           {isWeightBased && (
             <div className="flex items-center gap-0.5 mt-1 bg-[#F3EFE6] p-0.5 rounded-lg border border-[#E5DFD1]">
-              {weightVariants.map(v => (
+              {variants.map(v => (
                 <button
                   key={v.label}
                   onClick={(e) => { e.stopPropagation(); setSelectedVariant(v); }}

@@ -39,7 +39,17 @@ export default function DeliveryApp() {
    */
   const { user, setUser, isRestoringSession } = useSessionUser({
     allowedRoles: DELIVERY_ROLES,
-    onIdentityLost: () => setOrders([]),
+    /*
+      The notification bell's memory goes with the task list. `seenOfferIds`
+      records which pickups have already been announced; kept across a change
+      of rider it would swallow the first offer to the new one, because the
+      previous rider had been told about it.
+    */
+    onIdentityLost: () => {
+      setOrders([]);
+      setDeliveryNotifications([]);
+      seenOfferIds.current.clear();
+    },
   });
   const [showSplash, setShowSplash] = useState(true);
 

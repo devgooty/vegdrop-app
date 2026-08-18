@@ -31,6 +31,7 @@ import { fetchShopsForBasket, linesForShop } from './services/shops';
 import { savedCustomerAddress } from './services/address';
 import { productSkuFromHash } from './services/share';
 import { mergeCartLines, cartItemCount } from './services/cart';
+import { unitsOf } from './services/packs';
 import { createSchedule, fetchSchedules, recurrenceFromDates, describeRecurrence } from './services/schedules';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
@@ -85,6 +86,24 @@ const HEADER_TABS = ['home', 'account', 'prices'];
  */
 function catalogKeyOf(item) {
   return String(item.catalogItem || item.originalId || item.id);
+}
+
+/**
+ * What a basket ROW is, which is not the same question.
+ *
+ * `catalogKeyOf` answers "which item is this", and that is right for coverage
+ * and for checkout, where two rows of the same spinach are the same produce.
+ * It is wrong for the basket itself: 500g and 1kg of that spinach are two rows,
+ * and matching on the catalog id alone folded the second into the first —
+ * a shopper picking 1kg after 250g got a second 250g and no warning.
+ *
+ * Size is therefore part of the row's identity, and the three places that
+ * decide whether two lines are the same one — this, `mergeCartLines` and
+ * `handleUpdateQuantity` — all key on it.
+ */
+function cartLineKeyOf(item) {
+  const units = unitsOf(item);
+  return units > 1 ? `${catalogKeyOf(item)}::x${units}` : catalogKeyOf(item);
 }
 
 /**
@@ -347,21 +366,29 @@ export default function App() {
   // Delivery Notifications: fired when shopkeeper accepts an order
   const [deliveryNotifications, setDeliveryNotifications] = useState([]);
 
-  // Restore session: if user exists but tab is 'login', go to their role
+  /**
+   * A restored session that belongs to another app goes to that app.
+   *
+   * This ran on `[]`, which is exactly once — while the session was still
+   * being restored and `user` was necessarily null. So the body never
+   * executed, and a shopkeeper or rider returning to the customer URL landed
+   * on the storefront holding a session that cannot shop, with the redirect
+   * that exists for them never firing. Watching `user` is the whole fix; the
+   * guard on `activeTab` keeps it to the case it is for.
+   */
   useEffect(() => {
-    if (user && (activeTab === 'login' || activeTab === 'signup')) {
-      if (user.role === 'shopkeeper') {
-        window.location.hash = '#/shopkeeper';
-        return;
-      }
-      if (user.role === 'delivery') {
-        window.location.hash = '#/delivery';
-        return;
-      }
-      const targetTab = user.role && user.role !== 'customer' ? user.role : 'home';
-      setActiveTab(targetTab);
+    if (!user || (activeTab !== 'login' && activeTab !== 'signup')) return;
+
+    if (user.role === 'shopkeeper') {
+      window.location.hash = '#/shopkeeper';
+      return;
     }
-  }, []);
+    if (user.role === 'delivery') {
+      window.location.hash = '#/delivery';
+      return;
+    }
+    setActiveTab(user.role && user.role !== 'customer' ? user.role : 'home');
+  }, [user, activeTab, setActiveTab]);
 
   /**
    * Wire the phone/browser back button to the bottom-nav tabs.
@@ -1128,8 +1155,11 @@ export default function App() {
         const priceByItem = new Map(shop.lines.map((line) => [String(line.catalogItemId), line.price]));
         setCartItems((prev) =>
           prev.map((item) => {
-            const price = priceByItem.get(catalogKeyOf(item));
-            return price === undefined ? item : { ...item, price };
+            // Per PACK, so a line holding four of them costs four times it —
+            // the same multiplication checkout will do against this shop's own
+            // price sheet.
+            const packPrice = priceByItem.get(catalogKeyOf(item));
+            return packPrice === undefined ? item : { ...item, price: packPrice * unitsOf(item) };
           })
         );
       }
@@ -1263,12 +1293,12 @@ export default function App() {
        * was added from, and that shop's own listing of it. Comparing raw ids put
        * both in the basket as separate lines at two different prices.
        */
-      const key = catalogKeyOf(product);
-      const existing = prev.find((item) => catalogKeyOf(item) === key);
+      const key = cartLineKeyOf(product);
+      const existing = prev.find((item) => cartLineKeyOf(item) === key);
 
       if (existing) {
         return prev.map((item) =>
-          catalogKeyOf(item) === key ? { ...item, quantity: item.quantity + 1 } : item
+          cartLineKeyOf(item) === key ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
       /**
@@ -1304,6 +1334,16 @@ export default function App() {
          * Null on a platform catalog row, which already IS that item.
          */
         catalogItem: product.catalogItem || null,
+        /**
+         * And the pack multiplier, for the fourth time in this object and the
+         * same reason as the three above.
+         *
+         * This is what the order is actually placed in. The card prices a size
+         * as a whole number of the seller's packs; without carrying that number
+         * the basket showed "1kg — ₹140" and checkout ordered one 250g pack at
+         * ₹35. See services/packs.js.
+         */
+        units: unitsOf(product),
         price: product.price,
         quantity: 1,
         image: product.image,
@@ -1450,11 +1490,20 @@ export default function App() {
     // Non-null: checkoutBlockedReason above refuses when it isn't set.
     const address = savedCustomerAddress();
 
-    // Collapse variants back onto their catalog product before ordering.
+    /**
+     * Collapse sizes back onto their catalog product, in PACKS.
+     *
+     * `units` is the multiplier the card priced the size with, so a "1kg" line
+     * of a 250g pack orders four of them. Dropping it — which is what this did
+     * — posted one pack, and the server priced one pack: the basket said ₹140
+     * and the order was billed ₹35, with the stall told to pack a quarter of
+     * what was asked for.
+     */
     const quantities = new Map();
     for (const item of cartItems) {
       const productId = item.originalId || item.id;
-      quantities.set(productId, (quantities.get(productId) || 0) + item.quantity);
+      const packs = item.quantity * unitsOf(item);
+      quantities.set(productId, (quantities.get(productId) || 0) + packs);
     }
 
     let items = [...quantities.entries()].map(([productId, quantity]) => ({ productId, quantity }));
@@ -1782,7 +1831,9 @@ export default function App() {
     const lines = new Map();
     for (const item of cartItems) {
       const id = catalogKeyOf(item);
-      lines.set(id, (lines.get(id) || 0) + item.quantity);
+      // In packs, exactly as checkout counts them — a shop that holds one
+      // 250g pack does not cover a line asking for four.
+      lines.set(id, (lines.get(id) || 0) + item.quantity * unitsOf(item));
     }
     return [...lines.entries()].map(([productId, quantity]) => ({ productId, quantity }));
   }, [cartItems]);

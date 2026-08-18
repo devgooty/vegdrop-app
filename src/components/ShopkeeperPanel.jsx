@@ -6,7 +6,7 @@ import {
   Phone, KeyRound, Loader2,
 } from 'lucide-react';
 import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../services/auth';
-import { fetchShopEarnings, withdrawShopEarnings, fetchNearbyRider } from '../services/shops';
+import { fetchShopEarnings, withdrawShopEarnings, fetchNearbyRider, updateMyShop } from '../services/shops';
 import { fetchProducts } from '../services/products';
 import { fetchRiderLocation } from '../services/orders';
 import { ApiRequestError } from '../services/apiClient';
@@ -80,7 +80,49 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
 
   // Navigation & State
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isStoreOnline, setIsStoreOnline] = useState(true);
+
+  /**
+   * The shutter, and whether it is the real one.
+   *
+   * This was `useState(true)` with a click handler that only flipped a colour.
+   * Nothing read `shop.isOpen` and nothing ever wrote it, so a shopkeeper who
+   * shut up for the day went on being listed to customers — `/shops/nearby`
+   * and the basket-coverage query both filter on `shop.isOpen` — and a shop
+   * that was genuinely closed still read "Shop Online" on its own dashboard.
+   *
+   * `null` while the profile is still loading, so the switch is not asserting
+   * either state before it knows one.
+   */
+  const [isStoreOnline, setIsStoreOnline] = useState(null);
+  const [isSavingOpen, setIsSavingOpen] = useState(false);
+
+  useEffect(() => {
+    if (shopProfile && typeof shopProfile.isOpen === 'boolean') setIsStoreOnline(shopProfile.isOpen);
+  }, [shopProfile?.isOpen]);
+
+  /**
+   * Optimistic, then corrected by the server's answer rather than assumed.
+   *
+   * A shutter that appears to move and has not is the failure this is fixing,
+   * so a refusal has to put the switch back where it was.
+   */
+  const handleToggleStoreOpen = async () => {
+    if (isStoreOnline === null || isSavingOpen) return;
+
+    const next = !isStoreOnline;
+    setIsStoreOnline(next);
+    setIsSavingOpen(true);
+    try {
+      // PATCH /shops/me answers `{ updated: true }`, not the shop, so the
+      // optimistic value stands on success. Only a refusal moves it back.
+      await updateMyShop({ isOpen: next });
+    } catch (err) {
+      setIsStoreOnline(!next);
+      alert(err?.message || 'Could not change whether your shop is open. Please try again.');
+    } finally {
+      setIsSavingOpen(false);
+    }
+  };
   const [activeScreen, setActiveScreen] = useState('list'); // 'list' | 'add-product' | 'edit-product' | 'inventory' | 'hours' | 'bank'
   
   // Modals & deep dive
@@ -556,20 +598,32 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
           </div>
           <div>
             <h2 className="text-lg font-black text-gray-900">{user ? user.name : 'Vendor Shop'}</h2>
-            <div className="flex items-center gap-1 text-sm font-bold text-gray-500">
-              <MapPin className="w-3.5 h-3.5 text-orange-500" /> MG Road Market
-            </div>
+            {/* Where this shop actually is.
+                This line read "MG Road Market" for everyone — a fixture that
+                survived into production and told every shopkeeper they trade
+                somewhere they may never have been. Anand Vegetables, an
+                independent shop in Hyderabad belonging to no market at all,
+                read it directly beneath a banner inviting them to join one.
+                Nothing is better than an invention, so an address-less shop
+                gets no line. */}
+            {shopProfile?.address && (
+              <div className="flex items-center gap-1 text-sm font-bold text-gray-500">
+                <MapPin className="w-3.5 h-3.5 text-orange-500" /> {shopProfile.address}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <button
-            onClick={() => setIsStoreOnline(!isStoreOnline)}
-            className={`relative w-14 h-8 rounded-full transition-colors duration-300 ease-in-out ${isStoreOnline ? 'bg-green-500' : 'bg-gray-300'}`}
+            onClick={handleToggleStoreOpen}
+            disabled={isStoreOnline === null || isSavingOpen}
+            aria-label={isStoreOnline ? 'Close your shop' : 'Open your shop'}
+            className={`relative w-14 h-8 rounded-full transition-colors duration-300 ease-in-out disabled:opacity-60 ${isStoreOnline ? 'bg-green-500' : 'bg-gray-300'}`}
           >
             <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-transform duration-300 ease-in-out ${isStoreOnline ? 'translate-x-7' : 'translate-x-1'}`} />
           </button>
           <span className={`text-[10px] font-black uppercase tracking-wider ${isStoreOnline ? 'text-green-600' : 'text-gray-400'}`}>
-            {isStoreOnline ? 'Shop Online' : 'Shop Offline'}
+            {isStoreOnline === null ? 'Checking…' : isStoreOnline ? 'Shop Online' : 'Shop Offline'}
           </span>
         </div>
       </div>

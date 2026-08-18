@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Star, Plus, Minus, ChevronRight, Eye } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { productName, productWeight, categoryTitle } from '../i18n/catalog';
+import { packOptions, packLineId } from '../services/packs';
 
 export default function ProductList({
   categories,
@@ -84,41 +85,17 @@ function ProductCard({
   const { t, language } = useLanguage();
   const [imgLoaded, setImgLoaded] = useState(false);
 
-  const isWeightBased = item.weight && (item.weight.toLowerCase().includes('g') || item.weight.toLowerCase().includes('kg')) && !item.weight.toLowerCase().includes('pack');
-  
-  const weightVariants = [
-    { label: '250g', factor: 0.25 },
-    { label: '500g', factor: 0.5 },
-    { label: '750g', factor: 0.75 },
-    { label: '1kg', factor: 1 }
-  ];
+  /** Whole multiples of the pack, or no picker at all — see services/packs.js. */
+  const variants = packOptions(item);
+  const isWeightBased = variants.length > 0;
 
-  let nativeFactor = 1;
-  const weightStr = item.weight.toLowerCase();
-  if (weightStr.includes('250g')) nativeFactor = 0.25;
-  else if (weightStr.includes('500g')) nativeFactor = 0.5;
-  else if (weightStr.includes('750g')) nativeFactor = 0.75;
-  else if (weightStr.includes('100g')) nativeFactor = 0.1;
+  const [selectedVariant, setSelectedVariant] = useState(variants[0] || null);
 
-  const basePricePerKg = item.price / nativeFactor;
-  const oldBasePricePerKg = item.oldPrice ? item.oldPrice / nativeFactor : null;
+  const displayPrice = selectedVariant ? selectedVariant.price : item.price;
+  const displayOldPrice = selectedVariant ? selectedVariant.oldPrice : item.oldPrice;
 
-  const [selectedVariant, setSelectedVariant] = useState(
-    isWeightBased 
-      ? weightVariants.find(v => v.label.toLowerCase() === weightStr.replace('gm', 'g')) || weightVariants[3] 
-      : null
-  );
-
-  const displayPrice = isWeightBased && selectedVariant 
-    ? Math.round(basePricePerKg * selectedVariant.factor) 
-    : item.price;
-    
-  const displayOldPrice = isWeightBased && selectedVariant && oldBasePricePerKg
-    ? Math.round(oldBasePricePerKg * selectedVariant.factor)
-    : item.oldPrice;
-
-  const variantId = isWeightBased && selectedVariant ? `${item.id}-${selectedVariant.label}` : item.id;
-  const variantWeightStr = isWeightBased && selectedVariant ? selectedVariant.label : item.weight;
+  const variantId = selectedVariant ? packLineId(item.id, selectedVariant.units) : item.id;
+  const variantWeightStr = selectedVariant ? selectedVariant.label : item.weight;
 
   const inCart = cartItems.find((c) => c.id === variantId);
 
@@ -128,6 +105,9 @@ function ProductCard({
       ...item,
       id: variantId,
       originalId: item.id,
+      // Packs, not kilos — checkout multiplies the order quantity by this so
+      // the shown price and the charged price are the same arithmetic.
+      units: selectedVariant?.units ?? 1,
       price: displayPrice,
       oldPrice: displayOldPrice,
       weight: variantWeightStr,
@@ -231,7 +211,7 @@ function ProductCard({
           {/* Weight Variants Selector */}
           {isWeightBased && (
             <div className="flex items-center gap-0.5 mt-0.5 mb-1 bg-[#F3EFE6] p-0.5 rounded-lg border border-[#E5DFD1]">
-              {weightVariants.map(v => (
+              {variants.map(v => (
                 <button
                   key={v.label}
                   onClick={(e) => { e.stopPropagation(); setSelectedVariant(v); }}
