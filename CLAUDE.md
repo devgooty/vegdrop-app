@@ -291,6 +291,20 @@ Things that are easy to get wrong here:
 
 **All amounts are integer paise on the server** (`pricePaise`, `amountPaise`, `totalAmountPaise`). Rupees exist only at the API boundary and as presentation virtuals. Floats invite rounding drift that surfaces as unreconcilable balances.
 
+**A quantity is a whole number of the seller's packs, and the client may only ever show a price the server will reach on its own.** `src/services/packs.mjs` is the single definition; the eight cases in `server/test/packs.test.js` are a billing contract, not a formatting one.
+
+The rule exists because the product cards used to break it. They offered 250g/500g/750g/1kg on every product, priced the choice by dividing the pack price into a per-kilo rate, and sent none of it anywhere: checkout posts `{ productId, quantity }` and the server recomputes each line from the catalog. So the order was billed as ONE pack whatever was picked — a 250g spinach pack shown as "1kg — ₹140" was charged ₹35 and the stall was told to pack 250g. A 1kg lettuce pack shown as "250g — ₹9" was charged ₹35.
+
+Three things follow, and each has already been got wrong:
+
+- **Sending the weight would not have fixed it.** The server would still have to price it, and a stall cannot split a pack it bought whole. `units` is a count of packs; `quantity: line.quantity * unitsOf(line)` is what goes on the wire, in `handleCheckout` and in `catalogBasket` both — coverage has to count in the same packs checkout will, or a shop holding one pack reads as covering a line asking for four.
+- **Prices are multiplied, never divided and multiplied back.** `Math.round(12 / 0.1 * 0.25)` is 30 against a true 3. `packOptions` multiplies the pack price, which is exactly the arithmetic the server does.
+- **A weight in brackets after a count is not a weight.** `packGrams` matches a bare weight only, so "1 pc (approx 600g)" and "1 bunch (approx 100g)" get no size picker. The old test was `weight.includes('g') && !weight.includes('pack')`, which most of the catalog passes — that is how a single cauliflower came to be sold by the quarter-kilo, and how a bunch of coriander was priced ten times over on first paint.
+
+**`catalogKeyOf` and `cartLineKeyOf` answer different questions and are not interchangeable.** The first is "which item is this", and is right for coverage and checkout, where a shop's listing and the catalog row it instantiates are the same produce. The second adds the size, and is what decides whether two basket lines are one row. Matching the basket on `catalogKeyOf` alone folded 1kg into an existing 250g line and dropped the choice without saying so. `handleAddToCart`, `mergeCartLines` and `handleUpdateQuantity` all have to agree, and they only do if they ask the same question.
+
+`packs.mjs` is the only `.mjs` under `src/`, deliberately: `package.json` is `"type": "commonjs"` for the server, so Node reads a `.js` there as CommonJS and could not import it to test it. Vite resolves either extension.
+
 Wallet balance is derived from an append-only `WalletTransaction` ledger — never a mutable field. Crediting is idempotent through a unique `idempotencyKey` (`razorpay:<paymentId>`), so a replayed verification collides on the index instead of double-crediting.
 
 Order totals are **always recomputed server-side** from the catalog. Request bodies carry only product ids and quantities; `.strict()` zod schemas reject any attempt to include `totalAmountPaise`, `status`, or `paymentStatus`.
