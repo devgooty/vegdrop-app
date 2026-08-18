@@ -1165,24 +1165,27 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Handing the wordmark to the login screen ────────────────────────────────
+/* ── Handing a piece of the lockup to the next screen ────────────────────────
 
-   The other ending. Everything above assembles a lockup; this takes it apart
-   again, and it runs only when the login screen is what comes next — see
-   `handoff` in SplashScreen.jsx, which is also where the choice between the two
-   exits is made.
+   The other endings. Everything above assembles a lockup; these take it apart
+   again, and leave one piece of it standing for the screen that follows to pick
+   up. Which piece depends on which screen: see `HANDOFF` in SplashScreen.jsx,
+   where the choice is made and the durations below are matched.
 
-   The furniture leaves roughly in the order it arrived, reversed: the greeting
-   up, the taglines and strapline down, the plate's outline and fill dissolving
-   off the words they were built around, and the droplet draining back down the
-   way it fell in. What is left standing is the wordmark, alone on white — which
-   is exactly what the login screen's own wordmark then flies out of.
+   `-login` keeps the WORDMARK. The greeting goes up, the taglines and strapline
+   down, the plate's outline and fill dissolve off the words they were built
+   around, the droplet drains back down the way it fell in, and the cream
+   blanches to the flat white the login screen opens on. Nothing moves the
+   wordmark and nothing changes the layout around it: the mark keeps its 4.75rem
+   of space as the droplet inside it drains, and the plate keeps its width as
+   its outline goes.
 
-   Nothing here moves the wordmark, and nothing here changes the layout around
-   it: the mark keeps its 4.75rem of space as the droplet inside it drains, and
-   the plate keeps its width as its outline goes. The position published to
-   `brandFlight` is measured once, at the start of all this, and has to still be
-   true at the end of it.
+   `-home` keeps the DROPLET, and is the opening played backwards. The plate
+   closes the way it opened — which, because the lockup row is centred and the
+   plate is what pushed the mark aside, walks the droplet back to the middle of
+   the screen with no second animation, exactly as the opening did in reverse.
+   No blanch here: the shop's header is the same cream this field already is,
+   so there is nothing to correct.
 
    These are the only keyframes in the section that run outward, away from a
    settled value rather than towards it. They can, because they apply only while
@@ -1203,7 +1206,7 @@
   background: #FFFFFF;
   opacity: 0;
 }
-.vd-splash-handoff .vd-splash-blanch {
+.vd-splash-handoff-login .vd-splash-blanch {
   animation: vd-splash-blanch 300ms ease-out both;
 }
 @keyframes vd-splash-blanch {
@@ -1251,8 +1254,9 @@
 
 /* Back down the way it came, and accelerating — the same read as the fall that
    opened the sequence, and the one exit a drop can make that does not look like
-   a logo being switched off. */
-.vd-splash-handoff .vd-splash-drop {
+   a logo being switched off. Login only: the home handoff is carrying this
+   droplet, so it stays. */
+.vd-splash-handoff-login .vd-splash-drop {
   animation: vd-splash-drain 320ms cubic-bezier(0.5, 0, 0.75, 0) both;
 }
 @keyframes vd-splash-drain {
@@ -1262,7 +1266,7 @@
 /* Outline and shadow only. Width and margin fall back to the base rule, which
    is the open plate — so the words inside do not move by a pixel while the
    plate stops being a plate. */
-.vd-splash-handoff .vd-splash-plate {
+.vd-splash-handoff-login .vd-splash-plate {
   animation: vd-splash-unplate 260ms ease-out both;
 }
 @keyframes vd-splash-unplate {
@@ -1271,6 +1275,114 @@
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0) inset,
       0 8px 20px -5px rgba(27, 77, 62, 0);
+  }
+}
+
+/* The home exit, which is the opening played backwards — and in the opening's
+   order, reversed. The words withdraw first, the way they arrived: back into
+   the plate's left edge, because `vd-splash-wipe` brought them out of it. This
+   is not optional polish. The plate is `overflow: hidden` around a CENTRED
+   wordmark, so a plate that simply narrows trims the letters from both ends at
+   once and spends its first 150ms reading "egDro". */
+.vd-splash-handoff-home .vd-splash-wordmark {
+  animation: vd-splash-unwipe 170ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+@keyframes vd-splash-unwipe {
+  to { clip-path: inset(0 100% 0 0 round 999px); }
+}
+
+/* Then the plate shuts, and the row re-centres around the droplet on its own —
+   the mark was never pushed aside by an animation of its own, only by the plate
+   taking the room, so giving the room back walks it home. The opacity step is
+   the one the opening needs and for the same reason: a border-box element at
+   `width: 0` still lays out at its two borders, which would leave a hairline
+   beside the mark for the rest of the exit. */
+.vd-splash-handoff-home .vd-splash-plate {
+  animation: vd-splash-close 260ms cubic-bezier(0.4, 0, 0.2, 1) 110ms both;
+}
+@keyframes vd-splash-close {
+  0% { width: 10.4rem; margin-left: 0.6rem; opacity: 1; }
+  94% { opacity: 1; }
+  100% { width: 0; margin-left: 0; opacity: 0; }
+}
+
+/* Left where it is. Its entry animation is dropped rather than replaced, so it
+   falls back to the base rule — which for a drop that has finished falling is
+   exactly where it needs to be to be handed over. */
+.vd-splash-handoff-home .vd-splash-drop {
+  animation: none;
+}
+
+/* ── The shop's header badge ─────────────────────────────────────────────────
+
+   The other end of the home handoff. It was a green squircle wrapping a cream
+   box wrapping `logo.png`; it is now the same three layers, but the squircle
+   and the face are drawn behind the mark instead of around it, and the mark is
+   the vector one the splash draws.
+
+   Both changes are what make the arrival work. Behind rather than around, so
+   the badge can fade itself in while the droplet inside stays fully drawn —
+   what the splash hands over is a BARE droplet, so the badge has to arrive
+   undressed and put itself on during the flight. And the same drawing at both
+   ends, so there is nothing to redraw at the seam.
+
+   The geometry restates what the Tailwind version worked out to, so the badge
+   is the same size it always was: 36px overall, a 1px border and 2px of padding
+   to the 30px cream face, and 2px more to the 26px mark. */
+.vd-home-mark {
+  position: relative;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+}
+
+.vd-home-mark-shell {
+  position: absolute;
+  inset: 0;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, #3B7A57 0%, #1C4D38 100%);
+  border: 1px solid #143B2B;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+}
+.vd-home-mark-shell::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 14px;
+  background: #FFFDF9;
+  box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+}
+
+.vd-home-mark-glyph {
+  position: absolute;
+  inset: 5px;
+  display: block;
+}
+
+/* Behind the mark and after the flight has carried it most of the way, so the
+   droplet reads as arriving and then being framed, rather than as a badge that
+   was there all along and merely grew. */
+.vd-home-mark.is-arriving .vd-home-mark-shell {
+  animation: vd-badge-form 400ms ease-out 220ms both;
+}
+@keyframes vd-badge-form {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* The badge would otherwise be clipped by nothing and painted over by plenty:
+   it flies from the middle of the screen, well below the header it belongs to,
+   and the header's own stacking context is what keeps it above the page it
+   crosses. */
+.vd-home-mark.is-arriving {
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Belt and braces, as on the login arrival: `claimBrandFlight` already
+     refuses under reduced motion, so `is-arriving` is never set. */
+  .vd-home-mark.is-arriving .vd-home-mark-shell {
+    animation: none;
   }
 }
 

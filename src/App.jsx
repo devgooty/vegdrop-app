@@ -64,6 +64,14 @@ import { RUPEES_PER_BATCH, TOKENS_PER_BATCH } from './services/rewards';
 const DeveloperPanel = lazy(() => import('./components/DeveloperPanel'));
 const MarketOwnerPanel = lazy(() => import('./components/MarketOwnerPanel'));
 
+/**
+ * The tabs that render the header, and so the only ones with a logo badge for
+ * the launch screen to hand its droplet to. Named once because two places have
+ * to agree on it: the header's own render condition, and the decision about how
+ * the splash should leave.
+ */
+const HEADER_TABS = ['home', 'account', 'prices'];
+
 export default function App() {
   // Globally unique ID generator to avoid React key collisions
   const _idCounter = React.useRef(Date.now());
@@ -1650,23 +1658,33 @@ export default function App() {
 
   if (showSplash) {
     /*
-      Whether the launch screen should hand its wordmark to the login screen
-      instead of fading out — the two carry the same logotype in the same face,
-      and cutting between them redraws a mark the user is already looking at.
+      Which piece of the lockup the launch screen should hand over instead of
+      fading out. The login screen carries the same wordmark and the shop's
+      header badge carries the same droplet, so in both cases cutting would
+      redraw a mark the user is already looking at.
 
-      Only when the login screen is genuinely next, because that exit ends on a
-      bare wordmark and the login screen is the only thing with somewhere to put
-      it. `isRestoringSession` is part of that question rather than an
-      afterthought: a session still being restored may yet resolve into the shop
-      instead, and the splash holds long enough that this has almost always
-      settled by the time it is read.
+      It has to name the screen that is actually next, because each of those
+      exits ends on one bare element and only the screen expecting it has
+      anywhere to put it. Three things decide that. A session still being
+      restored may yet resolve either way, so it hands over nothing — the splash
+      holds long enough that this has almost always settled by the time it is
+      read. A signed-in user on the login tab is about to be moved to the shop
+      (see the effect above), so the tab that matters is where they will land,
+      not where they are. And the header only renders on three of the tabs; the
+      others have no badge to catch anything.
     */
-    const handingOverToLogin =
-      !isRestoringSession && !user && (activeTab === 'login' || activeTab === 'signup');
+    const landingTab =
+      user && (activeTab === 'login' || activeTab === 'signup') ? 'home' : activeTab;
 
-    return (
-      <SplashScreen onComplete={() => setShowSplash(false)} handoff={handingOverToLogin} />
-    );
+    const handoff = isRestoringSession
+      ? undefined
+      : !user && (landingTab === 'login' || landingTab === 'signup')
+        ? 'login'
+        : HEADER_TABS.includes(landingTab)
+          ? 'home'
+          : undefined;
+
+    return <SplashScreen onComplete={() => setShowSplash(false)} handoff={handoff} />;
   }
 
   // One screen for both. Signing in with a number that has no account creates
@@ -1746,7 +1764,7 @@ export default function App() {
       ) : (
         <>
           {/* 1. TOP HEADER BAR */}
-          {(activeTab === 'home' || activeTab === 'account' || activeTab === 'prices') && (
+          {HEADER_TABS.includes(activeTab) && (
             <Header
               searchVal={searchVal}
               setSearchVal={setSearchVal}

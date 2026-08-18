@@ -193,7 +193,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
   // A layout effect because it measures and then paints: the wordmark has to be
   // put back at its origin before the browser draws it at its destination.
   useLayoutEffect(() => {
-    if (!claimBrandFlight(wordmarkRef.current)) return undefined;
+    if (!claimBrandFlight('wordmark', wordmarkRef.current)) return undefined;
 
     setIsArriving(true);
     // Dropped once the arrival is over rather than left on, because it lifts

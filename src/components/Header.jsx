@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef, useId } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useId } from 'react';
 import { Search, Wallet, X } from 'lucide-react';
 import SearchSuggestions from './SearchSuggestions';
+import VegDropMark from './VegDropMark';
 import { buildSuggestions } from '../services/search';
+import { claimBrandFlight, ARRIVAL_MS } from '../lib/brandFlight';
 import { useLanguage } from '../i18n/LanguageContext';
 
 export default function Header({
@@ -21,6 +23,38 @@ export default function Header({
 }) {
   const { t } = useLanguage();
   const [isScrolled, setIsScrolled] = useState(false);
+
+  /* ── Catching the mark from the launch screen ────────────────────────────
+     The splash ends on the droplet standing in the middle of the screen, and
+     this badge holds the same droplet — so it arrives from there rather than
+     being redrawn here. Nothing tells this component where the user came from:
+     a position is waiting or it is not, and if it is not the badge simply
+     appears, which is what happens on every later render of this header.
+
+     Two elements because they are two different measurements. `badgeRef` is
+     what moves, and `glyphRef` is what the size is taken from — what the splash
+     published is a bare droplet, and the badge is the squircle around one. */
+  const badgeRef = useRef(null);
+  const glyphRef = useRef(null);
+  const [isArriving, setIsArriving] = useState(false);
+
+  useLayoutEffect(() => {
+    const flight = claimBrandFlight('mark', badgeRef.current, {
+      measure: glyphRef.current,
+      // Longer and gentler than the default: this mark travels about half again
+      // as far as the login screen's wordmark does, shrinks to a third rather
+      // than growing, and lands on the heaviest screen in the app — so the
+      // frame the browser drops at the start of the flight has to cost less
+      // distance here than it does there.
+      duration: 680,
+      easing: 'cubic-bezier(0.32, 0.72, 0, 1)',
+    });
+    if (!flight) return undefined;
+
+    setIsArriving(true);
+    const timer = setTimeout(() => setIsArriving(false), ARRIVAL_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Role-based header accent
   const roleGradient = {
@@ -179,17 +213,26 @@ export default function Header({
     >
       {/* 3D SKEUOMORPHIC VINTAGE LOGO WITH BASKET */}
       <div className="flex items-center gap-2 cursor-pointer group shrink-0">
-        <div className="relative w-9 h-9 rounded-2xl bg-gradient-to-b from-[#3B7A57] to-[#1C4D38] p-0.5 shadow-md group-hover:scale-105 transition-transform border border-[#143B2B]">
-          <div className="w-full h-full bg-[#FFFDF9] rounded-[14px] p-0.5 overflow-hidden flex items-center justify-center shadow-inner">
-            <img
-              src="/logo.png"
-              alt="VegDrop Artisanal Basket"
-              className="w-full h-full object-cover rounded-xl"
-              onError={(e) => {
-                e.target.style.display = 'none';
-              }}
-            />
-          </div>
+        <div
+          ref={badgeRef}
+          role="img"
+          aria-label="VegDrop"
+          className={`vd-home-mark group-hover:scale-105 transition-transform${isArriving ? ' is-arriving' : ''}`}
+        >
+          {/* The squircle and its cream face are drawn BEHIND the droplet
+              rather than as boxes around it, so the badge can fade itself in
+              while the mark it frames stays fully drawn — which is what lets
+              the droplet arrive bare from the launch screen and dress itself on
+              the way down. See `.vd-home-mark` in src/index.css. */}
+          <span className="vd-home-mark-shell" aria-hidden="true" />
+          <span className="vd-home-mark-glyph" ref={glyphRef}>
+            {/* Vector, and the same component the splash draws, which is what
+                makes the handoff a move rather than a redraw. It replaced a
+                512px `logo.png` painted at 26px — soft at this size, and a
+                41 KB request on the first screen after launch. */}
+            <VegDropMark className="w-full h-full" />
+          </span>
+
           {/* Live indicator */}
           {user && user.role !== 'customer' && (
             <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full border-2 border-[#FAF7F2] animate-pulse-glow" />

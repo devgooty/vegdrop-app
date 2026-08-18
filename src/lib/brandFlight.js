@@ -1,22 +1,28 @@
 /**
  * Carrying the wordmark from the launch screen onto the login screen.
  *
- * The splash ends on a lockup — droplet, plate, "VegDrop" — and the customer
- * login opens on the same wordmark: same face, same weight, same tracking, same
- * two-pixel letterpress under each half (see `.vd-splash-wordmark` and
- * `.si-hero-wordmark` in index.css, which are deliberately kept in step). Only
- * the size and the place on screen differ. Cutting between them redraws a mark
- * the eye is already resting on, which reads as two screens that happen to
- * share a logo; moving it reads as one screen becoming the next.
+ * The splash ends on a lockup — droplet, plate, "VegDrop" — and whatever comes
+ * next opens on half of it. The login screen carries the same wordmark: same
+ * face, same weight, same tracking, same two-pixel letterpress under each half
+ * (see `.vd-splash-wordmark` and `.si-hero-wordmark` in index.css, which are
+ * deliberately kept in step). The home screen carries the same droplet, in the
+ * header badge, since both now render `VegDropMark`. Only the size and the
+ * place on screen differ. Cutting between them redraws a mark the eye is
+ * already resting on, which reads as two screens that happen to share a logo;
+ * moving it reads as one screen becoming the next.
  *
  * The two halves cannot hand over directly. Each app renders the splash or the
- * login, never both, so the splash has already unmounted by the time the login
- * mounts and there is no frame in which the two wordmarks coexist. This module
- * is that seam: the splash publishes where its wordmark was standing as it
- * leaves, and the login — if it mounts soon enough afterwards — claims that
- * position and plays its own wordmark from there into place. FLIP: measure
- * both, invert the difference onto the arriving element, animate the inversion
- * away.
+ * screen behind it, never both, so the splash has already unmounted by the time
+ * the next one mounts and there is no frame in which the two marks coexist.
+ * This module is that seam: the splash publishes where its mark was standing as
+ * it leaves, and the arriving screen — if it mounts soon enough afterwards —
+ * claims that position and plays its own copy from there into place. FLIP:
+ * measure both, invert the difference onto the arriving element, animate the
+ * inversion away.
+ *
+ * Keyed, because the two handoffs carry different things and must not be able
+ * to settle each other's: a login screen that somehow mounted after a home
+ * handoff would otherwise fly its wordmark in from wherever the droplet was.
  *
  * Deliberately not `document.startViewTransition`. It is the shorter way to
  * write this and the wrong tool for it here: it snapshots the whole page and
@@ -36,11 +42,25 @@
  * document, so that is where it lives.
  */
 
-/** How long the wordmark takes to fly to its new home. */
+/** How long a mark takes to fly to its new home, unless a caller says otherwise. */
 export const FLIGHT_MS = 560;
 
-/** The flight plus the tail of the arrival the page plays around it. */
-export const ARRIVAL_MS = 720;
+/**
+ * Fast out of the gate and a long settle — the mark should look like it is
+ * arriving somewhere, not sliding on a rail.
+ *
+ * How front-loaded this can be depends on the journey, which is why it is
+ * overridable. Almost all of the distance is covered in the first quarter of
+ * the timeline, so a single dropped frame at the start costs a lot of visible
+ * travel — and a frame IS dropped at the start, reliably, because that is the
+ * moment the arriving screen is doing its first layout and paint. The wordmark
+ * absorbs it (230px onto a light screen); the droplet does not (322px onto the
+ * shop), so the header asks for a gentler one.
+ */
+export const FLIGHT_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+/** The longest flight plus the tail of any arrival played around it. */
+export const ARRIVAL_MS = 880;
 
 /**
  * How long a published position stays claimable.
@@ -69,12 +89,16 @@ export function prefersReducedMotion() {
 }
 
 /**
- * Record where the leaving wordmark is standing. Called by the splash at the
- * moment it starts its exit, not at unmount: the exit dissolves the plate and
- * drains the droplet away but leaves the wordmark exactly where it was, so this
- * one rect stays true for the whole handoff.
+ * Record where the leaving mark is standing, under the key that says which mark
+ * it is — `wordmark` for the login screen, `mark` for the home screen's badge.
+ *
+ * Called at the END of the splash's exit rather than the start, because one of
+ * the two exits moves the thing it is handing over: closing the plate lets the
+ * lockup row re-centre, which walks the droplet back to the middle of the
+ * screen. Measuring first and animating afterwards would publish a position the
+ * mark has since left.
  */
-export function publishBrandFlight(el) {
+export function publishBrandFlight(key, el) {
   if (typeof window === 'undefined' || !el) return false;
 
   const { left, top, width, height } = el.getBoundingClientRect();
@@ -82,46 +106,67 @@ export function publishBrandFlight(el) {
   // position to carry, and publishing one would land the flight at the origin.
   if (!width || !height) return false;
 
-  window.__vdBrandFlight = { left, top, width, height, at: performance.now() };
+  window.__vdBrandFlight = { key, left, top, width, height, at: performance.now() };
   return true;
 }
 
-/** Single use: a position is claimed once or it is stale. */
-function takeBrandOrigin() {
+/** Single use: a position is claimed once, by its own key, or it is stale. */
+function takeBrandOrigin(key) {
   if (typeof window === 'undefined') return null;
   const pending = window.__vdBrandFlight;
-  window.__vdBrandFlight = null;
   if (!pending) return null;
-  return performance.now() - pending.at <= MAX_AGE_MS ? pending : null;
+
+  if (performance.now() - pending.at > MAX_AGE_MS) {
+    window.__vdBrandFlight = null;
+    return null;
+  }
+  // Left in place on a key mismatch rather than cleared: this claimant is not
+  // the one it was published for, and the one it WAS published for may still be
+  // on its way. It expires on its own either way.
+  if (pending.key !== key) return null;
+
+  window.__vdBrandFlight = null;
+  return pending;
 }
 
 /**
- * Fly `el` in from wherever the last screen left the wordmark.
+ * Fly `el` in from wherever the last screen left the mark named by `key`.
  *
  * Returns the running `Animation` so the caller can wait on it, or null when
- * there is nothing to carry — no publisher, a stale one, reduced motion, or a
- * target that happens to already be where the origin was. Callers should treat
- * null as "arrive normally", never as an error.
+ * there is nothing to carry — no publisher, a different one, a stale one,
+ * reduced motion, or a target that happens to already be where the origin was.
+ * Callers should treat null as "arrive normally", never as an error.
+ *
+ * `options.measure` names a different element to take the size and centre from
+ * while still animating `el`. The home screen's badge needs it: what the splash
+ * published is a bare droplet, and the badge is a green squircle with a droplet
+ * inside it at about two thirds the width. Scaling the badge to the droplet's
+ * size would land a mark two thirds too small. Measuring the glyph and moving
+ * its frame works because the two are concentric — scaling the badge about its
+ * own centre scales the glyph about that same centre.
+ *
+ * `options.duration` and `options.easing` are how a longer journey asks for
+ * more room; see FLIGHT_EASING above for why the two differ.
  *
  * Call it from a layout effect. It measures, so it needs the DOM laid out; and
- * it must apply before the frame is painted or the wordmark shows for one frame
- * at its destination before jumping back to the origin to start.
+ * it must apply before the frame is painted, or the mark shows for one frame at
+ * its destination before jumping back to the origin to start.
  */
-export function claimBrandFlight(el) {
+export function claimBrandFlight(key, el, options = {}) {
   if (!el || typeof el.animate !== 'function' || prefersReducedMotion()) return null;
 
   // Only a real target consumes the origin, so a login screen with no wordmark
   // of its own (the shopkeeper and delivery heroes paint theirs into the
   // artwork) cannot swallow a flight meant for one that has.
-  const from = takeBrandOrigin();
+  const from = takeBrandOrigin(key);
   if (!from) return null;
 
-  const to = el.getBoundingClientRect();
+  const to = (options.measure || el).getBoundingClientRect();
   if (!to.width || !from.width) return null;
 
-  // Both wordmarks are the same string in the same face, so the width ratio is
-  // the size ratio — no separate vertical scale, which would stretch the
-  // letterforms if either line-height ever drifted.
+  // Same drawing at both ends, so the width ratio is the size ratio — no
+  // separate vertical scale, which would stretch the mark if either end's
+  // proportions ever drifted.
   const scale = from.width / to.width;
   const dx = from.left + from.width / 2 - (to.left + to.width / 2);
   const dy = from.top + from.height / 2 - (to.top + to.height / 2);
@@ -133,10 +178,8 @@ export function claimBrandFlight(el) {
   return el.animate(
     [{ transform: `translate(${dx}px, ${dy}px) scale(${scale})` }, { transform: 'none' }],
     {
-      duration: FLIGHT_MS,
-      // Fast out of the gate and a long settle — the mark should look like it
-      // is arriving somewhere, not sliding on a rail.
-      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      duration: options.duration || FLIGHT_MS,
+      easing: options.easing || FLIGHT_EASING,
       // Without this the element paints at its destination for the frame
       // between `animate()` and the animation's own start time, which is the
       // single-frame flicker this whole approach exists to avoid.
