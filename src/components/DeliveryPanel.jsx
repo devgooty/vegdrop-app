@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import {
   Truck, CheckCircle2, MapPin, Phone, PackageCheck, Bell, Bike,
   LogOut, User, Home, Map as MapIcon, Wallet, Info, Clock, AlertTriangle,
@@ -46,7 +46,64 @@ const DeliveryRouteMap = lazy(() => import('./DeliveryRouteMap'));
 export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onAcceptShopOrder, onDeclineShopOrder, onLogout, notifications = [], onClearNotification }) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('home');
-  const [isOnline, setIsOnline] = useState(false);
+
+  /**
+   * On duty or not — the SERVER's answer, not a local guess.
+   *
+   * This was `useState(false)` and the effect below pushed that value to the
+   * server on mount. Two things followed, and both were observed on the demo
+   * server with a rider the dispatcher had just offered a pickup to:
+   *
+   *  - The dashboard announced "You are currently offline" directly above a
+   *    live NEW PICKUP card, because the panel had never asked.
+   *  - Worse, opening the app CLOCKED THE RIDER OFF. `PATCH /rider/duty` fired
+   *    with `offline` before the rider touched anything, so a reload, a network
+   *    blip, or the OS killing a backgrounded PWA quietly ended their shift and
+   *    the offers stopped arriving. `/auth/refresh` confirmed it: online before
+   *    the app opened, offline after.
+   *
+   * `dutyStatus` has always been on the session user (`User.toPublicJSON`); it
+   * was simply never read.
+   */
+  const [isOnline, setIsOnline] = useState(user?.dutyStatus === 'online');
+  const [isSavingDuty, setIsSavingDuty] = useState(false);
+  const [dutyError, setDutyError] = useState(null);
+
+  // Follow the server whenever the session is re-read — the rider may have gone
+  // on or off duty on another device.
+  useEffect(() => {
+    if (user?.dutyStatus) setIsOnline(user.dutyStatus === 'online');
+  }, [user?.dutyStatus]);
+
+  /**
+   * Going on or off duty is an ACTION, so it is a handler rather than an effect.
+   *
+   * As an effect it could not tell the rider's own tap apart from the component
+   * mounting, which is exactly how mounting came to clock people off. It also
+   * means a refusal can be reconciled: the server declines to take a rider off
+   * duty mid-delivery (409 DELIVERY_IN_PROGRESS), and that answer used to be
+   * swallowed, leaving the switch showing "offline" for a rider the server still
+   * considered on the job.
+   */
+  const handleSetOnline = useCallback(
+    async (next) => {
+      if (isSavingDuty || next === isOnline) return;
+
+      const previous = isOnline;
+      setIsOnline(next);
+      setIsSavingDuty(true);
+      setDutyError(null);
+      try {
+        await setDutyStatus(next ? 'online' : 'offline');
+      } catch (err) {
+        setIsOnline(previous);
+        setDutyError(err?.message || 'Could not change your duty status. Try again.');
+      } finally {
+        setIsSavingDuty(false);
+      }
+    },
+    [isOnline, isSavingDuty]
+  );
 
   /**
    * The rider's real position, from the one GPS watch this panel runs.
@@ -79,13 +136,15 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onAcc
    */
   const [locationError, setLocationError] = useState(null);
 
+  /**
+   * The GPS watch, and nothing else.
+   *
+   * The duty write used to live here too, which is what made mounting
+   * indistinguishable from the rider tapping the switch — see `handleSetOnline`
+   * above. This effect now only follows the duty state, it never sets it.
+   */
   useEffect(() => {
     let stopReporting = null;
-
-    setDutyStatus(isOnline ? 'online' : 'offline').catch(() => {
-      // Refusing to go offline mid-delivery is a legitimate answer from the
-      // server, and the panel's own toggle already reflects the rider's intent.
-    });
 
     if (isOnline) {
       setLocationError(null);
@@ -187,7 +246,9 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onAcc
           <HomeTab
             user={user}
             isOnline={isOnline}
-            setIsOnline={setIsOnline}
+            onSetOnline={handleSetOnline}
+            isSavingDuty={isSavingDuty}
+            dutyError={dutyError}
             agentCoords={agentCoords}
             locationError={locationError}
             deliveredToday={deliveredToday.length}
@@ -236,7 +297,7 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onAcc
 // Home
 // ---------------------------------------------------------------------------
 
-function HomeTab({ user, isOnline, setIsOnline, agentCoords, locationError, deliveredToday, deliveredTotal, setActiveTab }) {
+function HomeTab({ user, isOnline, onSetOnline, isSavingDuty, dutyError, agentCoords, locationError, deliveredToday, deliveredTotal, setActiveTab }) {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
@@ -258,8 +319,9 @@ function HomeTab({ user, isOnline, setIsOnline, agentCoords, locationError, deli
         <button
           type="button"
           aria-label={isOnline ? 'Go offline' : 'Go online'}
-          onClick={() => setIsOnline(!isOnline)}
-          className={`relative w-14 h-8 rounded-full shrink-0 transition-colors duration-300 ${isOnline ? 'bg-emerald-500' : 'bg-gray-300'}`}
+          onClick={() => onSetOnline(!isOnline)}
+          disabled={isSavingDuty}
+          className={`relative w-14 h-8 rounded-full shrink-0 transition-colors duration-300 disabled:opacity-60 ${isOnline ? 'bg-emerald-500' : 'bg-gray-300'}`}
         >
           <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-transform duration-300 ${isOnline ? 'translate-x-7' : 'translate-x-1'}`} />
         </button>
@@ -277,6 +339,21 @@ function HomeTab({ user, isOnline, setIsOnline, agentCoords, locationError, deli
           <div className="min-w-0">
             <h3 className="font-bold text-amber-900 text-sm mb-0.5">No pickups can reach you</h3>
             <p className="text-xs text-amber-800 leading-relaxed">{locationError}</p>
+          </div>
+        </div>
+      )}
+
+      {/*
+        The server refuses to take a rider off duty mid-delivery, which is a
+        real answer and the one thing a rider tapping that switch most needs to
+        hear. It used to be caught and dropped, so the tap simply did nothing.
+      */}
+      {dutyError && (
+        <div className="bg-rose-50 border border-rose-300 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
+          <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <h3 className="font-bold text-rose-900 text-sm mb-0.5">Still on duty</h3>
+            <p className="text-xs text-rose-800 leading-relaxed">{dutyError}</p>
           </div>
         </div>
       )}
@@ -301,11 +378,12 @@ function HomeTab({ user, isOnline, setIsOnline, agentCoords, locationError, deli
           </p>
           <button
             type="button"
-            onClick={() => setIsOnline(true)}
-            className="bg-emerald-600 text-white font-black px-6 py-3 rounded-xl w-full shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
+            onClick={() => onSetOnline(true)}
+            disabled={isSavingDuty}
+            className="bg-emerald-600 text-white font-black px-6 py-3 rounded-xl w-full shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 disabled:opacity-60"
           >
             <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
-            GO ONLINE
+            {isSavingDuty ? 'GOING ONLINE…' : 'GO ONLINE'}
           </button>
         </div>
       ) : (
