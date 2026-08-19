@@ -200,7 +200,28 @@ function useRoadRoute(from, to) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [from, to]);
+    /**
+     * `key`, which is the whole point of computing it.
+     *
+     * This read `[from, to]` — the raw objects — while the comment above
+     * claimed the ~100 m rounding was what the effect depended on. Every call
+     * site builds those objects as inline literals (DeliveryPanel's map tab,
+     * MarketPickups' assigned card, ShopkeeperPanel's rider view), and
+     * `agentCoords` is a fresh object per GPS fix, so both deps changed on
+     * every render: roughly once a second while a rider is moving, and every
+     * five seconds regardless from the jobs poll.
+     *
+     * Each re-run's cleanup aborted the in-flight OSRM request. So the throttle
+     * did nothing, one aborted request went out per render per mounted map —
+     * the rate-limiting the comment warns about — and a moving rider rarely won
+     * the race, leaving the dashed straight line and no ETA on a screen that
+     * had a road route to draw.
+     *
+     * `latest` still carries the exact coordinates into the request, so
+     * depending on the rounded key costs no precision.
+     */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
   return route;
 }

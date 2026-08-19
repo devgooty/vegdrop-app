@@ -298,6 +298,17 @@ export default function ShopkeeperApp() {
    */
   useEffect(() => {
     if (!user) return;
+    /**
+     * Not while a stall is on screen.
+     *
+     * A stall holder's work arrives through `/stalls/me/orders`, which
+     * StallPanel polls itself; `orders` is read only by ShopkeeperPanel, which
+     * is not rendered in that case (see the early return below). So this was a
+     * request every five seconds whose answer nobody could see — and it was
+     * doubling the stall screen's spend against the 600-per-IP `globalLimiter`
+     * budget, which that screen was already close to exhausting on its own.
+     */
+    if (stall) return;
 
     let cancelled = false;
 
@@ -323,7 +334,7 @@ export default function ShopkeeperApp() {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [user]);
+  }, [user, stall]);
 
   /**
    * A rider accepting is the one transition on this screen nobody tapped a

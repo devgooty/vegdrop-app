@@ -679,12 +679,39 @@ export default function App() {
 
     const coords = savedCustomerCoords();
 
+    const schedulePacks = new Map();
+    for (const item of scheduledCartItems) {
+      const productId = item.originalId || item.id;
+      schedulePacks.set(productId, (schedulePacks.get(productId) || 0) + item.quantity * unitsOf(item));
+    }
+    const scheduleLines = [...schedulePacks.entries()].map(([productId, quantity]) => ({
+      productId,
+      quantity,
+    }));
+
     try {
       const created = await createSchedule({
-        items: scheduledCartItems.map((item) => ({
-          productId: item.id,
-          quantity: item.quantity,
-        })),
+        /**
+         * The SAME translation the one-off checkout does, for the same two
+         * reasons — this call site was simply missed when it was written.
+         *
+         * `item.id` is a pack-variant key (`<catalogId>-x4`) whenever a size
+         * above the base pack was picked, and `fields.objectId` refuses it, so
+         * the whole request came back 400 and the customer got a bare "The
+         * submitted data is not valid." Because zod validates the array as a
+         * unit, one sized line also blocked every other line in the basket from
+         * being scheduled.
+         *
+         * And `quantity` alone drops the pack multiplier, so once the id was
+         * accepted a "1kg" line of a 250g pack would have recurred, and been
+         * billed, as a single 250g pack — every run, forever. See
+         * services/packs.mjs.
+         *
+         * Collapsed onto the catalog product the same way too: two sizes of one
+         * product are two basket rows but one order line, and sending both
+         * would ask the server to schedule the same product twice.
+         */
+        items: scheduleLines,
         // The same address and coordinates a manual checkout uses. Guaranteed
         // non-null by the checkoutBlockedReason gate below.
         address: savedCustomerAddress(),

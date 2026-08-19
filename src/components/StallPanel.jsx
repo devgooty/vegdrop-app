@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Store, Clock, Package, CheckCircle2, Zap, LogOut, RefreshCw,
   AlertTriangle, ShoppingBasket, Timer, Check, Wallet, Lock,
@@ -66,17 +66,45 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
     return () => clearInterval(t);
   }, []);
 
-  const refresh = useCallback(async () => {
+  /**
+   * Whether anything has come back yet.
+   *
+   * A ref rather than the `loading` state, because the failure branch below is
+   * read from inside the 5s interval. That interval closes over the FIRST
+   * render's `refresh`, whose `loading` is `true` and can never change —
+   * `setLoading(false)` builds a new callback for later renders that the
+   * interval never sees. So "only surfaced on the first load" was true of the
+   * comment and false of the code: every failed poll toasted. A suspended stall
+   * 403s forever, which meant a red toast every five seconds, indefinitely,
+   * over a frozen offer list.
+   */
+  const settledOnce = useRef(false);
+
+  /**
+   * `slow` folds in the two things that are not the offer feed.
+   *
+   * Everything used to be fetched on every tick, which put this screen at three
+   * requests every five seconds. With ShopkeeperApp's own order poll still
+   * mounted behind it that is 720 requests per 15 minutes against a 600-per-IP
+   * `globalLimiter` budget (server/middleware/rateLimit.js) — so a single
+   * shopkeeper watching the offer feed, which is the entire purpose of this
+   * screen, ran their own IP out of budget in about twelve minutes and then got
+   * 429s on everything, including accepting the offers they could no longer
+   * see. Two stalls on one market's wifi did it in six.
+   *
+   * Offers expire in seconds and still poll at five. Earnings and stock move on
+   * a much slower clock — the original comment said so and then polled them
+   * anyway — so they ride along once a minute and after any write.
+   */
+  const refresh = useCallback(async ({ slow = false } = {}) => {
     try {
       const [data, money, table] = await Promise.all([
         fetchStallOrders(),
-        // Earnings move on a much slower clock than offers, but folding them
-        // into the same poll keeps the screen to one request cycle.
-        fetchEarnings().catch(() => null),
+        slow ? fetchEarnings().catch(() => null) : null,
         // Stock changes only when this shopkeeper changes it — except for the
         // price, which the market owner can move at any moment. Polling it is
         // how a stall finds out their tomatoes are now ₹65.
-        fetchStallStock().catch(() => null),
+        slow ? fetchStallStock().catch(() => null) : null,
       ]);
       setOffers(data.offers);
       setPacking(data.packing);
@@ -84,12 +112,14 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
       if (money) setEarnings(money);
       if (table) setStock(table);
     } catch (err) {
-      // Transient; the next tick retries. Only surfaced on the first load.
-      if (loading) toast.error(err.message || 'Could not load your stall.');
+      // Transient; the next tick retries. Only surfaced on the first load —
+      // and now actually only on the first load.
+      if (!settledOnce.current) toast.error(err.message || 'Could not load your stall.');
     } finally {
+      settledOnce.current = true;
       setLoading(false);
     }
-  }, [loading, toast]);
+  }, [toast]);
 
   const handleWithdraw = async () => {
     setWithdrawing(true);
@@ -126,7 +156,9 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
         await saveFreshPhoto(productId, photo);
       } catch (err) {
         toast.warning(`Stock saved, but the photo did not upload: ${err.message}`);
-        await refresh();
+        // `slow` because the table is exactly what just changed — the minute
+        // tick would get there eventually, but not before they look.
+        await refresh({ slow: true });
         return;
       }
     } else if (removePhoto) {
@@ -134,25 +166,36 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
     }
 
     toast.success(quantity > 0 ? 'Stock updated 🧺' : 'Taken off your table');
-    await refresh();
+    await refresh({ slow: true });
   };
 
-  /** Poll, pausing while the tab is hidden — same pattern as the other apps. */
+  /**
+   * Poll, pausing while the tab is hidden — same pattern as the other apps.
+   *
+   * `refresh` is genuinely stable now (it depends on `toast` alone), so this
+   * depends on it honestly rather than claiming an empty list is close enough.
+   * That claim was what froze the failure branch above on its first-render
+   * value.
+   */
   useEffect(() => {
-    refresh();
+    let tick = 0;
+    // Everything on the first pass, so the table and the takings are populated.
+    refresh({ slow: true });
+
     const poll = () => {
-      if (!document.hidden) refresh();
+      if (document.hidden) return;
+      tick += 1;
+      // Twelve five-second ticks to the minute.
+      refresh({ slow: tick % 12 === 0 });
     };
+
     const interval = setInterval(poll, 5000);
     document.addEventListener('visibilitychange', poll);
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', poll);
     };
-    // `refresh` is stable enough here; re-subscribing every render would reset
-    // the interval on each poll and effectively busy-loop.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refresh]);
 
   const toggleLine = (orderId, lineId) => {
     setSelection((prev) => {
@@ -188,7 +231,8 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
       }
 
       setSelection((prev) => ({ ...prev, [order.id]: [] }));
-      await refresh();
+      // Claiming lines moves both the table and the takings.
+      await refresh({ slow: true });
     } catch (err) {
       const message =
         err.code === 'ALREADY_TAKEN'

@@ -135,6 +135,44 @@ test('a customer can create a schedule, and it stores intent rather than prices'
   assert.equal(stored.totalAmountPaise, undefined, 'a schedule must not carry a total');
 });
 
+/**
+ * A basket line's `id` is not a product id, and this is the boundary that says so.
+ *
+ * `packLineId` (src/services/packs.mjs) makes `<catalogId>-x4` for any size above
+ * the base pack, and the client must translate that back to `originalId` with the
+ * quantity multiplied by `units` before posting. `handleScheduleCart` did not —
+ * it sent `item.id` and the raw quantity — so every standing order containing a
+ * sized line was refused outright, and because zod validates the array as a unit,
+ * that one line blocked the whole basket from being scheduled. The customer saw
+ * only "The submitted data is not valid."
+ *
+ * Asserted here rather than trusted: the refusal is what makes the untranslated
+ * shape a loud failure instead of a schedule that quietly delivers a quarter of
+ * what was asked for, every run, forever.
+ */
+test('a pack-variant key is not a product id, and the schedule route refuses it', async () => {
+  const customer = await authenticatedUser('customer');
+  const tomato = await seedProduct();
+
+  const body = scheduleBody(tomato);
+  body.items = [{ productId: `${tomato._id.toHexString()}-x4`, quantity: 1 }];
+
+  const res = await api().post('/api/schedules').set(auth(customer.accessToken)).send(body);
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error.code, 'VALIDATION_ERROR');
+
+  // And the translated shape the client now sends is accepted: four packs.
+  const translated = scheduleBody(tomato);
+  translated.items = [{ productId: tomato._id.toHexString(), quantity: 4 }];
+
+  const ok = await api().post('/api/schedules').set(auth(customer.accessToken)).send(translated);
+  assert.equal(ok.status, 201, JSON.stringify(ok.body));
+
+  const stored = await ScheduledOrder.findById(ok.body.data.id).lean();
+  assert.equal(stored.items[0].quantity, 4, 'the pack multiplier has to survive into the schedule');
+});
+
 test('a weekly schedule with no weekday chosen is refused', async () => {
   const customer = await authenticatedUser('customer');
   const tomato = await seedProduct();
