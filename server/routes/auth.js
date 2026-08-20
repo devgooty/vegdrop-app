@@ -846,6 +846,59 @@ router.get('/me', requireAuth, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Dev-only sign-in
+// ---------------------------------------------------------------------------
+
+/**
+ * Sign in as a seeded account by URL, proving nothing.
+ *
+ * This exists so a local demo can be opened in any browser without reading a
+ * code out of the server console, and it is the ONE place in this codebase that
+ * establishes a session without a proved phone. Everything about it is arranged
+ * so it cannot survive contact with a real deployment:
+ *
+ * - `config.devLoginEnabled` requires DEV_LOGIN=1 AND a non-production NODE_ENV,
+ *   and config/env.js makes DEV_LOGIN in production a boot-time fatal. See the
+ *   long note there for why one guard was not enough.
+ * - The route is not merely disabled when off, it is NOT REGISTERED. A disabled
+ *   handler is one bad edit from being live; a route that was never mounted
+ *   answers with the router's own 404 and has no code path to reach.
+ * - It refuses to mint anything. An unknown number is a 404, not a new account,
+ *   so it cannot be used to conjure a privileged role that the seed did not
+ *   already create.
+ *
+ * It is a GET that establishes a session, which /reverse-otp/status is
+ * explicitly forbidden from being — because the point is to be pasteable into an
+ * address bar. That is only tolerable because of the guards above; do not copy
+ * the shape into anything that ships.
+ */
+if (config.devLoginEnabled) {
+  router.get('/dev/login', async (req, res) => {
+    const phone = String(req.query.phone || '').trim();
+    if (!/^\d{10}$/.test(phone)) {
+      throw new ApiError(400, 'Pass ?phone= with a 10-digit seeded number.', 'DEV_LOGIN_BAD_PHONE');
+    }
+
+    // Never creates. Scoped to nothing, because the whole point is reaching the
+    // developer and market_owner accounts the customer app renders panels for.
+    const user = await User.findOne({ phone, status: { $ne: 'deleted' } });
+    if (!user) {
+      throw new ApiError(404, `No seeded account for ${phone}.`, 'DEV_LOGIN_NO_ACCOUNT');
+    }
+
+    await establishSession(user, req, res);
+
+    // The access token in that payload is discarded on purpose: a browser
+    // navigation has nowhere to put it. The refresh cookie is what matters —
+    // the app's restoreSession() exchanges it for an access token on mount.
+    const target = typeof req.query.next === 'string' && req.query.next.startsWith('/#/')
+      ? req.query.next
+      : '/';
+    return res.redirect(302, target);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Changing the phone number
 // ---------------------------------------------------------------------------
 

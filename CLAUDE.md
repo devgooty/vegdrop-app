@@ -39,6 +39,11 @@ Copy `.env.example` to `.env`. Notes that are easy to get wrong:
 - **`KYC_ENCRYPTION_KEY` is effectively permanent.** It encrypts bank account numbers at rest; rotating it makes every existing vendor KYC record undecryptable.
 - Production additionally requires `CORS_ALLOWED_ORIGINS`, real Razorpay credentials, `RAZORPAYX_*` payout credentials, and a MongoDB deployment that supports transactions. Each is a boot-time hard failure, not a warning.
 - `RAZORPAYX_*` is a **separate product** from `RAZORPAY_*`. Payments credentials collect money and cannot send it, so the KYC penny drop needs its own set.
+- **`DEV_LOGIN=1` serves `GET /api/auth/dev/login?phone=…`, which mints a session with nothing proved.** It is the only sign-in bypass in the codebase and exists so a local demo can be opened in any browser without reading a code out of the console. `server/scripts/dev-with-memory-db.js` sets it; `npm run server` does not.
+
+  It is guarded on **two independent facts, because NODE_ENV is not trustworthy here**. `config.devLoginEnabled` requires the flag AND a non-production `NODE_ENV` AND the absence of any deploy marker (`RAILWAY_ENVIRONMENT`, `VERCEL`, `RENDER`, …); setting the flag alongside either signal is a **boot-time fatal**. The route is not merely disabled when off — it is never registered, so there is no handler to reach.
+
+  The second guard is not belt-and-braces, it is the load-bearing one. The live Railway API returns its `vb_rt` cookie with **no `Secure` attribute**, and `cookies.secure` is `isProduction` — so the deployment that *is* production does not have `NODE_ENV=production`, and a check keyed only on that would already be disarmed there. Anything else in this file that says "production refuses to boot" is subject to the same caveat until that is fixed.
 
 ## Architecture
 

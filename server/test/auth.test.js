@@ -490,3 +490,17 @@ test('a login code cannot be redeemed as a phone change', async () => {
   assert.equal(res.status, 400, 'purpose must be part of what a challenge authorises');
   assert.equal((await User.findById(user._id)).phone, user.phone);
 });
+
+/**
+ * The dev sign-in is not merely disabled without DEV_LOGIN, it is never mounted.
+ * This file does not set the flag, so it is the place that can prove the absence.
+ * devLogin.test.js sets it and covers the enabled behaviour.
+ */
+test('the dev sign-in route does not exist without DEV_LOGIN', async () => {
+  const { user } = await authenticatedUser('developer');
+
+  const res = await api().get(`/api/auth/dev/login?phone=${user.phone}`);
+
+  assert.equal(res.status, 404);
+  assert.equal(res.headers['set-cookie'], undefined, 'no session is established');
+});

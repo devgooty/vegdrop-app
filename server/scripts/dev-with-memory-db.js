@@ -13,6 +13,13 @@
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
 
+// Serves GET /api/auth/dev/login, which signs in as a seeded account with no
+// code. Set HERE and not in .env.example or `npm run server`, because this
+// harness is a throwaway in-memory demo and the only context where handing out
+// sessions by URL is not a vulnerability. config/env.js refuses to boot if this
+// ever reaches production; see the note there. Opt out with DEV_LOGIN=0.
+process.env.DEV_LOGIN = process.env.DEV_LOGIN || '1';
+
 // Lets a second instance run alongside the default one on a free port, e.g.
 // `npm run server:demo -- --port 5001`, for side-by-side local preview.
 const portFlagIndex = process.argv.indexOf('--port');
@@ -181,7 +188,7 @@ async function main() {
   const { connect, disconnect, ensureIndexes } = require('../db/connect');
   const { runMigrations } = require('../db/migrations');
   const { createApp } = require('../app');
-  const { seedIfEmpty } = require('../utils/seed');
+  const { seedIfEmpty, SEED_ACCOUNTS } = require('../utils/seed');
   const sweeper = require('../services/sweeper');
 
   // See the EMAIL_FROM/SMTP_HOST comment above: config now believes email is
@@ -224,6 +231,19 @@ async function main() {
     console.info('  Customer   →  http://localhost:3000/');
     console.info('  Shopkeeper →  http://localhost:3000/#/shopkeeper');
     console.info('  Delivery   →  http://localhost:3000/#/delivery\n');
+    if (config.devLoginEnabled) {
+      console.info('[dev] Skip the code entirely — open one of these in any browser:\n');
+      for (const account of SEED_ACCOUNTS) {
+        const hash = account.role === 'shopkeeper' ? '/%23/shopkeeper'
+          : account.role === 'delivery' ? '/%23/delivery'
+          : '';
+        console.info(
+          `  ${account.role.padEnd(13)} http://localhost:3000/api/auth/dev/login?phone=${account.phone}${hash ? `&next=${hash}` : ''}`
+        );
+      }
+      console.info('\n[dev] Each sets the refresh cookie and redirects into the app, signed in.');
+      console.info('[dev] DEV_LOGIN=1 does this; production refuses to boot with it set.\n');
+    }
     console.info('[dev] Sign-in needs the 6-digit code, which prints HERE in this console.');
     console.info('[dev] For "send us one instead", simulate the inbound message with:');
     console.info(

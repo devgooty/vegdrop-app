@@ -237,6 +237,53 @@ if (isProduction && notifyTransport === 'console') {
   );
 }
 
+/**
+ * Dev-only sign-in that skips the OTP entirely.
+ *
+ * `GET /api/auth/dev/login?phone=...` mints a session for a seeded account with
+ * nothing proved. That is account takeover by URL, so it is guarded twice rather
+ * than once: it is opt-in per process via DEV_LOGIN, and setting DEV_LOGIN in
+ * production is a boot-time FATAL rather than a warning that scrolls past.
+ * Anyone who ships it gets a dead deploy instead of an open door.
+ *
+ * The second guard is the one that matters. `!isProduction` alone would be a
+ * single missing NODE_ENV away from serving the endpoint for real, and this
+ * codebase has already removed one auth bypass that needed nothing but the
+ * client being offline (see the apiClient.js note in CLAUDE.md). A flag that has
+ * to be set on purpose, plus a refusal to boot where it would do damage, is what
+ * keeps "convenient locally" from becoming "reachable in production".
+ *
+ * Set by server/scripts/dev-with-memory-db.js, a throwaway in-memory demo
+ * harness that is never a deployment target. `npm run server` does NOT set it.
+ */
+const devLoginRequested = process.env.DEV_LOGIN === '1';
+
+/**
+ * Markers every one of these platforms injects into a deployed process.
+ *
+ * `isProduction` alone is NOT a sufficient guard, and this is not hypothetical:
+ * the live Railway API for this project answers `POST /api/auth/logout` with a
+ * `vb_rt` cookie carrying no `Secure` attribute, and `cookies.secure` is
+ * `isProduction` — so NODE_ENV is not `production` on the deployment that IS
+ * production. Anything keyed only on NODE_ENV is therefore already disarmed
+ * there, including the check right below.
+ *
+ * Being deployed at all is the thing that makes a sign-in bypass dangerous, and
+ * that is what these detect. They cost nothing when absent and they do not care
+ * what NODE_ENV claims.
+ */
+const DEPLOY_MARKERS = ['RAILWAY_ENVIRONMENT', 'RAILWAY_SERVICE_ID', 'VERCEL', 'RENDER', 'FLY_APP_NAME', 'DYNO'];
+const deployedMarker = DEPLOY_MARKERS.find((name) => process.env[name]);
+
+if (devLoginRequested && (isProduction || deployedMarker)) {
+  fatal.push(
+    `DEV_LOGIN must never be set on a deployed host (${isProduction ? 'NODE_ENV=production' : `${deployedMarker} is set`}). ` +
+      'It serves an endpoint that mints a session for any account without verification.'
+  );
+}
+
+const devLoginEnabled = devLoginRequested && !isProduction && !deployedMarker;
+
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
 const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
 const razorpayConfigured = Boolean(razorpayKeyId && razorpayKeySecret);
@@ -320,6 +367,7 @@ const config = Object.freeze({
   isProduction,
   isTest,
   isDevelopment: !isProduction && !isTest,
+  devLoginEnabled,
 
   port: int('PORT', 5000),
   trustProxy: optional('TRUST_PROXY', isProduction ? '1' : ''),
