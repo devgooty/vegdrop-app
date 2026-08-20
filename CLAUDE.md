@@ -43,7 +43,7 @@ Copy `.env.example` to `.env`. Notes that are easy to get wrong:
 
   It is guarded on **two independent facts, because NODE_ENV is not trustworthy here**. `config.devLoginEnabled` requires the flag AND a non-production `NODE_ENV` AND the absence of any deploy marker (`RAILWAY_ENVIRONMENT`, `VERCEL`, `RENDER`, …); setting the flag alongside either signal is a **boot-time fatal**. The route is not merely disabled when off — it is never registered, so there is no handler to reach.
 
-  The second guard is not belt-and-braces, it is the load-bearing one. The live Railway API returns its `vb_rt` cookie with **no `Secure` attribute**, and `cookies.secure` is `isProduction` — so the deployment that *is* production does not have `NODE_ENV=production`, and a check keyed only on that would already be disarmed there. Anything else in this file that says "production refuses to boot" is subject to the same caveat until that is fixed.
+  The deploy-marker half is not belt-and-braces, it is the load-bearing one. `NODE_ENV` is set by whoever configured the host, so it is a claim about the environment rather than a fact about it — a deployment can be serving real traffic with it unset or wrong, and every guard keyed only on `isProduction` is then silently inert. The platform markers are injected by the platform itself and cannot be forgotten, so *being deployed* is what this check actually tests. Treat any other "production refuses to boot" rule in this file as conditional on `NODE_ENV` genuinely being right on the host; verify it there rather than assuming.
 
 ## Architecture
 

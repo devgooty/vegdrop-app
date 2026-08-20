@@ -298,10 +298,10 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
       return;
     }
 
+    const typed = identifier.trim();
+
     setError('');
     setIsSubmitting(true);
-
-    const typed = identifier.trim();
     if (rememberMe) {
       window.localStorage.setItem(`${storagePrefix}remembered_id`, typed);
       window.localStorage.setItem(`${storagePrefix}remember_me`, 'true');

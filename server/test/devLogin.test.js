@@ -127,11 +127,10 @@ test('DEV_LOGIN in production is a boot-time fatal', () => {
 /**
  * The guard that matters MORE here, because NODE_ENV cannot be trusted.
  *
- * The live Railway API for this project returns its `vb_rt` cookie with no
- * `Secure` attribute, and `config.cookies.secure` is `isProduction` — so the
- * deployment that IS production does not have NODE_ENV=production, and the test
- * above would not have fired there. A deployed host has to be recognisable
- * without taking NODE_ENV's word for it.
+ * NODE_ENV is whatever the host was configured to say, so a deployment can be
+ * serving real traffic without it — in which case the test above passes and
+ * proves nothing about that host. A deployed environment has to be recognisable
+ * without taking NODE_ENV's word for it, which is what the platform markers do.
  */
 test('DEV_LOGIN on a deployed host is fatal even when NODE_ENV is not production', () => {
   const run = (env) =>

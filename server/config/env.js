@@ -261,15 +261,15 @@ const devLoginRequested = process.env.DEV_LOGIN === '1';
 /**
  * Markers every one of these platforms injects into a deployed process.
  *
- * `isProduction` alone is NOT a sufficient guard, and this is not hypothetical:
- * the live Railway API for this project answers `POST /api/auth/logout` with a
- * `vb_rt` cookie carrying no `Secure` attribute, and `cookies.secure` is
- * `isProduction` — so NODE_ENV is not `production` on the deployment that IS
- * production. Anything keyed only on NODE_ENV is therefore already disarmed
- * there, including the check right below.
+ * `isProduction` alone is NOT a sufficient guard. NODE_ENV is set by whoever
+ * configured the host, which makes it a claim about the environment rather than
+ * a fact about it: a service can be serving real traffic with it unset or wrong,
+ * and every check keyed on it is then silently inert — including the one right
+ * below, which is the last thing that should fail quietly.
  *
- * Being deployed at all is the thing that makes a sign-in bypass dangerous, and
- * that is what these detect. They cost nothing when absent and they do not care
+ * These markers are injected by the platform itself, so they cannot be
+ * forgotten. Being deployed at all is what makes a sign-in bypass dangerous, and
+ * that is what they detect. They cost nothing when absent and they do not care
  * what NODE_ENV claims.
  */
 const DEPLOY_MARKERS = ['RAILWAY_ENVIRONMENT', 'RAILWAY_SERVICE_ID', 'VERCEL', 'RENDER', 'FLY_APP_NAME', 'DYNO'];

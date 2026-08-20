@@ -62,7 +62,7 @@ import { RUPEES_PER_BATCH, TOKENS_PER_BATCH } from './services/rewards';
  * rendered — they live in their own hash-routed apps — so they are gone
  * entirely, which also removes Leaflet from the customer bundle.
  */
-const DeveloperPanel = lazy(() => import('./components/DeveloperPanel'));
+
 const MarketOwnerPanel = lazy(() => import('./components/MarketOwnerPanel'));
 
 /**
@@ -2156,17 +2156,7 @@ export default function App() {
                   onAcceptPartial={handleAcceptPartial}
                   onRetryPartial={handleRetryPartial}
                 />
-              ) : activeTab === 'developer' && user?.role === 'developer' ? (
-                <Suspense fallback={<HomeSkeleton />}>
-                  <DeveloperPanel
-                    products={products}
-                    orders={orders}
-                    categories={categories}
-                    registeredUsers={registeredUsers}
-                    onRegisterUser={handleRegisterUser}
-                    walletTransactions={walletTransactions}
-                  />
-                </Suspense>
+
               ) : activeTab === 'market_owner' && (user?.role === 'market_owner' || user?.role === 'developer') ? (
                 <Suspense fallback={<HomeSkeleton />}>
                   {/* Reads its own data now, scoped to the markets this account
@@ -2526,15 +2516,15 @@ export default function App() {
                               </a>
                             )}
 
-                            {/* Developer Console (stays in-app) */}
+                            {/* Developer Console (separate app) */}
                             {user.role === 'developer' && (
                               <>
-                                <button
-                                  onClick={() => setActiveTab('developer')}
-                                  className="p-2 bg-slate-900 text-cyan-300 rounded-xl border border-slate-700 hover:bg-slate-800 transition-colors"
+                                <a
+                                  href="#/developer"
+                                  className="p-2 bg-slate-900 text-cyan-300 rounded-xl border border-slate-700 hover:bg-slate-800 transition-colors text-center flex items-center justify-center gap-1"
                                 >
                                   💻 Developer Console
-                                </button>
+                                </a>
                                 <button
                                   onClick={() => setActiveTab('market_owner')}
                                   className="p-2 bg-amber-50 text-amber-900 rounded-xl border border-amber-200 hover:bg-amber-100 transition-colors"

@@ -13,11 +13,13 @@ import SplashScreen from './components/SplashScreen';
 const App = lazy(() => import('./App'));
 const ShopkeeperApp = lazy(() => import('./ShopkeeperApp'));
 const DeliveryApp = lazy(() => import('./DeliveryApp'));
+const DeveloperApp = lazy(() => import('./DeveloperApp'));
 
 function getRoute() {
   const hash = window.location.hash.replace('#', '') || '/';
   if (hash.startsWith('/shopkeeper')) return 'shopkeeper';
   if (hash.startsWith('/delivery')) return 'delivery';
+  if (hash.startsWith('/developer')) return 'developer';
   return 'customer';
 }
 
@@ -31,7 +33,13 @@ export default function AppRouter() {
   }, []);
 
   const Active =
-    route === 'shopkeeper' ? ShopkeeperApp : route === 'delivery' ? DeliveryApp : App;
+    route === 'shopkeeper'
+      ? ShopkeeperApp
+      : route === 'delivery'
+      ? DeliveryApp
+      : route === 'developer'
+      ? DeveloperApp
+      : App;
 
   return (
     // The splash doubles as the chunk-loading state, so switching routes never

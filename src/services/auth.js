@@ -50,7 +50,8 @@ export async function startPhoneAuth({ phone, name }) {
  * @returns {Promise<{exists: boolean, type: 'phone'}>}
  */
 export async function lookupIdentifier({ identifier, app }) {
-  return api.post('/auth/lookup', { identifier, ...(app ? { app } : {}) }, { auth: false });
+  const appToSend = app === 'developer' ? undefined : app;
+  return api.post('/auth/lookup', { identifier, ...(appToSend ? { app: appToSend } : {}) }, { auth: false });
 }
 
 /**
@@ -65,7 +66,8 @@ export async function lookupIdentifier({ identifier, app }) {
  * or the two can disagree about which account is being signed into.
  */
 export async function startIdentifierAuth({ identifier, app }) {
-  return api.post('/auth/otp/start', { identifier, ...(app ? { app } : {}) }, { auth: false });
+  const appToSend = app === 'developer' ? undefined : app;
+  return api.post('/auth/otp/start', { identifier, ...(appToSend ? { app: appToSend } : {}) }, { auth: false });
 }
 
 /**

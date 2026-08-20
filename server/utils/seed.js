@@ -390,6 +390,8 @@ async function seedIfEmpty() {
     );
   }
 
+  await seedDemoOrdersAndData();
+
   if (accounts.length === 0) return;
 
   console.info(`\n[seed] created ${accounts.length} development account(s):`);
@@ -400,6 +402,125 @@ async function seedIfEmpty() {
     '\n[seed] Sign in with the phone number above. There is no password — the\n' +
     '[seed] verification code is printed to this console by the dev transport.\n'
   );
+}
+
+async function seedDemoOrdersAndData() {
+  const Order = require('../models/Order');
+  const WalletTransaction = require('../models/WalletTransaction');
+  const VendorKyc = require('../models/VendorKyc');
+  const RiderBankDetails = require('../models/RiderBankDetails');
+
+  // 1. Seed demo orders if none exist
+  const orderCount = await Order.countDocuments();
+  if (orderCount === 0) {
+    const customer = await User.findOne({ role: 'customer' }).lean();
+    const rider = await User.findOne({ role: 'delivery' }).lean();
+    const market = await Market.findOne().lean();
+    const products = await Product.find({ isActive: true }).limit(8).lean();
+
+    if (customer && products.length > 0) {
+      const now = Date.now();
+      const demoOrderConfigs = [
+        { daysAgo: 6, status: 'Delivered', totalPaise: 42000, itemsCount: 3, payment: 'razorpay', payStatus: 'paid' },
+        { daysAgo: 5, status: 'Delivered', totalPaise: 65000, itemsCount: 4, payment: 'wallet', payStatus: 'paid' },
+        { daysAgo: 4, status: 'Delivered', totalPaise: 38000, itemsCount: 2, payment: 'wallet', payStatus: 'paid' },
+        { daysAgo: 3, status: 'Delivered', totalPaise: 92000, itemsCount: 5, payment: 'razorpay', payStatus: 'paid' },
+        { daysAgo: 2, status: 'Delivered', totalPaise: 54000, itemsCount: 3, payment: 'wallet', payStatus: 'paid' },
+        { daysAgo: 1, status: 'Delivered', totalPaise: 78000, itemsCount: 4, payment: 'razorpay', payStatus: 'paid' },
+        { daysAgo: 0, status: 'Out for Delivery', totalPaise: 45000, itemsCount: 2, payment: 'wallet', payStatus: 'paid' },
+        { daysAgo: 0, status: 'Preparing', totalPaise: 82000, itemsCount: 4, payment: 'wallet', payStatus: 'paid' },
+        { daysAgo: 0, status: 'Pending', totalPaise: 31000, itemsCount: 2, payment: 'cod', payStatus: 'pending' },
+      ];
+
+      const ordersToInsert = demoOrderConfigs.map((cfg, idx) => {
+        const orderTime = new Date(now - cfg.daysAgo * 24 * 60 * 60 * 1000 - (idx * 3600000));
+        const selectedProducts = products.slice(0, cfg.itemsCount);
+        const items = selectedProducts.map((p) => ({
+          product: p._id,
+          name: p.name,
+          unitPricePaise: p.pricePaise,
+          quantity: 1,
+          lineTotalPaise: p.pricePaise,
+        }));
+        const subtotal = items.reduce((s, i) => s + i.lineTotalPaise, 0);
+
+        return {
+          orderNumber: `ORD-${orderTime.getFullYear()}${(orderTime.getMonth() + 1).toString().padStart(2, '0')}${orderTime.getDate().toString().padStart(2, '0')}-${1000 + idx}`,
+          customer: customer._id,
+          customerName: customer.name || 'Demo Customer',
+          phone: customer.phone || '9000000001',
+          address: 'Flat 402, Green Meadows, Mehdipatnam, Hyderabad',
+          items,
+          subtotalPaise: subtotal,
+          deliveryFeePaise: 0,
+          totalAmountPaise: cfg.totalPaise || subtotal,
+          paymentMethod: cfg.payment,
+          paymentStatus: cfg.payStatus,
+          status: cfg.status,
+          market: market?._id || null,
+          assignedTo: cfg.status !== 'Placed' ? rider?._id : null,
+          createdAt: orderTime,
+          updatedAt: orderTime,
+        };
+      });
+
+      await Order.insertMany(ordersToInsert);
+      console.info(`[seed] created ${ordersToInsert.length} demo orders across the past 7 days.`);
+    }
+  }
+
+  // 2. Seed demo wallet transactions
+  const walletCount = await WalletTransaction.countDocuments();
+  if (walletCount === 0) {
+    const customer = await User.findOne({ role: 'customer' }).lean();
+    if (customer) {
+      const now = Date.now();
+      const transactions = [
+        { user: customer._id, type: 'credit', amountPaise: 200000, balanceAfterPaise: 200000, seq: 1, reason: 'razorpay_topup', idempotencyKey: `SEED-TOPUP-1-${customer._id}`, note: 'Top-up via UPI / Card', createdAt: new Date(now - 6 * 24 * 3600000) },
+        { user: customer._id, type: 'debit', amountPaise: 42000, balanceAfterPaise: 158000, seq: 2, reason: 'order_payment', idempotencyKey: `SEED-PAY-2-${customer._id}`, note: 'Order payment', createdAt: new Date(now - 5 * 24 * 3600000) },
+        { user: customer._id, type: 'debit', amountPaise: 38000, balanceAfterPaise: 120000, seq: 3, reason: 'order_payment', idempotencyKey: `SEED-PAY-3-${customer._id}`, note: 'Order payment', createdAt: new Date(now - 4 * 24 * 3600000) },
+        { user: customer._id, type: 'credit', amountPaise: 100000, balanceAfterPaise: 220000, seq: 4, reason: 'razorpay_topup', idempotencyKey: `SEED-TOPUP-4-${customer._id}`, note: 'Top-up via NetBanking', createdAt: new Date(now - 2 * 24 * 3600000) },
+        { user: customer._id, type: 'debit', amountPaise: 54000, balanceAfterPaise: 166000, seq: 5, reason: 'order_payment', idempotencyKey: `SEED-PAY-5-${customer._id}`, note: 'Order payment', createdAt: new Date(now - 1 * 24 * 3600000) },
+      ];
+      await WalletTransaction.insertMany(transactions);
+      console.info(`[seed] created ${transactions.length} demo wallet ledger transactions.`);
+    }
+  }
+
+  // 3. Seed demo KYC and Rider bank details
+  const kycCount = await VendorKyc.countDocuments();
+  if (kycCount === 0) {
+    const shopkeepers = await User.find({ role: 'shopkeeper' }).limit(3).lean();
+    if (shopkeepers.length > 0) {
+      const kycDocs = shopkeepers.map((s, idx) => ({
+        user: s._id,
+        legalName: s.name || 'Vendor Enterprise',
+        bankName: idx === 0 ? 'State Bank of India' : idx === 1 ? 'HDFC Bank' : 'ICICI Bank',
+        ifsc: idx === 0 ? 'SBIN0001234' : idx === 1 ? 'HDFC0005678' : 'ICIC0009012',
+        upiVpa: `${s.phone || '9000000002'}@oksbi`,
+        ...VendorKyc.buildSecrets({ bankAccount: '987654321098' }),
+        status: idx === 0 ? 'verified' : 'draft',
+        verifiedAt: idx === 0 ? new Date() : null,
+      }));
+      await VendorKyc.insertMany(kycDocs);
+      console.info(`[seed] created ${kycDocs.length} demo vendor KYC records.`);
+    }
+  }
+
+  const riderBankCount = await RiderBankDetails.countDocuments();
+  if (riderBankCount === 0) {
+    const rider = await User.findOne({ role: 'delivery' }).lean();
+    if (rider) {
+      await RiderBankDetails.create({
+        user: rider._id,
+        legalName: rider.name || 'Demo Rider',
+        bankName: 'Axis Bank',
+        ifsc: 'UTIB0001234',
+        ...RiderBankDetails.buildSecrets({ bankAccount: '112233445566' }),
+      });
+      console.info('[seed] created demo rider bank details.');
+    }
+  }
 }
 
 /**
