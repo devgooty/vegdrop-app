@@ -59,6 +59,28 @@ test('creating a schedule is refused', async () => {
 });
 
 /**
+ * The lock runs ahead of validation, so a locked feature says it is locked
+ * whatever the caller sent — rather than grading a request for a route that was
+ * never going to write anything.
+ */
+test('a malformed body is still answered as locked, not as a validation error', async () => {
+  const { accessToken } = await authenticatedUser('customer');
+
+  const res = await api().post('/api/schedules').set(auth(accessToken)).send({ nonsense: true });
+
+  assert.equal(res.status, 403);
+  assert.equal(res.body.error?.code, 'SCHEDULES_LOCKED');
+});
+
+/** An anonymous caller learns nothing about the feature's state. */
+test('an unauthenticated caller gets 401, not the lock', async () => {
+  const res = await api().post('/api/schedules').send({});
+
+  assert.equal(res.status, 401);
+  assert.equal(res.body.error?.code, 'UNAUTHENTICATED');
+});
+
+/**
  * The half with no UI in it. A schedule that is already due and would otherwise
  * be placed must not be placed while the feature is locked.
  */

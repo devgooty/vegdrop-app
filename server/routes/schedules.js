@@ -108,20 +108,32 @@ router.get('/', ...customerGate, async (req, res) => {
  * is refused while the customer is still looking at it rather than failing
  * silently at six in the morning three weeks later.
  */
+/**
+ * The lock, as middleware rather than a line inside the handler.
+ *
+ * Sits AHEAD of `validate` deliberately: a locked feature should answer "this is
+ * off" whatever the caller sent, not grade their request first and report a
+ * field error for a route that was never going to write anything. It runs after
+ * `customerGate`, so an anonymous caller still gets 401 rather than being told
+ * about a feature they have no business knowing the state of.
+ *
+ * GET, PATCH and DELETE are deliberately NOT gated: locking must never strand
+ * someone holding a standing order they can no longer look at or cancel. Only
+ * creating a new one is refused.
+ */
+function refuseWhenLocked(_req, _res, next) {
+  if (config.scheduledOrdersLocked) {
+    return next(new ApiError(403, 'Scheduled deliveries are not available right now.', 'SCHEDULES_LOCKED'));
+  }
+  return next();
+}
+
 router.post(
   '/',
   ...customerGate,
+  refuseWhenLocked,
   validate({ body: scheduleBody }),
   async (req, res) => {
-    /**
-     * Checked before anything is validated or written. GET, PATCH and DELETE
-     * stay open on purpose: locking must never strand someone with a standing
-     * order they cannot look at or cancel. Only *new* ones are refused.
-     */
-    if (config.scheduledOrdersLocked) {
-      throw new ApiError(403, 'Scheduled deliveries are not available right now.', 'SCHEDULES_LOCKED');
-    }
-
     const { items, address, paymentMethod, marketId, lat, lng, frequency, hour } = req.valid.body;
     const daysOfWeek = req.valid.body.daysOfWeek || [];
     const daysOfMonth = req.valid.body.daysOfMonth || [];
