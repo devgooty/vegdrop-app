@@ -1274,18 +1274,7 @@ export default function App() {
     }
     
     const isScheduled = shoppingMode === 'scheduled';
-    const targetCart = isScheduled ? scheduledCartItems : cartItems;
     const setTargetCart = isScheduled ? setScheduledCartItems : setCartItems;
-    
-    /**
-     * Only for the toast, never for the cart itself.
-     *
-     * This is a render-time snapshot, so it is stale the moment two taps land
-     * in one batch. Getting it wrong costs a duplicate "added" toast; getting
-     * the *cart* wrong from the same read used to cost a duplicate line, which
-     * is why the real lookup moved inside the updater below.
-     */
-    const existingAtRender = targetCart.find((item) => item.id === product.id);
 
     // Trigger smooth fly-to-cart animation when item is picked/added
     const clickX = event && event.clientX ? Math.max(10, event.clientX - 45) : window.innerWidth / 2 - 45;
@@ -1377,14 +1366,22 @@ export default function App() {
       }];
     });
 
-    if (!existingAtRender) {
-      toast.success(
-        t(isScheduled ? 'toast.addedToSchedule' : 'toast.addedToBasket', {
-          name: productName(product, language),
-        })
-      );
-    }
-  }, [cartItems, scheduledCartItems, shoppingMode, setCartItems, setScheduledCartItems, toast, t, language]);
+    /**
+     * No confirmation toast here, deliberately.
+     *
+     * Adding to the basket already announces itself twice — the item flies into
+     * the cart and the cart badge bumps — so a banner over the top of the grid
+     * only covered the next thing the shopper was reaching for. Removed at the
+     * owner's request; the animation and the badge are the feedback.
+     */
+    /**
+     * `cartItems` and `scheduledCartItems` are deliberately NOT dependencies any
+     * more. Nothing here reads the basket at render time — the line lookup
+     * happens inside the updater against `prev`, which is the only view that
+     * reflects taps already queued ahead of this one. `toast`/`t`/`language`
+     * stay because the sold-out warning above still uses them.
+     */
+  }, [shoppingMode, setCartItems, setScheduledCartItems, toast, t, language]);
 
   const handleFlyingItemEnd = useCallback((id) => {
     setFlyingItems((prev) => prev.filter((item) => item.id !== id));

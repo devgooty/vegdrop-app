@@ -818,8 +818,6 @@ const STRINGS = {
     te: 'ఇప్పుడు {shop} నుండి కొనుగోలు. మీ బుట్ట ఖాళీ చేశాం — ప్రతి దుకాణంలో ధరలు వేరుగా ఉంటాయి.',
   },
   'toast.soldOut': { en: '“{name}” is sold out!', hi: '“{name}” का स्टॉक ख़त्म है!', te: '“{name}” స్టాక్ అయిపోయింది!' },
-  'toast.addedToBasket': { en: '“{name}” added to basket 🛒', hi: '“{name}” टोकरी में जोड़ा गया 🛒', te: '“{name}” బుట్టలో చేర్చాం 🛒' },
-  'toast.addedToSchedule': { en: '“{name}” added to schedule 🛒', hi: '“{name}” शेड्यूल में जोड़ा गया 🛒', te: '“{name}” షెడ్యూల్‌లో చేర్చాం 🛒' },
   'toast.alreadyCredited': {
     en: 'This payment was already credited.',
     hi: 'यह भुगतान पहले ही जमा हो चुका है।',
