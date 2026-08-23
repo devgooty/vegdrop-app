@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Ticket, Coins, Info, History } from 'lucide-react';
 import {
   PRIZES,
@@ -73,6 +73,9 @@ function rotationFor(index, current, random = Math.random) {
  */
 export default function SpinWheel({ userId, totalTokens, onResult }) {
   const { t } = useLanguage();
+
+  // Namespaces the prize-photo clip path to this instance. See the <defs> below.
+  const photoClipId = `spin-photo-${useId().replace(/:/g, '')}`;
   const [spins, setSpins] = useState(() => loadSpins(userId));
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
@@ -144,6 +147,19 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
           role="img"
           aria-label={t('spin.wheelAria', { count: PRIZES.length })}
         >
+          {/*
+            One clip path for every prize photo, in objectBoundingBox units so a
+            single circle works whatever size or transform the <image> it is
+            applied to happens to carry. `useId` keeps it unique per instance —
+            a hardcoded id would be silently reused if this component ever
+            rendered twice on a page, and the first definition would win.
+          */}
+          <defs>
+            <clipPath id={photoClipId} clipPathUnits="objectBoundingBox">
+              <circle cx="0.5" cy="0.5" r="0.5" />
+            </clipPath>
+          </defs>
+
           <circle cx="0" cy="0" r={R + 6} fill="#FFFDF9" stroke="#DCD5C6" strokeWidth="3" />
 
           {PRIZES.map((prize, index) => {
@@ -158,14 +174,36 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
               <g key={prize.id}>
                 <path d={segmentPath(index)} fill={prize.color} stroke="#FFFDF9" strokeWidth="1.5" />
                 <g transform={`translate(${tx} ${ty}) rotate(${mid + 90})`}>
-                  <text
-                    textAnchor="middle"
-                    y="-4"
-                    fontSize="15"
-                    style={{ userSelect: 'none' }}
-                  >
-                    {prize.emoji}
-                  </text>
+                  {prize.image ? (
+                    <>
+                      {/*
+                        Drawn UNDER the photo so a slow or failed load leaves a
+                        deliberate-looking disc rather than a hole in the
+                        segment, and so the photo has a rim against whatever
+                        colour the segment happens to be.
+                      */}
+                      <circle cx="0" cy="-13" r="10.5" fill="#FFFDF9" opacity="0.95" />
+                      <image
+                        href={prize.image}
+                        x="-10"
+                        y="-23"
+                        width="20"
+                        height="20"
+                        clipPath={`url(#${photoClipId})`}
+                        preserveAspectRatio="xMidYMid slice"
+                        style={{ userSelect: 'none' }}
+                      />
+                    </>
+                  ) : (
+                    <text
+                      textAnchor="middle"
+                      y="-4"
+                      fontSize="15"
+                      style={{ userSelect: 'none' }}
+                    >
+                      {prize.emoji}
+                    </text>
+                  )}
                   <text
                     textAnchor="middle"
                     y="10"
@@ -212,7 +250,17 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
               : 'bg-slate-50 border-slate-200'
           }`}
         >
-          <span className="text-2xl block mb-0.5">{result.emoji}</span>
+          {result.image ? (
+            <img
+              src={result.image}
+              alt=""
+              aria-hidden="true"
+              loading="lazy"
+              className="w-14 h-14 rounded-full object-cover mx-auto mb-1.5 shadow-sm ring-2 ring-white"
+            />
+          ) : (
+            <span className="text-2xl block mb-0.5">{result.emoji}</span>
+          )}
           <p
             className={`font-black text-sm ${
               isWin(result) ? 'text-amber-700' : 'text-slate-500'
@@ -243,8 +291,21 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
                   key={`${entry.at}-${index}`}
                   className="flex items-center justify-between gap-2 text-[11px]"
                 >
-                  <span className="font-bold text-slate-600 truncate">
-                    {prize ? `${prize.emoji} ${t(prize.labelKey)}` : t('spin.unknownPrize')}
+                  <span className="font-bold text-slate-600 truncate flex items-center gap-1.5 min-w-0">
+                    {prize?.image ? (
+                      <img
+                        src={prize.image}
+                        alt=""
+                        aria-hidden="true"
+                        loading="lazy"
+                        className="w-5 h-5 rounded-full object-cover shrink-0"
+                      />
+                    ) : (
+                      <span aria-hidden="true">{prize ? prize.emoji : '•'}</span>
+                    )}
+                    <span className="truncate">
+                      {prize ? t(prize.labelKey) : t('spin.unknownPrize')}
+                    </span>
                   </span>
                   <span className="shrink-0 font-bold text-slate-400 flex items-center gap-0.5">
                     <Coins className="w-3 h-3" />-{TOKENS_PER_SPIN}

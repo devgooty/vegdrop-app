@@ -28,12 +28,34 @@
  * lookup inside SpinWheel so an id and its translation cannot drift apart, and
  * the English stays as the readable name in a spin log or a test assertion.
  */
+/**
+ * A prize photograph, sized for the wheel rather than for a hero.
+ *
+ * Same host and the same `?w=` convention the product catalog already uses, so
+ * there is one place to reason about image delivery rather than two. Square and
+ * cropped because every place a prize is drawn — wheel segment, result card,
+ * history row — is a circle or a small square, and letting Unsplash crop server
+ * side means the browser downloads a thumbnail instead of a full photograph it
+ * then throws most of away.
+ *
+ * `emoji` is kept alongside as the fallback for a photo that will not load, and
+ * as the only mark the losing segment has.
+ */
+function prizePhoto(id) {
+  return `https://images.unsplash.com/photo-${id}?w=160&h=160&fit=crop&q=70`;
+}
+
 export const PRIZES = [
-  { id: 'egg-basket', label: 'Egg Basket', short: 'Egg Basket', labelKey: 'spin.prize.eggBasket', shortKey: 'spin.prize.short.eggBasket', emoji: '🧺', weight: 8, color: '#1B4D3E' },
-  { id: 'knife', label: 'Kitchen Knife', short: 'Knife', labelKey: 'spin.prize.knife', shortKey: 'spin.prize.short.knife', emoji: '🔪', weight: 8, color: '#B45309' },
-  { id: 'juice-glass', label: 'Juice Glass', short: 'Juice Glass', labelKey: 'spin.prize.juiceGlass', shortKey: 'spin.prize.short.juiceGlass', emoji: '🥤', weight: 10, color: '#0F766E' },
-  { id: 'slicer', label: '2-in-1 Vegetable Slicer', short: 'Slicer', labelKey: 'spin.prize.slicer', shortKey: 'spin.prize.short.slicer', emoji: '🔧', weight: 4, color: '#7C2D12' },
-  { id: 'none', label: 'Better Luck Next Time', short: 'Try Again', labelKey: 'spin.prize.none', shortKey: 'spin.prize.short.none', emoji: '🍀', weight: 70, color: '#57534E' },
+  { id: 'egg-basket', label: 'Egg Basket', short: 'Egg Basket', labelKey: 'spin.prize.eggBasket', shortKey: 'spin.prize.short.eggBasket', emoji: '🧺', image: prizePhoto('1509479100390-f83a8349e79c'), weight: 8, color: '#1B4D3E' },
+  { id: 'knife', label: 'Kitchen Knife', short: 'Knife', labelKey: 'spin.prize.knife', shortKey: 'spin.prize.short.knife', emoji: '🔪', image: prizePhoto('1614362705324-8da11fd16754'), weight: 8, color: '#B45309' },
+  { id: 'juice-glass', label: 'Juice Glass', short: 'Juice Glass', labelKey: 'spin.prize.juiceGlass', shortKey: 'spin.prize.short.juiceGlass', emoji: '🥤', image: prizePhoto('1600271886742-f049cd451bba'), weight: 10, color: '#0F766E' },
+  { id: 'slicer', label: '2-in-1 Vegetable Slicer', short: 'Slicer', labelKey: 'spin.prize.slicer', shortKey: 'spin.prize.short.slicer', emoji: '🔧', image: prizePhoto('1759987384448-16ac3dbc27b1'), weight: 4, color: '#7C2D12' },
+  /**
+   * The blank keeps the clover and gets NO photo, deliberately — there is no
+   * object to photograph, and a picture of a prize on the losing segment would
+   * be actively misleading as the wheel slows past it.
+   */
+  { id: 'none', label: 'Better Luck Next Time', short: 'Try Again', labelKey: 'spin.prize.none', shortKey: 'spin.prize.short.none', emoji: '🍀', image: null, weight: 70, color: '#57534E' },
 ];
 
 /** Tokens burned by one spin. */
