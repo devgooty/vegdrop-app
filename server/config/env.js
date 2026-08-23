@@ -271,6 +271,13 @@ const devLoginRequested = process.env.DEV_LOGIN === '1';
  * forgotten. Being deployed at all is what makes a sign-in bypass dangerous, and
  * that is what they detect. They cost nothing when absent and they do not care
  * what NODE_ENV claims.
+ *
+ * Exported as `isDeployed` because DEV_LOGIN is not the only thing that must not
+ * happen on a real host. `utils/seed.js` keyed its demo accounts, markets and
+ * fabricated orders on `isProduction` alone, and this project's own Railway
+ * deployment was running without NODE_ENV set — so the guard was inert and the
+ * demo seed ran against the live database. Anything whose danger comes from
+ * *being deployed* should ask this, not NODE_ENV.
  */
 const DEPLOY_MARKERS = ['RAILWAY_ENVIRONMENT', 'RAILWAY_SERVICE_ID', 'VERCEL', 'RENDER', 'FLY_APP_NAME', 'DYNO'];
 const deployedMarker = DEPLOY_MARKERS.find((name) => process.env[name]);
@@ -367,6 +374,8 @@ const config = Object.freeze({
   isProduction,
   isTest,
   isDevelopment: !isProduction && !isTest,
+  isDeployed: Boolean(deployedMarker),
+  deployedMarker: deployedMarker || null,
   devLoginEnabled,
 
   port: int('PORT', 5000),

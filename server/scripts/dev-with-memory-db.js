@@ -188,7 +188,7 @@ async function main() {
   const { connect, disconnect, ensureIndexes } = require('../db/connect');
   const { runMigrations } = require('../db/migrations');
   const { createApp } = require('../app');
-  const { seedIfEmpty, SEED_ACCOUNTS } = require('../utils/seed');
+  const { seedIfEmpty, seedDemoOrdersAndData, SEED_ACCOUNTS } = require('../utils/seed');
   const sweeper = require('../services/sweeper');
 
   // See the EMAIL_FROM/SMTP_HOST comment above: config now believes email is
@@ -217,6 +217,15 @@ async function main() {
   await ensureIndexes();
 
   await seedIfEmpty();
+
+  /**
+   * Fabricated orders, wallet ledger and KYC, so the Developer Console has
+   * something to chart. Called HERE and not from seedIfEmpty for the reasons on
+   * the function itself — chiefly that seedIfEmpty also runs at real boots, and
+   * these rows are money rather than fixtures.
+   */
+  await seedDemoOrdersAndData();
+
   const demoShops = await seedDemoShops();
 
   /**
@@ -234,8 +243,12 @@ async function main() {
     if (config.devLoginEnabled) {
       console.info('[dev] Skip the code entirely — open one of these in any browser:\n');
       for (const account of SEED_ACCOUNTS) {
+        // Each role app is its own entry in AppRouter. market_owner has none of
+        // its own — it signs in through the customer app, which renders its
+        // suite inline — so it lands on the root.
         const hash = account.role === 'shopkeeper' ? '/%23/shopkeeper'
           : account.role === 'delivery' ? '/%23/delivery'
+          : account.role === 'developer' ? '/%23/developer'
           : '';
         console.info(
           `  ${account.role.padEnd(13)} http://localhost:3000/api/auth/dev/login?phone=${account.phone}${hash ? `&next=${hash}` : ''}`

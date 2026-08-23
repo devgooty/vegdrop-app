@@ -375,8 +375,22 @@ async function seedIfEmpty() {
   const translatedCount = await backfillProductTranslations();
   if (translatedCount > 0) console.info(`[seed] backfilled translations for ${translatedCount} product(s).`);
 
-  if (config.isProduction) {
-    console.info('[seed] demo accounts, markets and stalls skipped: disabled in production.');
+  /**
+   * Deliberately asks TWO questions, because NODE_ENV answers the wrong one.
+   *
+   * `isProduction` is a claim the host makes about itself, and this project's
+   * own Railway deployment was serving real traffic with NODE_ENV unset — so
+   * this guard was inert and every demo account, market and stall below was
+   * created in the live database. `isDeployed` is a fact the platform injects
+   * and cannot be forgotten; see the note on DEPLOY_MARKERS in config/env.js.
+   *
+   * Nothing under here may ever run on a real host: these rows are fictional,
+   * their phone numbers are published in this file, and one of them is a
+   * `developer` account that bypasses every role check in the system.
+   */
+  if (config.isProduction || config.isDeployed) {
+    const why = config.isProduction ? 'disabled in production' : `disabled on a deployed host (${config.deployedMarker} is set)`;
+    console.info(`[seed] demo accounts, markets and stalls skipped: ${why}.`);
     return;
   }
 
@@ -390,8 +404,6 @@ async function seedIfEmpty() {
     );
   }
 
-  await seedDemoOrdersAndData();
-
   if (accounts.length === 0) return;
 
   console.info(`\n[seed] created ${accounts.length} development account(s):`);
@@ -404,6 +416,30 @@ async function seedIfEmpty() {
   );
 }
 
+/**
+ * Fabricated traffic — orders, a wallet ledger, KYC, rider bank details — so the
+ * Developer Console has something to chart on a fresh database.
+ *
+ * NOT called by `seedIfEmpty`, deliberately, and that is the whole point of it
+ * living behind its own export. Three reasons, each of which has already caused
+ * a real problem:
+ *
+ * - `seedIfEmpty` runs on every boot including real ones, guarded only by
+ *   "am I production/deployed". These rows are not demo *fixtures* like a market
+ *   or a stall, they are money: an append-only wallet ledger, paid orders, and a
+ *   VendorKyc marked `verified` that `middleware/vendorVerified.js` reads as
+ *   proof of a penny drop that never happened.
+ * - Its guards are global counts (`Order.countDocuments() === 0`), which is true
+ *   of every real deployment on day one — so "only seeds an empty database" is
+ *   exactly the condition a launching production database satisfies.
+ * - `scripts/remove-demo-seed.js` identifies demo rows from the same constants
+ *   that created them. These were never added to that list, so it read nine
+ *   seeded orders as REAL orders entangled with demo stalls and refused to
+ *   clean up — which is what `test/removeDemoSeed.test.js` caught.
+ *
+ * It is called from `scripts/dev-with-memory-db.js`, whose database is thrown
+ * away on exit, and nowhere else. Keep it that way.
+ */
 async function seedDemoOrdersAndData() {
   const Order = require('../models/Order');
   const WalletTransaction = require('../models/WalletTransaction');
@@ -538,6 +574,7 @@ async function seedDemoOrdersAndData() {
  */
 module.exports = {
   seedIfEmpty,
+  seedDemoOrdersAndData,
   seedProducts,
   backfillProductTranslations,
   retireProducts,
