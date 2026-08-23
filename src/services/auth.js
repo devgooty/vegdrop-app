@@ -13,7 +13,7 @@
  * No token exists until the second step succeeds.
  */
 
-import { api, setAccessToken, clearSession, refreshSession } from './apiClient';
+import { api, adoptSession, clearSession, refreshSession } from './apiClient';
 
 /**
  * Step 1. Sends a verification code over WhatsApp to the number given.
@@ -106,7 +106,7 @@ export async function verifyRegistration({ phoneChallengeId, phoneCode, phoneTok
     payload.phoneCode = phoneCode;
   }
   const result = await api.post('/auth/register/verify', payload, { auth: false });
-  setAccessToken(result.accessToken);
+  adoptSession(result);
   return result.user;
 }
 
@@ -147,7 +147,7 @@ export async function verifyVendorRegistration({ phoneChallengeId, phoneCode, ph
     payload.phoneCode = phoneCode;
   }
   const result = await api.post('/auth/vendor/register/verify', payload, { auth: false });
-  setAccessToken(result.accessToken);
+  adoptSession(result);
   return { user: result.user, nextStep: result.nextStep };
 }
 
@@ -186,7 +186,7 @@ export async function verifyRiderRegistration({ phoneChallengeId, phoneCode, pho
     payload.phoneCode = phoneCode;
   }
   const result = await api.post('/auth/delivery/register/verify', payload, { auth: false });
-  setAccessToken(result.accessToken);
+  adoptSession(result);
   return result.user;
 }
 
@@ -197,7 +197,7 @@ export async function verifyRiderRegistration({ phoneChallengeId, phoneCode, pho
  */
 export async function verifyPhoneAuth({ challengeId, code }) {
   const result = await api.post('/auth/otp/verify', { challengeId, code }, { auth: false });
-  setAccessToken(result.accessToken);
+  adoptSession(result);
   return result.user;
 }
 
@@ -217,7 +217,7 @@ export async function startPhoneChange({ phone }) {
  */
 export async function verifyPhoneChange({ challengeId, code }) {
   const result = await api.post('/auth/phone/verify', { challengeId, code });
-  setAccessToken(result.accessToken);
+  adoptSession(result);
   return result.user;
 }
 

@@ -9,7 +9,15 @@
  * These cover the record and the machinery that replaced it — and above all the
  * two properties a recurring charge has to have: it must place exactly one
  * order per occurrence, and it must never silently stop.
+ *
+ * The feature ships LOCKED (see config `scheduledOrdersLocked`), so this file
+ * unlocks it for its own process — set before ./helpers requires config/env.js,
+ * which freezes at load. `node --test` gives each file its own process, so this
+ * leaves schedulesLocked.test.js free to assert the locked behaviour that every
+ * other file sees. These tests describe the machinery, which has to keep working
+ * for the day the lock comes off; they are not a claim that it is switched on.
  */
+process.env.SCHEDULED_ORDERS_UNLOCK = '1';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');

@@ -205,6 +205,11 @@ const STRINGS = {
   },
   'orders.tabRecent': { en: 'Recent Orders', hi: 'हाल के ऑर्डर', te: 'ఇటీవలి ఆర్డర్లు' },
   'orders.tabScheduled': { en: 'Scheduled Deliveries', hi: 'निर्धारित डिलीवरी', te: 'షెడ్యూల్ చేసిన డెలివరీలు' },
+  'orders.scheduledLocked': {
+    en: 'Scheduled deliveries are not available right now.',
+    hi: 'निर्धारित डिलीवरी अभी उपलब्ध नहीं है।',
+    te: 'షెడ్యూల్ చేసిన డెలివరీలు ప్రస్తుతం అందుబాటులో లేవు.',
+  },
   'orders.noneTitle': { en: 'No Orders Yet!', hi: 'अभी कोई ऑर्डर नहीं!', te: 'ఇంకా ఆర్డర్లు లేవు!' },
   'orders.noneBody': {
     en: 'You haven’t placed any orders with VegDrop yet. Start exploring fresh produce!',

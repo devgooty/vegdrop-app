@@ -1,5 +1,6 @@
 'use strict';
 
+const config = require('../config/env');
 const ScheduledOrder = require('../models/ScheduledOrder');
 const Order = require('../models/Order');
 const User = require('../models/User');
@@ -143,6 +144,23 @@ async function runSchedule(schedule) {
  * conditional decrements are there to survive, not something to seek out.
  */
 async function runDueSchedules({ limit = 50, now = new Date() } = {}) {
+  /**
+   * The half of the lock that has no UI in it.
+   *
+   * Hiding the Scheduled Deliveries tab stops nobody: this runs from the
+   * sweeper, on a timer, and places real orders against real wallets. Locking
+   * the feature while leaving this running would charge people on a schedule
+   * they can no longer see, let alone cancel.
+   *
+   * Rows are left `active` and untouched rather than paused, so unlocking
+   * resumes them without a migration. Nothing fires for the locked period —
+   * anything that fell outside the grace window is swept up by the same
+   * overdue branch below that handles the server having been down.
+   */
+  if (config.scheduledOrdersLocked) {
+    return { due: 0, placed: 0, failed: 0, missed: 0, locked: true };
+  }
+
   const due = await ScheduledOrder.find({
     status: 'active',
     nextRunAt: { $lte: now, $gte: new Date(now.getTime() - GRACE_MS) },

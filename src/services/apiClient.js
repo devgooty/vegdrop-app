@@ -42,6 +42,29 @@ export function setAccessToken(token) {
   accessToken = token || null;
 }
 
+/**
+ * Deployment-wide feature switches, as told to us by the server on every
+ * session response. Not per-user permissions — see `featureFlags()` in
+ * server/services/authSession.js.
+ *
+ * Starts EMPTY and `isFeatureEnabled` answers false for anything it has not
+ * been told about, so a feature is hidden until the server has actually said it
+ * is on. Failing closed matters for the one flag there is: a locked feature
+ * that flickers into view for the moment before the first refresh lands is not
+ * locked. The cost is that a screen may briefly hide something that is in fact
+ * enabled, which self-corrects as soon as the session resolves.
+ */
+let features = {};
+
+export function adoptSession(body) {
+  accessToken = body?.accessToken || null;
+  if (body?.features) features = body.features;
+}
+
+export function isFeatureEnabled(name) {
+  return features[name] === true;
+}
+
 export function getAccessToken() {
   return accessToken;
 }
@@ -107,7 +130,7 @@ export function refreshSession() {
         return null;
       }
 
-      accessToken = body.accessToken;
+      adoptSession(body);
       emit(body.user);
       return body.user;
     } catch {

@@ -92,11 +92,31 @@ async function findByIdentifier(identifier, roles) {
   });
 }
 
+/**
+ * `features` carries deployment-wide switches, not per-user permissions.
+ *
+ * It rides on the session payload because every app already calls
+ * `/auth/refresh` on mount, so this needs no extra request and no second
+ * endpoint to keep in step. A client constant mirroring the server flag was the
+ * alternative and was rejected: two copies of one truth is how a screen ends up
+ * offering something the API then refuses.
+ *
+ * The client uses this to decide what to SHOW. The server enforces the same
+ * flags independently at the routes that matter — a hidden button is a UX gate,
+ * exactly as the role checks are.
+ */
+function featureFlags() {
+  return {
+    scheduledOrders: !config.scheduledOrdersLocked,
+  };
+}
+
 function sessionPayload(user, accessToken) {
   return {
     accessToken,
     expiresIn: config.jwt.accessTtlSeconds,
     user: user.toPublicJSON(),
+    features: featureFlags(),
   };
 }
 
@@ -112,6 +132,7 @@ module.exports = {
   APP_ROLE_SCOPE,
   appMayCreateAccount,
   findByIdentifier,
+  featureFlags,
   sessionPayload,
   establishSession,
 };

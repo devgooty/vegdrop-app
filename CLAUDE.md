@@ -320,6 +320,22 @@ Order totals are **always recomputed server-side** from the catalog. Request bod
 
 Payment verification checks three independent things: HMAC signature, that the `PaymentIntent` belongs to *this* user, and (with live credentials) that Razorpay itself reports the payment captured for the recorded amount. A signature alone proves a payment is real, not that it is yours.
 
+### Scheduled orders are locked off
+
+Standing orders ship **disabled**, at the owner's request. `SCHEDULED_ORDERS_UNLOCK=1` on the API is the only switch; `config.scheduledOrdersLocked` defaults to locked, so a missing config file cannot re-enable the feature.
+
+**A hidden tab is not a lock, and that is the whole point of where the checks are.** `services/scheduler.js` places standing orders from the sweeper on a timer, with no UI involved — so hiding the Scheduled Deliveries tab while leaving that running would keep debiting wallets on a schedule and remove the only screen that can pause or cancel it. The lock therefore lives in three places, and the UI is the least important of them:
+
+- `routes/schedules.js` — `POST /` refuses with `403 SCHEDULES_LOCKED`, before validation or any write.
+- `services/scheduler.js` — `runDueSchedules()` returns early. Rows stay `active` and untouched rather than being paused, so unlocking needs no migration; nothing fires for the locked period because anything that falls outside `GRACE_MS` is handled by the same overdue branch that covers the server having been down.
+- `CustomerOrders.jsx` — the tab renders with a padlock and is not selectable.
+
+**`GET`, `PATCH` and `DELETE` stay open deliberately.** Locking must never strand someone holding a standing order they can no longer look at or cancel; only *creating* one is refused.
+
+The client learns the state from `features` on the session payload (`featureFlags()` in `services/authSession.js`), not from a constant of its own — two copies of one truth is how a screen ends up offering what the API then refuses. `isFeatureEnabled` answers **false for anything it has not been told about**, so a locked feature cannot flicker into view before the first refresh lands.
+
+`test/schedules.test.js` sets `SCHEDULED_ORDERS_UNLOCK=1` at the top of the file, before requiring `./helpers`, for the reason spelled out on `test/reverseOtp.test.js`. Those tests describe machinery that has to keep working for the day the lock comes off; they are not a claim that it is switched on. `test/schedulesLocked.test.js` is the one that asserts the default.
+
 ### Server layout
 
 `server/` is CommonJS; `src/` is ESM compiled by Vite. This split is intentional.

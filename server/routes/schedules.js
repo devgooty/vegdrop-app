@@ -1,6 +1,7 @@
 'use strict';
 
 const express = require('express');
+const config = require('../config/env');
 const ScheduledOrder = require('../models/ScheduledOrder');
 const Product = require('../models/Product');
 const Market = require('../models/Market');
@@ -112,6 +113,15 @@ router.post(
   ...customerGate,
   validate({ body: scheduleBody }),
   async (req, res) => {
+    /**
+     * Checked before anything is validated or written. GET, PATCH and DELETE
+     * stay open on purpose: locking must never strand someone with a standing
+     * order they cannot look at or cancel. Only *new* ones are refused.
+     */
+    if (config.scheduledOrdersLocked) {
+      throw new ApiError(403, 'Scheduled deliveries are not available right now.', 'SCHEDULES_LOCKED');
+    }
+
     const { items, address, paymentMethod, marketId, lat, lng, frequency, hour } = req.valid.body;
     const daysOfWeek = req.valid.body.daysOfWeek || [];
     const daysOfMonth = req.valid.body.daysOfMonth || [];

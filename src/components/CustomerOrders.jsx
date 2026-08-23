@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { setScheduleStatus, cancelSchedule, describeRecurrence } from '../services/schedules';
-import { Package, Clock, IndianRupee, MapPin, ArrowRight, ShoppingBag, CalendarRange, RotateCw, PauseCircle, PlayCircle, Trash2, CalendarDays, CalendarClock, Calendar as CalendarIcon, ChevronRight, Navigation, X, AlertTriangle } from 'lucide-react';
+import { isFeatureEnabled } from '../services/apiClient';
+import { Package, Clock, IndianRupee, MapPin, ArrowRight, ShoppingBag, CalendarRange, RotateCw, PauseCircle, PlayCircle, Trash2, CalendarDays, CalendarClock, Calendar as CalendarIcon, ChevronRight, Navigation, X, AlertTriangle, Lock } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { dateLocale } from '../i18n/catalog';
 
@@ -88,7 +89,21 @@ export default function CustomerOrders({
   onRetryPartial,
 }) {
   const { t, language } = useLanguage();
+  /**
+   * The Scheduled Deliveries tab is locked off deployment-wide until
+   * SCHEDULED_ORDERS_UNLOCK=1 is set on the API. The server refuses to create a
+   * schedule and the sweeper places none while that is so; this only decides
+   * what the screen offers.
+   *
+   * `activeTab` therefore cannot start on, or stay on, a locked tab — the state
+   * outlives a re-render and the flag can arrive after mount.
+   */
+  const scheduledUnlocked = isFeatureEnabled('scheduledOrders');
   const [activeTab, setActiveTab] = useState('recent');
+
+  useEffect(() => {
+    if (!scheduledUnlocked && activeTab === 'scheduled') setActiveTab('recent');
+  }, [scheduledUnlocked, activeTab]);
   const [trackingModalOrder, setTrackingModalOrder] = useState(null);
   const [busyScheduleId, setBusyScheduleId] = useState(null);
   const [scheduleError, setScheduleError] = useState(null);
@@ -293,14 +308,20 @@ export default function CustomerOrders({
             <Clock className="w-3.5 h-3.5" /> {t('orders.tabRecent')}
           </button>
           <button
-            onClick={() => setActiveTab('scheduled')}
+            onClick={() => scheduledUnlocked && setActiveTab('scheduled')}
+            disabled={!scheduledUnlocked}
+            aria-disabled={!scheduledUnlocked}
+            title={scheduledUnlocked ? undefined : t('orders.scheduledLocked')}
             className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-              activeTab === 'scheduled' 
-                ? 'bg-white text-[#1B4D3E] shadow-sm' 
+              !scheduledUnlocked
+                ? 'text-white/40 cursor-not-allowed'
+                : activeTab === 'scheduled'
+                ? 'bg-white text-[#1B4D3E] shadow-sm'
                 : 'text-white/80 hover:bg-white/5'
             }`}
           >
-            <CalendarRange className="w-3.5 h-3.5" /> {t('orders.tabScheduled')}
+            {scheduledUnlocked ? <CalendarRange className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+            {t('orders.tabScheduled')}
           </button>
         </div>
       </div>

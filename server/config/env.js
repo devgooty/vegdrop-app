@@ -291,6 +291,27 @@ if (devLoginRequested && (isProduction || deployedMarker)) {
 
 const devLoginEnabled = devLoginRequested && !isProduction && !deployedMarker;
 
+/**
+ * Scheduled ("standing") orders, locked off at the owner's request.
+ *
+ * Locked by DEFAULT and opened by setting SCHEDULED_ORDERS_UNLOCK=1, rather than
+ * the other way round: a feature that is off until someone deliberately turns it
+ * on cannot be re-enabled by a config file going missing.
+ *
+ * This is the ONLY switch. The customer UI hides the tab, but hiding a tab is
+ * not a lock — `services/scheduler.js` places standing orders from the sweeper
+ * with no UI involved at all, so a client-only lock would keep charging people
+ * on a schedule while removing the only screen that can pause or cancel it.
+ * Server-side, the lock therefore does two things: refuses to create new
+ * schedules, and stops due ones from running.
+ *
+ * It does NOT delete or pause the stored ScheduledOrder rows. Unlocking restores
+ * exactly what was there, and a paused-then-resumed schedule recomputes its own
+ * nextRunAt (see the PATCH handler), so nothing fires retroactively for the
+ * period it was locked.
+ */
+const scheduledOrdersLocked = process.env.SCHEDULED_ORDERS_UNLOCK !== '1';
+
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
 const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
 const razorpayConfigured = Boolean(razorpayKeyId && razorpayKeySecret);
@@ -377,6 +398,7 @@ const config = Object.freeze({
   isDeployed: Boolean(deployedMarker),
   deployedMarker: deployedMarker || null,
   devLoginEnabled,
+  scheduledOrdersLocked,
 
   port: int('PORT', 5000),
   trustProxy: optional('TRUST_PROXY', isProduction ? '1' : ''),
