@@ -29,27 +29,43 @@
  * the English stays as the readable name in a spin log or a test assertion.
  */
 /**
- * A prize photograph, sized for the wheel rather than for a hero.
+ * A prize photograph, served out of `public/` like every other image here.
  *
- * Same host and the same `?w=` convention the product catalog already uses, so
- * there is one place to reason about image delivery rather than two. Square and
- * cropped because every place a prize is drawn — wheel segment, result card,
- * history row — is a circle or a small square, and letting Unsplash crop server
- * side means the browser downloads a thumbnail instead of a full photograph it
- * then throws most of away.
+ * These are local files rather than Unsplash URLs, and that is deliberate. The
+ * prizes are a fixed set of four, so a photo host bought us nothing and cost us
+ * a third-party dependency for images whose authors can replace or delete them
+ * underneath us. The stock photos were also shot for a magazine rather than for
+ * a 20px circle: the knife was silver on black and read as a black dot, and the
+ * slicer was three slicers on a striped tablecloth and read as nothing at all.
+ *
+ * All four are cropped from the same piece of reference artwork, which is why
+ * they share one background and one light — assembled from four separate photos
+ * they would read as four stickers rather than one set.
+ *
+ * Two things about the crops matter and are easy to undo:
+ *
+ * - **The object sits inside the circle, not the square.** Every prize is drawn
+ *   circle-clipped, so a knife framed corner to corner loses its tip and its
+ *   handle to the mask. Each crop is wide enough that the whole object fits
+ *   within the inscribed circle, which is why they look loose as squares.
+ * - **They are cropped away from the artwork's engraved lettering**, which sits
+ *   close enough to the knife and the slicer to land inside the mask otherwise.
+ *
+ * 128px squares, ~28 KB for the set. That covers the largest place one is drawn
+ * (the 56px result card) at 2x; the wheel itself draws them at about 20px.
  *
  * `emoji` is kept alongside as the fallback for a photo that will not load, and
  * as the only mark the losing segment has.
  */
-function prizePhoto(id) {
-  return `https://images.unsplash.com/photo-${id}?w=160&h=160&fit=crop&q=70`;
+function prizePhoto(name) {
+  return `/prizes/${name}.webp`;
 }
 
 export const PRIZES = [
-  { id: 'egg-basket', label: 'Egg Basket', short: 'Egg Basket', labelKey: 'spin.prize.eggBasket', shortKey: 'spin.prize.short.eggBasket', emoji: '🧺', image: prizePhoto('1509479100390-f83a8349e79c'), weight: 8, color: '#1B4D3E' },
-  { id: 'knife', label: 'Kitchen Knife', short: 'Knife', labelKey: 'spin.prize.knife', shortKey: 'spin.prize.short.knife', emoji: '🔪', image: prizePhoto('1614362705324-8da11fd16754'), weight: 8, color: '#B45309' },
-  { id: 'juice-glass', label: 'Juice Glass', short: 'Juice Glass', labelKey: 'spin.prize.juiceGlass', shortKey: 'spin.prize.short.juiceGlass', emoji: '🥤', image: prizePhoto('1600271886742-f049cd451bba'), weight: 10, color: '#0F766E' },
-  { id: 'slicer', label: '2-in-1 Vegetable Slicer', short: 'Slicer', labelKey: 'spin.prize.slicer', shortKey: 'spin.prize.short.slicer', emoji: '🔧', image: prizePhoto('1759987384448-16ac3dbc27b1'), weight: 4, color: '#7C2D12' },
+  { id: 'egg-basket', label: 'Egg Basket', short: 'Egg Basket', labelKey: 'spin.prize.eggBasket', shortKey: 'spin.prize.short.eggBasket', emoji: '🧺', image: prizePhoto('egg-basket'), weight: 8, color: '#1B4D3E' },
+  { id: 'knife', label: 'Kitchen Knife', short: 'Knife', labelKey: 'spin.prize.knife', shortKey: 'spin.prize.short.knife', emoji: '🔪', image: prizePhoto('knife'), weight: 8, color: '#B45309' },
+  { id: 'juice-glass', label: 'Juice Glass', short: 'Juice Glass', labelKey: 'spin.prize.juiceGlass', shortKey: 'spin.prize.short.juiceGlass', emoji: '🥤', image: prizePhoto('juice-glass'), weight: 10, color: '#0F766E' },
+  { id: 'slicer', label: '2-in-1 Vegetable Slicer', short: 'Slicer', labelKey: 'spin.prize.slicer', shortKey: 'spin.prize.short.slicer', emoji: '🔧', image: prizePhoto('slicer'), weight: 4, color: '#7C2D12' },
   /**
    * The blank keeps the clover and gets NO photo, deliberately — there is no
    * object to photograph, and a picture of a prize on the losing segment would
