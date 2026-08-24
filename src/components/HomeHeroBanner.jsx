@@ -432,7 +432,7 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
 
       {/* HERO BANNER CARD */}
       <div 
-        className="relative h-44 rounded-3xl overflow-hidden shadow-lg border border-[#DCD5C6] group"
+        className="relative h-52 rounded-3xl overflow-hidden shadow-lg border border-[#DCD5C6] group"
         onTouchStart={(e) => setTouchStartX(e.targetTouches[0].clientX)}
         onTouchMove={(e) => setTouchEndX(e.targetTouches[0].clientX)}
         onTouchEnd={() => {
@@ -452,60 +452,95 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
           setTouchEndX(0);
         }}
       >
-        <img
-          key={banner.id}
-          src={banner.image}
-          alt={banner.title}
-          className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 animate-fade-in"
+        {/*
+          Every slide is mounted and cross-faded, rather than one <img> remounted
+          on a key. Swapping the source tears the old photograph away a frame
+          before the new one decodes, so the card blinked through to its own
+          background on each turn of the carousel — and re-decoded an image the
+          browser already had. Only the active one is offered to assistive tech
+          or to the preloader.
+        */}
+        {banners.map((b, idx) => (
+          <img
+            key={b.id}
+            src={b.image}
+            alt=""
+            aria-hidden="true"
+            fetchPriority={idx === 0 ? 'high' : 'low'}
+            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-out
+                        group-hover:scale-105 motion-safe:transition-transform
+                        ${idx === currentSlide ? 'opacity-100' : 'opacity-0'}`}
+          />
+        ))}
+
+        {/*
+          The scrim runs bottom-to-top and is clear by 95% of the height. It used
+          to run LEFT to right at 95% opacity, which laid nearly opaque green
+          over the half of the frame the food is in — the photograph was paying
+          for its bytes and never being seen.
+
+          The stops are placed against the copy, not by eye: the text block
+          measures 121px in a 208px card, so it starts 67% of the way up, and
+          that is where the ramp is aimed to reach ~0.55 — enough for white type
+          over the brightest of the three photographs. Retune this if the block
+          gains or loses a line, because a scrim that stops short of the headline
+          fails only on the one photo that happens to be pale behind it.
+
+          One linear-gradient rather than utility steps: the five stops are a
+          curve, and `via-` can only place one.
+        */}
+        <div
+          className="absolute inset-0 bg-[linear-gradient(to_top,rgba(11,36,28,0.95)_0%,rgba(11,36,28,0.86)_40%,rgba(11,36,28,0.56)_67%,rgba(11,36,28,0.16)_82%,rgba(11,36,28,0)_95%)]"
+          aria-hidden="true"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#0D2E24]/95 via-[#0D2E24]/75 to-transparent flex flex-col justify-between p-4 text-white">
-          
-          {/* Top Tag & Code Badge */}
-          <div className="flex items-center justify-between">
-            <span className={`${banner.badgeBg} text-white text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-xs flex items-center gap-1`}>
-              <Sparkles className="w-3 h-3" />
-              {banner.tag}
-            </span>
 
-            <div className="flex items-center gap-1 bg-[#FFFDF9]/20 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/20 text-[10px] font-bold text-amber-200">
-              <Tag className="w-3 h-3" />
-              <span>{t('hero.useCode')} {banner.code}</span>
+        <div className="absolute inset-0 flex flex-col p-4 text-white">
+          {/* Sits on the bare photograph, so it carries its own background. */}
+          <span
+            className={`${banner.badgeBg} self-start text-white text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm flex items-center gap-1`}
+          >
+            <Sparkles className="w-3 h-3" />
+            {banner.tag}
+          </span>
+
+          {/* One headline, one offer, one action — anchored to the bottom. */}
+          <div className="mt-auto space-y-2" key={`copy-${banner.id}`}>
+            <div className="space-y-0.5 animate-fade-in">
+              <h2 className="font-vintage text-[22px] font-black leading-[1.15] drop-shadow-md">
+                {banner.title}
+              </h2>
+              <p className="text-xs text-emerald-50/90 font-medium line-clamp-1">
+                {banner.subtitle}
+              </p>
             </div>
-          </div>
 
-          {/* Title & Subtitle */}
-          <div className="max-w-[75%] my-auto space-y-0.5 animate-fade-in" key={`title-${banner.id}`}>
-            <h2 className="font-vintage text-xl font-black leading-tight text-white drop-shadow-sm">
-              {banner.title}
-            </h2>
-            <p className="text-[11px] text-gray-200 font-medium line-clamp-1">
-              {banner.subtitle}
-            </p>
-          </div>
-
-          {/* Bottom Offer & CTA */}
-          <div className="flex items-center justify-between pt-1 border-t border-white/15">
-            <div className="flex items-center gap-1.5">
-              <span className="font-vintage font-extrabold text-sm text-amber-300 drop-shadow-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-vintage font-extrabold text-base text-amber-300 drop-shadow-sm">
                 {banner.offer}
               </span>
-              <span className="text-[10px] text-emerald-200 font-semibold flex items-center gap-0.5">
-                <Clock className="w-3 h-3" />{' '}
+              <span className="inline-flex items-center gap-1 bg-white/15 backdrop-blur-sm border border-white/25 px-2 py-0.5 rounded-md text-[11px] font-bold text-amber-100">
+                <Tag className="w-3 h-3" />
+                {banner.code}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <button
+                onClick={onExplore}
+                className="skeuo-btn-emerald font-extrabold px-4 py-2 rounded-xl text-sm flex items-center gap-1 shadow-md cursor-pointer active:scale-95 z-20"
+              >
+                <span>{t('hero.shopNow')}</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              <span className="text-[11px] text-emerald-100 font-semibold flex items-center gap-1 shrink-0">
+                <Clock className="w-3.5 h-3.5" />
                 {location
                   ? t('hero.etaTo', { place: location.split(',')[0] })
                   : t('hero.etaDoor')}
               </span>
             </div>
-
-            <button
-              onClick={onExplore}
-              className="skeuo-btn-emerald font-extrabold px-3 py-1 rounded-xl text-xs flex items-center gap-1 shadow-md cursor-pointer active:scale-95 z-20"
-            >
-              <span>{t('hero.shopNow')}</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
           </div>
-
         </div>
 
         {/* Manual Arrow Controls (Desktop/Hover) */}
@@ -522,18 +557,26 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
         </button>
 
-        {/* Carousel Indicators */}
-        <div className="absolute bottom-2 right-4 flex gap-1 z-10">
-          {banners.map((b, idx) => (
-            <button
-              key={b.id}
-              onClick={() => setCurrentSlide(idx)}
-              className={`h-1.5 rounded-full transition-all duration-300 ${
-                currentSlide === idx ? 'w-5 bg-amber-400' : 'w-1.5 bg-white/40'
-              }`}
-            />
-          ))}
-        </div>
+      </div>
+
+      {/*
+        Indicators sit UNDER the card rather than inside its bottom corner,
+        where they used to overlap the offer row. Off the photograph they also
+        stop needing a translucent-white treatment to survive whatever happens
+        to be behind them.
+      */}
+      <div className="flex justify-center gap-1.5 pt-0.5">
+        {banners.map((b, idx) => (
+          <button
+            key={b.id}
+            onClick={() => setCurrentSlide(idx)}
+            aria-label={t('hero.goToSlide', { n: idx + 1 })}
+            aria-current={currentSlide === idx}
+            className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
+              currentSlide === idx ? 'w-5 bg-[#1B4D3E]' : 'w-1.5 bg-[#DCD5C6]'
+            }`}
+          />
+        ))}
       </div>
 
       {/* DETAILED FULL ADDRESS LOCATION SELECTOR MODAL */}

@@ -145,6 +145,8 @@ const STRINGS = {
   'hero.upto35': { en: 'Up to 35% OFF', hi: '35% तक छूट', te: '35% వరకు తగ్గింపు' },
   'hero.shopNow': { en: 'Shop Now', hi: 'अभी खरीदें', te: 'ఇప్పుడే కొనండి' },
   'hero.useCode': { en: 'Use Code:', hi: 'कोड लगाएँ:', te: 'కోడ్ వాడండి:' },
+  // The carousel dots carry no text, so this is the only name they have.
+  'hero.goToSlide': { en: 'Go to offer {n}', hi: 'ऑफ़र {n} पर जाएँ', te: 'ఆఫర్ {n}కి వెళ్లండి' },
 
   // --- Categories (Categories.jsx) -------------------------------------------
   'categories.title': { en: 'Categories', hi: 'श्रेणियाँ', te: 'విభాగాలు' },
