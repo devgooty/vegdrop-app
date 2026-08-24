@@ -18,6 +18,31 @@ const SPIN_MS = 4200;
 const R = 100;
 
 /**
+ * The prize photo, in the segment group's local units — where -y points outward
+ * toward the rim, because the group is rotated to make the label read outward.
+ *
+ * These are as large as the face allows, and the two are a solved pair rather
+ * than a pair of tastes: they are the largest photo satisfying both clearances
+ * below, which is why neither is round. Moving one without re-solving walks the
+ * photo into something.
+ *
+ * The backing disc (`PHOTO_R + 0.5`) is the visible extent, and it spans radius
+ * 65 to 97 — the group sits at radius 62, plus `|PHOTO_CY|`, plus the disc.
+ *
+ * - **97 against the rim at 100.** The segment ends there; beyond it the photo
+ *   simply hangs off the edge of its own slice.
+ * - **3.6 units of daylight to the label**, measured from the photo's centre to
+ *   the nearest corner of the label's box, not between radial bands — the two
+ *   sit at the same angle, so bands would report a collision the geometry does
+ *   not have. 3.6 is the figure the previous, smaller photo was vetted at.
+ *
+ * Sideways never binds and does not need checking: at radius 81 the slice is 48
+ * units wide at the half-angle, against a photo half-width of 16.
+ */
+const PHOTO_R = 15.5;
+const PHOTO_CY = -19;
+
+/**
  * One pie slice, drawn from the centre.
  *
  * Segment `i` spans [i * SEGMENT_ANGLE, (i + 1) * SEGMENT_ANGLE), measured
@@ -174,36 +199,54 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
               <g key={prize.id}>
                 <path d={segmentPath(index)} fill={prize.color} stroke="#FFFDF9" strokeWidth="1.5" />
                 <g transform={`translate(${tx} ${ty}) rotate(${mid + 90})`}>
-                  {prize.image ? (
-                    <>
-                      {/*
-                        Drawn UNDER the photo so a slow or failed load leaves a
-                        deliberate-looking disc rather than a hole in the
-                        segment, and so the photo has a rim against whatever
-                        colour the segment happens to be.
-                      */}
-                      <circle cx="0" cy="-13" r="10.5" fill="#FFFDF9" opacity="0.95" />
-                      <image
-                        href={prize.image}
-                        x="-10"
-                        y="-23"
-                        width="20"
-                        height="20"
-                        clipPath={`url(#${photoClipId})`}
-                        preserveAspectRatio="xMidYMid slice"
+                  {/*
+                    Undoes the segment's rotation about the photo's own centre,
+                    so the prize stands upright while the label keeps reading
+                    outward. Without it each segment holds its object at a
+                    different angle — the juice glass arrives upside down — and
+                    enlarging the photos only made that more obvious. The label
+                    stays outside this group because it SHOULD follow the slice.
+                  */}
+                  <g transform={`rotate(${-(mid + 90)} 0 ${PHOTO_CY})`}>
+                    {prize.image ? (
+                      <>
+                        {/*
+                          Drawn UNDER the photo so a slow or failed load leaves
+                          a deliberate-looking disc rather than a hole in the
+                          segment. The photo's own background is this same
+                          cream, so the half-unit that shows is a rim and not a
+                          seam.
+                        */}
+                        <circle cx="0" cy={PHOTO_CY} r={PHOTO_R + 0.5} fill="#FFFDF9" opacity="0.95" />
+                        <image
+                          href={prize.image}
+                          x={-PHOTO_R}
+                          y={PHOTO_CY - PHOTO_R}
+                          width={PHOTO_R * 2}
+                          height={PHOTO_R * 2}
+                          clipPath={`url(#${photoClipId})`}
+                          preserveAspectRatio="xMidYMid slice"
+                          style={{ userSelect: 'none' }}
+                        />
+                      </>
+                    ) : (
+                      /*
+                        Grown with the photos so the losing segment does not
+                        read as an afterthought. 21 rather than the 24 that
+                        would match them by eye: an emoji glyph's box runs about
+                        1.08x its font size ABOVE the baseline, so 24 put the
+                        clover 1.1 units off the rim while the photos sit 3.
+                      */
+                      <text
+                        textAnchor="middle"
+                        y={PHOTO_CY + 8}
+                        fontSize="21"
                         style={{ userSelect: 'none' }}
-                      />
-                    </>
-                  ) : (
-                    <text
-                      textAnchor="middle"
-                      y="-4"
-                      fontSize="15"
-                      style={{ userSelect: 'none' }}
-                    >
-                      {prize.emoji}
-                    </text>
-                  )}
+                      >
+                        {prize.emoji}
+                      </text>
+                    )}
+                  </g>
                   <text
                     textAnchor="middle"
                     y="10"

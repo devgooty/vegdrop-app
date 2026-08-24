@@ -38,21 +38,30 @@
  * a 20px circle: the knife was silver on black and read as a black dot, and the
  * slicer was three slicers on a striped tablecloth and read as nothing at all.
  *
- * All four are cropped from the same piece of reference artwork, which is why
- * they share one background and one light — assembled from four separate photos
- * they would read as four stickers rather than one set.
+ * All four are cut out of the same piece of reference artwork and set on the
+ * same near-white the wheel's backing disc uses, so the half-unit of disc that
+ * shows reads as a rim rather than a seam. One source also means one light
+ * across the set; assembled from four separate photographs they would read as
+ * four stickers.
  *
- * Two things about the crops matter and are easy to undo:
+ * Three things about them matter and are easy to undo:
  *
- * - **The object sits inside the circle, not the square.** Every prize is drawn
- *   circle-clipped, so a knife framed corner to corner loses its tip and its
- *   handle to the mask. Each crop is wide enough that the whole object fits
- *   within the inscribed circle, which is why they look loose as squares.
- * - **They are cropped away from the artwork's engraved lettering**, which sits
- *   close enough to the knife and the slicer to land inside the mask otherwise.
+ * - **The background is removed, not cropped around.** The artwork stands every
+ *   prize on dark wood, which circle-cropped is a dark disc with something in
+ *   it — the complaint the stock photos earned in the first place.
+ * - **Each object is scaled so its enclosing circle is 94% of the frame**, not
+ *   so its bounding box is. For the knife, which lies corner to corner, those
+ *   differ by 40%: fitting the box would shrink it to fit a square that nothing
+ *   is ever drawn in, since every prize is masked to a circle.
+ * - **The egg basket is framed tighter than the rest**, and has to be. Its wire
+ *   is see-through, so any frame including the upper basket keeps the wood
+ *   behind the mesh and washes grey once composited. No colour rule separates
+ *   them either — the handle is DARKER than the wood it sits on. Framing on the
+ *   packed lower basket avoids the problem instead of fighting it, at the cost
+ *   of the handle.
  *
- * 128px squares, ~28 KB for the set. That covers the largest place one is drawn
- * (the 56px result card) at 2x; the wheel itself draws them at about 20px.
+ * 256px squares, ~20 KB for the set — half the bytes of the wood-backed version
+ * at twice the resolution, since flat white is nearly free to compress.
  *
  * `emoji` is kept alongside as the fallback for a photo that will not load, and
  * as the only mark the losing segment has.
