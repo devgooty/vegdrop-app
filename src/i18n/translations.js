@@ -103,38 +103,27 @@ const STRINGS = {
   },
 
   // --- Home hero carousel (HomeHeroBanner.jsx) -------------------------------
-  'hero.dailyHarvest': { en: 'DAILY FARM HARVEST', hi: 'रोज़ की ताज़ी उपज', te: 'రోజువారీ తాజా పంట' },
-  'hero.expressDelivery': { en: 'EXPRESS DELIVERY', hi: 'एक्सप्रेस डिलीवरी', te: 'ఎక్స్‌ప్రెస్ డెలివరీ' },
-  'hero.weekendBazzar': { en: 'WEEKEND BAZZAR', hi: 'वीकेंड बाज़ार', te: 'వీకెండ్ బజార్' },
   'hero.organicTitle': {
     en: '100% Organic Fresh Produce',
     hi: '100% जैविक ताज़ी उपज',
     te: '100% సేంద్రియ తాజా ఉత్పత్తులు',
   },
-  'hero.organicSub': {
-    en: 'Handpicked this morning from Nilgiri partner farms',
-    hi: 'आज सुबह नीलगिरि साझेदार खेतों से चुनी गई',
-    te: 'ఈ ఉదయం నీలగిరి భాగస్వామ్య పొలాల నుండి ఏరినవి',
-  },
+  /**
+   * Deliberately promises no time. This read "15-Minute Doorstep Delivery",
+   * which a hyperlocal round cannot guarantee, and the banner repeated it in
+   * the tag, the subtitle and the per-slide ETA. The offer beneath it —
+   * hero.freeDelivery200 — carries the actual promise, and that one the
+   * checkout enforces.
+   */
   'hero.expressTitle': {
-    en: '15-Minute Doorstep Delivery',
-    hi: '15 मिनट में घर तक डिलीवरी',
-    te: '15 నిమిషాల్లో ఇంటి వద్దకు డెలివరీ',
-  },
-  'hero.expressSub': {
-    en: 'Temperature controlled cold-chain express delivery',
-    hi: 'तापमान नियंत्रित कोल्ड-चेन एक्सप्रेस डिलीवरी',
-    te: 'ఉష్ణోగ్రత నియంత్రిత కోల్డ్-చైన్ ఎక్స్‌ప్రెస్ డెలివరీ',
+    en: 'Delivered Fresh to Your Doorstep',
+    hi: 'ताज़ा सामान आपके दरवाज़े तक',
+    te: 'తాజా సరుకులు మీ ఇంటి వద్దకు',
   },
   'hero.exoticTitle': {
     en: 'Exotic Fruit & Veggie Special',
     hi: 'विदेशी फल और सब्ज़ी स्पेशल',
     te: 'ఎగ్జాటిక్ పండ్లు & కూరగాయల స్పెషల్',
-  },
-  'hero.exoticSub': {
-    en: 'Avocados, Blueberries, Baby Spinach & Herbs',
-    hi: 'एवोकाडो, ब्लूबेरी, बेबी पालक और जड़ी-बूटियाँ',
-    te: 'అవకాడో, బ్లూబెర్రీ, బేబీ పాలకూర & మూలికలు',
   },
   'hero.flat20': { en: 'Flat 20% OFF', hi: 'सीधे 20% छूट', te: 'ఫ్లాట్ 20% తగ్గింపు' },
   'hero.freeDelivery200': {
@@ -144,7 +133,6 @@ const STRINGS = {
   },
   'hero.upto35': { en: 'Up to 35% OFF', hi: '35% तक छूट', te: '35% వరకు తగ్గింపు' },
   'hero.shopNow': { en: 'Shop Now', hi: 'अभी खरीदें', te: 'ఇప్పుడే కొనండి' },
-  'hero.useCode': { en: 'Use Code:', hi: 'कोड लगाएँ:', te: 'కోడ్ వాడండి:' },
   // The carousel dots carry no text, so this is the only name they have.
   'hero.goToSlide': { en: 'Go to offer {n}', hi: 'ऑफ़र {n} पर जाएँ', te: 'ఆఫర్ {n}కి వెళ్లండి' },
 
@@ -1294,12 +1282,6 @@ const STRINGS = {
   // a "your door" fallback substituted in: Telugu marks the destination with a
   // case suffix on the place itself (`{place}కి`), so a fallback that already
   // carries one would come out doubled.
-  'hero.etaTo': { en: '15m to {place}', hi: '{place} तक 15 मिनट', te: '{place}కి 15 నిమిషాలు' },
-  'hero.etaDoor': {
-    en: '15m to your door',
-    hi: 'आपके दरवाज़े तक 15 मिनट',
-    te: 'మీ ఇంటికి 15 నిమిషాలు',
-  },
 
   'market.finding': {
     en: 'Finding markets near you…',

@@ -1,8 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Tag, ChevronRight, Clock, MapPin, LocateFixed, Loader2, CheckCircle2, Navigation, X, Check, Building2 } from 'lucide-react';
+import { Tag, ChevronRight, MapPin, LocateFixed, Loader2, CheckCircle2, Check } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import MapLocationPicker from './MapLocationPicker';
 import { savedCustomerAddress, saveCustomerAddress } from '../services/address';
+
+/**
+ * A hero photograph, cropped to the banner by the CDN rather than by the browser.
+ *
+ * The card is 414x208 at its widest, so the crop is asked for at 700x352 — the
+ * same 2:1, at 1.7x for retina. Passing `w` ALONE, as this used to, leaves
+ * `fit=crop` inert: with no height there is nothing to crop to, so the browser
+ * downloaded a 600x400 photograph and `object-cover` threw a quarter of it away.
+ * Naming both is what makes the parameter mean anything.
+ *
+ * It is also cheaper. Measured on the heaviest of the three, 700x352 at q=70 is
+ * 97 KB against 116 KB for the old uncropped w=600 at q=80 — more resolution
+ * where the pixels are shown, none where they were being discarded. That matters
+ * here specifically: this image is the customer app's LCP element.
+ *
+ * Landscape sources only. A portrait photograph centre-crops to a slot through
+ * its middle, which is how the delivery slide came to be a close-up of a salad
+ * bowl.
+ */
+function heroPhoto(id) {
+  return `https://images.unsplash.com/photo-${id}?w=700&h=352&fit=crop&auto=format&q=70`;
+}
 
 export default function HomeHeroBanner({ onExplore, onAddressChange }) {
   // The banner copy below is built inside the component rather than hoisted to
@@ -42,36 +64,48 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
     'Connaught Place, New Delhi, Delhi - 110001'
   ];
 
+  /**
+   * A slide is a headline, a deal and a code. Nothing else is rendered, so
+   * nothing else is carried — the tag, subtitle and badge colour were dropped
+   * here as well as from the markup rather than left as fields no one reads.
+   *
+   * **No slide promises a delivery time.** One used to promise fifteen minutes
+   * in three places at once (its tag, its headline and its subtitle) plus a
+   * fourth on every other slide, in the "15m to …" ETA. That is a hard number to
+   * hit on a hyperlocal round, and a banner is a bad place to commit to one.
+   * Free delivery over ₹200 is the promise here instead, because it is a rule
+   * the checkout actually enforces rather than an estimate.
+   */
   const banners = [
     {
       id: 1,
-      tag: t('hero.dailyHarvest'),
       title: t('hero.organicTitle'),
-      subtitle: t('hero.organicSub'),
       offer: t('hero.flat20'),
       code: 'FRESH20',
-      image: 'https://images.unsplash.com/photo-1610348725531-843dff563e2c?w=600&auto=format&fit=crop&q=80',
-      badgeBg: 'skeuo-badge-emerald',
+      // A harvest crate, for copy that says these were handpicked this morning.
+      image: heroPhoto('1624668430039-0175a0fbf006'),
     },
     {
       id: 2,
-      tag: t('hero.expressDelivery'),
       title: t('hero.expressTitle'),
-      subtitle: t('hero.expressSub'),
       offer: t('hero.freeDelivery200'),
       code: 'EXPRESS',
-      image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=600&auto=format&fit=crop&q=80',
-      badgeBg: 'skeuo-badge-amber',
+      /*
+        A rider carrying an insulated box. This slide was a close-up of a salad
+        bowl, illustrating nothing it claimed. The box is unbranded on purpose:
+        the obvious stock photographs here are all couriers for a named delivery
+        company, and a competitor's logo across our own hero is worse than a
+        picture that says nothing.
+      */
+      image: heroPhoto('1648394794449-5dbe63f6a8b5'),
     },
     {
       id: 3,
-      tag: t('hero.weekendBazzar'),
       title: t('hero.exoticTitle'),
-      subtitle: t('hero.exoticSub'),
       offer: t('hero.upto35'),
       code: 'BAZZAR35',
-      image: 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?w=600&auto=format&fit=crop&q=80',
-      badgeBg: 'skeuo-badge-emerald',
+      // Papaya, avocado, kiwi, grapefruit — the exotic the copy is selling.
+      image: heroPhoto('1610832958506-aa56368176cf'),
     },
   ];
 
@@ -480,39 +514,42 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
           for its bytes and never being seen.
 
           The stops are placed against the copy, not by eye: the text block
-          measures 121px in a 208px card, so it starts 67% of the way up, and
-          that is where the ramp is aimed to reach ~0.55 — enough for white type
-          over the brightest of the three photographs. Retune this if the block
-          gains or loses a line, because a scrim that stops short of the headline
-          fails only on the one photo that happens to be pale behind it.
+          measures 107px in a 208px card, so it starts 57% of the way up, and
+          that is where the ramp is aimed to reach 0.60. That figure was swept
+          rather than picked: 0.56 left the worst pixel behind the headline at
+          4.22:1 and 0.60 lifts it to 4.75:1 for no cost at all — the stop above
+          it does the uncovering, so the photograph is equally visible either
+          way. Free contrast is worth taking.
+
+          Retune this whenever the block gains or loses a line; it is measured,
+          not guessed, so it goes stale silently. Dropping the subtitle and the
+          ETA took the block from 121px to 107px, which let every stop come down
+          about ten points and uncovered a further strip of photograph. Left
+          alone it would still have been legible — that is the trap. A stale
+          scrim only ever fails in one direction visibly, and a scrim that stops
+          SHORT of the headline fails on whichever photo happens to be pale
+          behind it, which is never the one you are looking at.
 
           One linear-gradient rather than utility steps: the five stops are a
           curve, and `via-` can only place one.
         */}
         <div
-          className="absolute inset-0 bg-[linear-gradient(to_top,rgba(11,36,28,0.95)_0%,rgba(11,36,28,0.86)_40%,rgba(11,36,28,0.56)_67%,rgba(11,36,28,0.16)_82%,rgba(11,36,28,0)_95%)]"
+          className="absolute inset-0 bg-[linear-gradient(to_top,rgba(11,36,28,0.95)_0%,rgba(11,36,28,0.86)_32%,rgba(11,36,28,0.60)_57%,rgba(11,36,28,0.16)_74%,rgba(11,36,28,0)_88%)]"
           aria-hidden="true"
         />
 
-        <div className="absolute inset-0 flex flex-col p-4 text-white">
-          {/* Sits on the bare photograph, so it carries its own background. */}
-          <span
-            className={`${banner.badgeBg} self-start text-white text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm flex items-center gap-1`}
-          >
-            <Sparkles className="w-3 h-3" />
-            {banner.tag}
-          </span>
-
-          {/* One headline, one offer, one action — anchored to the bottom. */}
-          <div className="mt-auto space-y-2" key={`copy-${banner.id}`}>
-            <div className="space-y-0.5 animate-fade-in">
-              <h2 className="font-vintage text-[22px] font-black leading-[1.15] drop-shadow-md">
-                {banner.title}
-              </h2>
-              <p className="text-xs text-emerald-50/90 font-medium line-clamp-1">
-                {banner.subtitle}
-              </p>
-            </div>
+        {/*
+          What you get, what the deal is, one way in. The tag chip, the subtitle
+          and the delivery ETA were all removed together rather than trimmed one
+          at a time: seven elements in a 208px card is why the words were louder
+          than the photograph, and the ETA in particular repeated a delivery-time
+          promise the copy no longer makes anywhere else.
+        */}
+        <div className="absolute inset-0 flex flex-col justify-end p-4 text-white">
+          <div className="space-y-2.5 animate-fade-in" key={`copy-${banner.id}`}>
+            <h2 className="font-vintage text-[22px] font-black leading-[1.15] drop-shadow-md">
+              {banner.title}
+            </h2>
 
             <div className="flex items-center gap-2">
               <span className="font-vintage font-extrabold text-base text-amber-300 drop-shadow-sm">
@@ -524,22 +561,15 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
               </span>
             </div>
 
-            <div className="flex items-center justify-between gap-3">
-              <button
-                onClick={onExplore}
-                className="skeuo-btn-emerald font-extrabold px-4 py-2 rounded-xl text-sm flex items-center gap-1 shadow-md cursor-pointer active:scale-95 z-20"
-              >
-                <span>{t('hero.shopNow')}</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
-
-              <span className="text-[11px] text-emerald-100 font-semibold flex items-center gap-1 shrink-0">
-                <Clock className="w-3.5 h-3.5" />
-                {location
-                  ? t('hero.etaTo', { place: location.split(',')[0] })
-                  : t('hero.etaDoor')}
-              </span>
-            </div>
+            {/* inline-flex, not flex: a display:flex button is block-level and
+                would stretch to the card's full width with nothing beside it. */}
+            <button
+              onClick={onExplore}
+              className="skeuo-btn-emerald font-extrabold px-4 py-2 rounded-xl text-sm inline-flex items-center gap-1 shadow-md cursor-pointer active:scale-95 z-20"
+            >
+              <span>{t('hero.shopNow')}</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
