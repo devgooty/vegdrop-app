@@ -8,6 +8,7 @@ import WalletModal from './components/WalletModal';
 import CartModal from './components/CartModal';
 import CategoryDetailView from './components/CategoryDetailView';
 import SearchResultsView from './components/SearchResultsView';
+import SearchDiscovery from './components/SearchDiscovery';
 import ProductDetailView from './components/ProductDetailView';
 import CustomerOrders from './components/CustomerOrders';
 import LoginPage from './components/LoginPage';
@@ -187,6 +188,15 @@ export default function App() {
    * the shopper was still deciding what to search for.
    */
   const [searchQuery, setSearchQuery] = useState('');
+  /**
+   * Whether the search field has been tapped but nothing searched yet.
+   *
+   * A third state alongside the two above, and it earns its place: `searchVal`
+   * empty and `searchQuery` empty used to be indistinguishable from "not
+   * searching at all", so tapping the box put a keyboard over the home screen
+   * and offered nothing. This is the window `SearchDiscovery` fills.
+   */
+  const [searchDiscoveryOpen, setSearchDiscoveryOpen] = useState(false);
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   
@@ -367,17 +377,30 @@ export default function App() {
   const [deliveryNotifications, setDeliveryNotifications] = useState([]);
 
   /**
-   * A restored session that belongs to another app goes to that app.
+   * A session that belongs to another app goes to that app. Any tab, always.
    *
-   * This ran on `[]`, which is exactly once — while the session was still
-   * being restored and `user` was necessarily null. So the body never
-   * executed, and a shopkeeper or rider returning to the customer URL landed
-   * on the storefront holding a session that cannot shop, with the redirect
-   * that exists for them never firing. Watching `user` is the whole fix; the
-   * guard on `activeTab` keeps it to the case it is for.
+   * Two bugs have lived here, and the second was created by the fix for the
+   * first. It originally ran on `[]` — exactly once, while the session was
+   * still restoring and `user` was necessarily null — so the body never
+   * executed at all. Watching `user` fixed that, but the rewrite kept an
+   * `activeTab === 'login' || 'signup'` guard over the whole effect, which
+   * quietly narrowed the redirect to "just after signing in".
+   *
+   * It is reachable from any tab, because the three apps share one origin and
+   * therefore one refresh cookie (`path=/api/auth`): a rider signed into
+   * `#/delivery` who presses device back is a rider on the customer
+   * storefront. `onPopState` below then sets `activeTab` from history — or to
+   * `'home'` when there is no state — so by the time the restored `user`
+   * arrives, `activeTab` is no longer `'login'` and the guard swallowed the
+   * redirect. The rider stayed on the storefront holding a session that cannot
+   * shop, and the Account tab helpfully offered them a link back.
+   *
+   * So the redirect watches only `user`. The tab selection below still needs
+   * the guard — it is a post-sign-in choice, and running it on every change of
+   * `user` would yank someone off whatever tab they were reading.
    */
   useEffect(() => {
-    if (!user || (activeTab !== 'login' && activeTab !== 'signup')) return;
+    if (!user) return;
 
     if (user.role === 'shopkeeper') {
       window.location.hash = '#/shopkeeper';
@@ -385,8 +408,15 @@ export default function App() {
     }
     if (user.role === 'delivery') {
       window.location.hash = '#/delivery';
-      return;
     }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || (activeTab !== 'login' && activeTab !== 'signup')) return;
+    // Those two are leaving for another app entirely; picking a tab for them
+    // here would fight the redirect above for one render.
+    if (user.role === 'shopkeeper' || user.role === 'delivery') return;
+
     setActiveTab(user.role && user.role !== 'customer' ? user.role : 'home');
   }, [user, activeTab, setActiveTab]);
 
@@ -1054,6 +1084,7 @@ export default function App() {
 
     setActiveProductDetail(null);
     setActiveCategoryDetail(null);
+    setSearchDiscoveryOpen(false);
     setSearchQuery(trimmed);
     window.scrollTo({ top: 0 });
   }, []);
@@ -1062,12 +1093,14 @@ export default function App() {
   const handleClearSearch = useCallback(() => {
     setSearchQuery('');
     setSearchVal('');
+    setSearchDiscoveryOpen(false);
   }, []);
 
   /** A suggestion naming a whole section opens that section instead. */
   const handleOpenCategoryFromSearch = useCallback((category) => {
     setSearchQuery('');
     setSearchVal('');
+    setSearchDiscoveryOpen(false);
     setActiveProductDetail(null);
     setActiveCategoryDetail(category);
   }, []);
@@ -2010,11 +2043,37 @@ export default function App() {
               onSubmitSearch={handleSubmitSearch}
               onOpenCategory={handleOpenCategoryFromSearch}
               onSelectProduct={handleOpenProductFromSearch}
+              onSearchFocus={() => setSearchDiscoveryOpen(true)}
+              searchOpen={searchDiscoveryOpen}
+              onCloseSearch={handleClearSearch}
             />
           )}
 
           {/* MAIN CONTENT AREA */}
           <main className="flex-1 relative">
+
+            {/*
+              The moment between tapping the search box and searching anything.
+              Drawn as an overlay inside `main` rather than by branching around
+              the tab content: it covers exactly the same area, the header with
+              the search box in it stays put above, and the tab underneath keeps
+              its scroll position for when the shopper backs out.
+            */}
+            {searchDiscoveryOpen && !searchQuery && (
+              <div className="absolute inset-0 z-40 bg-[#FAF7F2] overflow-y-auto pt-3">
+                <SearchDiscovery
+                  // The market's own sheet, exactly as the results screen and
+                  // the home carousels use — so this cannot offer something the
+                  // chosen market does not sell, at a price it does not charge.
+                  products={browseProducts}
+                  categories={categories}
+                  cartItems={activeCartItems}
+                  onAddToCart={handleAddToCart}
+                  onSelectProduct={handleOpenProductFromSearch}
+                  onOpenCategory={handleOpenCategoryFromSearch}
+                />
+              </div>
+            )}
             
             {/* SCHEDULED SHOPPING BANNER */}
             {shoppingMode === 'scheduled' && activeTab === 'home' && (
@@ -2492,9 +2551,25 @@ export default function App() {
                           <span className="text-xs font-bold text-gray-700 block text-left">
                             Open Role Panel (Separate App):
                           </span>
+                          {/*
+                            Only `developer` gets the cross-app links, and that
+                            is not a narrowing of who deserves them — it is the
+                            only role that can legitimately be reading this.
+                            `APP_ROLE_SCOPE.customer` on the server is
+                            ['customer', 'market_owner', 'developer'], so a
+                            shopkeeper or rider cannot sign in here at all, and
+                            the effect near the top of this file sends one that
+                            arrives by any other route back to its own app.
+
+                            Guarding these on `=== 'shopkeeper'` / `=== 'delivery'`
+                            meant that when that redirect broke, the storefront
+                            did not merely tolerate the wrong session — it
+                            advertised it, showing a rider a Delivery App button
+                            on a screen no rider should have reached.
+                          */}
                           <div className="grid grid-cols-2 gap-1.5 text-xs font-bold">
                             {/* Shopkeeper */}
-                            {(user.role === 'shopkeeper' || user.role === 'developer') && (
+                            {user.role === 'developer' && (
                               <a
                                 href="#/shopkeeper"
                                 className="p-2 bg-emerald-50 text-emerald-900 rounded-xl border border-emerald-200 hover:bg-emerald-100 transition-colors text-center flex items-center justify-center gap-1"
@@ -2504,7 +2579,7 @@ export default function App() {
                             )}
 
                             {/* Delivery */}
-                            {(user.role === 'delivery' || user.role === 'developer') && (
+                            {user.role === 'developer' && (
                               <a
                                 href="#/delivery"
                                 className="p-2 bg-purple-50 text-purple-900 rounded-xl border border-purple-200 hover:bg-purple-100 transition-colors text-center flex items-center justify-center gap-1"

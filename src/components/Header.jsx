@@ -20,9 +20,13 @@ export default function Header({
   onSubmitSearch,
   onOpenCategory,
   onSelectProduct,
+  onSearchFocus,
+  searchOpen = false,
+  onCloseSearch,
 }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [isScrolled, setIsScrolled] = useState(false);
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
 
   /* ── Catching the mark from the launch screen ────────────────────────────
      The splash ends on the droplet standing in the middle of the screen, and
@@ -114,6 +118,40 @@ export default function Header({
   const optionIdPrefix = `search-option-${reactId}-`;
 
   const query = searchVal.trim();
+
+  /**
+   * The placeholder names real produce, and rotates.
+   *
+   * A fixed "Search harvest…" tells a shopper the box exists and nothing else.
+   * These are drawn from `products` — the chosen market's own sheet — so every
+   * example is something that market actually sells, at a name it actually
+   * uses, and it needs no translating: the catalogue already carries `nameHi`
+   * and `nameTe`.
+   *
+   * Falls back to the old fixed string when the catalogue has not arrived yet,
+   * so the box is never briefly blank on a cold start.
+   */
+  const placeholderItems = useMemo(() => {
+    const names = products
+      .filter((p) => p?.isActive !== false && Number(p?.stock ?? 0) > 0)
+      .map((p) => (language === 'hi' && p.nameHi) || (language === 'te' && p.nameTe) || p.name)
+      .filter(Boolean);
+    // Deduplicated because one produce line can appear from several stalls.
+    return [...new Set(names)].slice(0, 8);
+  }, [products, language]);
+
+  useEffect(() => {
+    if (placeholderItems.length < 2) return;
+    const timer = setInterval(
+      () => setPlaceholderIndex((i) => (i + 1) % placeholderItems.length),
+      2600
+    );
+    return () => clearInterval(timer);
+  }, [placeholderItems.length]);
+
+  const cyclingPlaceholder = placeholderItems.length
+    ? t('header.searchFor', { item: placeholderItems[placeholderIndex % placeholderItems.length] })
+    : t('header.searchPlaceholder');
 
   const options = useMemo(() => {
     if (!query) return [];
@@ -309,19 +347,32 @@ export default function Header({
             value={searchVal}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            onFocus={() => { if (query) setIsOpen(true); }}
-            placeholder={t('header.searchPlaceholder')}
+            onFocus={() => {
+              if (query) setIsOpen(true);
+              // Empty box: there is nothing to suggest, so hand the moment to
+              // the discovery screen instead of leaving a keyboard over the
+              // home page.
+              else onSearchFocus?.();
+            }}
+            placeholder={cyclingPlaceholder}
             className="w-full skeuo-inset-input rounded-full py-1.5 pl-7 pr-7 text-xs font-medium text-[#2D2A26] placeholder-[#9A8F7C] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30 transition-all"
           />
           <Search className="w-3.5 h-3.5 text-[#8A7E6B] absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
 
-          {searchVal && (
+          {/*
+            Also shown when the box is empty but the discovery screen is open,
+            because otherwise tapping the search field is a one-way door: there
+            is no query to clear, so the only affordance that could dismiss it
+            was hidden exactly when it was needed.
+          */}
+          {(searchVal || searchOpen) && (
             <button
               type="button"
               onClick={() => {
                 setSearchVal('');
                 closePanel();
-                inputRef.current?.focus();
+                onCloseSearch?.();
+                inputRef.current?.blur();
               }}
               aria-label={t('header.clearSearch')}
               className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5 transition-colors cursor-pointer"

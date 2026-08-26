@@ -136,6 +136,22 @@ const STRINGS = {
   // The carousel dots carry no text, so this is the only name they have.
   'hero.goToSlide': { en: 'Go to offer {n}', hi: 'ऑफ़र {n} पर जाएँ', te: 'ఆఫర్ {n}కి వెళ్లండి' },
 
+  // --- Search discovery (SearchDiscovery.jsx) --------------------------------
+  // Shown the moment the search field is tapped, before anything is typed.
+  'discovery.bestDeals': { en: 'Best deals right now', hi: 'अभी के बेहतरीन सौदे', te: 'ఇప్పటి ఉత్తమ డీల్స్' },
+  'discovery.topRated': { en: 'Top rated by shoppers', hi: 'ख़रीदारों की पसंद', te: 'కొనుగోలుదారుల ఎంపిక' },
+  'discovery.seeAll': { en: 'See all', hi: 'सभी देखें', te: 'అన్నీ చూడండి' },
+  'discovery.percentOff': { en: '{n}% OFF', hi: '{n}% छूट', te: '{n}% తగ్గింపు' },
+  'discovery.addNamed': { en: 'Add {name} to basket', hi: '{name} टोकरी में डालें', te: '{name} బుట్టలో వేయండి' },
+  'discovery.empty': {
+    en: 'Type to search this market’s harvest.',
+    hi: 'इस बाज़ार की उपज खोजने के लिए लिखें।',
+    te: 'ఈ మార్కెట్ ఉత్పత్తులను వెతకడానికి టైప్ చేయండి.',
+  },
+  // The placeholder cycles real produce names, so it never suggests something
+  // this market does not sell.
+  'header.searchFor': { en: 'Search for ‘{item}’', hi: '‘{item}’ खोजें', te: '‘{item}’ వెతకండి' },
+
   // --- Categories (Categories.jsx) -------------------------------------------
   'categories.title': { en: 'Categories', hi: 'श्रेणियाँ', te: 'విభాగాలు' },
   'categories.farmSections': {

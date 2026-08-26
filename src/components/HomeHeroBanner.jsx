@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Tag, ChevronRight, MapPin, LocateFixed, Loader2, CheckCircle2, Check } from 'lucide-react';
+import { ChevronRight, MapPin, LocateFixed, Loader2, CheckCircle2 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import MapLocationPicker from './MapLocationPicker';
 import { savedCustomerAddress, saveCustomerAddress } from '../services/address';
@@ -466,7 +466,7 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
 
       {/* HERO BANNER CARD */}
       <div 
-        className="relative h-52 rounded-3xl overflow-hidden shadow-lg border border-[#DCD5C6] group"
+        className="relative h-52 rounded-3xl overflow-hidden shadow-sm border border-[#E7E1D5] bg-[#FFFDF9] group"
         onTouchStart={(e) => setTouchStartX(e.targetTouches[0].clientX)}
         onTouchMove={(e) => setTouchEndX(e.targetTouches[0].clientX)}
         onTouchEnd={() => {
@@ -501,88 +501,76 @@ export default function HomeHeroBanner({ onExplore, onAddressChange }) {
             alt=""
             aria-hidden="true"
             fetchPriority={idx === 0 ? 'high' : 'low'}
-            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-out
-                        group-hover:scale-105 motion-safe:transition-transform
+            className={`absolute right-0 top-0 h-full w-[64%] object-cover transition-opacity duration-700 ease-out
                         ${idx === currentSlide ? 'opacity-100' : 'opacity-0'}`}
           />
         ))}
 
         {/*
-          The scrim runs bottom-to-top and is clear by 95% of the height. It used
-          to run LEFT to right at 95% opacity, which laid nearly opaque green
-          over the half of the frame the food is in — the photograph was paying
-          for its bytes and never being seen.
+          The card is light and the words sit on the card, not on the
+          photograph — so this is a horizontal fade that hands the left side
+          back to the background, not a scrim darkening a photo to survive white
+          text on top of it.
 
-          The stops are placed against the copy, not by eye: the text block
-          measures 107px in a 208px card, so it starts 57% of the way up, and
-          that is where the ramp is aimed to reach 0.60. That figure was swept
-          rather than picked: 0.56 left the worst pixel behind the headline at
-          4.22:1 and 0.60 lifts it to 4.75:1 for no cost at all — the stop above
-          it does the uncovering, so the photograph is equally visible either
-          way. Free contrast is worth taking.
+          That swap is why the whole contrast exercise this file used to carry is
+          gone. Dark type on #FFFDF9 is a fixed pair, about 15:1, and it cannot
+          be undermined by tomorrow's photograph — whereas white-on-photo had to
+          be re-swept every time the copy or the picture changed, and failed
+          only on whichever slide happened to be pale.
 
-          Retune this whenever the block gains or loses a line; it is measured,
-          not guessed, so it goes stale silently. Dropping the subtitle and the
-          ETA took the block from 121px to 107px, which let every stop come down
-          about ten points and uncovered a further strip of photograph. Left
-          alone it would still have been legible — that is the trap. A stale
-          scrim only ever fails in one direction visibly, and a scrim that stops
-          SHORT of the headline fails on whichever photo happens to be pale
-          behind it, which is never the one you are looking at.
+          The stops are still measured, just against a different thing: the
+          longest headline. "Delivered Fresh to Your Doorstep" wraps to 51.6% of
+          the card, so solid ground runs to 54% — an earlier 38% left that one
+          slide's last word sitting on 82%-opaque cream over a photograph. The
+          three headlines end at 42.5%, 51.6% and 43.5%; re-measure if any of
+          them grows, because only the longest one can expose this.
 
-          One linear-gradient rather than utility steps: the five stops are a
-          curve, and `via-` can only place one.
+          It clears by 78% rather than sooner so the fade lands well inside the
+          photo's own width (64%) and never shows a vertical seam where the
+          image begins.
         */}
         <div
-          className="absolute inset-0 bg-[linear-gradient(to_top,rgba(11,36,28,0.95)_0%,rgba(11,36,28,0.86)_32%,rgba(11,36,28,0.60)_57%,rgba(11,36,28,0.16)_74%,rgba(11,36,28,0)_88%)]"
+          className="absolute inset-0 bg-[linear-gradient(to_right,#FFFDF9_0%,#FFFDF9_54%,rgba(255,253,249,0.85)_64%,rgba(255,253,249,0)_78%)]"
           aria-hidden="true"
         />
 
         {/*
-          What you get, what the deal is, one way in. The tag chip, the subtitle
-          and the delivery ETA were all removed together rather than trimmed one
-          at a time: seven elements in a 208px card is why the words were louder
-          than the photograph, and the ETA in particular repeated a delivery-time
-          promise the copy no longer makes anywhere else.
+          Headline, one supporting line, one button — the shape both reference
+          banners use. The offer moved INTO the supporting line rather than
+          being dropped: those banners carry a subtitle and no coupon, but the
+          codes are real, and "Flat 20% OFF · FRESH20" says the same thing in
+          the slot their subtitle already occupies. Three elements, nothing lost.
         */}
-        <div className="absolute inset-0 flex flex-col justify-end p-4 text-white">
-          <div className="space-y-2.5 animate-fade-in" key={`copy-${banner.id}`}>
-            <h2 className="font-vintage text-[22px] font-black leading-[1.15] drop-shadow-md">
+        <div className="absolute inset-0 flex flex-col justify-center gap-2 p-5 w-[60%]">
+          <div className="space-y-1.5 animate-fade-in" key={`copy-${banner.id}`}>
+            <h2 className="font-vintage text-[23px] font-black leading-[1.08] text-[#1A1A1A] tracking-tight">
               {banner.title}
             </h2>
-
-            <div className="flex items-center gap-2">
-              <span className="font-vintage font-extrabold text-base text-amber-300 drop-shadow-sm">
-                {banner.offer}
-              </span>
-              <span className="inline-flex items-center gap-1 bg-white/15 backdrop-blur-sm border border-white/25 px-2 py-0.5 rounded-md text-[11px] font-bold text-amber-100">
-                <Tag className="w-3 h-3" />
-                {banner.code}
-              </span>
-            </div>
-
-            {/* inline-flex, not flex: a display:flex button is block-level and
-                would stretch to the card's full width with nothing beside it. */}
-            <button
-              onClick={onExplore}
-              className="skeuo-btn-emerald font-extrabold px-4 py-2 rounded-xl text-sm inline-flex items-center gap-1 shadow-md cursor-pointer active:scale-95 z-20"
-            >
-              <span>{t('hero.shopNow')}</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            <p className="text-[11px] font-bold text-[#6B6355] leading-snug">
+              {banner.offer} · {banner.code}
+            </p>
           </div>
+
+          {/* self-start, or a block-level flex button stretches the column. */}
+          <button
+            onClick={onExplore}
+            className="self-start bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-extrabold px-5 py-2.5 rounded-full text-sm inline-flex items-center gap-1 shadow-sm cursor-pointer active:scale-95 transition-colors z-20"
+          >
+            <span>{t('hero.shopNow')}</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Manual Arrow Controls (Desktop/Hover) */}
         <button 
           onClick={(e) => { e.stopPropagation(); setCurrentSlide((prev) => (prev === 0 ? banners.length - 1 : prev - 1)); }}
-          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/30 hover:bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 cursor-pointer backdrop-blur-sm"
+          className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white text-[#1B4D3E] border border-[#E7E1D5] rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 cursor-pointer shadow-sm"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
         </button>
         <button 
           onClick={(e) => { e.stopPropagation(); setCurrentSlide((prev) => (prev + 1) % banners.length); }}
-          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/30 hover:bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 cursor-pointer backdrop-blur-sm"
+          className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white text-[#1B4D3E] border border-[#E7E1D5] rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 cursor-pointer shadow-sm"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
         </button>
