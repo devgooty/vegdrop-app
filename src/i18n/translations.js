@@ -76,6 +76,38 @@ const STRINGS = {
     te: 'తాజా పంట కోసం వెతకండి...',
   },
   'header.clearSearch': { en: 'Clear search', hi: 'खोज हटाएँ', te: 'వెతుకులాట తొలగించు' },
+  'header.backFromSearch': { en: 'Back', hi: 'वापस', te: 'వెనక్కి' },
+  'header.voiceSearch': { en: 'Search by voice', hi: 'आवाज़ से खोजें', te: 'వాయిస్‌తో వెతకండి' },
+  'header.voiceStop': { en: 'Stop listening', hi: 'सुनना बंद करें', te: 'వినడం ఆపండి' },
+  'header.voiceSpeakNow': { en: 'Speak now', hi: 'अब बोलें', te: 'ఇప్పుడు మాట్లాడండి' },
+  'header.voiceClose': { en: 'Close voice search', hi: 'आवाज़ खोज बंद करें', te: 'వాయిస్ సెర్చ్ మూసివేయండి' },
+
+  'header.voiceListening': { en: 'Listening… speak a product', hi: 'सुन रहे हैं… उत्पाद बोलें', te: 'వింటున్నాం… ఉత్పత్తి చెప్పండి' },
+  'header.voiceUnsupported': {
+    en: 'Voice search needs Chrome or Edge on this device.',
+    hi: 'आवाज़ से खोज के लिए Chrome या Edge चाहिए।',
+    te: 'వాయిస్ సెర్చ్‌కు Chrome లేదా Edge కావాలి.',
+  },
+  'header.voicePermission': {
+    en: 'Allow the microphone to search by voice.',
+    hi: 'आवाज़ से खोजने के लिए माइक्रोफ़ोन की अनुमति दें।',
+    te: 'వాయిస్‌తో వెతకడానికి మైక్ అనుమతి ఇవ్వండి.',
+  },
+  'header.voiceNoSpeech': {
+    en: 'Did not catch that — tap the mic and try again.',
+    hi: 'सुनाई नहीं दिया — माइक दबाकर फिर बोलें।',
+    te: 'వినిపించలేదు — మైక్ నొక్కి మళ్లీ చెప్పండి.',
+  },
+  'header.voiceNetwork': {
+    en: 'Voice search needs a network connection.',
+    hi: 'आवाज़ से खोज के लिए नेटवर्क चाहिए।',
+    te: 'వాయిస్ సెర్చ్‌కు నెట్‌వర్క్ కావాలి.',
+  },
+  'header.voiceFailed': {
+    en: 'Voice search failed. Type the name instead.',
+    hi: 'आवाज़ से खोज नहीं हुई। नाम लिखें।',
+    te: 'వాయిస్ సెర్చ్ కాలేదు. పేరు టైప్ చేయండి.',
+  },
   'header.openWallet': { en: 'Open VegWallet', hi: 'VegWallet खोलें', te: 'VegWallet తెరవండి' },
 
   // --- Delivery address bar (HomeHeroBanner.jsx) -----------------------------
@@ -143,6 +175,8 @@ const STRINGS = {
   'discovery.seeAll': { en: 'See all', hi: 'सभी देखें', te: 'అన్నీ చూడండి' },
   'discovery.percentOff': { en: '{n}% OFF', hi: '{n}% छूट', te: '{n}% తగ్గింపు' },
   'discovery.addNamed': { en: 'Add {name} to basket', hi: '{name} टोकरी में डालें', te: '{name} బుట్టలో వేయండి' },
+  'discovery.recent': { en: 'Recent', hi: 'हाल ही में', te: 'ఇటీవల' },
+  'discovery.popular': { en: 'Popular in this market', hi: 'इस बाज़ार में लोकप्रिय', te: 'ఈ మార్కెట్‌లో పాపులర్' },
   'discovery.empty': {
     en: 'Type to search this market’s harvest.',
     hi: 'इस बाज़ार की उपज खोजने के लिए लिखें।',

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useId } from 'react';
-import { Search, Wallet, X } from 'lucide-react';
+import { Search, Wallet, X, ArrowLeft, Mic } from 'lucide-react';
 import SearchSuggestions from './SearchSuggestions';
+import VoiceSearchOverlay from './VoiceSearchOverlay';
 import VegDropMark from './VegDropMark';
 import { buildSuggestions } from '../services/search';
+import { createSpeechRecognition, mapSpeechError, resolveVoiceQuery } from '../services/voiceSearch';
 import { claimBrandFlight, ARRIVAL_MS } from '../lib/brandFlight';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -173,6 +175,72 @@ export default function Header({
     setActiveIndex((current) => (current >= options.length ? options.length - 1 : current));
   }, [options.length]);
 
+  // Zepto-style: entering search mode focuses the box and raises the keyboard.
+  useEffect(() => {
+    if (!searchOpen) return;
+    const timer = setTimeout(() => inputRef.current?.focus(), 60);
+    return () => clearTimeout(timer);
+  }, [searchOpen]);
+
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState('idle');
+  const [voiceLive, setVoiceLive] = useState('');
+  const recognitionRef = useRef(null);
+  const applyVoiceRef = useRef(null);
+
+  const stopVoiceSession = () => {
+    const recognition = recognitionRef.current;
+    recognitionRef.current = null;
+    try {
+      recognition?.abort();
+    } catch {
+      // abort() throws if the session never started
+    }
+  };
+
+  const startVoiceSession = () => {
+    const recognition = createSpeechRecognition(language);
+    if (!recognition) {
+      setVoiceStatus('unsupported');
+      return;
+    }
+
+    recognition.onstart = () => setVoiceStatus('listening');
+    recognition.onend = () => {
+      if (recognitionRef.current !== recognition) return;
+      recognitionRef.current = null;
+      setVoiceStatus((current) => (current === 'listening' ? 'nospeech' : current));
+    };
+    recognition.onerror = (event) => {
+      if (recognitionRef.current !== recognition) return;
+      const mapped = mapSpeechError(event.error, { online: navigator.onLine });
+      if (!mapped) return;
+      setVoiceStatus(mapped);
+    };
+    recognition.onresult = (event) => {
+      const last = event.results[event.results.length - 1];
+      if (!last) return;
+      const alternatives = [];
+      for (let i = 0; i < last.length; i += 1) {
+        if (last[i]?.transcript) alternatives.push(last[i].transcript);
+      }
+      const live = alternatives[0]?.trim();
+      if (live) setVoiceLive(live);
+      if (last.isFinal) {
+        setVoiceStatus('heard');
+        applyVoiceRef.current?.(alternatives);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch {
+      recognitionRef.current = null;
+      setVoiceStatus('failed');
+    }
+  };
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -218,15 +286,71 @@ export default function Header({
     onSubmitSearch?.(option.label);
   };
 
+  /**
+   * Turn a finished utterance into the same action a typed suggestion would
+   * have taken: one product opens that product, a section opens the section,
+   * anything else searches. Filling the box and stopping used to be the whole
+   * of voice search, so "lettuce" sat in the field and nothing happened.
+   */
+  applyVoiceRef.current = (transcripts) => {
+    const { query, suggestion } = resolveVoiceQuery({
+      transcripts,
+      products,
+      categories,
+    });
+    if (!query) {
+      setVoiceStatus('nospeech');
+      return;
+    }
+    stopVoiceSession();
+    setVoiceOpen(false);
+    setVoiceStatus('idle');
+    setVoiceLive('');
+    setSearchVal(query);
+    setActiveIndex(-1);
+    if (suggestion) {
+      pick(suggestion);
+      return;
+    }
+    closePanel();
+    inputRef.current?.blur();
+    onSubmitSearch?.(query);
+  };
+
+  const openVoiceSearch = () => {
+    inputRef.current?.blur();
+    stopVoiceSession();
+    setVoiceLive('');
+    setVoiceStatus('listening');
+    setVoiceOpen(true);
+    startVoiceSession();
+  };
+
+  const closeVoiceSearch = () => {
+    stopVoiceSession();
+    setVoiceOpen(false);
+    setVoiceStatus('idle');
+    setVoiceLive('');
+  };
+
   const handleChange = (event) => {
     setSearchVal(event.target.value);
     setActiveIndex(-1);
     setIsOpen(event.target.value.trim().length > 0);
   };
 
+  const handleBackFromSearch = () => {
+    closeVoiceSearch();
+    closePanel();
+    setSearchVal('');
+    onCloseSearch?.();
+    inputRef.current?.blur();
+  };
+
   const handleKeyDown = (event) => {
     if (event.key === 'Escape') {
       if (isOpen) closePanel();
+      else if (searchOpen) handleBackFromSearch();
       else setSearchVal('');
       return;
     }
@@ -265,23 +389,110 @@ export default function Header({
     }
   };
 
-  /*
-    One row: the lockup, the search box, the wallet.
+  const searchField = (
+    <div ref={searchRef} className={searchOpen ? 'flex-1 min-w-0' : 'flex-1 min-w-0'}>
+      <label htmlFor="header-search" className="sr-only">{t('header.searchLabel')}</label>
+      <div className="relative">
+        <input
+          ref={inputRef}
+          id="header-search"
+          type="search"
+          enterKeyHint="search"
+          role="combobox"
+          aria-expanded={isOpen && options.length > 0}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          aria-activedescendant={
+            isOpen && activeIndex >= 0 ? `${optionIdPrefix}${activeIndex}` : undefined
+          }
+          autoComplete="off"
+          value={searchVal}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onFocus={() => {
+            if (query) setIsOpen(true);
+            else onSearchFocus?.();
+          }}
+            placeholder={cyclingPlaceholder}
+          className={
+            searchOpen
+              ? 'vd-search-input-expanded w-full rounded-xl py-2.5 pl-4 pr-[4.5rem] text-sm font-medium text-[#2D2A26] placeholder-[#9A8F7C] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/25 transition-all'
+              : 'w-full skeuo-inset-input rounded-full py-1.5 pl-7 pr-7 text-xs font-medium text-[#2D2A26] placeholder-[#9A8F7C] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30 transition-all'
+          }
+        />
+        {!searchOpen && (
+          <Search className="w-3.5 h-3.5 text-[#8A7E6B] absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+        )}
 
-    The box is the only thing here that can give ground — the name and the
-    wallet are both `shrink-0`, so on a narrow phone the search box absorbs the
-    whole squeeze and ends up around a third of the width. That is why its type
-    and padding are as tight as they are, and why the suggestion panel is
-    anchored to the header rather than to the input.
+        <div className={`absolute top-1/2 -translate-y-1/2 flex items-center gap-0.5 ${searchOpen ? 'right-2' : 'right-1.5'}`}>
+          {searchVal && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchVal('');
+                closePanel();
+                if (!searchOpen) {
+                  onCloseSearch?.();
+                  inputRef.current?.blur();
+                }
+              }}
+              aria-label={t('header.clearSearch')}
+              className="p-1 rounded-full text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5 transition-colors cursor-pointer"
+            >
+              <X className={`stroke-[3] ${searchOpen ? 'w-3.5 h-3.5' : 'w-3 h-3'}`} />
+            </button>
+          )}
+          {searchOpen && (
+            <>
+              <span className="h-4 w-px bg-[#D8D2C4]" aria-hidden="true" />
+              <button
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={openVoiceSearch}
+                aria-label={t('header.voiceSearch')}
+                className="p-1.5 rounded-full text-[#1B4D3E] hover:bg-[#1B4D3E]/8 transition-colors cursor-pointer"
+              >
+                <Mic className="w-4 h-4" />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  /*
+    Two layouts: compact (logo + inset search + wallet) and expanded search
+    mode (back + full-width bar + mic), matching the quick-commerce pattern
+    where tapping search dedicates the whole header row to finding things.
   */
   return (
+    <>
     <header
-      className={`bg-[#FAF7F2] p-3 px-4 pt-safe-3 flex items-center justify-between gap-2 sticky top-0 z-20 border-b transition-all duration-300 ${
+      className={`bg-[#FAF7F2] p-3 px-4 pt-safe-3 shrink-0 border-b transition-all duration-300 ${
+        searchOpen
+          ? 'flex items-center gap-2 sticky top-0 z-50'
+          : 'flex items-center justify-between gap-2 sticky top-0 z-20'
+      } ${
         isScrolled
           ? 'header-scrolled border-[#D5CDBC]'
           : 'border-[#DCD5C6] shadow-xs'
-      } ${roleGradient ? `bg-gradient-to-b ${roleGradient}` : ''}`}
+      } ${roleGradient && !searchOpen ? `bg-gradient-to-b ${roleGradient}` : ''}`}
     >
+      {searchOpen ? (
+        <>
+          <button
+            type="button"
+            onClick={handleBackFromSearch}
+            aria-label={t('header.backFromSearch')}
+            className="shrink-0 p-1.5 -ml-1 rounded-full text-[#2D2A26] hover:bg-black/5 active:scale-95 transition-all cursor-pointer"
+          >
+            <ArrowLeft className="w-5 h-5 stroke-[2.5]" />
+          </button>
+          {searchField}
+        </>
+      ) : (
+        <>
       {/* 3D SKEUOMORPHIC VINTAGE LOGO WITH BASKET */}
       <div className="flex items-center gap-2 cursor-pointer group shrink-0">
         <div
@@ -328,60 +539,7 @@ export default function Header({
         </span>
       </div>
 
-      {/* Inset Cutout Search Input, between the name and the wallet */}
-      <div ref={searchRef} className="flex-1 min-w-0">
-        <label htmlFor="header-search" className="sr-only">{t('header.searchLabel')}</label>
-        <div className="relative">
-          <input
-            ref={inputRef}
-            id="header-search"
-            type="text"
-            role="combobox"
-            aria-expanded={isOpen && options.length > 0}
-            aria-controls={listboxId}
-            aria-autocomplete="list"
-            aria-activedescendant={
-              isOpen && activeIndex >= 0 ? `${optionIdPrefix}${activeIndex}` : undefined
-            }
-            autoComplete="off"
-            value={searchVal}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onFocus={() => {
-              if (query) setIsOpen(true);
-              // Empty box: there is nothing to suggest, so hand the moment to
-              // the discovery screen instead of leaving a keyboard over the
-              // home page.
-              else onSearchFocus?.();
-            }}
-            placeholder={cyclingPlaceholder}
-            className="w-full skeuo-inset-input rounded-full py-1.5 pl-7 pr-7 text-xs font-medium text-[#2D2A26] placeholder-[#9A8F7C] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30 transition-all"
-          />
-          <Search className="w-3.5 h-3.5 text-[#8A7E6B] absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-
-          {/*
-            Also shown when the box is empty but the discovery screen is open,
-            because otherwise tapping the search field is a one-way door: there
-            is no query to clear, so the only affordance that could dismiss it
-            was hidden exactly when it was needed.
-          */}
-          {(searchVal || searchOpen) && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchVal('');
-                closePanel();
-                onCloseSearch?.();
-                inputRef.current?.blur();
-              }}
-              aria-label={t('header.clearSearch')}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5 transition-colors cursor-pointer"
-            >
-              <X className="w-3 h-3 stroke-[3]" />
-            </button>
-          )}
-        </div>
-      </div>
+      {searchField}
 
       {/* 3D Tactile Wallet & User Profile Buttons */}
       <div className="flex items-center space-x-1.5 shrink-0">
@@ -394,6 +552,8 @@ export default function Header({
           <span className="animate-count-up">₹{walletBalance.toFixed(0)}</span>
         </button>
       </div>
+        </>
+      )}
 
       {/* Anchored to the header rather than to the input: the box sits between
           the name and the wallet and is far too narrow to read a suggestion in. */}
@@ -409,5 +569,13 @@ export default function Header({
         />
       )}
     </header>
+    <VoiceSearchOverlay
+      open={voiceOpen}
+      status={voiceStatus}
+      liveText={voiceLive}
+      onClose={closeVoiceSearch}
+      onMicTap={openVoiceSearch}
+    />
+    </>
   );
 }

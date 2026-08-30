@@ -28,6 +28,7 @@ import { useLanguage } from './i18n/LanguageContext';
 import { LANGUAGES } from './i18n/translations';
 import { productName, dateLocale } from './i18n/catalog';
 import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
+import { rememberSearch } from './services/search';
 import { fetchShopsForBasket, linesForShop } from './services/shops';
 import { savedCustomerAddress } from './services/address';
 import { productSkuFromHash } from './services/share';
@@ -1082,9 +1083,14 @@ export default function App() {
     const trimmed = query.trim();
     if (!trimmed) return;
 
+    rememberSearch(trimmed);
     setActiveProductDetail(null);
     setActiveCategoryDetail(null);
     setSearchDiscoveryOpen(false);
+    // Results read `searchVal`, not `searchQuery`. A chip used to set only the
+    // latter, so the results screen opened on an empty box — "Results for ' '"
+    // and zero items.
+    setSearchVal(trimmed);
     setSearchQuery(trimmed);
     window.scrollTo({ top: 0 });
   }, []);
@@ -1095,6 +1101,38 @@ export default function App() {
     setSearchVal('');
     setSearchDiscoveryOpen(false);
   }, []);
+
+  /**
+   * Search used to paint an overlay inside `main`. Home is as tall as the
+   * whole catalogue, so that overlay became a cream sheet the height of the
+   * page — scrolling (or the keyboard pushing the focused box into view)
+   * walked the sticky header and the rails right off the screen, which is the
+   * blank page with only the tab bar left.
+   *
+   * Locking the document and the shell to the viewport while search is open
+   * keeps the header pinned and lets only the discovery body scroll.
+   */
+  /**
+   * Only while the discovery overlay itself is on screen. Opening a product
+   * (or a category) from a rail used to leave this true, so the shell stayed
+   * `h-dvh overflow-hidden` and the detail page could not scroll — the image
+   * sat under the header and the rest of the page was trapped.
+   */
+  const searchScreenOpen =
+    searchDiscoveryOpen && !searchQuery && !activeProductDetail && !activeCategoryDetail;
+
+  useEffect(() => {
+    if (!searchScreenOpen) return undefined;
+    const { body, documentElement } = document;
+    const previousBody = body.style.overflow;
+    const previousHtml = documentElement.style.overflow;
+    body.style.overflow = 'hidden';
+    documentElement.style.overflow = 'hidden';
+    return () => {
+      body.style.overflow = previousBody;
+      documentElement.style.overflow = previousHtml;
+    };
+  }, [searchScreenOpen]);
 
   /** A suggestion naming a whole section opens that section instead. */
   const handleOpenCategoryFromSearch = useCallback((category) => {
@@ -1959,7 +1997,13 @@ export default function App() {
     /* pb reserves room for the fixed bottom nav, so it has to grow by the same
        home-indicator inset the nav itself now adds — otherwise the last row of
        content sits behind it on a gesture-bar phone. */
-    <div className="max-w-md mx-auto min-h-screen bg-gray-50 flex flex-col justify-between pb-[calc(4rem+env(safe-area-inset-bottom,0px))] relative shadow-xl border-x border-gray-200/60">
+    <div
+      className={`max-w-md mx-auto bg-gray-50 flex flex-col relative shadow-xl border-x border-gray-200/60 ${
+        searchScreenOpen
+          ? 'h-dvh overflow-hidden justify-start'
+          : 'min-h-screen justify-between pb-[calc(4rem+env(safe-area-inset-bottom,0px))]'
+      }`}
+    >
       
       {/* FLY TO CART ITEM ANIMATION OVERLAY */}
       <FlyToCartOverlay
@@ -2050,17 +2094,16 @@ export default function App() {
           )}
 
           {/* MAIN CONTENT AREA */}
-          <main className="flex-1 relative">
+          <main className={`flex-1 relative ${searchScreenOpen ? 'min-h-0 overflow-hidden' : ''}`}>
 
             {/*
               The moment between tapping the search box and searching anything.
-              Drawn as an overlay inside `main` rather than by branching around
-              the tab content: it covers exactly the same area, the header with
-              the search box in it stays put above, and the tab underneath keeps
-              its scroll position for when the shopper backs out.
+              The overlay is sized to THIS main — which is locked to the leftover
+              viewport while search is open — so it scrolls under a pinned header
+              instead of growing with the home catalogue underneath.
             */}
-            {searchDiscoveryOpen && !searchQuery && (
-              <div className="absolute inset-0 z-40 bg-[#FAF7F2] overflow-y-auto pt-3">
+            {searchScreenOpen && (
+              <div className="absolute inset-0 z-40 bg-[#FAF7F2] overflow-y-auto overscroll-contain">
                 <SearchDiscovery
                   // The market's own sheet, exactly as the results screen and
                   // the home carousels use — so this cannot offer something the
@@ -2071,6 +2114,7 @@ export default function App() {
                   onAddToCart={handleAddToCart}
                   onSelectProduct={handleOpenProductFromSearch}
                   onOpenCategory={handleOpenCategoryFromSearch}
+                  onSearchTerm={handleSubmitSearch}
                 />
               </div>
             )}
@@ -2715,7 +2759,7 @@ export default function App() {
       )}
 
       {/* 5. FIXED BOTTOM NAVIGATION BAR */}
-      {activeTab !== 'developer' && activeTab !== 'market_owner' && (
+      {activeTab !== 'developer' && activeTab !== 'market_owner' && !searchScreenOpen && (
         <BottomNav
           activeTab={activeTab}
           setActiveTab={(tab) => {

@@ -200,3 +200,52 @@ export function searchProducts({ products = [], categories = [], query }) {
     )
     .map((hit) => hit.product);
 }
+
+const RECENT_SEARCHES_KEY = 'vegdrop_recent_searches';
+const RECENT_SEARCHES_MAX = 8;
+
+/**
+ * Last few terms this browser searched. Lives in localStorage so a return
+ * visit still has them — they are not an account fact, just a shortcut.
+ */
+export function readRecentSearches() {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
+    if (!Array.isArray(raw)) return [];
+    return raw.map((value) => String(value).trim()).filter(Boolean).slice(0, RECENT_SEARCHES_MAX);
+  } catch {
+    return [];
+  }
+}
+
+export function rememberSearch(query) {
+  const term = String(query ?? '').trim();
+  if (term.length < 2) return;
+  const next = [term, ...readRecentSearches().filter((item) => item.toLowerCase() !== term.toLowerCase())]
+    .slice(0, RECENT_SEARCHES_MAX);
+  try {
+    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+  } catch {
+    // Quota or private mode — recent chips simply stay empty.
+  }
+}
+
+/**
+ * Short names a shopper can tap before typing, drawn from this market's sheet.
+ */
+export function popularSearchTerms({ products = [], language, limit = 8 } = {}) {
+  const seen = new Set();
+  const terms = [];
+  for (const product of products) {
+    if (product?.isActive === false || Number(product?.stock ?? 0) <= 0) continue;
+    const name = (language === 'hi' && product.nameHi) || (language === 'te' && product.nameTe) || product.name;
+    const label = String(name ?? '').trim();
+    const key = normalize(label);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    terms.push(label);
+    if (terms.length >= limit) break;
+  }
+  return terms;
+}

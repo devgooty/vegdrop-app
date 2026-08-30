@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { ChevronRight, Plus, Star, Check } from 'lucide-react';
+import { ChevronRight, Plus, Star, Check, Clock3, TrendingUp } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { popularSearchTerms, readRecentSearches } from '../services/search';
 
 /**
  * What the search screen shows before anything has been typed.
@@ -38,19 +39,27 @@ function inStock(product) {
 /**
  * One product, sized for a horizontal rail rather than the home grid.
  *
- * `w-[8.5rem] shrink-0` rather than a percentage: the rail is a scroller, so a
- * card that sized itself to the container would collapse to the viewport width
- * and only ever show one.
+ * The + control sits on the photograph, bottom-right — the quick-commerce
+ * register this screen is copying. At this card width an overlaid button still
+ * leaves most of the produce visible; tucking it under the image, which this
+ * app used to do, read as a different product altogether.
  */
 function RailCard({ product, qty, onAdd, onOpen, t, language }) {
   const off = discountPercent(product);
   const name = (language === 'hi' && product.nameHi) || (language === 'te' && product.nameTe) || product.name;
 
   return (
-    <div className="w-[8.5rem] shrink-0 bg-white border border-[#E7E1D5] rounded-2xl p-2 flex flex-col gap-1.5 shadow-xs">
-      <button
-        type="button"
+    <div className="w-[9.5rem] shrink-0 bg-white border border-[#E7E1D5] rounded-2xl p-2 flex flex-col gap-1.5 shadow-xs">
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => onOpen?.(product)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onOpen?.(product);
+          }
+        }}
         className="relative block w-full aspect-square rounded-xl overflow-hidden bg-[#F7F3EC] cursor-pointer"
       >
         <img
@@ -60,59 +69,58 @@ function RailCard({ product, qty, onAdd, onOpen, t, language }) {
           className="w-full h-full object-cover"
         />
         {off !== null && (
-          <span className="absolute top-1 left-1 bg-[#1B4D3E] text-white text-[9px] font-black px-1.5 py-0.5 rounded-md">
+          <span className="absolute top-1.5 left-1.5 bg-[#1B4D3E] text-white text-[9px] font-black px-1.5 py-0.5 rounded-md">
             {t('discovery.percentOff', { n: off })}
           </span>
         )}
-      </button>
 
-      {/*
-        The add control sits under the image, not over it. Overlapping the
-        photograph is what the reference does, but its cards are half again as
-        tall; at this size the button would cover the produce it is selling.
-      */}
-      <div className="flex items-start justify-between gap-1">
-        <div className="min-w-0">
-          <p className="text-[11px] font-bold text-[#2D2A26] leading-tight line-clamp-2">{name}</p>
-          {product.weight && (
-            <span className="inline-block mt-1 text-[9px] font-bold text-[#8A7E6B] border border-[#E7E1D5] rounded px-1 py-px">
-              {product.weight}
-            </span>
-          )}
-        </div>
         <button
           type="button"
-          onClick={() => onAdd?.(product)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onAdd?.(product);
+          }}
           disabled={!inStock(product)}
           aria-label={t('discovery.addNamed', { name })}
-          className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-all active:scale-90 ${
+          className={`absolute bottom-1.5 right-1.5 w-8 h-8 rounded-lg flex items-center justify-center shadow-md transition-all active:scale-90 ${
             !inStock(product)
-              ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
+              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
               : qty > 0
                 ? 'bg-[#1B4D3E] text-white cursor-pointer'
-                : 'border-2 border-[#1B4D3E] text-[#1B4D3E] hover:bg-[#1B4D3E] hover:text-white cursor-pointer'
+                : 'bg-white border-2 border-[#1B4D3E] text-[#1B4D3E] hover:bg-[#1B4D3E] hover:text-white cursor-pointer'
           }`}
         >
-          {qty > 0 ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : <Plus className="w-4 h-4 stroke-[3]" />}
+          {qty > 0 ? <Check className="w-4 h-4 stroke-[3]" /> : <Plus className="w-4 h-4 stroke-[3]" />}
         </button>
       </div>
 
+      {Number(product.rating) > 0 && (
+        <span className="flex items-center gap-0.5 text-[10px] font-bold text-[#2D2A26] -mt-0.5">
+          <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+          {product.rating}
+          {Number(product.reviews) > 0 && (
+            <span className="text-[#9A8F7C] font-semibold">
+              ({product.reviews >= 1000 ? `${(product.reviews / 1000).toFixed(1)}k` : product.reviews})
+            </span>
+          )}
+        </span>
+      )}
+
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold text-[#2D2A26] leading-tight line-clamp-2">{name}</p>
+        {product.weight && (
+          <span className="inline-block mt-1 text-[9px] font-bold text-[#8A7E6B] border border-[#E7E1D5] rounded px-1 py-px">
+            {product.weight}
+          </span>
+        )}
+      </div>
+
       <div className="flex items-baseline gap-1.5">
-        <span className="text-xs font-black text-[#2D2A26]">₹{product.price}</span>
+        <span className="text-sm font-black text-[#2D2A26]">₹{product.price}</span>
         {off !== null && (
           <span className="text-[10px] font-semibold text-[#9A8F7C] line-through">₹{product.oldPrice}</span>
         )}
       </div>
-
-      {Number(product.rating) > 0 && (
-        <span className="flex items-center gap-0.5 text-[9px] font-bold text-[#4B7A63]">
-          <Star className="w-2.5 h-2.5 fill-current" />
-          {product.rating}
-          {Number(product.reviews) > 0 && (
-            <span className="text-[#9A8F7C] font-semibold">({product.reviews})</span>
-          )}
-        </span>
-      )}
     </div>
   );
 }
@@ -122,7 +130,7 @@ function Rail({ title, items, onSeeAll, qtyOf, t, ...cardProps }) {
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between gap-2 px-4">
-        <h3 className="font-black text-[#2D2A26] text-sm tracking-tight">{title}</h3>
+        <h3 className="font-black text-[#2D2A26] text-[15px] tracking-tight leading-tight">{title}</h3>
         {onSeeAll && (
           <button
             type="button"
@@ -154,6 +162,30 @@ function Rail({ title, items, onSeeAll, qtyOf, t, ...cardProps }) {
   );
 }
 
+function ChipRow({ icon: Icon, label, items, onPick }) {
+  if (!items.length) return null;
+  return (
+    <section className="px-4 space-y-2">
+      <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-[#8A7E6B]">
+        <Icon className="w-3.5 h-3.5" />
+        {label}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {items.map((term) => (
+          <button
+            key={term}
+            type="button"
+            onClick={() => onPick(term)}
+            className="px-3 py-1.5 rounded-full bg-white border border-[#E0D9C8] text-[12px] font-bold text-[#2D2A26] shadow-xs active:scale-95 cursor-pointer"
+          >
+            {term}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function SearchDiscovery({
   products = [],
   categories = [],
@@ -161,6 +193,7 @@ export default function SearchDiscovery({
   onAddToCart,
   onSelectProduct,
   onOpenCategory,
+  onSearchTerm,
 }) {
   const { t, language } = useLanguage();
 
@@ -214,8 +247,49 @@ export default function SearchDiscovery({
 
   const cardProps = { onAdd: onAddToCart, onOpen: onSelectProduct, t, language };
 
+  const recent = useMemo(() => readRecentSearches(), []);
+  const popular = useMemo(
+    () => popularSearchTerms({ products: available, language }),
+    [available, language]
+  );
+
+  /**
+   * A chip that names exactly one listing opens that product — "view", not
+   * "search for the same string and hope". Several matches, or a recent term
+   * the sheet no longer holds, still go through the results screen.
+   */
+  const pickChip = (term) => {
+    const matches = available.filter((product) => {
+      const name = (language === 'hi' && product.nameHi)
+        || (language === 'te' && product.nameTe)
+        || product.name;
+      return name === term;
+    });
+    if (matches.length === 1 && onSelectProduct) {
+      onSelectProduct(matches[0]);
+      return;
+    }
+    onSearchTerm?.(term);
+  };
+
   return (
-    <div className="pb-4 space-y-5 animate-fade-in">
+    <div className="pb-6 space-y-5 animate-fade-in pt-3">
+      {(onSearchTerm || onSelectProduct) && (
+        <>
+          <ChipRow
+            icon={Clock3}
+            label={t('discovery.recent')}
+            items={recent}
+            onPick={pickChip}
+          />
+          <ChipRow
+            icon={TrendingUp}
+            label={t('discovery.popular')}
+            items={popular}
+            onPick={pickChip}
+          />
+        </>
+      )}
       {rails.length === 0 ? (
         <p className="px-4 pt-6 text-xs font-semibold text-[#8A7E6B] text-center">
           {t('discovery.empty')}
