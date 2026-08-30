@@ -1,17 +1,15 @@
-import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useId } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useId } from 'react';
 import { Search, Wallet, X, ArrowLeft, Mic } from 'lucide-react';
 import SearchSuggestions from './SearchSuggestions';
 import VoiceSearchOverlay from './VoiceSearchOverlay';
-import VegDropMark from './VegDropMark';
+import DeliveryLocationBar from './DeliveryLocationBar';
 import { buildSuggestions } from '../services/search';
 import { createSpeechRecognition, mapSpeechError, resolveVoiceQuery } from '../services/voiceSearch';
-import { claimBrandFlight, ARRIVAL_MS } from '../lib/brandFlight';
 import { useLanguage } from '../i18n/LanguageContext';
 
 export default function Header({
   searchVal,
   setSearchVal,
-  walletBalance,
   cartCount,
   onOpenWallet,
   onOpenAccount,
@@ -25,66 +23,11 @@ export default function Header({
   onSearchFocus,
   searchOpen = false,
   onCloseSearch,
+  onAddressChange,
 }) {
   const { t, language } = useLanguage();
   const [isScrolled, setIsScrolled] = useState(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
-
-  /* ── Catching the mark from the launch screen ────────────────────────────
-     The splash ends on the droplet standing in the middle of the screen, and
-     this badge holds the same droplet — so it arrives from there rather than
-     being redrawn here. Nothing tells this component where the user came from:
-     a position is waiting or it is not, and if it is not the badge simply
-     appears, which is what happens on every later render of this header.
-
-     Two elements because they are two different measurements. `badgeRef` is
-     what moves, and `glyphRef` is what the size is taken from — what the splash
-     published is a bare droplet, and the badge is the squircle around one. */
-  const badgeRef = useRef(null);
-  const glyphRef = useRef(null);
-  /** Undressed and in flight — the badge is oversized and out over the page. */
-  const [isArriving, setIsArriving] = useState(false);
-  /** Putting its squircle on, which happens on the flight's clock, not the page's. */
-  const [isDressing, setIsDressing] = useState(false);
-
-  useLayoutEffect(() => {
-    const flight = claimBrandFlight('mark', badgeRef.current, {
-      measure: glyphRef.current,
-      // Longer than the default: this mark travels about half again as far as
-      // the login screen's wordmark does, and shrinks to a third of its size
-      // rather than growing by half.
-      duration: 680,
-      // Not a CSS delay, because the flight can hold at its origin for a moment
-      // before it moves (see `playWhenSmooth`) and the length of that wait is
-      // not known here. On a timer the badge would finish forming while the
-      // droplet was still sitting where the splash left it.
-      onStart: () => setIsDressing(true),
-    });
-    if (!flight) return undefined;
-
-    setIsArriving(true);
-
-    /*
-      No cleanup, deliberately, and it is StrictMode that decides this.
-
-      A claim is single use. In development every effect is mounted, cleaned up
-      and mounted again — and the second run has nothing left to claim, so it
-      cannot re-arm anything the first run's cleanup cancelled. Clearing this
-      timeout there left both classes on for good, which holds the shell at
-      opacity 0: a header whose badge is a bare droplet with no squircle, for
-      the rest of the session.
-
-      What is left behind is two setState calls on a component that has almost
-      certainly not gone anywhere — the header outlives a second and a half of
-      launch animation — and which are a no-op in React 18 if it has.
-    */
-    setTimeout(() => {
-      setIsArriving(false);
-      setIsDressing(false);
-    }, ARRIVAL_MS);
-
-    return undefined;
-  }, []);
 
   // Role-based header accent
   const roleGradient = {
@@ -462,113 +405,95 @@ export default function Header({
   );
 
   /*
-    Two layouts: compact (logo + inset search + wallet) and expanded search
-    mode (back + full-width bar + mic), matching the quick-commerce pattern
-    where tapping search dedicates the whole header row to finding things.
+    Two layouts: compact (location bar + wallet, sticky, with the search bar
+    directly below it) and expanded search mode (back + full-width bar + mic,
+    sticky, replacing both), matching the quick-commerce pattern where tapping
+    search dedicates the whole header row to finding things.
+
+    The location bar sits in the sticky row and the search bar does not,
+    deliberately: where a shopper is being delivered to is relevant on every
+    screen of the home tab, while the search box only needs to be reachable,
+    not permanently in view — Zepto/Blinkit put the same two bars in the same
+    order for the same reason.
   */
   return (
     <>
-    <header
-      className={`bg-[#FAF7F2] p-3 px-4 pt-safe-3 shrink-0 border-b transition-all duration-300 ${
-        searchOpen
-          ? 'flex items-center gap-2 sticky top-0 z-50'
-          : 'flex items-center justify-between gap-2 sticky top-0 z-20'
-      } ${
-        isScrolled
-          ? 'header-scrolled border-[#D5CDBC]'
-          : 'border-[#DCD5C6] shadow-xs'
-      } ${roleGradient && !searchOpen ? `bg-gradient-to-b ${roleGradient}` : ''}`}
-    >
-      {searchOpen ? (
-        <>
-          <button
-            type="button"
-            onClick={handleBackFromSearch}
-            aria-label={t('header.backFromSearch')}
-            className="shrink-0 p-1.5 -ml-1 rounded-full text-[#2D2A26] hover:bg-black/5 active:scale-95 transition-all cursor-pointer"
-          >
-            <ArrowLeft className="w-5 h-5 stroke-[2.5]" />
-          </button>
-          {searchField}
-        </>
-      ) : (
-        <>
-      {/* 3D SKEUOMORPHIC VINTAGE LOGO WITH BASKET */}
-      <div className="flex items-center gap-2 cursor-pointer group shrink-0">
-        <div
-          ref={badgeRef}
-          role="img"
-          aria-label="VegDrop"
-          className={
-            'vd-home-mark group-hover:scale-105 transition-transform' +
-            (isArriving ? ' is-arriving' : '') +
-            (isDressing ? ' is-dressing' : '')
-          }
+    {searchOpen ? (
+      <header
+        className={`bg-[#FAF7F2] p-3 px-4 pt-safe-3 shrink-0 border-b flex items-center gap-2 sticky top-0 z-50 transition-all duration-300 ${
+          isScrolled ? 'header-scrolled border-[#D5CDBC]' : 'border-[#DCD5C6] shadow-xs'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={handleBackFromSearch}
+          aria-label={t('header.backFromSearch')}
+          className="shrink-0 p-1.5 -ml-1 rounded-full text-[#2D2A26] hover:bg-black/5 active:scale-95 transition-all cursor-pointer"
         >
-          {/* The squircle and its cream face are drawn BEHIND the droplet
-              rather than as boxes around it, so the badge can fade itself in
-              while the mark it frames stays fully drawn — which is what lets
-              the droplet arrive bare from the launch screen and dress itself on
-              the way down. See `.vd-home-mark` in src/index.css. */}
-          <span className="vd-home-mark-shell" aria-hidden="true" />
-          <span className="vd-home-mark-glyph" ref={glyphRef}>
-            {/* Vector, and the same component the splash draws, which is what
-                makes the handoff a move rather than a redraw. It replaced a
-                512px `logo.png` painted at 26px — soft at this size, and a
-                41 KB request on the first screen after launch. */}
-            <VegDropMark className="w-full h-full" />
-          </span>
+          <ArrowLeft className="w-5 h-5 stroke-[2.5]" />
+        </button>
+        {searchField}
 
-          {/* Live indicator */}
-          {user && user.role !== 'customer' && (
-            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full border-2 border-[#FAF7F2] animate-pulse-glow" />
+        {isOpen && (
+          <SearchSuggestions
+            panelRef={panelRef}
+            options={options}
+            activeIndex={activeIndex}
+            listboxId={listboxId}
+            optionIdPrefix={optionIdPrefix}
+            onPick={pick}
+            onHoverOption={setActiveIndex}
+          />
+        )}
+      </header>
+    ) : (
+      <>
+        {/* One continuous surface, not two stacked cards: the location row
+            and the search row below it share the same background and carry
+            no border between or under them, so scrolling past both reads as
+            one section ending rather than two boxes stacked on the page. */}
+        <header
+          className={`bg-[#FAF7F2] p-3 px-4 pt-safe-3 shrink-0 flex items-center justify-between gap-2 sticky top-0 z-20 transition-all duration-300 ${
+            isScrolled ? 'header-scrolled' : ''
+          } ${roleGradient ? `bg-gradient-to-b ${roleGradient}` : ''}`}
+        >
+          <div className="flex-1 min-w-0">
+            <DeliveryLocationBar onAddressChange={onAddressChange} />
+          </div>
+
+          <div className="flex items-center space-x-1.5 shrink-0">
+            <button
+              onClick={onOpenWallet}
+              className="skeuo-btn-emerald flex items-center justify-center p-2 rounded-full transition-all active:scale-95 cursor-pointer"
+              title={t('header.openWallet')}
+              aria-label={t('header.openWallet')}
+            >
+              <Wallet className="w-4 h-4 text-emerald-200" />
+            </button>
+          </div>
+        </header>
+
+        {/* The search bar, directly under the sticky location bar but not
+            sticky itself — it scrolls away with the rest of the home tab,
+            same as it always could be reopened from the dedicated search
+            screen this still hands off to. */}
+        <div className="relative bg-[#FAF7F2] px-4 pb-3 pt-2 shrink-0">
+          {searchField}
+
+          {isOpen && (
+            <SearchSuggestions
+              panelRef={panelRef}
+              options={options}
+              activeIndex={activeIndex}
+              listboxId={listboxId}
+              optionIdPrefix={optionIdPrefix}
+              onPick={pick}
+              onHoverOption={setActiveIndex}
+            />
           )}
         </div>
-
-        {/* The same logotype the launch and login screens draw — same face,
-            weight and tracking, same two colours — because three slightly
-            different wordmarks read as three different products.
-
-            `aria-hidden`, because the badge beside it is already labelled
-            "VegDrop"; without this a screen reader announces the name twice.
-
-            Never translated: it is a name, not a string. */}
-        <span className="vd-home-wordmark" aria-hidden="true">
-          <span className="vd-home-wordmark-veg">Veg</span>
-          <span className="vd-home-wordmark-drop">Drop</span>
-        </span>
-      </div>
-
-      {searchField}
-
-      {/* 3D Tactile Wallet & User Profile Buttons */}
-      <div className="flex items-center space-x-1.5 shrink-0">
-        <button
-          onClick={onOpenWallet}
-          className="skeuo-btn-emerald flex items-center gap-1 font-bold px-2 py-1.5 rounded-full text-xs transition-all active:scale-95 cursor-pointer"
-          title={t('header.openWallet')}
-        >
-          <Wallet className="w-3.5 h-3.5 text-emerald-200" />
-          <span className="animate-count-up">₹{walletBalance.toFixed(0)}</span>
-        </button>
-      </div>
-        </>
-      )}
-
-      {/* Anchored to the header rather than to the input: the box sits between
-          the name and the wallet and is far too narrow to read a suggestion in. */}
-      {isOpen && (
-        <SearchSuggestions
-          panelRef={panelRef}
-          options={options}
-          activeIndex={activeIndex}
-          listboxId={listboxId}
-          optionIdPrefix={optionIdPrefix}
-          onPick={pick}
-          onHoverOption={setActiveIndex}
-        />
-      )}
-    </header>
+      </>
+    )}
     <VoiceSearchOverlay
       open={voiceOpen}
       status={voiceStatus}

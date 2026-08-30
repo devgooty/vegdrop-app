@@ -17,6 +17,8 @@ import SplashScreen from './components/SplashScreen';
 import PriceHistory from './components/PriceHistory';
 import AccountHistory from './components/AccountHistory';
 import AccountRewards from './components/AccountRewards';
+import AccountAddress from './components/AccountAddress';
+import AccountWishlist from './components/AccountWishlist';
 import PageTransition from './components/PageTransition';
 import OTPBoxGroup from './components/OTPBoxGroup';
 import ReverseOtpPanel from './components/ReverseOtpPanel';
@@ -37,7 +39,7 @@ import { unitsOf } from './services/packs';
 import { createSchedule, fetchSchedules, recurrenceFromDates, describeRecurrence } from './services/schedules';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
-import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon } from 'lucide-react';
+import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon, MapPin as MapPinIcon, Heart as HeartIcon } from 'lucide-react';
 import {
   logout,
   logoutEverywhere,
@@ -68,12 +70,16 @@ import { RUPEES_PER_BATCH, TOKENS_PER_BATCH } from './services/rewards';
 const MarketOwnerPanel = lazy(() => import('./components/MarketOwnerPanel'));
 
 /**
- * The tabs that render the header, and so the only ones with a logo badge for
- * the launch screen to hand its droplet to. Named once because two places have
- * to agree on it: the header's own render condition, and the decision about how
- * the splash should leave.
+ * The tabs that render the header — the delivery-location bar, search box and
+ * wallet button.
+ *
+ * Account and Prices are both deliberately excluded, for the same reason:
+ * neither screen is something a shopper searches the catalog, opens the
+ * wallet, or picks a delivery address from. Prices carries its own "Search
+ * items…" box scoped to the chosen market, so the header's box would have
+ * been a second, redundant one above it.
  */
-const HEADER_TABS = ['home', 'account', 'prices'];
+const HEADER_TABS = ['home'];
 
 /**
  * What a cart line IS, independent of who is selling it.
@@ -117,6 +123,8 @@ const ACCOUNT_VIEW_TITLES = {
   profile: 'account.profileDetails',
   history: 'account.purchaseHistory',
   rewards: 'rewards.title',
+  wishlist: 'account.wishlist',
+  address: 'account.savedAddress',
   language: 'settings.language',
 };
 
@@ -1959,19 +1967,15 @@ export default function App() {
   if (showSplash) {
     /*
       Which piece of the lockup the launch screen should hand over instead of
-      fading out. The login screen carries the same wordmark and the shop's
-      header badge carries the same droplet, so in both cases cutting would
-      redraw a mark the user is already looking at.
+      fading out. The login screen carries the same wordmark, so cutting there
+      would redraw a mark the user is already looking at.
 
-      It has to name the screen that is actually next, because each of those
-      exits ends on one bare element and only the screen expecting it has
-      anywhere to put it. Three things decide that. A session still being
-      restored may yet resolve either way, so it hands over nothing — the splash
-      holds long enough that this has almost always settled by the time it is
-      read. A signed-in user on the login tab is about to be moved to the shop
-      (see the effect above), so the tab that matters is where they will land,
-      not where they are. And the header only renders on three of the tabs; the
-      others have no badge to catch anything.
+      The droplet's own handoff (`home`, to the header's logo badge) no longer
+      has anywhere to land — the header dropped that badge along with the rest
+      of the logo/wordmark, replaced by the delivery-location bar — so only the
+      login wordmark handoff is still reachable. A session still being restored
+      may yet resolve either way, so it hands over nothing — the splash holds
+      long enough that this has almost always settled by the time it is read.
     */
     const landingTab =
       user && (activeTab === 'login' || activeTab === 'signup') ? 'home' : activeTab;
@@ -1980,9 +1984,7 @@ export default function App() {
       ? undefined
       : !user && (landingTab === 'login' || landingTab === 'signup')
         ? 'login'
-        : HEADER_TABS.includes(landingTab)
-          ? 'home'
-          : undefined;
+        : undefined;
 
     return <SplashScreen onComplete={() => setShowSplash(false)} handoff={handoff} />;
   }
@@ -2074,7 +2076,6 @@ export default function App() {
             <Header
               searchVal={searchVal}
               setSearchVal={setSearchVal}
-              walletBalance={walletBalance}
               cartCount={totalCartCount}
               onOpenWallet={() => setIsWalletOpen(true)}
               onOpenAccount={() => setActiveTab('account')}
@@ -2090,6 +2091,7 @@ export default function App() {
               onSearchFocus={() => setSearchDiscoveryOpen(true)}
               searchOpen={searchDiscoveryOpen}
               onCloseSearch={handleClearSearch}
+              onAddressChange={() => setAddressVersion((v) => v + 1)}
             />
           )}
 
@@ -2163,7 +2165,6 @@ export default function App() {
                     {/* 🌟 2. SKEUOMORPHIC HOME HERO BANNER */}
                     <HomeHeroBanner
                       onExplore={() => setActiveCategoryDetail(categories[0])}
-                      onAddressChange={() => setAddressVersion((v) => v + 1)}
                     />
 
                     {/*
@@ -2294,12 +2295,16 @@ export default function App() {
                       )}
 
                       {activeAccountView === 'menu' ? (
-                        <div className="flex flex-col gap-3 text-left">
+                        /* One grouped card with a hairline between rows, rather
+                           than six cards each carrying their own shadow and
+                           border — six floating slabs read as six unrelated
+                           decisions when they are one list of destinations. */
+                        <div className="bg-white/90 backdrop-blur-sm rounded-[1.75rem] shadow-sm border border-white/50 divide-y divide-slate-100 overflow-hidden text-left">
                           <button
                             onClick={() => setActiveAccountView('profile')}
-                            className="p-4 bg-white/90 backdrop-blur-sm rounded-2xl flex items-center gap-4 shadow-sm border border-white/50 active:scale-95 transition-all cursor-pointer group"
+                            className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
                           >
-                            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(16,185,129,0.1)]">
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
                               <UserIcon className="w-5 h-5 drop-shadow-sm" />
                             </div>
                             <div className="flex-1">
@@ -2310,12 +2315,12 @@ export default function App() {
                               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
                             </div>
                           </button>
-                          
+
                           <button
                             onClick={() => setActiveAccountView('history')}
-                            className="p-4 bg-white/90 backdrop-blur-sm rounded-2xl flex items-center gap-4 shadow-sm border border-white/50 active:scale-95 transition-all cursor-pointer group"
+                            className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
                           >
-                            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(59,130,246,0.1)]">
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
                               <HistoryIcon className="w-5 h-5 drop-shadow-sm" />
                             </div>
                             <div className="flex-1">
@@ -2329,9 +2334,9 @@ export default function App() {
 
                           <button
                             onClick={() => setActiveAccountView('rewards')}
-                            className="p-4 bg-white/90 backdrop-blur-sm rounded-2xl flex items-center gap-4 shadow-sm border border-white/50 active:scale-95 transition-all cursor-pointer group"
+                            className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
                           >
-                            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(217,119,6,0.12)]">
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
                               <CoinsIcon className="w-5 h-5 drop-shadow-sm" />
                             </div>
                             <div className="flex-1">
@@ -2345,16 +2350,48 @@ export default function App() {
                             </div>
                           </button>
 
-                          {/* Language is a destination like the three above it,
+                          <button
+                            onClick={() => setActiveAccountView('wishlist')}
+                            className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
+                          >
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
+                              <HeartIcon className="w-5 h-5 drop-shadow-sm" />
+                            </div>
+                            <div className="flex-1">
+                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('account.wishlist')}</h3>
+                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">{t('account.wishlistSub')}</p>
+                            </div>
+                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
+                              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
+                            </div>
+                          </button>
+
+                          <button
+                            onClick={() => setActiveAccountView('address')}
+                            className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
+                          >
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
+                              <MapPinIcon className="w-5 h-5 drop-shadow-sm" />
+                            </div>
+                            <div className="flex-1">
+                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('account.savedAddress')}</h3>
+                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">{t('account.savedAddressSub')}</p>
+                            </div>
+                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
+                              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
+                            </div>
+                          </button>
+
+                          {/* Language is a destination like the four above it,
                               rather than a card repeated at the foot of every
                               account screen, which is what it was. The subtitle
                               is the setting's current value, so the row answers
                               "which language am I in" without being opened. */}
                           <button
                             onClick={() => setActiveAccountView('language')}
-                            className="p-4 bg-white/90 backdrop-blur-sm rounded-2xl flex items-center gap-4 shadow-sm border border-white/50 active:scale-95 transition-all cursor-pointer group"
+                            className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
                           >
-                            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-50 to-fuchsia-50 text-violet-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(139,92,246,0.12)]">
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
                               <LanguagesIcon className="w-5 h-5 drop-shadow-sm" />
                             </div>
                             <div className="flex-1">
@@ -2370,6 +2407,15 @@ export default function App() {
                         <AccountHistory user={user} orders={orders} />
                       ) : activeAccountView === 'rewards' ? (
                         <AccountRewards user={user} orders={orders} />
+                      ) : activeAccountView === 'wishlist' ? (
+                        <AccountWishlist
+                          cartItems={activeCartItems}
+                          onAddToCart={handleAddToCart}
+                          onUpdateQuantity={handleUpdateQuantity}
+                          onSelectProduct={handleOpenProductDetail}
+                        />
+                      ) : activeAccountView === 'address' ? (
+                        <AccountAddress onAddressChange={() => setAddressVersion((v) => v + 1)} />
                       ) : activeAccountView === 'language' ? (
                         /* Bare: the list is the whole point of this screen, and
                            the nav bar above it already names the setting. */

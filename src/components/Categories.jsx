@@ -55,7 +55,7 @@ export default function Categories({ categories, onSelectCategory }) {
                 </span>
               )}
 
-              <span className="text-[#C8372D] font-extrabold text-[11px] flex items-center gap-0.5 group-hover:underline">
+              <span className="text-[#23201C] font-extrabold text-[11px] flex items-center gap-0.5 group-hover:underline">
                 {t('categories.explore')} <span className="text-xs font-black">›</span>
               </span>
             </div>

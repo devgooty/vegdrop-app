@@ -50,3 +50,13 @@ export function saveCustomerAddress(address, coords = null) {
     // Nothing to do: the address stays in component state for this session.
   }
 }
+
+/** Forget the saved address and its coordinates, returning to "not set". */
+export function clearCustomerAddress() {
+  try {
+    localStorage.removeItem(ADDRESS_KEY);
+    localStorage.removeItem(COORDS_KEY);
+  } catch {
+    // Private-mode Safari throws on localStorage; nothing to clean up then.
+  }
+}

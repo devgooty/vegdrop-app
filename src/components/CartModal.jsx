@@ -106,10 +106,20 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-start z-[25] animate-fade-in">
-      {/* Stops short of the bottom nav (z-30) so Home/Prices/Orders/Account stay
-          reachable while the basket is open. */}
-      <div className="bg-[#FFFDF9] w-full max-w-md h-[calc(100dvh-4.25rem-env(safe-area-inset-bottom,0px))] flex flex-col justify-between shadow-2xl overflow-hidden relative">
+    <div className="fixed top-0 left-0 right-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom,0px))] max-w-md mx-auto bg-black/60 backdrop-blur-sm z-[25] animate-fade-in">
+      {/*
+        Stops short of the bottom nav (z-30) so Home/Prices/Orders/Account stay
+        reachable while the basket is open — the dark backdrop itself has to
+        stop there too, not just the white sheet, or it shows through the
+        transparent gutter the floating pill nav sits in.
+
+        `max-w-md mx-auto` matches the app shell's own width (App.jsx's root),
+        which `position: fixed` does not inherit from an ancestor — without it
+        this backdrop darkened the full browser viewport on anything wider than
+        the shell, staining the margins outside the app itself rather than just
+        the app content behind the basket.
+      */}
+      <div className="bg-[#FFFDF9] w-full h-full flex flex-col justify-between shadow-2xl overflow-hidden relative">
         {/* Header */}
         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-2">

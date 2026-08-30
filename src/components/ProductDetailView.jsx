@@ -5,6 +5,7 @@ import { shareProduct } from '../services/share';
 import { useLanguage } from '../i18n/LanguageContext';
 import { productName, productWeight, categoryTitle } from '../i18n/catalog';
 import { packOptions, packLineId } from '../services/packs';
+import { isWishlisted, toggleWishlist } from '../services/wishlist';
 
 export default function ProductDetailView({
   product,
@@ -20,7 +21,7 @@ export default function ProductDetailView({
   onShared,
 }) {
   const { t, language } = useLanguage();
-  const [isLiked, setIsLiked] = useState(false);
+  const [isLiked, setIsLiked] = useState(() => isWishlisted(product));
 
   const handleShare = async () => {
     const result = await shareProduct(product);
@@ -93,7 +94,8 @@ export default function ProductDetailView({
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsLiked(!isLiked)}
+            onClick={() => setIsLiked(toggleWishlist(product))}
+            aria-label={isLiked ? t('product.unlike') : t('product.like')}
             className="p-2 rounded-full bg-white border border-[#DCD5C6] shadow-2xs cursor-pointer"
           >
             <Heart className={`w-4 h-4 ${isLiked ? 'text-red-500 fill-red-500' : 'text-[#8A7E6B]'}`} />
