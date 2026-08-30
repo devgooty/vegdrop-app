@@ -461,6 +461,71 @@
 }
 
 /* ==========================================================================
+   Frosted header
+   --------------------------------------------------------------------------
+   The address row and the search row beneath it are one translucent pane the
+   catalog slides under, rather than an opaque bar it disappears behind. Both
+   rows carry the same class on purpose: two different tints would reinstate
+   exactly the stacked-boxes look that merging their backgrounds removed.
+
+   `saturate` is doing as much work here as `blur`. Blur alone over this warm
+   cream page reads as grey haze; lifting saturation is what keeps the produce
+   photography passing underneath looking like colour rather than smear.
+
+   The @supports guard is load-bearing, not politeness. Without backdrop-filter
+   the rule is simply a 28%-transparent bar, so headings and photographs run
+   straight through the address and the search placeholder — unreadable, not
+   merely unstyled. Those browsers get the original opaque cream instead.
+   ========================================================================== */
+.vd-glass-header {
+  /* The tint is whatever the centred hero card is currently claiming. It is a
+     variable rather than a fixed colour so the header repaints with the
+     carousel without either side importing the other — App.jsx sets it on the
+     shell, and inheritance carries it here. The fallback is the plain frosted
+     cream, which is what every screen without a hero gets. */
+  background-color: var(--vd-hero-accent, rgba(250, 247, 242, 0.72));
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  transition: background-color 700ms ease-out;
+}
+
+/* The hero carousel scrolls by finger and by the dots under it; the bar itself
+   is noise on a card that is already showing its neighbours at both edges. */
+.vd-hero-track {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.vd-hero-track::-webkit-scrollbar {
+  display: none;
+}
+
+/* The search field: translucent, but against a near-white ground translucent
+   has to be measured rather than eyeballed.
+
+   A sheer white fill was invisible here and the reason is arithmetic, not
+   taste. The accents are pastels — the leafy one is rgb(226 242 229), already
+   within a few points of white — so 50% white over it lands on rgb(240 248
+   242): a fourteen-point lift no eye reads as an edge. Every value low enough
+   to feel "transparent" is also low enough to erase the field.
+
+   0.82 is where it separates. The tint still reads through it, so it is still
+   glass rather than a white box, but there is an actual step at the boundary.
+   The hairline carries the rest of the definition; it is warm dark rather than
+   white for the same reason — white on these pastels has nothing to say. */
+.vd-glass-input {
+  background-color: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(45, 38, 25, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .vd-glass-header {
+    background-color: #FAF7F2;
+  }
+}
+
+/* ==========================================================================
    Sign-in
    --------------------------------------------------------------------------
    Quick-commerce grocery, the register that Blinkit/Zepto/Instamart established

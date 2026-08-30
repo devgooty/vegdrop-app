@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from 'react';
 import Header from './components/Header';
-import HomeHeroBanner from './components/HomeHeroBanner';
+import HomeHeroBanner, { DEFAULT_HERO_ACCENT } from './components/HomeHeroBanner';
 import Categories from './components/Categories';
 import ProductList from './components/ProductList';
 import BottomNav from './components/BottomNav';
@@ -381,6 +381,16 @@ export default function App() {
   // Modals state
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
+
+  /**
+   * The colour the home hero is currently painting the top of the screen.
+   *
+   * Held here rather than in the hero because the header is its sibling, not
+   * its child — the shell below publishes it as a CSS variable and the frosted
+   * header picks it up by inheritance, so neither component has to know the
+   * other exists.
+   */
+  const [heroAccent, setHeroAccent] = useState(DEFAULT_HERO_ACCENT);
 
   // Delivery Notifications: fired when shopkeeper accepts an order
   const [deliveryNotifications, setDeliveryNotifications] = useState([]);
@@ -2005,6 +2015,7 @@ export default function App() {
           ? 'h-dvh overflow-hidden justify-start'
           : 'min-h-screen justify-between pb-[calc(4rem+env(safe-area-inset-bottom,0px))]'
       }`}
+      style={{ '--vd-hero-accent': heroAccent.header }}
     >
       
       {/* FLY TO CART ITEM ANIMATION OVERLAY */}
@@ -2092,6 +2103,14 @@ export default function App() {
               searchOpen={searchDiscoveryOpen}
               onCloseSearch={handleClearSearch}
               onAddressChange={() => setAddressVersion((v) => v + 1)}
+              // The notepad icon opens the wishlist rather than a new notes
+              // feature — it is the closest thing this app already has to a
+              // running shopping list, and building a second, unrelated list
+              // feature just to match an icon would be scope no one asked for.
+              onOpenNotepad={() => {
+                setActiveAccountView('wishlist');
+                setActiveTab('account');
+              }}
             />
           )}
 
@@ -2162,9 +2181,14 @@ export default function App() {
                   <HomeSkeleton />
                 ) : (
                   <>
-                    {/* 🌟 2. SKEUOMORPHIC HOME HERO BANNER */}
+                    {/* 🌟 2. HOME HERO — collections cut from the market's own
+                        sheet, whose colour tints the header above them. */}
                     <HomeHeroBanner
-                      onExplore={() => setActiveCategoryDetail(categories[0])}
+                      products={browseProducts}
+                      categories={categories}
+                      onSelectProduct={handleOpenProductDetail}
+                      onExplore={(category) => setActiveCategoryDetail(category || categories[0])}
+                      onAccentChange={setHeroAccent}
                     />
 
                     {/*

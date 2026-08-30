@@ -40,6 +40,16 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  /**
+   * The basket freezes the page behind it, so no scroll event can arrive to
+   * bring the bar back. Opening the basket after scrolling down would
+   * otherwise leave it hidden for as long as the basket is open — with the
+   * only way out being the one small X, since the tabs are the other way back.
+   */
+  useEffect(() => {
+    if (cartOpen) setHidden(false);
+  }, [cartOpen]);
+
   return (
     // Outer element only aligns the pill to the app shell's own width
     // (`max-w-md mx-auto`, the same rule the shell itself uses) and reserves

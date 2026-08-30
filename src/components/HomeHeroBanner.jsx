@@ -1,228 +1,325 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { productName } from '../i18n/catalog';
 
 /**
- * A hero photograph, cropped to the banner by the CDN rather than by the browser.
+ * The home hero: a peeking carousel of collections, each cut from the real
+ * catalogue, whose colour is handed up to tint the header above it.
  *
- * The card is 414x208 at its widest, so the crop is asked for at 700x352 — the
- * same 2:1, at 1.7x for retina. Passing `w` ALONE, as this used to, leaves
- * `fit=crop` inert: with no height there is nothing to crop to, so the browser
- * downloaded a 600x400 photograph and `object-cover` threw a quarter of it away.
- * Naming both is what makes the parameter mean anything.
+ * It replaced three photographic offer slides. The problem with those was not
+ * that they looked bad, it was that they said things the shop did not have to
+ * honour — a headline, a discount and a coupon code, none of which the products
+ * below were checked against. A card here IS its products: four rows read off
+ * the market's own sheet, at the price checkout will charge. There is no copy
+ * that can go stale, because there is no copy making a claim.
  *
- * It is also cheaper. Measured on the heaviest of the three, 700x352 at q=70 is
- * 97 KB against 116 KB for the old uncropped w=600 at q=80 — more resolution
- * where the pixels are shown, none where they were being discarded. That matters
- * here specifically: this image is the customer app's LCP element.
- *
- * Landscape sources only. A portrait photograph centre-crops to a slot through
- * its middle, which is how the delivery slide came to be a close-up of a salad
- * bowl.
+ * The colour is the point of the design, not decoration. Each collection owns a
+ * pastel, the card is built from it, and the same pastel is published upward so
+ * the header takes it too — so swiping the carousel repaints the whole top of
+ * the screen, and the header reads as the lid of the card rather than a
+ * separate bar sitting above it.
  */
-function heroPhoto(id) {
-  return `https://images.unsplash.com/photo-${id}?w=700&h=352&fit=crop&auto=format&q=70`;
-}
 
 /**
- * The carousel only. The "DELIVERY TO" bar that used to sit above it now lives
- * in the header (DeliveryLocationBar), where it stays visible instead of
- * scrolling away with the rest of the home tab — see Header.jsx.
+ * One collection: how to pick its products, and what colour it makes the screen.
+ *
+ * `header` carries its own alpha because it lands on the frosted header, which
+ * has to keep blurring what passes underneath — an opaque tint there would turn
+ * the glass back into a solid bar and undo the frosting entirely. `wash` is
+ * solid, because it is used as a gradient stop that fades to nothing on its own.
+ *
+ * The pastels are deliberately far apart in hue. Two collections a step apart on
+ * the colour wheel make the swipe look like a rendering fault rather than a
+ * change of section — the repaint has to be legible at a glance to read as
+ * intentional.
  */
-export default function HomeHeroBanner({ onExplore }) {
-  // The banner copy below is built inside the component rather than hoisted to
-  // module scope, so it re-resolves when the language changes.
-  const { t } = useLanguage();
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const [touchStartX, setTouchStartX] = useState(0);
-  const [touchEndX, setTouchEndX] = useState(0);
+const COLLECTIONS = [
+  {
+    key: 'leafy',
+    title: 'hero.leafyTitle',
+    subtitle: 'hero.leafySub',
+    categoryId: 1,
+    header: 'rgba(226, 242, 229, 0.86)',
+    wash: '#E2F2E5',
+    cardFrom: '#EAF6EC',
+    cardTo: '#D6EBDB',
+    ink: '#1B4D3E',
+    pick: (list) => list.filter((p) => p.categoryId === 1),
+  },
+  {
+    key: 'organic',
+    title: 'hero.organicPicksTitle',
+    subtitle: 'hero.organicPicksSub',
+    categoryId: 3,
+    header: 'rgba(250, 240, 219, 0.86)',
+    wash: '#FAF0DB',
+    cardFrom: '#FDF6E7',
+    cardTo: '#F5E6C4',
+    ink: '#7A5A16',
+    pick: (list) => list.filter((p) => p.isOrganic),
+  },
+  {
+    key: 'exotic',
+    title: 'hero.exoticPicksTitle',
+    subtitle: 'hero.exoticPicksSub',
+    categoryId: 4,
+    header: 'rgba(238, 232, 250, 0.86)',
+    wash: '#EEE8FA',
+    cardFrom: '#F3EEFC',
+    cardTo: '#E2D8F6',
+    ink: '#4B3A7A',
+    pick: (list) => list.filter((p) => p.categoryId === 4),
+  },
+  {
+    key: 'savings',
+    title: 'hero.savingsTitle',
+    subtitle: 'hero.savingsSub',
+    categoryId: 2,
+    header: 'rgba(252, 230, 233, 0.86)',
+    wash: '#FCE6E9',
+    cardFrom: '#FDEFF1',
+    cardTo: '#F8D8DD',
+    ink: '#8C2F3C',
+    // Sorted by how much is actually taken off, not by how cheap the item is —
+    // "biggest savings" naming the cheapest rows would just be a price list.
+    pick: (list) =>
+      list
+        .filter((p) => p.oldPrice > p.price)
+        .sort((a, b) => b.oldPrice - b.price - (a.oldPrice - a.price)),
+  },
+];
+
+const ROWS_PER_CARD = 4;
+
+/** The tint the header falls back to before any card has claimed the screen. */
+export const DEFAULT_HERO_ACCENT = {
+  header: 'rgba(250, 247, 242, 0.72)',
+  wash: '#FAF7F2',
+};
+
+export default function HomeHeroBanner({
+  products = [],
+  categories = [],
+  onExplore,
+  onSelectProduct,
+  onAccentChange,
+}) {
+  const { t, language } = useLanguage();
+  const trackRef = useRef(null);
+  const [active, setActive] = useState(0);
 
   /**
-   * A slide is a headline, a deal and a code. Nothing else is rendered, so
-   * nothing else is carried — the tag, subtitle and badge colour were dropped
-   * here as well as from the markup rather than left as fields no one reads.
+   * A collection with nothing in it is dropped rather than rendered empty.
    *
-   * **No slide promises a delivery time.** One used to promise fifteen minutes
-   * in three places at once (its tag, its headline and its subtitle) plus a
-   * fourth on every other slide, in the "15m to …" ETA. That is a hard number to
-   * hit on a hyperlocal round, and a banner is a bad place to commit to one.
-   * Free delivery over ₹200 is the promise here instead, because it is a rule
-   * the checkout actually enforces rather than an estimate.
+   * The catalogue is the chosen market's sheet, so which of these have stock is
+   * a per-market fact — a market with no exotic aisle would otherwise get a
+   * violet card containing four blank rows, and a dot in the strip that leads
+   * nowhere.
    */
-  const banners = [
-    {
-      id: 1,
-      title: t('hero.organicTitle'),
-      offer: t('hero.flat20'),
-      code: 'FRESH20',
-      // A harvest crate, for copy that says these were handpicked this morning.
-      image: heroPhoto('1624668430039-0175a0fbf006'),
-    },
-    {
-      id: 2,
-      title: t('hero.expressTitle'),
-      offer: t('hero.freeDelivery200'),
-      code: 'EXPRESS',
-      /*
-        A rider carrying an insulated box. This slide was a close-up of a salad
-        bowl, illustrating nothing it claimed. The box is unbranded on purpose:
-        the obvious stock photographs here are all couriers for a named delivery
-        company, and a competitor's logo across our own hero is worse than a
-        picture that says nothing.
-      */
-      image: heroPhoto('1648394794449-5dbe63f6a8b5'),
-    },
-    {
-      id: 3,
-      title: t('hero.exoticTitle'),
-      offer: t('hero.upto35'),
-      code: 'BAZZAR35',
-      // Papaya, avocado, kiwi, grapefruit — the exotic the copy is selling.
-      image: heroPhoto('1610832958506-aa56368176cf'),
-    },
-  ];
+  const cards = useMemo(() => {
+    const sellable = products.filter((p) => p?.isActive !== false && Number(p?.stock ?? 0) > 0);
+    return COLLECTIONS.map((c) => ({ ...c, items: c.pick(sellable).slice(0, ROWS_PER_CARD) })).filter(
+      (c) => c.items.length > 0
+    );
+  }, [products]);
 
-  // Auto-slide banner every 4 seconds
+  // A shrinking set must not leave the pointer past its end — switching to a
+  // market with fewer aisles would otherwise index into nothing and blank the
+  // accent.
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % banners.length);
-    }, 4000);
-    return () => clearInterval(timer);
-  }, [banners.length]);
+    setActive((i) => (i >= cards.length ? Math.max(0, cards.length - 1) : i));
+  }, [cards.length]);
 
-  const banner = banners[currentSlide];
+  /**
+   * Publish the active card's colour upward.
+   *
+   * Reported from here rather than read by the header, because only this
+   * component knows which card is centred — and it is reported as a value, not
+   * written to the DOM, so leaving the home tab restores the default tint
+   * through ordinary React state instead of a cleanup that has to remember to
+   * run.
+   */
+  useEffect(() => {
+    const card = cards[active];
+    onAccentChange?.(card ? { header: card.header, wash: card.wash } : DEFAULT_HERO_ACCENT);
+  }, [active, cards, onAccentChange]);
+
+  useEffect(() => () => onAccentChange?.(DEFAULT_HERO_ACCENT), [onAccentChange]);
+
+  /**
+   * Which card is centred, measured from the scroll position.
+   *
+   * Derived from geometry rather than tracked as the source of truth, because
+   * the carousel is a native scroll-snap track: a flick lands wherever the
+   * browser decides, and an index we incremented ourselves would disagree with
+   * what is on screen. Measuring means the dots and the tint cannot drift from
+   * the card.
+   */
+  const syncActive = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const mid = track.scrollLeft + track.clientWidth / 2;
+    let nearest = 0;
+    let best = Infinity;
+    for (let i = 0; i < track.children.length; i += 1) {
+      const child = track.children[i];
+      const centre = child.offsetLeft + child.offsetWidth / 2;
+      const gap = Math.abs(centre - mid);
+      if (gap < best) {
+        best = gap;
+        nearest = i;
+      }
+    }
+    setActive(nearest);
+  }, []);
+
+  const frame = useRef(0);
+  const handleScroll = () => {
+    cancelAnimationFrame(frame.current);
+    frame.current = requestAnimationFrame(syncActive);
+  };
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+
+  const scrollToCard = (index) => {
+    const track = trackRef.current;
+    const child = track?.children[index];
+    if (!track || !child) return;
+    track.scrollTo({
+      left: child.offsetLeft - (track.clientWidth - child.offsetWidth) / 2,
+      behavior: 'smooth',
+    });
+  };
+
+  if (cards.length === 0) return null;
 
   return (
-    <section className="px-4 pt-3 pb-1 space-y-2">
-      {/* HERO BANNER CARD */}
+    <section className="relative pt-2 pb-1">
+      {/*
+        Carries the header's colour down past the card and dissolves it into the
+        page, so the tint ends as a fade rather than an edge.
+
+        It stays strictly inside this section. The obvious version reached up
+        behind the header with a negative top, to guarantee the colour existed
+        under the frosted glass — and it painted straight over the search bar,
+        which cost an hour to find. `-z-10` does not escape to the page: the
+        home tab is wrapped in PageTransition, which animates and therefore
+        opens a stacking context, so the whole subtree paints as one layer above
+        the header regardless of how negative a child's z-index is. The header
+        does not need this element anyway; it takes the same colour through the
+        --vd-hero-accent variable, which inheritance carries across the stacking
+        context this cannot cross.
+      */}
       <div
-        className="relative h-52 rounded-3xl overflow-hidden shadow-sm border border-[#E7E1D5] bg-[#FFFDF9] group"
-        onTouchStart={(e) => setTouchStartX(e.targetTouches[0].clientX)}
-        onTouchMove={(e) => setTouchEndX(e.targetTouches[0].clientX)}
-        onTouchEnd={() => {
-          if (!touchStartX || !touchEndX) return;
-          const distance = touchStartX - touchEndX;
-          const isLeftSwipe = distance > 50;
-          const isRightSwipe = distance < -50;
-
-          if (isLeftSwipe) {
-            setCurrentSlide((prev) => (prev + 1) % banners.length);
-          }
-          if (isRightSwipe) {
-            setCurrentSlide((prev) => (prev === 0 ? banners.length - 1 : prev - 1));
-          }
-
-          setTouchStartX(0);
-          setTouchEndX(0);
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 bottom-0 -z-10 transition-[background-image] duration-700 ease-out"
+        style={{
+          backgroundImage: `linear-gradient(to bottom, ${cards[active]?.wash ?? DEFAULT_HERO_ACCENT.wash} 0%, ${
+            cards[active]?.wash ?? DEFAULT_HERO_ACCENT.wash
+          } 55%, transparent 100%)`,
         }}
-      >
-        {/*
-          Every slide is mounted and cross-faded, rather than one <img> remounted
-          on a key. Swapping the source tears the old photograph away a frame
-          before the new one decodes, so the card blinked through to its own
-          background on each turn of the carousel — and re-decoded an image the
-          browser already had. Only the active one is offered to assistive tech
-          or to the preloader.
-        */}
-        {banners.map((b, idx) => (
-          <img
-            key={b.id}
-            src={b.image}
-            alt=""
-            aria-hidden="true"
-            fetchPriority={idx === 0 ? 'high' : 'low'}
-            className={`absolute right-0 top-0 h-full w-[64%] object-cover transition-opacity duration-700 ease-out
-                        ${idx === currentSlide ? 'opacity-100' : 'opacity-0'}`}
-          />
-        ))}
-
-        {/*
-          The card is light and the words sit on the card, not on the
-          photograph — so this is a horizontal fade that hands the left side
-          back to the background, not a scrim darkening a photo to survive white
-          text on top of it.
-
-          That swap is why the whole contrast exercise this file used to carry is
-          gone. Dark type on #FFFDF9 is a fixed pair, about 15:1, and it cannot
-          be undermined by tomorrow's photograph — whereas white-on-photo had to
-          be re-swept every time the copy or the picture changed, and failed
-          only on whichever slide happened to be pale.
-
-          The stops are still measured, just against a different thing: the
-          longest headline. "Delivered Fresh to Your Doorstep" wraps to 51.6% of
-          the card, so solid ground runs to 54% — an earlier 38% left that one
-          slide's last word sitting on 82%-opaque cream over a photograph. The
-          three headlines end at 42.5%, 51.6% and 43.5%; re-measure if any of
-          them grows, because only the longest one can expose this.
-
-          It clears by 78% rather than sooner so the fade lands well inside the
-          photo's own width (64%) and never shows a vertical seam where the
-          image begins.
-        */}
-        <div
-          className="absolute inset-0 bg-[linear-gradient(to_right,#FFFDF9_0%,#FFFDF9_54%,rgba(255,253,249,0.85)_64%,rgba(255,253,249,0)_78%)]"
-          aria-hidden="true"
-        />
-
-        {/*
-          Headline, one supporting line, one button — the shape both reference
-          banners use. The offer moved INTO the supporting line rather than
-          being dropped: those banners carry a subtitle and no coupon, but the
-          codes are real, and "Flat 20% OFF · FRESH20" says the same thing in
-          the slot their subtitle already occupies. Three elements, nothing lost.
-        */}
-        <div className="absolute inset-0 flex flex-col justify-center gap-2 p-5 w-[60%]">
-          <div className="space-y-1.5 animate-fade-in" key={`copy-${banner.id}`}>
-            <h2 className="font-vintage text-[23px] font-black leading-[1.08] text-[#1A1A1A] tracking-tight">
-              {banner.title}
-            </h2>
-            <p className="text-[11px] font-bold text-[#6B6355] leading-snug">
-              {banner.offer} · {banner.code}
-            </p>
-          </div>
-
-          {/* self-start, or a block-level flex button stretches the column. */}
-          <button
-            onClick={onExplore}
-            className="self-start bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-extrabold px-5 py-2.5 rounded-full text-sm inline-flex items-center gap-1 shadow-sm cursor-pointer active:scale-95 transition-colors z-20"
-          >
-            <span>{t('hero.shopNow')}</span>
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Manual Arrow Controls (Desktop/Hover) */}
-        <button
-          onClick={(e) => { e.stopPropagation(); setCurrentSlide((prev) => (prev === 0 ? banners.length - 1 : prev - 1)); }}
-          className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white text-[#1B4D3E] border border-[#E7E1D5] rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 cursor-pointer shadow-sm"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); setCurrentSlide((prev) => (prev + 1) % banners.length); }}
-          className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white text-[#1B4D3E] border border-[#E7E1D5] rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 cursor-pointer shadow-sm"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-        </button>
-
-      </div>
+      />
 
       {/*
-        Indicators sit UNDER the card rather than inside its bottom corner,
-        where they used to overlap the offer row. Off the photograph they also
-        stop needing a translucent-white treatment to survive whatever happens
-        to be behind them.
+        A native scroll-snap track, not a transform carousel.
+
+        Swiping this is the whole feature — the tint follows the finger — and a
+        transform slider only moves in completed steps, so the colour would jump
+        at the end of a swipe instead of arriving with the card. `snap-center`
+        with cards narrower than the track is also what produces the peek at both
+        edges, rather than it having to be faked with padding.
       */}
-      <div className="flex justify-center gap-1.5 pt-0.5">
-        {banners.map((b, idx) => (
+      <div
+        ref={trackRef}
+        onScroll={handleScroll}
+        className="vd-hero-track flex gap-3 overflow-x-auto snap-x snap-mandatory px-4 pb-2"
+      >
+        {cards.map((card) => {
+          const category = categories.find((c) => c.id === card.categoryId);
+          return (
+            <article
+              key={card.key}
+              className="snap-center shrink-0 w-[86%] rounded-3xl overflow-hidden border border-black/5 shadow-sm flex flex-col"
+              style={{ backgroundImage: `linear-gradient(160deg, ${card.cardFrom} 0%, ${card.cardTo} 100%)` }}
+            >
+              <header className="px-4 pt-3.5 pb-2">
+                <h2 className="font-vintage text-[19px] font-black leading-tight tracking-tight" style={{ color: card.ink }}>
+                  {t(card.title)}
+                </h2>
+                <p className="text-[11px] font-bold opacity-70 leading-snug" style={{ color: card.ink }}>
+                  {t(card.subtitle)}
+                </p>
+              </header>
+
+              <ul className="px-2.5 space-y-1.5 flex-1">
+                {card.items.map((item) => {
+                  const off =
+                    item.oldPrice > item.price
+                      ? Math.round(((item.oldPrice - item.price) / item.oldPrice) * 100)
+                      : 0;
+                  return (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => onSelectProduct?.(item)}
+                        className="w-full flex items-center gap-2.5 rounded-2xl bg-white/70 hover:bg-white/90 px-2 py-1.5 text-left transition-colors active:scale-[0.99] cursor-pointer"
+                      >
+                        <img
+                          src={item.image}
+                          alt=""
+                          aria-hidden="true"
+                          loading="lazy"
+                          className="w-10 h-10 rounded-xl object-cover bg-white shrink-0"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[11.5px] font-bold text-[#2D2A26] truncate leading-tight">
+                            {productName(item, language)}
+                          </span>
+                          <span className="block text-[10px] font-semibold text-[#8A7E6B] leading-tight">
+                            {item.weight}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span className="block text-[12px] font-black leading-tight" style={{ color: card.ink }}>
+                            ₹{item.price}
+                          </span>
+                          {off > 0 && (
+                            <span className="block text-[9px] font-bold text-[#8A7E6B] line-through leading-tight">
+                              ₹{item.oldPrice}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+
+              <button
+                type="button"
+                onClick={() => onExplore?.(category)}
+                className="mt-2 w-full py-2.5 flex items-center justify-center gap-1 text-[11.5px] font-black bg-white/40 hover:bg-white/60 transition-colors cursor-pointer"
+                style={{ color: card.ink }}
+              >
+                <span>{t('hero.seeAll')}</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="flex justify-center gap-1.5 pt-1">
+        {cards.map((card, idx) => (
           <button
-            key={b.id}
-            onClick={() => setCurrentSlide(idx)}
-            aria-label={t('hero.goToSlide', { n: idx + 1 })}
-            aria-current={currentSlide === idx}
+            key={card.key}
+            onClick={() => scrollToCard(idx)}
+            aria-label={t('hero.goToCollection', { name: t(card.title) })}
+            aria-current={active === idx}
             className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
-              currentSlide === idx ? 'w-5 bg-[#1B4D3E]' : 'w-1.5 bg-[#DCD5C6]'
+              active === idx ? 'w-5' : 'w-1.5 bg-black/15'
             }`}
+            style={active === idx ? { backgroundColor: card.ink } : undefined}
           />
         ))}
       </div>

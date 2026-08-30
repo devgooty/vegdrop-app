@@ -41,6 +41,53 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, isPaying, onClose]);
 
+  /**
+   * The shop behind the basket must not scroll while the basket is open.
+   *
+   * Without this the catalog went on scrolling underneath: the basket sheet
+   * stayed put while product rows slid past in the strip the floating nav sits
+   * in, which read as two screens moving independently. It also loses the
+   * shopper's place — they reopen the shop somewhere they never scrolled to.
+   *
+   * `position: fixed` rather than the plain `overflow: hidden` that Dialog in
+   * MarketOwnerPanel uses, because this is the mobile path and iOS Safari
+   * ignores `overflow` on the body. Pinning to a negative `top` is what keeps
+   * the scroll position, which is then restored on the way out — setting only
+   * `position` would snap the shop back to the top when the basket closes.
+   */
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const { body } = document;
+    const scrollY = window.scrollY;
+    const previous = {
+      position: body.style.position,
+      top: body.style.top,
+      width: body.style.width,
+      overflow: body.style.overflow,
+    };
+
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.width = '100%';
+    body.style.overflow = 'hidden';
+
+    return () => {
+      body.style.position = previous.position;
+      body.style.top = previous.top;
+      body.style.width = previous.width;
+      body.style.overflow = previous.overflow;
+
+      // Reading a layout property forces the browser to re-measure the page
+      // before we scroll it. While the body was fixed the document had
+      // collapsed to viewport height, so a scrollTo issued in the same tick is
+      // clamped against that stale height and lands at the top — which put the
+      // shopper back at the start of the catalog every time they closed the
+      // basket, exactly the thing this effect exists to prevent.
+      void body.offsetHeight;
+      window.scrollTo(0, scrollY);
+    };
+  }, [isOpen]);
+
   // The Razorpay checkout script is NOT loaded here. This modal no longer opens
   // checkout itself — card and UPI route through the wallet top-up in
   // WalletModal, which loads the script on demand via services/wallet.js.
@@ -106,20 +153,25 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
   };
 
   return (
-    <div className="fixed top-0 left-0 right-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom,0px))] max-w-md mx-auto bg-black/60 backdrop-blur-sm z-[25] animate-fade-in">
+    <div className="fixed inset-0 max-w-md mx-auto z-[25] animate-fade-in flex flex-col">
       {/*
-        Stops short of the bottom nav (z-30) so Home/Prices/Orders/Account stay
-        reachable while the basket is open — the dark backdrop itself has to
-        stop there too, not just the white sheet, or it shows through the
-        transparent gutter the floating pill nav sits in.
+        Covers the whole shell, and every part of it is painted.
+
+        This used to stop short of the floating nav so Home/Prices/Orders/
+        Account stayed reachable, leaving the strip the pill sits in as bare
+        viewport. That strip was not empty, it was a window: the catalog behind
+        showed through it undimmed — product cards, prices and Add buttons
+        scrolling past beneath the basket, and nothing at all wherever the pill
+        was hidden. The nav does not need a hole to stay usable; it renders at
+        z-30 above this z-25 overlay, so it takes taps regardless. What it
+        needed was something opaque to sit on, which is the shelf below.
 
         `max-w-md mx-auto` matches the app shell's own width (App.jsx's root),
         which `position: fixed` does not inherit from an ancestor — without it
-        this backdrop darkened the full browser viewport on anything wider than
-        the shell, staining the margins outside the app itself rather than just
-        the app content behind the basket.
+        this overlay covered the full browser viewport on anything wider than
+        the shell, staining the margins outside the app itself.
       */}
-      <div className="bg-[#FFFDF9] w-full h-full flex flex-col justify-between shadow-2xl overflow-hidden relative">
+      <div className="flex-1 min-h-0 bg-[#FFFDF9] flex flex-col shadow-2xl overflow-hidden relative">
         {/* Header */}
         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -148,8 +200,20 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
           </div>
         ) : (
           <>
-            {/* Cart Items List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {/*
+              Everything below the header scrolls as one region — items,
+              totals, address and payment picker together. Splitting the item
+              list and the summary/payment footer into two independently
+              sized flex children used to mean a full basket's footer (address
+              card, blocked-reason banner, five payment tiles) ate nearly all
+              the height, squeezing the item list into a sliver a couple rows
+              tall. A swipe landing on the footer did nothing — it has no
+              scroll of its own — so most of the sheet read as unresponsive.
+              Only the Place Order button stays pinned outside this region, so
+              it is never scrolled out of reach.
+            */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+            <div className="p-4 space-y-3">
               {cartItems.length === 0 ? (
                 <div className="text-center py-12 text-gray-400">
                   <ShoppingBasket className="w-12 h-12 mx-auto mb-2 opacity-30" />
@@ -198,7 +262,7 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
               )}
             </div>
 
-            {/* Footer Summary & Payment Selection */}
+            {/* Summary & Payment Selection — scrolls with the item list above */}
             {cartItems.length > 0 && (
               <div className="p-4 bg-gray-50 border-t border-gray-200 space-y-3">
                 <div className="space-y-1">
@@ -378,7 +442,13 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                     )}
                   </div>
                 )}
+              </div>
+            )}
+            </div>
 
+            {/* Place Order — pinned outside the scroll region so it's always reachable */}
+            {cartItems.length > 0 && (
+              <div className="p-4 bg-gray-50 border-t border-gray-200">
                 <button
                   onClick={handlePlaceOrder}
                   disabled={cartItems.length === 0 || isPaying || Boolean(blockedReason)}
@@ -399,6 +469,18 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
           </>
         )}
       </div>
+
+      {/*
+        The shelf the floating nav pill rests on while the basket is open.
+
+        Same cream as the shop's own background, so the pill looks exactly as
+        it does everywhere else — it is the gap around and behind a rounded,
+        inset pill that made the catalog visible through it.
+      */}
+      <div
+        aria-hidden="true"
+        className="shrink-0 h-[calc(4.25rem+env(safe-area-inset-bottom,0px))] bg-[#FAF7F2]"
+      />
     </div>
   );
 }

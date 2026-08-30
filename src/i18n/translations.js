@@ -78,6 +78,7 @@ const STRINGS = {
   'header.clearSearch': { en: 'Clear search', hi: 'खोज हटाएँ', te: 'వెతుకులాట తొలగించు' },
   'header.backFromSearch': { en: 'Back', hi: 'वापस', te: 'వెనక్కి' },
   'header.voiceSearch': { en: 'Search by voice', hi: 'आवाज़ से खोजें', te: 'వాయిస్‌తో వెతకండి' },
+  'header.myList': { en: 'My List', hi: 'मेरी सूची', te: 'నా జాబితా' },
   'header.voiceStop': { en: 'Stop listening', hi: 'सुनना बंद करें', te: 'వినడం ఆపండి' },
   'header.voiceSpeakNow': { en: 'Speak now', hi: 'अब बोलें', te: 'ఇప్పుడు మాట్లాడండి' },
   'header.voiceClose': { en: 'Close voice search', hi: 'आवाज़ खोज बंद करें', te: 'వాయిస్ సెర్చ్ మూసివేయండి' },
@@ -167,6 +168,41 @@ const STRINGS = {
   'hero.shopNow': { en: 'Shop Now', hi: 'अभी खरीदें', te: 'ఇప్పుడే కొనండి' },
   // The carousel dots carry no text, so this is the only name they have.
   'hero.goToSlide': { en: 'Go to offer {n}', hi: 'ऑफ़र {n} पर जाएँ', te: 'ఆఫర్ {n}కి వెళ్లండి' },
+
+  /* Collection cards. Each names a real slice of the catalogue rather than a
+     campaign, so a card can never advertise an offer the shop is not running —
+     the products underneath are the offer. */
+  'hero.leafyTitle': { en: 'Leafy & Fresh', hi: 'हरी पत्तेदार', te: 'ఆకుకూరలు' },
+  'hero.leafySub': {
+    en: 'Picked this morning',
+    hi: 'आज सुबह तोड़ी गई',
+    te: 'ఈ ఉదయం కోసినవి',
+  },
+  'hero.organicPicksTitle': { en: 'Organic Picks', hi: 'जैविक चुनिंदा', te: 'సేంద్రియ ఎంపికలు' },
+  'hero.organicPicksSub': {
+    en: 'Grown without chemicals',
+    hi: 'बिना रसायन उगाया',
+    te: 'రసాయనాలు లేకుండా పండించినవి',
+  },
+  'hero.exoticPicksTitle': { en: 'Exotic & Herbs', hi: 'विदेशी और जड़ी-बूटी', te: 'ఎగ్జాటిక్ & మూలికలు' },
+  'hero.exoticPicksSub': {
+    en: 'Something different tonight',
+    hi: 'आज कुछ अलग',
+    te: 'ఈ రాత్రి కొత్తగా',
+  },
+  'hero.savingsTitle': { en: 'Biggest Savings', hi: 'सबसे बड़ी बचत', te: 'అతిపెద్ద ఆదా' },
+  'hero.savingsSub': {
+    en: 'Lowest prices right now',
+    hi: 'अभी सबसे कम दाम',
+    te: 'ఇప్పుడు అత్యల్ప ధరలు',
+  },
+  'hero.seeAll': { en: 'See all', hi: 'सभी देखें', te: 'అన్నీ చూడండి' },
+  'hero.off': { en: '{n}% OFF', hi: '{n}% छूट', te: '{n}% తగ్గింపు' },
+  'hero.goToCollection': {
+    en: 'Go to {name}',
+    hi: '{name} पर जाएँ',
+    te: '{name}కి వెళ్లండి',
+  },
 
   // --- Search discovery (SearchDiscovery.jsx) --------------------------------
   // Shown the moment the search field is tapped, before anything is typed.

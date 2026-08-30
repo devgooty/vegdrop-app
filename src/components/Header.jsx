@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useId } from 'react';
-import { Search, Wallet, X, ArrowLeft, Mic } from 'lucide-react';
+import { Search, Wallet, X, ArrowLeft, Mic, ClipboardList } from 'lucide-react';
 import SearchSuggestions from './SearchSuggestions';
 import VoiceSearchOverlay from './VoiceSearchOverlay';
 import DeliveryLocationBar from './DeliveryLocationBar';
@@ -24,6 +24,7 @@ export default function Header({
   searchOpen = false,
   onCloseSearch,
   onAddressChange,
+  onOpenNotepad,
 }) {
   const { t, language } = useLanguage();
   const [isScrolled, setIsScrolled] = useState(false);
@@ -360,14 +361,14 @@ export default function Header({
           className={
             searchOpen
               ? 'vd-search-input-expanded w-full rounded-xl py-2.5 pl-4 pr-[4.5rem] text-sm font-medium text-[#2D2A26] placeholder-[#9A8F7C] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/25 transition-all'
-              : 'w-full skeuo-inset-input rounded-full py-1.5 pl-7 pr-7 text-xs font-medium text-[#2D2A26] placeholder-[#9A8F7C] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30 transition-all'
+              : 'w-full vd-glass-input rounded-full py-3 pl-10 pr-9 text-sm font-medium text-[#2D2A26] placeholder-[#9A8F7C] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30 transition-all'
           }
         />
         {!searchOpen && (
-          <Search className="w-3.5 h-3.5 text-[#8A7E6B] absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-[18px] h-[18px] text-[#8A7E6B] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
         )}
 
-        <div className={`absolute top-1/2 -translate-y-1/2 flex items-center gap-0.5 ${searchOpen ? 'right-2' : 'right-1.5'}`}>
+        <div className={`absolute top-1/2 -translate-y-1/2 flex items-center gap-0.5 ${searchOpen ? 'right-2' : 'right-2.5'}`}>
           {searchVal && (
             <button
               type="button"
@@ -382,7 +383,7 @@ export default function Header({
               aria-label={t('header.clearSearch')}
               className="p-1 rounded-full text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5 transition-colors cursor-pointer"
             >
-              <X className={`stroke-[3] ${searchOpen ? 'w-3.5 h-3.5' : 'w-3 h-3'}`} />
+              <X className="stroke-[3] w-3.5 h-3.5" />
             </button>
           )}
           {searchOpen && (
@@ -420,7 +421,7 @@ export default function Header({
     <>
     {searchOpen ? (
       <header
-        className={`bg-[#FAF7F2] p-3 px-4 pt-safe-3 shrink-0 border-b flex items-center gap-2 sticky top-0 z-50 transition-all duration-300 ${
+        className={`vd-glass-header p-3 px-4 pt-safe-3 shrink-0 border-b flex items-center gap-2 sticky top-0 z-50 transition-all duration-300 ${
           isScrolled ? 'header-scrolled border-[#D5CDBC]' : 'border-[#DCD5C6] shadow-xs'
         }`}
       >
@@ -447,38 +448,90 @@ export default function Header({
         )}
       </header>
     ) : (
-      <>
-        {/* One continuous surface, not two stacked cards: the location row
-            and the search row below it share the same background and carry
-            no border between or under them, so scrolling past both reads as
-            one section ending rather than two boxes stacked on the page. */}
-        <header
-          className={`bg-[#FAF7F2] p-3 px-4 pt-safe-3 shrink-0 flex items-center justify-between gap-2 sticky top-0 z-20 transition-all duration-300 ${
-            isScrolled ? 'header-scrolled' : ''
-          } ${roleGradient ? `bg-gradient-to-b ${roleGradient}` : ''}`}
-        >
-          <div className="flex-1 min-w-0">
-            <DeliveryLocationBar onAddressChange={onAddressChange} />
-          </div>
+      /*
+        One sticky element, not two stacked bars. It used to be a sticky
+        address row with a plain search row scrolling away underneath it —
+        but "hide the address once the shopper scrolls, keep search pinned"
+        needs the search row to end up occupying position zero, and only one
+        element can be sticky at position zero at a time. So the address row
+        collapses INSIDE the thing that stays sticky, rather than being a
+        sibling this component could unmount: the search row was never sticky
+        on its own, it just inherits the position once its neighbour's height
+        goes to zero above it.
+      */
+      <header
+        className={`vd-glass-header pt-safe-3 shrink-0 sticky top-0 z-20 transition-all duration-300 ${
+          isScrolled ? 'header-scrolled' : ''
+        } ${roleGradient ? `bg-gradient-to-b ${roleGradient}` : ''}`}
+      >
+        {/*
+          Where a shopper is being delivered to matters most on the first
+          screenful and far less three rows into the catalogue — so scrolling
+          reclaims this row's height for products instead of holding the
+          address in view for good, which the old always-visible bar assumed.
 
-          <div className="flex items-center space-x-1.5 shrink-0">
+          Collapsed with `max-height` rather than `hidden`/`h-0`: the row's
+          rendered height is not a fixed number (address text can wrap to a
+          second line), and max-height is what lets that collapse animate as
+          a slide instead of snapping instantly regardless of how tall the
+          content actually was.
+        */}
+        <div
+          className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-out ${
+            isScrolled ? 'max-h-0 opacity-0' : 'max-h-16 opacity-100'
+          }`}
+        >
+          <div className="p-3 px-4 flex items-center justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <DeliveryLocationBar onAddressChange={onAddressChange} />
+            </div>
+
+            <div className="flex items-center space-x-1.5 shrink-0">
+              <button
+                onClick={onOpenWallet}
+                className="skeuo-btn-emerald flex items-center justify-center p-2 rounded-full transition-all active:scale-95 cursor-pointer"
+                title={t('header.openWallet')}
+                aria-label={t('header.openWallet')}
+              >
+                <Wallet className="w-4 h-4 text-emerald-200" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* The search bar — always rendered, so it is what is left pinned
+            once the row above it collapses.
+
+            Notepad and mic sit beside it as their own buttons rather than
+            inside it, matching the quick-commerce register this row is
+            already built on — the input stays a single job (typing), and
+            each icon is its own tap target instead of two functions
+            competing for the same corner of one input. */}
+        <div className="relative px-4 pb-3 pt-2">
+          <div className="flex items-center gap-2">
+            {searchField}
+
             <button
-              onClick={onOpenWallet}
-              className="skeuo-btn-emerald flex items-center justify-center p-2 rounded-full transition-all active:scale-95 cursor-pointer"
-              title={t('header.openWallet')}
-              aria-label={t('header.openWallet')}
+              type="button"
+              onClick={onOpenNotepad}
+              aria-label={t('header.myList')}
+              title={t('header.myList')}
+              className="shrink-0 flex items-center justify-center w-12 h-12 rounded-2xl vd-glass-input text-[#1B4D3E] hover:opacity-80 active:scale-95 transition-all cursor-pointer"
             >
-              <Wallet className="w-4 h-4 text-emerald-200" />
+              <ClipboardList className="w-5 h-5" />
+            </button>
+
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={openVoiceSearch}
+              aria-label={t('header.voiceSearch')}
+              title={t('header.voiceSearch')}
+              className="shrink-0 flex items-center justify-center w-12 h-12 rounded-2xl vd-glass-input text-[#1B4D3E] hover:opacity-80 active:scale-95 transition-all cursor-pointer"
+            >
+              <Mic className="w-5 h-5" />
             </button>
           </div>
-        </header>
-
-        {/* The search bar, directly under the sticky location bar but not
-            sticky itself — it scrolls away with the rest of the home tab,
-            same as it always could be reopened from the dedicated search
-            screen this still hands off to. */}
-        <div className="relative bg-[#FAF7F2] px-4 pb-3 pt-2 shrink-0">
-          {searchField}
 
           {isOpen && (
             <SearchSuggestions
@@ -492,7 +545,7 @@ export default function Header({
             />
           )}
         </div>
-      </>
+      </header>
     )}
     <VoiceSearchOverlay
       open={voiceOpen}
