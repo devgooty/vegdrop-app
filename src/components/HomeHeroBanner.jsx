@@ -48,30 +48,6 @@ const COLLECTIONS = [
     pick: (list) => list.filter((p) => p.categoryId === 1),
   },
   {
-    key: 'organic',
-    title: 'hero.organicPicksTitle',
-    subtitle: 'hero.organicPicksSub',
-    categoryId: 3,
-    header: 'rgba(250, 240, 219, 0.86)',
-    wash: '#FAF0DB',
-    cardFrom: '#FDF6E7',
-    cardTo: '#F5E6C4',
-    ink: '#7A5A16',
-    pick: (list) => list.filter((p) => p.isOrganic),
-  },
-  {
-    key: 'exotic',
-    title: 'hero.exoticPicksTitle',
-    subtitle: 'hero.exoticPicksSub',
-    categoryId: 4,
-    header: 'rgba(238, 232, 250, 0.86)',
-    wash: '#EEE8FA',
-    cardFrom: '#F3EEFC',
-    cardTo: '#E2D8F6',
-    ink: '#4B3A7A',
-    pick: (list) => list.filter((p) => p.categoryId === 4),
-  },
-  {
     key: 'savings',
     title: 'hero.savingsTitle',
     subtitle: 'hero.savingsSub',
@@ -88,9 +64,94 @@ const COLLECTIONS = [
         .filter((p) => p.oldPrice > p.price)
         .sort((a, b) => b.oldPrice - b.price - (a.oldPrice - a.price)),
   },
+  {
+    key: 'organic',
+    title: 'hero.organicPicksTitle',
+    subtitle: 'hero.organicPicksSub',
+    categoryId: 3,
+    header: 'rgba(250, 240, 219, 0.86)',
+    wash: '#FAF0DB',
+    cardFrom: '#FDF6E7',
+    cardTo: '#F5E6C4',
+    ink: '#7A5A16',
+    pick: (list) => list.filter((p) => p.isOrganic),
+  },
+  {
+    key: 'budget',
+    title: 'hero.budgetTitle',
+    subtitle: 'hero.budgetSub',
+    categoryId: 2,
+    header: 'rgba(224, 238, 250, 0.86)',
+    wash: '#E0EEFA',
+    cardFrom: '#ECF5FD',
+    cardTo: '#D2E6F7',
+    ink: '#1D4E6B',
+    // Cheapest first, so the card opens on the strongest version of its own
+    // claim rather than on whatever happened to be indexed first.
+    pick: (list) => list.filter((p) => p.price <= 50).sort((a, b) => a.price - b.price),
+  },
+  {
+    key: 'veggies',
+    title: 'hero.veggiesTitle',
+    subtitle: 'hero.veggiesSub',
+    categoryId: 2,
+    header: 'rgba(251, 233, 219, 0.86)',
+    wash: '#FBE9DB',
+    cardFrom: '#FDF1E8',
+    cardTo: '#F6DCC6',
+    ink: '#8A4B1B',
+    pick: (list) => list.filter((p) => p.categoryId === 2),
+  },
+  {
+    key: 'exotic',
+    title: 'hero.exoticPicksTitle',
+    subtitle: 'hero.exoticPicksSub',
+    categoryId: 4,
+    header: 'rgba(238, 232, 250, 0.86)',
+    wash: '#EEE8FA',
+    cardFrom: '#F3EEFC',
+    cardTo: '#E2D8F6',
+    ink: '#4B3A7A',
+    pick: (list) => list.filter((p) => p.categoryId === 4),
+  },
 ];
 
 const ROWS_PER_CARD = 4;
+
+/**
+ * Collapses per-shop duplicates of the same produce to one row.
+ *
+ * A market with several stalls carrying Asparagus has a separate, mostly
+ * unreviewed Product document for each stall's own listing (see CLAUDE.md,
+ * Sourcing: catalogItem is what makes the same item mean anything across
+ * shops). A pick() that just filters and slices can surface the same name
+ * four times in one card, which reads as a broken feed rather than three
+ * shops sell this. Keeping the highest-rated listing per name is a proxy
+ * for the one a shopper would actually choose, and restores the variety a
+ * browsing card is supposed to show.
+ *
+ * Order is preserved from the input rather than grouped, so a caller's own
+ * sort (savings' discount, budget's price) survives unchanged among the
+ * surviving rows.
+ */
+function dedupeByName(items) {
+  const bestByName = new Map();
+  for (const item of items) {
+    const existing = bestByName.get(item.name);
+    if (!existing || (item.rating ?? 0) > (existing.rating ?? 0)) {
+      bestByName.set(item.name, item);
+    }
+  }
+  const emitted = new Set();
+  const ordered = [];
+  for (const item of items) {
+    if (bestByName.get(item.name) === item && !emitted.has(item.name)) {
+      emitted.add(item.name);
+      ordered.push(item);
+    }
+  }
+  return ordered;
+}
 
 /** The tint the header falls back to before any card has claimed the screen. */
 export const DEFAULT_HERO_ACCENT = {
@@ -119,7 +180,7 @@ export default function HomeHeroBanner({
    */
   const cards = useMemo(() => {
     const sellable = products.filter((p) => p?.isActive !== false && Number(p?.stock ?? 0) > 0);
-    return COLLECTIONS.map((c) => ({ ...c, items: c.pick(sellable).slice(0, ROWS_PER_CARD) })).filter(
+    return COLLECTIONS.map((c) => ({ ...c, items: dedupeByName(c.pick(sellable)).slice(0, ROWS_PER_CARD) })).filter(
       (c) => c.items.length > 0
     );
   }, [products]);
@@ -239,19 +300,19 @@ export default function HomeHeroBanner({
           return (
             <article
               key={card.key}
-              className="snap-center shrink-0 w-[86%] rounded-3xl overflow-hidden border border-black/5 shadow-sm flex flex-col"
+              className="snap-center shrink-0 w-[94%] rounded-3xl overflow-hidden border border-black/5 shadow-sm flex flex-col"
               style={{ backgroundImage: `linear-gradient(160deg, ${card.cardFrom} 0%, ${card.cardTo} 100%)` }}
             >
-              <header className="px-4 pt-3.5 pb-2">
-                <h2 className="font-vintage text-[19px] font-black leading-tight tracking-tight" style={{ color: card.ink }}>
+              <header className="px-5 pt-5 pb-3">
+                <h2 className="font-vintage text-[27px] font-black leading-tight tracking-tight" style={{ color: card.ink }}>
                   {t(card.title)}
                 </h2>
-                <p className="text-[11px] font-bold opacity-70 leading-snug" style={{ color: card.ink }}>
+                <p className="text-[15.5px] font-bold opacity-70 leading-snug" style={{ color: card.ink }}>
                   {t(card.subtitle)}
                 </p>
               </header>
 
-              <ul className="px-2.5 space-y-1.5 flex-1">
+              <ul className="px-3.5 space-y-2.5 flex-1">
                 {card.items.map((item) => {
                   const off =
                     item.oldPrice > item.price
@@ -262,29 +323,29 @@ export default function HomeHeroBanner({
                       <button
                         type="button"
                         onClick={() => onSelectProduct?.(item)}
-                        className="w-full flex items-center gap-2.5 rounded-2xl bg-white/70 hover:bg-white/90 px-2 py-1.5 text-left transition-colors active:scale-[0.99] cursor-pointer"
+                        className="w-full flex items-center gap-3.5 rounded-2xl bg-white/70 hover:bg-white/90 px-3 py-2.5 text-left transition-colors active:scale-[0.99] cursor-pointer"
                       >
                         <img
                           src={item.image}
                           alt=""
                           aria-hidden="true"
                           loading="lazy"
-                          className="w-10 h-10 rounded-xl object-cover bg-white shrink-0"
+                          className="w-14 h-14 rounded-xl object-cover bg-white shrink-0"
                         />
                         <span className="min-w-0 flex-1">
-                          <span className="block text-[11.5px] font-bold text-[#2D2A26] truncate leading-tight">
+                          <span className="block text-[16.5px] font-bold text-[#2D2A26] truncate leading-tight">
                             {productName(item, language)}
                           </span>
-                          <span className="block text-[10px] font-semibold text-[#8A7E6B] leading-tight">
+                          <span className="block text-[13.5px] font-semibold text-[#8A7E6B] leading-tight">
                             {item.weight}
                           </span>
                         </span>
                         <span className="shrink-0 text-right">
-                          <span className="block text-[12px] font-black leading-tight" style={{ color: card.ink }}>
+                          <span className="block text-[17.5px] font-black leading-tight" style={{ color: card.ink }}>
                             ₹{item.price}
                           </span>
                           {off > 0 && (
-                            <span className="block text-[9px] font-bold text-[#8A7E6B] line-through leading-tight">
+                            <span className="block text-[12.5px] font-bold text-[#8A7E6B] line-through leading-tight">
                               ₹{item.oldPrice}
                             </span>
                           )}
@@ -298,11 +359,11 @@ export default function HomeHeroBanner({
               <button
                 type="button"
                 onClick={() => onExplore?.(category)}
-                className="mt-2 w-full py-2.5 flex items-center justify-center gap-1 text-[11.5px] font-black bg-white/40 hover:bg-white/60 transition-colors cursor-pointer"
+                className="mt-2 w-full py-3.5 flex items-center justify-center gap-1.5 text-[15px] font-black bg-white/40 hover:bg-white/60 transition-colors cursor-pointer"
                 style={{ color: card.ink }}
               >
                 <span>{t('hero.seeAll')}</span>
-                <ChevronRight className="w-3.5 h-3.5" />
+                <ChevronRight className="w-[18px] h-[18px]" />
               </button>
             </article>
           );

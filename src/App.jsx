@@ -2296,8 +2296,13 @@ export default function App() {
                   <MarketOwnerPanel onExit={() => setActiveTab('account')} />
                 </Suspense>
               ) : (
-                /* ACCOUNT & ROLE SWITCHER TAB */
-                <div className="p-2 sm:p-6 text-center space-y-1 sm:space-y-6 animate-fade-in bg-gradient-to-br from-slate-50 to-emerald-50/40 pb-2 sm:pb-20">
+                /* ACCOUNT & ROLE SWITCHER TAB.
+
+                   pt-safe-6 rather than plain p-2 padding-top: this tab has no header
+                   of its own — unlike Orders, which draws a bar carrying its own
+                   pt-safe-6 — so nothing was reserving room for the status bar / notch
+                   above the menu list, and it opened flush against the top edge. */
+                <div className="p-2 sm:p-6 pt-safe-6 text-center space-y-1 sm:space-y-6 animate-fade-in bg-gradient-to-br from-slate-50 to-emerald-50/40 pb-2 sm:pb-20">
                   {user ? (
                     <div className="max-w-sm mx-auto relative mt-0 sm:mt-4">
                       

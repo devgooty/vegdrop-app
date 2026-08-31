@@ -196,6 +196,18 @@ const STRINGS = {
     hi: 'अभी सबसे कम दाम',
     te: 'ఇప్పుడు అత్యల్ప ధరలు',
   },
+  'hero.budgetTitle': { en: 'Budget Picks', hi: 'बजट चुनिंदा', te: 'బడ్జెట్ ఎంపికలు' },
+  'hero.budgetSub': {
+    en: 'Everything under ₹50',
+    hi: '₹50 से कम में सब कुछ',
+    te: '₹50 లోపు అన్నీ',
+  },
+  'hero.veggiesTitle': { en: 'Fresh Vegetables', hi: 'ताज़ी सब्ज़ियाँ', te: 'తాజా కూరగాయలు' },
+  'hero.veggiesSub': {
+    en: 'The everyday aisle',
+    hi: 'रोज़ की ज़रूरत',
+    te: 'రోజువారీ అవసరాలు',
+  },
   'hero.seeAll': { en: 'See all', hi: 'सभी देखें', te: 'అన్నీ చూడండి' },
   'hero.off': { en: '{n}% OFF', hi: '{n}% छूट', te: '{n}% తగ్గింపు' },
   'hero.goToCollection': {
