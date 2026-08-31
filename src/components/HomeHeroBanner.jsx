@@ -1,38 +1,52 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
-import { productName } from '../i18n/catalog';
 
 /**
- * The home hero: a peeking carousel of collections, each cut from the real
+ * The home hero: a peeking carousel of collections cut from the real
  * catalogue, whose colour is handed up to tint the header above it.
  *
- * It replaced three photographic offer slides. The problem with those was not
- * that they looked bad, it was that they said things the shop did not have to
- * honour — a headline, a discount and a coupon code, none of which the products
- * below were checked against. A card here IS its products: four rows read off
- * the market's own sheet, at the price checkout will charge. There is no copy
- * that can go stale, because there is no copy making a claim.
+ * Each card is a photograph, a headline and one line of honest copy — no
+ * item list. It went through a products-list phase first (four rows read off
+ * the market's own sheet), which solved the problem a purely photographic
+ * banner has — a headline and a discount that nothing checks against stock —
+ * but read as a small catalogue grid rather than a banner. This is the
+ * photo-banner shape back, with the same guardrail the list version had:
+ * every subtitle here is a plain factual line about the collection ("Picked
+ * this morning", "Lowest prices right now"), never a discount, a code, or a
+ * delivery-time promise the checkout does not enforce.
  *
- * The colour is the point of the design, not decoration. Each collection owns a
- * pastel, the card is built from it, and the same pastel is published upward so
- * the header takes it too — so swiping the carousel repaints the whole top of
- * the screen, and the header reads as the lid of the card rather than a
- * separate bar sitting above it.
+ * The colour is still the point of the design. Each collection owns a
+ * pastel, the card's scrim is built from it, and the same pastel is
+ * published upward so the header takes it too — swiping repaints the whole
+ * top of the screen, and the header reads as the lid of the card rather than
+ * a separate bar sitting above it.
  */
 
 /**
- * One collection: how to pick its products, and what colour it makes the screen.
+ * A hero photograph, cropped to the banner by the CDN rather than by the
+ * browser. The card is under 500px wide at its widest, so the crop is asked
+ * for at 700x352 — 2:1, at roughly 1.7x for retina. Naming both `w` and `h`
+ * is what makes `fit=crop` do anything: `w` alone leaves it inert, and the
+ * browser downloads a whole photograph only to throw most of it away.
+ */
+function heroPhoto(id) {
+  return `https://images.unsplash.com/photo-${id}?w=700&h=352&fit=crop&auto=format&q=70`;
+}
+
+/**
+ * One collection: how to pick its products (to decide whether it has anything
+ * to show), what photograph represents it, and what colour it makes the
+ * screen.
  *
- * `header` carries its own alpha because it lands on the frosted header, which
- * has to keep blurring what passes underneath — an opaque tint there would turn
- * the glass back into a solid bar and undo the frosting entirely. `wash` is
- * solid, because it is used as a gradient stop that fades to nothing on its own.
+ * The photographs are ids already live elsewhere in this app — the category
+ * cards on this same home screen, or (the 'savings' harvest-crate shot) a
+ * photograph this file shipped to production before. Reusing a verified id
+ * beats guessing a fresh one that might 404 or show the wrong thing.
  *
- * The pastels are deliberately far apart in hue. Two collections a step apart on
- * the colour wheel make the swipe look like a rendering fault rather than a
- * change of section — the repaint has to be legible at a glance to read as
- * intentional.
+ * The pastels are deliberately far apart in hue, for the same reason as
+ * before: two collections a step apart on the colour wheel make the swipe
+ * look like a rendering fault rather than a change of section.
  */
 const COLLECTIONS = [
   {
@@ -40,10 +54,10 @@ const COLLECTIONS = [
     title: 'hero.leafyTitle',
     subtitle: 'hero.leafySub',
     categoryId: 1,
+    photo: heroPhoto('1540420773420-3366772f4999'),
     header: 'rgba(226, 242, 229, 0.86)',
     wash: '#E2F2E5',
     cardFrom: '#EAF6EC',
-    cardTo: '#D6EBDB',
     ink: '#1B4D3E',
     pick: (list) => list.filter((p) => p.categoryId === 1),
   },
@@ -52,27 +66,25 @@ const COLLECTIONS = [
     title: 'hero.savingsTitle',
     subtitle: 'hero.savingsSub',
     categoryId: 2,
+    // A harvest crate — this exact photograph carried the "Flat 20% OFF"
+    // slide in production before the redesign to a products list; verified
+    // once, safe to reuse rather than a fresh unverified id.
+    photo: heroPhoto('1624668430039-0175a0fbf006'),
     header: 'rgba(252, 230, 233, 0.86)',
     wash: '#FCE6E9',
     cardFrom: '#FDEFF1',
-    cardTo: '#F8D8DD',
     ink: '#8C2F3C',
-    // Sorted by how much is actually taken off, not by how cheap the item is —
-    // "biggest savings" naming the cheapest rows would just be a price list.
-    pick: (list) =>
-      list
-        .filter((p) => p.oldPrice > p.price)
-        .sort((a, b) => b.oldPrice - b.price - (a.oldPrice - a.price)),
+    pick: (list) => list.filter((p) => p.oldPrice > p.price),
   },
   {
     key: 'organic',
     title: 'hero.organicPicksTitle',
     subtitle: 'hero.organicPicksSub',
     categoryId: 3,
+    photo: heroPhoto('1619566636858-adf3ef46400b'),
     header: 'rgba(250, 240, 219, 0.86)',
     wash: '#FAF0DB',
     cardFrom: '#FDF6E7',
-    cardTo: '#F5E6C4',
     ink: '#7A5A16',
     pick: (list) => list.filter((p) => p.isOrganic),
   },
@@ -81,24 +93,25 @@ const COLLECTIONS = [
     title: 'hero.budgetTitle',
     subtitle: 'hero.budgetSub',
     categoryId: 2,
+    // Bulk onions — an everyday, unmistakably inexpensive staple, and a
+    // different photograph from 'veggies' below so the two do not read as
+    // the same card shown twice.
+    photo: heroPhoto('1678954157605-38cc2f12c780'),
     header: 'rgba(224, 238, 250, 0.86)',
     wash: '#E0EEFA',
     cardFrom: '#ECF5FD',
-    cardTo: '#D2E6F7',
     ink: '#1D4E6B',
-    // Cheapest first, so the card opens on the strongest version of its own
-    // claim rather than on whatever happened to be indexed first.
-    pick: (list) => list.filter((p) => p.price <= 50).sort((a, b) => a.price - b.price),
+    pick: (list) => list.filter((p) => p.price <= 50),
   },
   {
     key: 'veggies',
     title: 'hero.veggiesTitle',
     subtitle: 'hero.veggiesSub',
     categoryId: 2,
+    photo: heroPhoto('1566385101042-1a0aa0c1268c'),
     header: 'rgba(251, 233, 219, 0.86)',
     wash: '#FBE9DB',
     cardFrom: '#FDF1E8',
-    cardTo: '#F6DCC6',
     ink: '#8A4B1B',
     pick: (list) => list.filter((p) => p.categoryId === 2),
   },
@@ -107,51 +120,14 @@ const COLLECTIONS = [
     title: 'hero.exoticPicksTitle',
     subtitle: 'hero.exoticPicksSub',
     categoryId: 4,
+    photo: heroPhoto('1608686207856-001b95cf60ca'),
     header: 'rgba(238, 232, 250, 0.86)',
     wash: '#EEE8FA',
     cardFrom: '#F3EEFC',
-    cardTo: '#E2D8F6',
     ink: '#4B3A7A',
     pick: (list) => list.filter((p) => p.categoryId === 4),
   },
 ];
-
-const ROWS_PER_CARD = 4;
-
-/**
- * Collapses per-shop duplicates of the same produce to one row.
- *
- * A market with several stalls carrying Asparagus has a separate, mostly
- * unreviewed Product document for each stall's own listing (see CLAUDE.md,
- * Sourcing: catalogItem is what makes the same item mean anything across
- * shops). A pick() that just filters and slices can surface the same name
- * four times in one card, which reads as a broken feed rather than three
- * shops sell this. Keeping the highest-rated listing per name is a proxy
- * for the one a shopper would actually choose, and restores the variety a
- * browsing card is supposed to show.
- *
- * Order is preserved from the input rather than grouped, so a caller's own
- * sort (savings' discount, budget's price) survives unchanged among the
- * surviving rows.
- */
-function dedupeByName(items) {
-  const bestByName = new Map();
-  for (const item of items) {
-    const existing = bestByName.get(item.name);
-    if (!existing || (item.rating ?? 0) > (existing.rating ?? 0)) {
-      bestByName.set(item.name, item);
-    }
-  }
-  const emitted = new Set();
-  const ordered = [];
-  for (const item of items) {
-    if (bestByName.get(item.name) === item && !emitted.has(item.name)) {
-      emitted.add(item.name);
-      ordered.push(item);
-    }
-  }
-  return ordered;
-}
 
 /** The tint the header falls back to before any card has claimed the screen. */
 export const DEFAULT_HERO_ACCENT = {
@@ -159,30 +135,20 @@ export const DEFAULT_HERO_ACCENT = {
   wash: '#FAF7F2',
 };
 
-export default function HomeHeroBanner({
-  products = [],
-  categories = [],
-  onExplore,
-  onSelectProduct,
-  onAccentChange,
-}) {
-  const { t, language } = useLanguage();
+export default function HomeHeroBanner({ products = [], categories = [], onExplore, onAccentChange }) {
+  const { t } = useLanguage();
   const trackRef = useRef(null);
   const [active, setActive] = useState(0);
 
   /**
-   * A collection with nothing in it is dropped rather than rendered empty.
-   *
-   * The catalogue is the chosen market's sheet, so which of these have stock is
-   * a per-market fact — a market with no exotic aisle would otherwise get a
-   * violet card containing four blank rows, and a dot in the strip that leads
-   * nowhere.
+   * A collection with nothing sellable behind it is dropped rather than
+   * shown as an empty promise — a photograph and a "Shop Now" button leading
+   * to a market with none of that aisle stocked would be worse than not
+   * offering the card at all.
    */
   const cards = useMemo(() => {
     const sellable = products.filter((p) => p?.isActive !== false && Number(p?.stock ?? 0) > 0);
-    return COLLECTIONS.map((c) => ({ ...c, items: dedupeByName(c.pick(sellable)).slice(0, ROWS_PER_CARD) })).filter(
-      (c) => c.items.length > 0
-    );
+    return COLLECTIONS.filter((c) => c.pick(sellable).length > 0);
   }, [products]);
 
   // A shrinking set must not leave the pointer past its end — switching to a
@@ -244,7 +210,8 @@ export default function HomeHeroBanner({
 
   const scrollToCard = (index) => {
     const track = trackRef.current;
-    const child = track?.children[index];
+    const clamped = Math.max(0, Math.min(index, (track?.children.length ?? 1) - 1));
+    const child = track?.children[clamped];
     if (!track || !child) return;
     track.scrollTo({
       left: child.offsetLeft - (track.clientWidth - child.offsetWidth) / 2,
@@ -295,76 +262,96 @@ export default function HomeHeroBanner({
         onScroll={handleScroll}
         className="vd-hero-track flex gap-3 overflow-x-auto snap-x snap-mandatory px-4 pb-2"
       >
-        {cards.map((card) => {
+        {cards.map((card, idx) => {
           const category = categories.find((c) => c.id === card.categoryId);
           return (
             <article
               key={card.key}
-              className="snap-center shrink-0 w-[94%] rounded-3xl overflow-hidden border border-black/5 shadow-sm flex flex-col"
-              style={{ backgroundImage: `linear-gradient(160deg, ${card.cardFrom} 0%, ${card.cardTo} 100%)` }}
+              className="group relative snap-center shrink-0 w-[94%] h-80 rounded-3xl overflow-hidden border border-black/5 shadow-sm"
+              style={{ backgroundColor: card.cardFrom }}
             >
-              <header className="px-5 pt-5 pb-3">
-                <h2 className="font-vintage text-[27px] font-black leading-tight tracking-tight" style={{ color: card.ink }}>
-                  {t(card.title)}
-                </h2>
-                <p className="text-[15.5px] font-bold opacity-70 leading-snug" style={{ color: card.ink }}>
-                  {t(card.subtitle)}
-                </p>
-              </header>
+              <img
+                src={card.photo}
+                alt=""
+                aria-hidden="true"
+                loading="lazy"
+                fetchPriority={idx === 0 ? 'high' : 'low'}
+                className="absolute right-0 top-0 h-full w-[64%] object-cover"
+              />
 
-              <ul className="px-3.5 space-y-2.5 flex-1">
-                {card.items.map((item) => {
-                  const off =
-                    item.oldPrice > item.price
-                      ? Math.round(((item.oldPrice - item.price) / item.oldPrice) * 100)
-                      : 0;
-                  return (
-                    <li key={item.id}>
-                      <button
-                        type="button"
-                        onClick={() => onSelectProduct?.(item)}
-                        className="w-full flex items-center gap-3.5 rounded-2xl bg-white/70 hover:bg-white/90 px-3 py-2.5 text-left transition-colors active:scale-[0.99] cursor-pointer"
-                      >
-                        <img
-                          src={item.image}
-                          alt=""
-                          aria-hidden="true"
-                          loading="lazy"
-                          className="w-14 h-14 rounded-xl object-cover bg-white shrink-0"
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-[16.5px] font-bold text-[#2D2A26] truncate leading-tight">
-                            {productName(item, language)}
-                          </span>
-                          <span className="block text-[13.5px] font-semibold text-[#8A7E6B] leading-tight">
-                            {item.weight}
-                          </span>
-                        </span>
-                        <span className="shrink-0 text-right">
-                          <span className="block text-[17.5px] font-black leading-tight" style={{ color: card.ink }}>
-                            ₹{item.price}
-                          </span>
-                          {off > 0 && (
-                            <span className="block text-[12.5px] font-bold text-[#8A7E6B] line-through leading-tight">
-                              ₹{item.oldPrice}
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+              {/*
+                A horizontal fade that hands the left side back to the card's
+                own colour, not a scrim darkening a photograph to survive
+                white text on top of it. The stops are measured against the
+                longest headline in the set ("Fresh Vegetables" / "Biggest
+                Savings" at this width) rather than picked by eye: solid
+                ground runs to 55%, comfortably past where any headline in
+                COLLECTIONS ends, and the fade clears by 80% — inside the
+                photo's own 64% width, so it never shows a seam where the
+                image begins.
+              */}
+              <div
+                aria-hidden="true"
+                className="absolute inset-0"
+                style={{
+                  backgroundImage: `linear-gradient(to right, ${card.cardFrom} 0%, ${card.cardFrom} 55%, transparent 80%)`,
+                }}
+              />
 
-              <button
-                type="button"
-                onClick={() => onExplore?.(category)}
-                className="mt-2 w-full py-3.5 flex items-center justify-center gap-1.5 text-[15px] font-black bg-white/40 hover:bg-white/60 transition-colors cursor-pointer"
-                style={{ color: card.ink }}
-              >
-                <span>{t('hero.seeAll')}</span>
-                <ChevronRight className="w-[18px] h-[18px]" />
-              </button>
+              <div className="absolute inset-0 flex flex-col justify-center gap-2 p-5 w-[62%]">
+                <div className="space-y-1">
+                  <h2
+                    className="font-vintage text-[22px] font-black leading-[1.1] tracking-tight"
+                    style={{ color: card.ink }}
+                  >
+                    {t(card.title)}
+                  </h2>
+                  <p className="text-[12px] font-bold opacity-75 leading-snug" style={{ color: card.ink }}>
+                    {t(card.subtitle)}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => onExplore?.(category)}
+                  className="self-start flex items-center gap-1 px-5 py-2.5 rounded-full text-sm font-extrabold text-white shadow-sm cursor-pointer active:scale-95 transition-transform"
+                  style={{ backgroundColor: card.ink }}
+                >
+                  <span>{t('hero.shopNow')}</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Manual arrow controls — desktop/hover, the same affordance
+                  this banner carried before the collections redesign. Touch
+                  has no hover state, so on a phone these stay decorative and
+                  swipe/dots do the actual work. */}
+              {idx > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    scrollToCard(idx - 1);
+                  }}
+                  aria-label={t('hero.goToCollection', { name: t(cards[idx - 1].title) })}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white text-[#1B4D3E] border border-black/5 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-sm"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+              )}
+              {idx < cards.length - 1 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    scrollToCard(idx + 1);
+                  }}
+                  aria-label={t('hero.goToCollection', { name: t(cards[idx + 1].title) })}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white text-[#1B4D3E] border border-black/5 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-sm"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
             </article>
           );
         })}

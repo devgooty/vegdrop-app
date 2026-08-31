@@ -2181,12 +2181,12 @@ export default function App() {
                   <HomeSkeleton />
                 ) : (
                   <>
-                    {/* 🌟 2. HOME HERO — collections cut from the market's own
-                        sheet, whose colour tints the header above them. */}
+                    {/* 🌟 2. HOME HERO — photo banners for collections cut
+                        from the market's own sheet, whose colour tints the
+                        header above them. */}
                     <HomeHeroBanner
                       products={browseProducts}
                       categories={categories}
-                      onSelectProduct={handleOpenProductDetail}
                       onExplore={(category) => setActiveCategoryDetail(category || categories[0])}
                       onAccentChange={setHeroAccent}
                     />
