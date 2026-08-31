@@ -216,6 +216,14 @@ const STRINGS = {
     te: '{name}కి వెళ్లండి',
   },
 
+  /* Deal-store cards under the photo hero. The badge is a real threshold or
+     a sale mark — never a ₹1 price checkout will not charge. */
+  'deal.budgetBadge': { en: '₹50', hi: '₹50', te: '₹50' },
+  'deal.budgetTitle': { en: 'Store', hi: 'स्टोर', te: 'స్టోర్' },
+  'deal.savingsBadge': { en: 'Sale', hi: 'सेल', te: 'సేల్' },
+  'deal.savingsTitle': { en: 'Store', hi: 'स्टोर', te: 'స్టోర్' },
+  'deal.select': { en: 'Select', hi: 'चुनें', te: 'ఎంచుకోండి' },
+
   // --- Search discovery (SearchDiscovery.jsx) --------------------------------
   // Shown the moment the search field is tapped, before anything is typed.
   'discovery.bestDeals': { en: 'Best deals right now', hi: 'अभी के बेहतरीन सौदे', te: 'ఇప్పటి ఉత్తమ డీల్స్' },

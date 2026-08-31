@@ -282,27 +282,27 @@ export default function CustomerOrders({
   };
 
   return (
-    <div className="animate-fade-in pb-12">
-      {/* Header */}
-      <div className="bg-[#1B4D3E] text-white pt-safe-6 pb-4 px-4 shadow-lg sticky top-0 z-20">
+    <div className="animate-fade-in pb-12 bg-[#F4F7F5] min-h-[calc(100dvh-4rem-env(safe-area-inset-bottom,0px))]">
+      {/* Fresh mint wash + leaf-green ink — the sign-in palette, not cream or forest. */}
+      <div className="bg-gradient-to-b from-[#E7F6EE] to-[#F4F7F5] pt-safe-6 pb-4 px-4 sticky top-0 z-20">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
-            <Package className="w-5 h-5 text-amber-300" />
+          <div className="w-11 h-11 rounded-2xl bg-[#FFC531] flex items-center justify-center shadow-[0_2px_8px_rgba(255,197,49,0.45)]">
+            <Package className="w-5 h-5 text-[#0B7A37]" strokeWidth={2.4} />
           </div>
           <div>
-            <h1 className="font-vintage text-2xl font-black tracking-wide drop-shadow-md">{t('orders.title')}</h1>
-            <p className="text-emerald-100 text-xs font-medium">{t('orders.subtitle')}</p>
+            <h1 className="text-2xl font-black tracking-tight text-[#0F1F17]">{t('orders.title')}</h1>
+            <p className="text-[#5B6B62] text-xs font-medium">{t('orders.subtitle')}</p>
           </div>
         </div>
 
         {/* Main Tabs */}
-        <div className="flex bg-white/10 p-1 rounded-xl backdrop-blur-sm">
+        <div className="flex bg-[#D8F0E3] p-1 rounded-full">
           <button
             onClick={() => setActiveTab('recent')}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-              activeTab === 'recent' 
-                ? 'bg-white text-[#1B4D3E] shadow-sm' 
-                : 'text-white/80 hover:bg-white/5'
+            className={`flex-1 py-2.5 text-xs font-bold rounded-full transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'recent'
+                ? 'bg-white text-[#0B7A37] shadow-[0_1px_4px_rgba(11,122,55,0.18)]'
+                : 'text-[#3D5C4A] hover:text-[#0B7A37]'
             }`}
           >
             <Clock className="w-3.5 h-3.5" /> {t('orders.tabRecent')}
@@ -312,12 +312,12 @@ export default function CustomerOrders({
             disabled={!scheduledUnlocked}
             aria-disabled={!scheduledUnlocked}
             title={scheduledUnlocked ? undefined : t('orders.scheduledLocked')}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-2.5 text-xs font-bold rounded-full transition-all flex items-center justify-center gap-1.5 ${
               !scheduledUnlocked
-                ? 'text-white/40 cursor-not-allowed'
+                ? 'text-[#8AA396] cursor-not-allowed'
                 : activeTab === 'scheduled'
-                ? 'bg-white text-[#1B4D3E] shadow-sm'
-                : 'text-white/80 hover:bg-white/5'
+                ? 'bg-white text-[#0B7A37] shadow-[0_1px_4px_rgba(11,122,55,0.18)]'
+                : 'text-[#3D5C4A] hover:text-[#0B7A37]'
             }`}
           >
             {scheduledUnlocked ? <CalendarRange className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
@@ -332,15 +332,15 @@ export default function CustomerOrders({
         {activeTab === 'recent' && (
           <>
             {orders.length === 0 ? (
-              <div className="bg-white rounded-3xl p-8 text-center shadow-lg border border-gray-100 mt-4 animate-scale-in">
-                <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <ShoppingBag className="w-10 h-10 text-emerald-300" />
+              <div className="bg-white rounded-3xl p-8 text-center shadow-sm border border-[#E4EAE6] mt-2 animate-scale-in">
+                <div className="w-20 h-20 bg-[#DCFCE7] rounded-full flex items-center justify-center mx-auto mb-4">
+                  <ShoppingBag className="w-10 h-10 text-[#16A34A]" />
                 </div>
-                <h3 className="font-bold text-lg text-gray-800 mb-2">{t('orders.noneTitle')}</h3>
-                <p className="text-sm text-gray-500 mb-6">{t('orders.noneBody')}</p>
+                <h3 className="font-bold text-lg text-[#0F1F17] mb-2">{t('orders.noneTitle')}</h3>
+                <p className="text-sm text-[#5B6B62] mb-6">{t('orders.noneBody')}</p>
                 <button
                   onClick={onGoHome}
-                  className="bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-bold py-3 px-6 rounded-2xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 mx-auto w-full"
+                  className="bg-[#0B7A37] hover:bg-[#08652C] text-white font-bold py-3 px-6 rounded-2xl shadow-[0_4px_12px_-4px_rgba(11,122,55,0.55)] transition-all active:scale-95 flex items-center justify-center gap-2 mx-auto w-full"
                 >
                   {t('orders.startShopping')} <ArrowRight className="w-4 h-4" />
                 </button>

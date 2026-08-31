@@ -1,53 +1,30 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ChevronRight, ChevronLeft } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Minus, Plus } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { productName, productWeight } from '../i18n/catalog';
+import { unitsOf } from '../services/packs';
 
 /**
- * The home hero: a peeking carousel of collections cut from the real
- * catalogue, whose colour is handed up to tint the header above it.
+ * The home hero: a peeking carousel of collection photographs AND two
+ * store-list cards, all cut from the market's own sheet, whose colour is
+ * handed up to tint the header above them.
  *
- * Each card is a photograph, a headline and one line of honest copy — no
- * item list. It went through a products-list phase first (four rows read off
- * the market's own sheet), which solved the problem a purely photographic
- * banner has — a headline and a discount that nothing checks against stock —
- * but read as a small catalogue grid rather than a banner. This is the
- * photo-banner shape back, with the same guardrail the list version had:
- * every subtitle here is a plain factual line about the collection ("Picked
- * this morning", "Lowest prices right now"), never a discount, a code, or a
- * delivery-time promise the checkout does not enforce.
+ * The photo slides are the original banners — a headline, one honest line,
+ * Shop Now. The store slides are the ₹1-store shape (badge, four rows, See
+ * all) without the ₹1 price, because checkout does not run that deal.
  *
- * The colour is still the point of the design. Each collection owns a
- * pastel, the card's scrim is built from it, and the same pastel is
- * published upward so the header takes it too — swiping repaints the whole
- * top of the screen, and the header reads as the lid of the card rather than
- * a separate bar sitting above it.
+ * The track auto-advances. It pauses while a finger or mouse is on it, and
+ * while the tab is hidden, so it cannot steal a tap or burn frames in the
+ * background. `prefers-reduced-motion` turns the timer off entirely.
  */
 
-/**
- * A hero photograph, cropped to the banner by the CDN rather than by the
- * browser. The card is under 500px wide at its widest, so the crop is asked
- * for at 700x352 — 2:1, at roughly 1.7x for retina. Naming both `w` and `h`
- * is what makes `fit=crop` do anything: `w` alone leaves it inert, and the
- * browser downloads a whole photograph only to throw most of it away.
- */
+const ROW_COUNT = 4;
+const AUTO_MS = 5000;
+
 function heroPhoto(id) {
-  return `https://images.unsplash.com/photo-${id}?w=700&h=352&fit=crop&auto=format&q=70`;
+  return `https://images.unsplash.com/photo-${id}?w=700&h=500&fit=crop&auto=format&q=70`;
 }
 
-/**
- * One collection: how to pick its products (to decide whether it has anything
- * to show), what photograph represents it, and what colour it makes the
- * screen.
- *
- * The photographs are ids already live elsewhere in this app — the category
- * cards on this same home screen, or (the 'savings' harvest-crate shot) a
- * photograph this file shipped to production before. Reusing a verified id
- * beats guessing a fresh one that might 404 or show the wrong thing.
- *
- * The pastels are deliberately far apart in hue, for the same reason as
- * before: two collections a step apart on the colour wheel make the swipe
- * look like a rendering fault rather than a change of section.
- */
 const COLLECTIONS = [
   {
     key: 'leafy',
@@ -66,9 +43,6 @@ const COLLECTIONS = [
     title: 'hero.savingsTitle',
     subtitle: 'hero.savingsSub',
     categoryId: 2,
-    // A harvest crate — this exact photograph carried the "Flat 20% OFF"
-    // slide in production before the redesign to a products list; verified
-    // once, safe to reuse rather than a fresh unverified id.
     photo: heroPhoto('1624668430039-0175a0fbf006'),
     header: 'rgba(252, 230, 233, 0.86)',
     wash: '#FCE6E9',
@@ -93,9 +67,6 @@ const COLLECTIONS = [
     title: 'hero.budgetTitle',
     subtitle: 'hero.budgetSub',
     categoryId: 2,
-    // Bulk onions — an everyday, unmistakably inexpensive staple, and a
-    // different photograph from 'veggies' below so the two do not read as
-    // the same card shown twice.
     photo: heroPhoto('1678954157605-38cc2f12c780'),
     header: 'rgba(224, 238, 250, 0.86)',
     wash: '#E0EEFA',
@@ -129,60 +100,295 @@ const COLLECTIONS = [
   },
 ];
 
+const STORES = [
+  {
+    key: 'deal-budget',
+    title: 'deal.budgetTitle',
+    subtitle: 'hero.budgetSub',
+    badge: 'deal.budgetBadge',
+    pick: (list) => [...list.filter((p) => p.price <= 50)].sort((a, b) => a.price - b.price),
+    header: 'rgba(238, 234, 248, 0.86)',
+    theme: {
+      wash: '#EEEAF8',
+      footer: '#E4DDF4',
+      badge: '#5B3AA8',
+      badgeInk: '#F4E27A',
+      badgeRing: '#E8D56A',
+      ink: '#2D2A26',
+      accent: '#4A3A8A',
+      selectBorder: '#C5D4F0',
+      selectFill: '#EEF3FB',
+      selectInk: '#2F4A8A',
+      coin: 'rgba(123, 92, 196, 0.22)',
+      dot: '#5B3AA8',
+    },
+  },
+  {
+    key: 'deal-savings',
+    title: 'deal.savingsTitle',
+    subtitle: 'hero.savingsSub',
+    badge: 'deal.savingsBadge',
+    pick: (list) =>
+      [...list.filter((p) => Number(p.oldPrice) > Number(p.price))].sort(
+        (a, b) => discountPercent(b) - discountPercent(a)
+      ),
+    header: 'rgba(231, 243, 238, 0.86)',
+    theme: {
+      wash: '#E7F3EE',
+      footer: '#D7EBE3',
+      badge: '#1B4D3E',
+      badgeInk: '#F4E27A',
+      badgeRing: '#C9A227',
+      ink: '#2D2A26',
+      accent: '#1B4D3E',
+      selectBorder: '#B7D4C8',
+      selectFill: '#EEF7F3',
+      selectInk: '#1B4D3E',
+      coin: 'rgba(27, 77, 62, 0.18)',
+      dot: '#1B4D3E',
+    },
+  },
+];
+
 /** The tint the header falls back to before any card has claimed the screen. */
 export const DEFAULT_HERO_ACCENT = {
   header: 'rgba(250, 247, 242, 0.72)',
   wash: '#FAF7F2',
 };
 
-export default function HomeHeroBanner({ products = [], categories = [], onExplore, onAccentChange }) {
-  const { t } = useLanguage();
+function inStock(product) {
+  return product?.isActive !== false && Number(product?.stock ?? 0) > 0;
+}
+
+function discountPercent(product) {
+  const old = Number(product?.oldPrice);
+  const now = Number(product?.price);
+  if (!Number.isFinite(old) || !Number.isFinite(now) || old <= now || now <= 0) return 0;
+  return Math.round(((old - now) / old) * 100);
+}
+
+function lineKey(item) {
+  const units = unitsOf(item);
+  const catalog = String(item.catalogItem || item.originalId || item.id);
+  return units > 1 ? `${catalog}::x${units}` : catalog;
+}
+
+function qtyInCart(cartItems, product) {
+  const key = lineKey(product);
+  return cartItems.find((line) => lineKey(line) === key)?.quantity ?? 0;
+}
+
+function majorityCategory(items, categories) {
+  const counts = new Map();
+  for (const item of items) {
+    counts.set(item.categoryId, (counts.get(item.categoryId) || 0) + 1);
+  }
+  let bestId = items[0]?.categoryId;
+  let best = 0;
+  for (const [id, count] of counts) {
+    if (count > best) {
+      best = count;
+      bestId = id;
+    }
+  }
+  return categories.find((c) => c.id === bestId) || categories[0];
+}
+
+function cardTitle(card) {
+  return card.kind === 'store' ? card.store.title : card.title;
+}
+
+function cardAccent(card) {
+  if (!card) return DEFAULT_HERO_ACCENT;
+  if (card.kind === 'store') {
+    return { header: card.store.header, wash: card.store.theme.wash };
+  }
+  return { header: card.header, wash: card.wash };
+}
+
+function cardDot(card) {
+  return card.kind === 'store' ? card.store.theme.dot : card.ink;
+}
+
+function CoinDecor({ color }) {
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+      <span className="absolute top-2 right-16 h-5 w-5 rounded-full" style={{ background: color }} />
+      <span className="absolute top-7 right-8 h-3.5 w-3.5 rounded-full" style={{ background: color }} />
+      <span className="absolute -top-1 right-28 h-2.5 w-2.5 rounded-full" style={{ background: color }} />
+    </div>
+  );
+}
+
+function DealRow({ product, qty, theme, onAdd, onAdjust, onOpen, t, language }) {
+  const name = productName(product, language);
+  const weight = productWeight(product.weight, language);
+  const soldOut = !inStock(product);
+  const hasOld = Number(product.oldPrice) > Number(product.price);
+
+  return (
+    <div className="flex items-center gap-2.5 px-3 py-2">
+      <button
+        type="button"
+        onClick={() => onOpen(product)}
+        className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-white border border-black/5 cursor-pointer"
+        aria-label={name}
+      >
+        <img
+          src={product.image}
+          alt=""
+          loading="lazy"
+          className="h-full w-full object-cover"
+          onError={(e) => {
+            e.target.src = 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=300';
+          }}
+        />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onOpen(product)}
+        className="min-w-0 flex-1 text-left cursor-pointer"
+      >
+        <p className="text-[12px] font-bold text-[#2D2A26] leading-tight truncate">{name}</p>
+        {weight ? (
+          <p className="text-[10px] font-semibold text-[#8A7E6B] mt-0.5">{weight}</p>
+        ) : null}
+      </button>
+
+      {soldOut ? (
+        <span className="shrink-0 text-[10px] font-bold text-slate-400 px-2">
+          {t('product.soldOut')}
+        </span>
+      ) : qty > 0 ? (
+        <div className="shrink-0 flex items-center rounded-lg border border-black/5 bg-white">
+          <button
+            type="button"
+            onClick={(e) => onAdjust(product, -1, e)}
+            className="p-1.5 cursor-pointer active:scale-90"
+            title={t('product.decreaseQty')}
+            aria-label={t('product.decreaseQty')}
+          >
+            <Minus className="w-3 h-3 stroke-[3]" style={{ color: theme.selectInk }} />
+          </button>
+          <span className="text-[11px] font-black min-w-4 text-center" style={{ color: theme.selectInk }}>
+            {qty}
+          </span>
+          <button
+            type="button"
+            onClick={(e) => onAdjust(product, 1, e)}
+            className="p-1.5 cursor-pointer active:scale-90"
+            title={t('product.increaseQty')}
+            aria-label={t('product.increaseQty')}
+          >
+            <Plus className="w-3 h-3 stroke-[3]" style={{ color: theme.selectInk }} />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={(e) => onAdd(product, e)}
+          aria-label={t('discovery.addNamed', { name })}
+          className="shrink-0 text-[11px] font-extrabold px-2.5 py-1 rounded-lg cursor-pointer active:scale-95"
+          style={{
+            color: theme.selectInk,
+            background: theme.selectFill,
+            boxShadow: `inset 0 0 0 1px ${theme.selectBorder}`,
+          }}
+        >
+          {t('deal.select')}
+        </button>
+      )}
+
+      <div className="shrink-0 w-10 text-right leading-tight">
+        {hasOld ? (
+          <p className="text-[9px] font-semibold text-[#9A8F7C] line-through">₹{product.oldPrice}</p>
+        ) : null}
+        <p className="text-[13px] font-black text-[#2D2A26]">₹{product.price}</p>
+      </div>
+    </div>
+  );
+}
+
+function NavArrows({ idx, count, prevLabel, nextLabel, onPrev, onNext }) {
+  return (
+    <>
+      {idx > 0 && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPrev();
+          }}
+          aria-label={prevLabel}
+          className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-white/85 hover:bg-white text-[#1B4D3E] border border-black/5 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-sm"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+      )}
+      {idx < count - 1 && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNext();
+          }}
+          aria-label={nextLabel}
+          className="absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-white/85 hover:bg-white text-[#1B4D3E] border border-black/5 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-sm"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      )}
+    </>
+  );
+}
+
+export default function HomeHeroBanner({
+  products = [],
+  categories = [],
+  cartItems = [],
+  onAddToCart,
+  onUpdateQuantity,
+  onSelectProduct,
+  onExplore,
+  onAccentChange,
+}) {
+  const { t, language } = useLanguage();
   const trackRef = useRef(null);
+  const pausedRef = useRef(false);
+  const resumeTimer = useRef(0);
+  const activeRef = useRef(0);
   const [active, setActive] = useState(0);
 
-  /**
-   * A collection with nothing sellable behind it is dropped rather than
-   * shown as an empty promise — a photograph and a "Shop Now" button leading
-   * to a market with none of that aisle stocked would be worse than not
-   * offering the card at all.
-   */
   const cards = useMemo(() => {
-    const sellable = products.filter((p) => p?.isActive !== false && Number(p?.stock ?? 0) > 0);
-    return COLLECTIONS.filter((c) => c.pick(sellable).length > 0);
+    const sellable = products.filter(inStock);
+    const photos = COLLECTIONS.filter((c) => c.pick(sellable).length > 0).map((c) => ({
+      kind: 'photo',
+      ...c,
+    }));
+    const stores = STORES.map((store) => ({
+      kind: 'store',
+      key: store.key,
+      store,
+      items: store.pick(sellable),
+    })).filter((c) => c.items.length >= 2);
+    return [...stores, ...photos];
   }, [products]);
 
-  // A shrinking set must not leave the pointer past its end — switching to a
-  // market with fewer aisles would otherwise index into nothing and blank the
-  // accent.
   useEffect(() => {
     setActive((i) => (i >= cards.length ? Math.max(0, cards.length - 1) : i));
   }, [cards.length]);
 
-  /**
-   * Publish the active card's colour upward.
-   *
-   * Reported from here rather than read by the header, because only this
-   * component knows which card is centred — and it is reported as a value, not
-   * written to the DOM, so leaving the home tab restores the default tint
-   * through ordinary React state instead of a cleanup that has to remember to
-   * run.
-   */
   useEffect(() => {
-    const card = cards[active];
-    onAccentChange?.(card ? { header: card.header, wash: card.wash } : DEFAULT_HERO_ACCENT);
+    activeRef.current = active;
+  }, [active]);
+
+  useEffect(() => {
+    onAccentChange?.(cardAccent(cards[active]));
   }, [active, cards, onAccentChange]);
 
   useEffect(() => () => onAccentChange?.(DEFAULT_HERO_ACCENT), [onAccentChange]);
 
-  /**
-   * Which card is centred, measured from the scroll position.
-   *
-   * Derived from geometry rather than tracked as the source of truth, because
-   * the carousel is a native scroll-snap track: a flick lands wherever the
-   * browser decides, and an index we incremented ourselves would disagree with
-   * what is on screen. Measuring means the dots and the tint cannot drift from
-   * the card.
-   */
   const syncActive = useCallback(() => {
     const track = trackRef.current;
     if (!track) return;
@@ -208,7 +414,7 @@ export default function HomeHeroBanner({ products = [], categories = [], onExplo
   };
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
-  const scrollToCard = (index) => {
+  const scrollToCard = useCallback((index) => {
     const track = trackRef.current;
     const clamped = Math.max(0, Math.min(index, (track?.children.length ?? 1) - 1));
     const child = track?.children[clamped];
@@ -217,57 +423,169 @@ export default function HomeHeroBanner({ products = [], categories = [], onExplo
       left: child.offsetLeft - (track.clientWidth - child.offsetWidth) / 2,
       behavior: 'smooth',
     });
+  }, []);
+
+  useEffect(() => {
+    if (cards.length < 2) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (reduce.matches) return undefined;
+
+    const id = window.setInterval(() => {
+      if (pausedRef.current || document.hidden) return;
+      const len = cards.length;
+      if (len < 2) return;
+      scrollToCard((activeRef.current + 1) % len);
+    }, AUTO_MS);
+
+    return () => window.clearInterval(id);
+  }, [cards.length, scrollToCard]);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(resumeTimer.current);
+    },
+    []
+  );
+
+  const pauseAuto = () => {
+    pausedRef.current = true;
+    window.clearTimeout(resumeTimer.current);
+  };
+
+  const resumeAutoSoon = () => {
+    window.clearTimeout(resumeTimer.current);
+    resumeTimer.current = window.setTimeout(() => {
+      pausedRef.current = false;
+    }, AUTO_MS);
+  };
+
+  const handleAdd = (product, event) => {
+    onAddToCart?.(product, event);
+  };
+
+  const handleAdjust = (product, delta, event) => {
+    if (delta > 0) {
+      onAddToCart?.(product, event);
+      return;
+    }
+    const line = cartItems.find((item) => lineKey(item) === lineKey(product));
+    if (line) onUpdateQuantity?.(line.id, delta);
   };
 
   if (cards.length === 0) return null;
 
-  return (
-    <section className="relative pt-2 pb-1">
-      {/*
-        Carries the header's colour down past the card and dissolves it into the
-        page, so the tint ends as a fade rather than an edge.
+  const activeWash = cardAccent(cards[active]).wash;
 
-        It stays strictly inside this section. The obvious version reached up
-        behind the header with a negative top, to guarantee the colour existed
-        under the frosted glass — and it painted straight over the search bar,
-        which cost an hour to find. `-z-10` does not escape to the page: the
-        home tab is wrapped in PageTransition, which animates and therefore
-        opens a stacking context, so the whole subtree paints as one layer above
-        the header regardless of how negative a child's z-index is. The header
-        does not need this element anyway; it takes the same colour through the
-        --vd-hero-accent variable, which inheritance carries across the stacking
-        context this cannot cross.
-      */}
+  return (
+    <section
+      className="relative pt-2 pb-1"
+      onMouseEnter={pauseAuto}
+      onMouseLeave={() => {
+        pausedRef.current = false;
+      }}
+      onTouchStart={pauseAuto}
+      onTouchEnd={resumeAutoSoon}
+    >
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 bottom-0 -z-10 transition-[background-image] duration-700 ease-out"
         style={{
-          backgroundImage: `linear-gradient(to bottom, ${cards[active]?.wash ?? DEFAULT_HERO_ACCENT.wash} 0%, ${
-            cards[active]?.wash ?? DEFAULT_HERO_ACCENT.wash
-          } 55%, transparent 100%)`,
+          backgroundImage: `linear-gradient(to bottom, ${activeWash} 0%, ${activeWash} 55%, transparent 100%)`,
         }}
       />
 
-      {/*
-        A native scroll-snap track, not a transform carousel.
-
-        Swiping this is the whole feature — the tint follows the finger — and a
-        transform slider only moves in completed steps, so the colour would jump
-        at the end of a swipe instead of arriving with the card. `snap-center`
-        with cards narrower than the track is also what produces the peek at both
-        edges, rather than it having to be faked with padding.
-      */}
       <div
         ref={trackRef}
         onScroll={handleScroll}
-        className="vd-hero-track flex gap-3 overflow-x-auto snap-x snap-mandatory px-4 pb-2"
+        className="vd-hero-track flex gap-3 overflow-x-auto snap-x snap-mandatory px-4 pb-2 items-stretch"
       >
         {cards.map((card, idx) => {
+          const prevLabel = t('hero.goToCollection', { name: t(cardTitle(cards[idx - 1] || card)) });
+          const nextLabel = t('hero.goToCollection', { name: t(cardTitle(cards[idx + 1] || card)) });
+
+          if (card.kind === 'store') {
+            const { store, items } = card;
+            const { theme } = store;
+            const rows = items.slice(0, ROW_COUNT);
+            const category = majorityCategory(items, categories);
+            return (
+              <article
+                key={card.key}
+                className="group relative snap-center shrink-0 w-[94%] min-h-80 rounded-3xl overflow-hidden border border-black/[0.04] shadow-sm"
+                style={{ backgroundColor: theme.wash }}
+              >
+                <header className="relative px-3 pt-3 pb-2">
+                  <CoinDecor color={theme.coin} />
+                  <div className="relative flex items-center gap-2.5">
+                    <div
+                      className="h-11 min-w-11 px-1.5 shrink-0 rounded-xl flex items-center justify-center shadow-sm"
+                      style={{
+                        backgroundColor: theme.badge,
+                        boxShadow: `inset 0 0 0 1.5px ${theme.badgeRing}`,
+                      }}
+                    >
+                      <span
+                        className="text-[13px] font-black tracking-tight leading-none"
+                        style={{ color: theme.badgeInk }}
+                      >
+                        {t(store.badge)}
+                      </span>
+                    </div>
+                    <h2 className="text-[22px] font-black tracking-tight leading-none" style={{ color: theme.ink }}>
+                      {t(store.title)}
+                    </h2>
+                    <p
+                      className="ml-auto max-w-[42%] text-right text-[10px] font-bold leading-snug"
+                      style={{ color: theme.accent }}
+                    >
+                      {t(store.subtitle)}
+                    </p>
+                  </div>
+                </header>
+
+                <div className="divide-y divide-black/[0.05]">
+                  {rows.map((product) => (
+                    <DealRow
+                      key={product.id}
+                      product={product}
+                      qty={qtyInCart(cartItems, product)}
+                      theme={theme}
+                      onAdd={handleAdd}
+                      onAdjust={handleAdjust}
+                      onOpen={(item) => onSelectProduct?.(item)}
+                      t={t}
+                      language={language}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => onExplore?.(category)}
+                  className="w-full py-2.5 text-[13px] font-extrabold cursor-pointer active:opacity-80"
+                  style={{ backgroundColor: theme.footer, color: theme.accent }}
+                >
+                  {t('hero.seeAll')}
+                  <span className="tracking-tighter"> &gt;&gt;</span>
+                </button>
+
+                <NavArrows
+                  idx={idx}
+                  count={cards.length}
+                  prevLabel={prevLabel}
+                  nextLabel={nextLabel}
+                  onPrev={() => scrollToCard(idx - 1)}
+                  onNext={() => scrollToCard(idx + 1)}
+                />
+              </article>
+            );
+          }
+
           const category = categories.find((c) => c.id === card.categoryId);
           return (
             <article
               key={card.key}
-              className="group relative snap-center shrink-0 w-[94%] h-80 rounded-3xl overflow-hidden border border-black/5 shadow-sm"
+              className="group relative snap-center shrink-0 w-[94%] min-h-80 self-stretch rounded-3xl overflow-hidden border border-black/5 shadow-sm"
               style={{ backgroundColor: card.cardFrom }}
             >
               <img
@@ -278,18 +596,6 @@ export default function HomeHeroBanner({ products = [], categories = [], onExplo
                 fetchPriority={idx === 0 ? 'high' : 'low'}
                 className="absolute right-0 top-0 h-full w-[64%] object-cover"
               />
-
-              {/*
-                A horizontal fade that hands the left side back to the card's
-                own colour, not a scrim darkening a photograph to survive
-                white text on top of it. The stops are measured against the
-                longest headline in the set ("Fresh Vegetables" / "Biggest
-                Savings" at this width) rather than picked by eye: solid
-                ground runs to 55%, comfortably past where any headline in
-                COLLECTIONS ends, and the fade clears by 80% — inside the
-                photo's own 64% width, so it never shows a seam where the
-                image begins.
-              */}
               <div
                 aria-hidden="true"
                 className="absolute inset-0"
@@ -322,36 +628,14 @@ export default function HomeHeroBanner({ products = [], categories = [], onExplo
                 </button>
               </div>
 
-              {/* Manual arrow controls — desktop/hover, the same affordance
-                  this banner carried before the collections redesign. Touch
-                  has no hover state, so on a phone these stay decorative and
-                  swipe/dots do the actual work. */}
-              {idx > 0 && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    scrollToCard(idx - 1);
-                  }}
-                  aria-label={t('hero.goToCollection', { name: t(cards[idx - 1].title) })}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white text-[#1B4D3E] border border-black/5 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-sm"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-              )}
-              {idx < cards.length - 1 && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    scrollToCard(idx + 1);
-                  }}
-                  aria-label={t('hero.goToCollection', { name: t(cards[idx + 1].title) })}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white text-[#1B4D3E] border border-black/5 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-sm"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              )}
+              <NavArrows
+                idx={idx}
+                count={cards.length}
+                prevLabel={prevLabel}
+                nextLabel={nextLabel}
+                onPrev={() => scrollToCard(idx - 1)}
+                onNext={() => scrollToCard(idx + 1)}
+              />
             </article>
           );
         })}
@@ -362,12 +646,12 @@ export default function HomeHeroBanner({ products = [], categories = [], onExplo
           <button
             key={card.key}
             onClick={() => scrollToCard(idx)}
-            aria-label={t('hero.goToCollection', { name: t(card.title) })}
+            aria-label={t('hero.goToCollection', { name: t(cardTitle(card)) })}
             aria-current={active === idx}
             className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
               active === idx ? 'w-5' : 'w-1.5 bg-black/15'
             }`}
-            style={active === idx ? { backgroundColor: card.ink } : undefined}
+            style={active === idx ? { backgroundColor: cardDot(card) } : undefined}
           />
         ))}
       </div>

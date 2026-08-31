@@ -2181,12 +2181,16 @@ export default function App() {
                   <HomeSkeleton />
                 ) : (
                   <>
-                    {/* 🌟 2. HOME HERO — photo banners for collections cut
-                        from the market's own sheet, whose colour tints the
-                        header above them. */}
+                    {/* 🌟 2. HOME HERO — two store-list cards in the peeking
+                        carousel, cut from the market's own sheet, whose
+                        colour tints the header above them. */}
                     <HomeHeroBanner
                       products={browseProducts}
                       categories={categories}
+                      cartItems={activeCartItems}
+                      onAddToCart={handleAddToCart}
+                      onUpdateQuantity={handleUpdateQuantity}
+                      onSelectProduct={handleOpenProductDetail}
                       onExplore={(category) => setActiveCategoryDetail(category || categories[0])}
                       onAccentChange={setHeroAccent}
                     />
@@ -2302,9 +2306,9 @@ export default function App() {
                    of its own — unlike Orders, which draws a bar carrying its own
                    pt-safe-6 — so nothing was reserving room for the status bar / notch
                    above the menu list, and it opened flush against the top edge. */
-                <div className="p-2 sm:p-6 pt-safe-6 text-center space-y-1 sm:space-y-6 animate-fade-in bg-gradient-to-br from-slate-50 to-emerald-50/40 pb-2 sm:pb-20">
+                <div className="p-2 sm:p-6 pt-safe-6 text-center space-y-1 sm:space-y-6 animate-fade-in bg-gradient-to-br from-slate-50 to-emerald-50/40 pb-6 flex flex-col min-h-[calc(100dvh-4rem-env(safe-area-inset-bottom,0px))]">
                   {user ? (
-                    <div className="max-w-sm mx-auto relative mt-0 sm:mt-4">
+                    <div className="max-w-sm mx-auto relative mt-0 sm:mt-4 flex-1 flex flex-col w-full">
                       
                       {/* Navigation Header if not in menu */}
                       {activeAccountView !== 'menu' && (
@@ -2741,7 +2745,8 @@ export default function App() {
                       {/*
                         Signing out closes the account tab, and belongs to no
                         one screen inside it — so it sits at the foot of the
-                        menu that leads to all of them.
+                        screen, above the nav, rather than immediately under
+                        the menu with a gap of empty page below it.
 
                         It used to render below every account view, on the
                         reasoning that it is the one control someone may want
@@ -2752,7 +2757,7 @@ export default function App() {
                         under. Each has one home now.
                       */}
                       {activeAccountView === 'menu' && (
-                        <div className="max-w-sm mx-auto text-left pt-5 relative z-10">
+                        <div className="max-w-sm mx-auto text-left pt-5 relative z-10 mt-auto w-full">
                           <h4 className={`${sectionLabel} text-slate-400`}>
                             {t('account.sectionSession')}
                           </h4>
