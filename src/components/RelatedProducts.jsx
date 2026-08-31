@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import ProductGridCard from './ProductGridCard';
 import { useLanguage } from '../i18n/LanguageContext';
 import { categoryTitle } from '../i18n/catalog';
+import { dedupeByCatalogItem } from '../services/products';
 
 /**
  * The "keep scrolling and there is more" block under a product's details.
@@ -42,7 +43,9 @@ export default function RelatedProducts({
     // carry one, which would otherwise fail to match itself and let an item
     // recommend itself.
     const currentId = product?.originalId ?? product?.id;
-    const others = products.filter((p) => p.id !== currentId);
+    // Deduped before the split below, so the same stall duplicate cannot
+    // occupy two of the ten "more like this" slots on its own.
+    const others = dedupeByCatalogItem(products.filter((p) => p.id !== currentId));
 
     const byRating = (a, b) => (b.rating ?? 0) - (a.rating ?? 0);
 

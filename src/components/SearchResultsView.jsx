@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ArrowLeft, Search, Filter, SearchX } from 'lucide-react';
 import ProductGridCard from './ProductGridCard';
 import { searchProducts } from '../services/search';
+import { dedupeByCatalogItem } from '../services/products';
 import { useLanguage } from '../i18n/LanguageContext';
 
 /**
@@ -39,8 +40,9 @@ export default function SearchResultsView({
 
   const results = useMemo(() => {
     // Already ordered by relevance, so 'relevance' is the absence of a sort
-    // rather than a comparator of its own.
-    let found = searchProducts({ products, categories, query });
+    // rather than a comparator of its own. Deduped after, not before: collapsing
+    // stall duplicates preserves whichever survivor came first in that order.
+    let found = dedupeByCatalogItem(searchProducts({ products, categories, query }));
 
     if (filterOrganic) found = found.filter((p) => p.isOrganic);
 
@@ -68,7 +70,7 @@ export default function SearchResultsView({
           {t('search.resultsFor', { query: trimmedQuery })}
         </h1>
 
-        <span className="bg-[#EAE4D7] text-[#1B4D3E] text-[10px] font-bold px-2 py-0.5 rounded-full border border-[#D5CDBC] shadow-2xs shrink-0">
+        <span className="bg-[#EAE4D7] text-[#1B4D3E] text-[11.5px] font-bold px-2 py-0.5 rounded-full border border-[#D5CDBC] shadow-2xs shrink-0">
           {results.length === 1
             ? t('search.itemOne')
             : t('search.itemCount', { count: results.length })}
@@ -94,7 +96,7 @@ export default function SearchResultsView({
           <button
             onClick={() => setFilterOrganic(!filterOrganic)}
             aria-pressed={filterOrganic}
-            className={`px-2.5 py-1.5 rounded-full text-[11px] font-bold border transition-all cursor-pointer flex-shrink-0 ${
+            className={`px-2.5 py-1.5 rounded-full text-[12.5px] font-bold border transition-all cursor-pointer flex-shrink-0 ${
               filterOrganic ? 'skeuo-btn-emerald' : 'skeuo-btn-light'
             }`}
           >
@@ -103,7 +105,7 @@ export default function SearchResultsView({
         </div>
 
         <div className="flex items-center justify-between text-xs text-[#7A7060]">
-          <span className="font-semibold text-[#2D2A26] text-[11px]">
+          <span className="font-semibold text-[#2D2A26] text-[12.5px]">
             {results.length === 1
               ? t('search.showingOne')
               : t('search.showing', { count: results.length })}
@@ -115,7 +117,7 @@ export default function SearchResultsView({
               id="search-results-sort"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="bg-transparent font-bold text-[#1B4D3E] text-[11px] focus:outline-none cursor-pointer"
+              className="bg-transparent font-bold text-[#1B4D3E] text-[12.5px] focus:outline-none cursor-pointer"
             >
               <option value="relevance">{t('search.bestMatch')}</option>
               <option value="price-low">{t('search.priceLowHigh')}</option>

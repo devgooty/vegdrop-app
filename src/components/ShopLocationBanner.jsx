@@ -76,14 +76,14 @@ export default function ShopLocationBanner({ shop, onSaved }) {
       <div className="flex items-start gap-2.5 mb-3">
         <MapPin className="w-4.5 h-4.5 text-[#0B7A37] shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <p className="text-[13.5px] font-bold text-gray-900">Where is your shop?</p>
-          <p className="text-[11.5px] text-gray-500 mt-0.5 leading-relaxed">
+          <p className="text-[15px] font-bold text-gray-900">Where is your shop?</p>
+          <p className="text-[13px] text-gray-500 mt-0.5 leading-relaxed">
             Customers within a few kilometres will see your shop and the items you list.
           </p>
         </div>
       </div>
 
-      <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+      <label className="block text-[12.5px] font-bold text-gray-500 uppercase tracking-wide mb-1">
         Shop name
       </label>
       <input
@@ -91,10 +91,10 @@ export default function ShopLocationBanner({ shop, onSaved }) {
         onChange={(e) => setName(e.target.value)}
         placeholder="e.g. Ravi Vegetables"
         maxLength={160}
-        className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-[13.5px] mb-3 focus:outline-none focus:border-[#0B7A37]"
+        className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-[15px] mb-3 focus:outline-none focus:border-[#0B7A37]"
       />
 
-      <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+      <label className="block text-[12.5px] font-bold text-gray-500 uppercase tracking-wide mb-1">
         Shop address
       </label>
       <textarea
@@ -103,13 +103,13 @@ export default function ShopLocationBanner({ shop, onSaved }) {
         placeholder="Street, landmark, area"
         rows={2}
         maxLength={500}
-        className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-[13.5px] mb-3 resize-none focus:outline-none focus:border-[#0B7A37]"
+        className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-[15px] mb-3 resize-none focus:outline-none focus:border-[#0B7A37]"
       />
 
       <button
         onClick={handleDetect}
         disabled={locating}
-        className="w-full flex items-center justify-center gap-2 border border-[#0B7A37] text-[#0B7A37] rounded-xl py-2.5 text-[13px] font-bold mb-3 disabled:opacity-60"
+        className="w-full flex items-center justify-center gap-2 border border-[#0B7A37] text-[#0B7A37] rounded-xl py-2.5 text-[14.5px] font-bold mb-3 disabled:opacity-60"
       >
         {locating ? (
           <>
@@ -132,21 +132,21 @@ export default function ShopLocationBanner({ shop, onSaved }) {
       {error && (
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mb-3">
           <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-[12px] text-amber-900 leading-relaxed">{error}</p>
+          <p className="text-[13.5px] text-amber-900 leading-relaxed">{error}</p>
         </div>
       )}
 
       <div className="flex gap-2">
         <button
           onClick={() => setExpanded(false)}
-          className="flex-1 border border-gray-300 text-gray-600 rounded-xl py-2.5 text-[13px] font-bold"
+          className="flex-1 border border-gray-300 text-gray-600 rounded-xl py-2.5 text-[14.5px] font-bold"
         >
           Later
         </button>
         <button
           onClick={handleSave}
           disabled={!coords || saving}
-          className="flex-1 bg-[#0B7A37] text-white rounded-xl py-2.5 text-[13px] font-bold disabled:opacity-50"
+          className="flex-1 bg-[#0B7A37] text-white rounded-xl py-2.5 text-[14.5px] font-bold disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save shop location'}
         </button>
@@ -158,7 +158,7 @@ export default function ShopLocationBanner({ shop, onSaved }) {
         independent shop the way a market owner vets a stall.
       */}
       {shop && !shop.kycVerified && (
-        <p className="text-[11px] text-gray-500 mt-3 leading-relaxed">
+        <p className="text-[12.5px] text-gray-500 mt-3 leading-relaxed">
           Your shop appears to customers once your bank verification is complete.
         </p>
       )}

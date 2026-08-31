@@ -290,10 +290,10 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                 >
                   <MapPin className={`w-4 h-4 mt-0.5 shrink-0 ${savedAddress ? 'text-emerald-600' : 'text-amber-600'}`} />
                   <div className="min-w-0 flex-1">
-                    <p className={`text-[10px] font-bold uppercase tracking-wider ${savedAddress ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    <p className={`text-[11.5px] font-bold uppercase tracking-wider ${savedAddress ? 'text-emerald-700' : 'text-amber-700'}`}>
                       {savedAddress ? t('cart.deliveringTo') : t('cart.noAddress')}
                     </p>
-                    <p className="text-[11px] text-gray-700 font-medium leading-tight truncate">
+                    <p className="text-[12.5px] text-gray-700 font-medium leading-tight truncate">
                       {savedAddress || t('cart.noAddressHint')}
                     </p>
                   </div>
@@ -311,13 +311,13 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                 {blockedReason && (
                   <div className="flex items-start gap-2 bg-rose-50 border border-rose-200 rounded-xl p-2.5">
                     <AlertTriangle className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" />
-                    <p className="text-[11px] text-rose-800 font-medium leading-snug">{blockedReason}</p>
+                    <p className="text-[12.5px] text-rose-800 font-medium leading-snug">{blockedReason}</p>
                   </div>
                 )}
 
                 {/* Select Payment Method Options */}
                 <div className="space-y-1.5">
-                  <p className="text-[11px] font-black text-gray-700 uppercase tracking-wider">{t('cart.selectPayment')}</p>
+                  <p className="text-[12.5px] font-black text-gray-700 uppercase tracking-wider">{t('cart.selectPayment')}</p>
                   <div className="grid grid-cols-2 gap-2">
                     {/* PhonePe */}
                     <button
@@ -328,12 +328,12 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                           : 'border-gray-200 bg-white text-gray-700 hover:border-purple-200'
                       }`}
                     >
-                      <div className="w-6 h-6 rounded-md bg-[#5F259F] text-white flex items-center justify-center font-black text-[9px] shrink-0">
+                      <div className="w-6 h-6 rounded-md bg-[#5F259F] text-white flex items-center justify-center font-black text-[10.5px] shrink-0">
                         पे
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-extrabold leading-tight">PhonePe</p>
-                        <p className="text-[8px] text-gray-400 font-semibold">UPI</p>
+                        <p className="text-[12.5px] font-extrabold leading-tight">PhonePe</p>
+                        <p className="text-[9.5px] text-gray-400 font-semibold">UPI</p>
                       </div>
                     </button>
 
@@ -346,12 +346,12 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                           : 'border-gray-200 bg-white text-gray-700 hover:border-blue-200'
                       }`}
                     >
-                      <div className="w-6 h-6 rounded-md bg-white border border-gray-200 flex items-center justify-center font-black text-[8px] shrink-0">
+                      <div className="w-6 h-6 rounded-md bg-white border border-gray-200 flex items-center justify-center font-black text-[9.5px] shrink-0">
                         <span className="text-[#4285F4]">G</span><span className="text-[#EA4335]">P</span><span className="text-[#FBBC05]">a</span><span className="text-[#34A853]">y</span>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-extrabold leading-tight">Google Pay</p>
-                        <p className="text-[8px] text-gray-400 font-semibold">GPay</p>
+                        <p className="text-[12.5px] font-extrabold leading-tight">Google Pay</p>
+                        <p className="text-[9.5px] text-gray-400 font-semibold">GPay</p>
                       </div>
                     </button>
 
@@ -364,12 +364,12 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                           : 'border-gray-200 bg-white text-gray-700 hover:border-sky-200'
                       }`}
                     >
-                      <div className="w-6 h-6 rounded-md bg-[#002E6E] text-[#00BAF2] flex items-center justify-center font-black text-[8px] shrink-0">
+                      <div className="w-6 h-6 rounded-md bg-[#002E6E] text-[#00BAF2] flex items-center justify-center font-black text-[9.5px] shrink-0">
                         Paytm
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-extrabold leading-tight">Paytm</p>
-                        <p className="text-[8px] text-gray-400 font-semibold">UPI</p>
+                        <p className="text-[12.5px] font-extrabold leading-tight">Paytm</p>
+                        <p className="text-[9.5px] text-gray-400 font-semibold">UPI</p>
                       </div>
                     </button>
 
@@ -386,11 +386,11 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                         💳
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-extrabold leading-tight">VegWallet</p>
+                        <p className="text-[12.5px] font-extrabold leading-tight">VegWallet</p>
                         {/* Rounded to paise: the balance is a float derived
                             from the server's integer paise, so a refund can
                             leave it reading "Bal: ₹212.30000000000001". */}
-                        <p className="text-[8px] text-orange-600 font-semibold">{t('cart.walletBalance', { amount: walletBalance.toFixed(2) })}</p>
+                        <p className="text-[9.5px] text-orange-600 font-semibold">{t('cart.walletBalance', { amount: walletBalance.toFixed(2) })}</p>
                       </div>
                     </button>
 
@@ -407,8 +407,8 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                         💵
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-extrabold leading-tight">{t('cart.cod')}</p>
-                        <p className="text-[8px] text-emerald-600 font-semibold">{t('cart.codSub')}</p>
+                        <p className="text-[12.5px] font-extrabold leading-tight">{t('cart.cod')}</p>
+                        <p className="text-[9.5px] text-emerald-600 font-semibold">{t('cart.codSub')}</p>
                       </div>
                     </button>
                   </div>
@@ -416,7 +416,7 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
 
                 {/* What the card is actually charged, when it differs from the total */}
                 {isOnlinePayment && (
-                  <div className="bg-white border border-gray-200 rounded-xl p-2.5 text-[11px] space-y-1">
+                  <div className="bg-white border border-gray-200 rounded-xl p-2.5 text-[12.5px] space-y-1">
                     {walletCovers ? (
                       <p className="text-gray-600 font-semibold">
                         Your VegWallet balance covers this. Nothing to pay by {paymentMethod}.
@@ -434,7 +434,7 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                           <span className="font-black">₹{cardAmount}</span>
                         </div>
                         {cardAmount > shortfall && (
-                          <p className="text-[10px] text-gray-500 leading-tight pt-0.5">
+                          <p className="text-[11.5px] text-gray-500 leading-tight pt-0.5">
                             ₹10 is the minimum online payment; the extra ₹{(cardAmount - shortfall).toFixed(0)} stays in your VegWallet.
                           </p>
                         )}

@@ -11,7 +11,7 @@ export default function Categories({ categories, onSelectCategory }) {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <h2 className="font-vintage text-lg font-bold text-[#1B4D3E] tracking-tight">{t('categories.title')}</h2>
-          <span className="bg-[#EAE4D7] text-[#1B4D3E] text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-[#D5CDBC] shadow-2xs flex items-center gap-1">
+          <span className="bg-[#EAE4D7] text-[#1B4D3E] text-[11.5px] font-bold px-2.5 py-0.5 rounded-full border border-[#D5CDBC] shadow-2xs flex items-center gap-1">
             <Sparkles className="w-3 h-3 text-[#1B4D3E]" />
             {t('categories.farmSections', { count: categories.length })}
           </span>
@@ -49,13 +49,19 @@ export default function Categories({ categories, onSelectCategory }) {
                 </h3>
               </div>
 
+              {/* Deliberately NOT whitespace-nowrap. On a 375px screen this
+                  column is 71px wide, and measured against Figtree the badge
+                  needs 80px and "Explore harvest ›" needs 84px even at 10.5px —
+                  neither has ever fitted on one line at that width, before or
+                  after the type ramp. nowrap does not buy a single line here,
+                  it only swaps a legible two-line wrap for a clipped one. */}
               {item.badge && (
-                <span className="inline-block text-[9px] font-bold text-[#1B4D3E] bg-[#EAE4D7] px-1.5 py-0.2 rounded-md border border-[#D5CDBC] w-fit mb-1">
+                <span className="inline-block text-[10.5px] font-bold text-[#1B4D3E] bg-[#EAE4D7] px-1.5 py-0.2 rounded-md border border-[#D5CDBC] w-fit mb-1">
                   {categoryBadge(item.badge, language)}
                 </span>
               )}
 
-              <span className="text-[#23201C] font-extrabold text-[11px] flex items-center gap-0.5 group-hover:underline">
+              <span className="text-[#23201C] font-extrabold text-[12.5px] flex items-center gap-0.5 group-hover:underline">
                 {t('categories.explore')} <span className="text-xs font-black">›</span>
               </span>
             </div>

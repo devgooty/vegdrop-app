@@ -77,12 +77,12 @@ export default function DeliveryPartnersView() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/70">
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Rider</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Duty Status</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Account Status</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Bank Setup</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Completed Orders</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Joined</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Rider</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Duty Status</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Account Status</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Bank Setup</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Completed Orders</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Joined</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -104,10 +104,10 @@ export default function DeliveryPartnersView() {
                   <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="px-5 py-3.5">
                       <div className="font-bold text-slate-800 text-xs">{r.name || 'Rider'}</div>
-                      <div className="text-[11px] text-slate-400">{r.phone}</div>
+                      <div className="text-[12.5px] text-slate-400">{r.phone}</div>
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border uppercase ${
+                      <span className={`text-[11.5px] font-extrabold px-2.5 py-0.5 rounded-full border uppercase ${
                         r.dutyStatus === 'On Duty' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                         'bg-slate-100 text-slate-600 border-slate-200'
                       }`}>
@@ -115,14 +115,14 @@ export default function DeliveryPartnersView() {
                       </span>
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                      <span className={`text-[11.5px] font-bold px-2 py-0.5 rounded-md ${
                         r.status === 'suspended' ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'
                       }`}>
                         {r.status || 'active'}
                       </span>
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                      <span className={`text-[11.5px] font-bold px-2 py-0.5 rounded-md ${
                         r.bankStatus === 'Configured' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'
                       }`}>
                         {r.bankStatus}

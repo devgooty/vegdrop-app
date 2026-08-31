@@ -279,7 +279,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
               <MapPin className="w-5 h-5 text-[#1B4D3E]" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-extrabold text-[#1B4D3E] uppercase tracking-widest mb-0.5">{t('map.exactLocation')}</p>
+              <p className="text-[11.5px] font-extrabold text-[#1B4D3E] uppercase tracking-widest mb-0.5">{t('map.exactLocation')}</p>
               <h3 className="font-extrabold text-base text-gray-900 line-clamp-1">
                 {locationDetails?.mandal && locationDetails.mandal !== 'N/A'
                   ? locationDetails.mandal
@@ -304,7 +304,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
         <div className="flex-1 overflow-y-auto px-5 pb-3 min-h-0">
           <div className="flex items-center gap-2 mb-2">
             <Store className="w-4 h-4 text-[#1B4D3E]" />
-            <p className="text-[12px] font-extrabold text-gray-800 uppercase tracking-wider">{t('map.nearbyTitle')}</p>
+            <p className="text-[13.5px] font-extrabold text-gray-800 uppercase tracking-wider">{t('map.nearbyTitle')}</p>
             {isLoadingNearby && <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400 ml-auto" />}
           </div>
 
@@ -315,14 +315,14 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
                   <div key={i} className="h-16 w-24 bg-gray-100 rounded-xl animate-pulse" style={{ animationDelay: `${i * 100}ms` }} />
                 ))}
               </div>
-              <p className="text-[10px] text-gray-400 font-medium">{t('map.scanning')}</p>
+              <p className="text-[11.5px] text-gray-400 font-medium">{t('map.scanning')}</p>
             </div>
           )}
 
           {!isLoadingNearby && !isDetecting && nearbyPlaces.length === 0 && locationDetails && (
             <div className="text-center py-4">
               <ShoppingBag className="w-8 h-8 text-gray-200 mx-auto mb-1" />
-              <p className="text-[11px] text-gray-400 font-medium">
+              <p className="text-[12.5px] text-gray-400 font-medium">
                 {t('map.noneNearby')}<br />{t('map.noneNearbyHint')}
               </p>
             </div>
@@ -333,11 +333,11 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
               {nearbyPlaces.map(place => (
                 <div key={place.id} className="flex-shrink-0 w-28 bg-[#F6F3EC] border border-[#E5DFD1] rounded-2xl p-2.5 flex flex-col gap-1">
                   <div className="text-lg leading-none">{place.type.split(' ')[0]}</div>
-                  <p className="text-[11px] font-extrabold text-[#1B4D3E] line-clamp-2 leading-tight">{place.name}</p>
-                  <p className="text-[9px] text-[#8A7E6B] font-semibold">{place.type.split(' ').slice(1).join(' ')}</p>
+                  <p className="text-[12.5px] font-extrabold text-[#1B4D3E] line-clamp-2 leading-tight">{place.name}</p>
+                  <p className="text-[10.5px] text-[#8A7E6B] font-semibold">{place.type.split(' ').slice(1).join(' ')}</p>
                   <div className="flex items-center gap-0.5 mt-auto">
                     <Navigation className="w-2.5 h-2.5 text-[#C8372D]" />
-                    <span className="text-[9px] font-bold text-[#C8372D]">
+                    <span className="text-[10.5px] font-bold text-[#C8372D]">
                       {t('map.distanceAway', {
                         distance:
                           place.dist >= 1000
@@ -355,7 +355,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
         {/* Verify/Edit Pincode field */}
         {!isDetecting && locationDetails && (
           <div className="px-5 pb-1">
-            <label className="block text-[10px] font-extrabold text-[#1B4D3E] uppercase tracking-wider mb-1">{t('map.pincodeLabel')}</label>
+            <label className="block text-[11.5px] font-extrabold text-[#1B4D3E] uppercase tracking-wider mb-1">{t('map.pincodeLabel')}</label>
             <input
               type="text"
               maxLength={6}
@@ -387,7 +387,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
           <button
             onClick={handleConfirm}
             disabled={isDetecting || !locationDetails}
-            className="w-full bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center shadow-md transition-all cursor-pointer text-[15px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed gap-2"
+            className="w-full bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center shadow-md transition-all cursor-pointer text-[16.5px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed gap-2"
           >
             <MapPin className="w-4 h-4" />
             {t('map.confirm')}

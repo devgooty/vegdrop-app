@@ -118,7 +118,7 @@ export default function AdminModal({ isOpen, onClose, categories, onAddCategory 
             </button>
           </form>
         ) : (
-          <div className="bg-gray-900 text-emerald-400 p-3 rounded-xl font-mono text-[11px] overflow-x-auto max-h-56">
+          <div className="bg-gray-900 text-emerald-400 p-3 rounded-xl font-mono text-[12.5px] overflow-x-auto max-h-56">
             <pre>{JSON.stringify(categories, null, 2)}</pre>
           </div>
         )}

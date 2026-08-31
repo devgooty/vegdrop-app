@@ -50,7 +50,7 @@ export default function AccountWishlist({ cartItems, onAddToCart, onUpdateQuanti
 
             <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
               {item.stock === 0 ? (
-                <span className="text-[10px] font-bold text-slate-400 px-2">{t('product.soldOut')}</span>
+                <span className="text-[11.5px] font-bold text-slate-400 px-2">{t('product.soldOut')}</span>
               ) : inCart ? (
                 <div className="skeuo-btn-emerald flex items-center rounded-xl p-0.5 shadow-sm">
                   <button

@@ -187,7 +187,7 @@ export default function UsersManagement() {
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">Phone Number or Email</label>
+              <label className="block text-[12.5px] font-bold text-slate-300 uppercase mb-1">Phone Number or Email</label>
               <input
                 type="text"
                 value={assignIdentifier}
@@ -198,7 +198,7 @@ export default function UsersManagement() {
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">Target Role</label>
+              <label className="block text-[12.5px] font-bold text-slate-300 uppercase mb-1">Target Role</label>
               <select
                 value={assignRole}
                 onChange={(e) => setAssignRole(e.target.value)}
@@ -258,12 +258,12 @@ export default function UsersManagement() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/70">
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">User Details</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Phone / Email</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Role</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Status</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Registered</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 text-right">Actions</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">User Details</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Phone / Email</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Role</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Status</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Registered</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -287,19 +287,19 @@ export default function UsersManagement() {
                     <tr key={u.id || u._id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-5 py-3.5">
                         <div className="font-bold text-slate-800 text-xs">{u.name || 'Anonymous'}</div>
-                        <div className="font-mono text-[10px] text-slate-400">ID: {(u.id || u._id)?.slice(-8)}</div>
+                        <div className="font-mono text-[11.5px] text-slate-400">ID: {(u.id || u._id)?.slice(-8)}</div>
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="text-xs font-semibold text-slate-700">{u.phone || '—'}</div>
-                        {u.email && <div className="text-[11px] text-slate-400">{u.email}</div>}
+                        {u.email && <div className="text-[12.5px] text-slate-400">{u.email}</div>}
                       </td>
                       <td className="px-5 py-3.5">
-                        <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border uppercase ${roleBadge.color}`}>
+                        <span className={`text-[11.5px] font-extrabold px-2.5 py-1 rounded-full border uppercase ${roleBadge.color}`}>
                           {u.role?.replace('_', ' ')}
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                        <span className={`text-[11.5px] font-bold px-2 py-0.5 rounded-md ${
                           u.status === 'suspended' ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'
                         }`}>
                           {u.status || 'active'}
@@ -314,14 +314,14 @@ export default function UsersManagement() {
                             setSelectedUser(u);
                             setNewRole(u.role);
                           }}
-                          className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
+                          className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[12.5px] font-bold cursor-pointer transition-colors"
                           title="Change Role"
                         >
                           Role
                         </button>
                         <button
                           onClick={() => handleStatusToggle(u)}
-                          className={`px-2 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-colors ${
+                          className={`px-2 py-1 rounded-lg text-[12.5px] font-bold cursor-pointer transition-colors ${
                             u.status === 'suspended'
                               ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800'
                               : 'bg-amber-100 hover:bg-amber-200 text-amber-800'
@@ -332,7 +332,7 @@ export default function UsersManagement() {
                         </button>
                         <button
                           onClick={() => handleDeleteUser(u)}
-                          className="px-1.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
+                          className="px-1.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[12.5px] font-bold cursor-pointer transition-colors"
                           title="Soft Delete"
                         >
                           <Trash2 className="w-3.5 h-3.5 inline" />

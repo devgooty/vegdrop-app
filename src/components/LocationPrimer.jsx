@@ -106,22 +106,22 @@ export default function LocationPrimer({ onLocated }) {
           <MapPin className="w-4.5 h-4.5 text-emerald-600" />
         </span>
         <div className="flex-1 min-w-0">
-          <p className="text-[13.5px] font-bold text-gray-900">{t('primer.title')}</p>
-          <p className="text-[12px] text-gray-500 mt-1 leading-relaxed">{t('primer.body')}</p>
+          <p className="text-[15px] font-bold text-gray-900">{t('primer.title')}</p>
+          <p className="text-[13.5px] text-gray-500 mt-1 leading-relaxed">{t('primer.body')}</p>
         </div>
       </div>
 
       <div className="flex gap-2 mt-3.5">
         <button
           onClick={handleDismiss}
-          className="flex-1 border border-gray-300 text-gray-600 rounded-xl py-2.5 text-[13px] font-bold"
+          className="flex-1 border border-gray-300 text-gray-600 rounded-xl py-2.5 text-[14.5px] font-bold"
         >
           {t('primer.notNow')}
         </button>
         <button
           onClick={handleAllow}
           disabled={asking}
-          className="flex-1 bg-emerald-600 text-white rounded-xl py-2.5 text-[13px] font-bold flex items-center justify-center gap-2 disabled:opacity-60"
+          className="flex-1 bg-emerald-600 text-white rounded-xl py-2.5 text-[14.5px] font-bold flex items-center justify-center gap-2 disabled:opacity-60"
         >
           {asking ? <LoaderCircle className="w-4 h-4 animate-spin" /> : null}
           {t('primer.allow')}

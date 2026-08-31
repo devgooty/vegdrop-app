@@ -103,7 +103,7 @@ export default function SettingsDbView() {
             <span className={`w-2.5 h-2.5 rounded-full ${db.connected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
             <p className="text-lg font-black text-slate-900">{db.connected ? 'Connected' : 'Disconnected'}</p>
           </div>
-          <p className="text-[11px] font-mono text-slate-500 mt-1">DB: {db.dbName || 'bazzar'}</p>
+          <p className="text-[12.5px] font-mono text-slate-500 mt-1">DB: {db.dbName || 'bazzar'}</p>
         </div>
 
         <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
@@ -114,7 +114,7 @@ export default function SettingsDbView() {
             </div>
           </div>
           <p className="text-2xl font-black text-slate-900 mt-2">{db.collectionsCount || 0}</p>
-          <p className="text-[11px] text-slate-500 mt-1">{db.totalDocuments || 0} total documents</p>
+          <p className="text-[12.5px] text-slate-500 mt-1">{db.totalDocuments || 0} total documents</p>
         </div>
 
         <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
@@ -125,7 +125,7 @@ export default function SettingsDbView() {
             </div>
           </div>
           <p className="text-2xl font-black text-slate-900 mt-2">{server.memory?.heapUsedMB || 0} MB</p>
-          <p className="text-[11px] text-slate-500 mt-1">Heap Total: {server.memory?.heapTotalMB || 0} MB</p>
+          <p className="text-[12.5px] text-slate-500 mt-1">Heap Total: {server.memory?.heapTotalMB || 0} MB</p>
         </div>
 
         <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
@@ -138,7 +138,7 @@ export default function SettingsDbView() {
           <p className="text-2xl font-black text-slate-900 mt-2">
             {Math.floor((server.uptimeSeconds || 0) / 60)}m {(server.uptimeSeconds || 0) % 60}s
           </p>
-          <p className="text-[11px] text-slate-500 mt-1">Node: {server.nodeVersion || 'v20'}</p>
+          <p className="text-[12.5px] text-slate-500 mt-1">Node: {server.nodeVersion || 'v20'}</p>
         </div>
 
       </div>
@@ -151,7 +151,7 @@ export default function SettingsDbView() {
             <div key={c.name} className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold text-slate-700">{c.name}</p>
-                <p className="text-[10px] font-mono text-slate-400">Model: {c.model}</p>
+                <p className="text-[11.5px] font-mono text-slate-400">Model: {c.model}</p>
               </div>
               <span className="text-lg font-black text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
                 {c.count}
@@ -188,7 +188,7 @@ export default function SettingsDbView() {
           </div>
         </div>
 
-        <div className="bg-slate-950 p-4 rounded-xl font-mono text-[11px] text-emerald-400 overflow-x-auto max-h-[350px] shadow-inner">
+        <div className="bg-slate-950 p-4 rounded-xl font-mono text-[12.5px] text-emerald-400 overflow-x-auto max-h-[350px] shadow-inner">
           {dumpLoading && !dumpData ? (
             <p className="text-slate-500 italic">Generating snapshot from database…</p>
           ) : (

@@ -123,10 +123,10 @@ export default function NearbyShops({ coords, selectedShop, onSelectShop, basket
           <Store className="w-5 h-5 text-white" />
         </span>
         <span className="flex-1 min-w-0">
-          <span className="block text-[10px] font-bold text-amber-700 uppercase tracking-wider">
+          <span className="block text-[11.5px] font-bold text-amber-700 uppercase tracking-wider">
             {t('shops.nearYou')}
           </span>
-          <span className="block text-[14px] font-extrabold text-gray-900 truncate">
+          <span className="block text-[15.5px] font-extrabold text-gray-900 truncate">
             {/* How many shops are NEARBY, which is always `shops.length`.
                 This counted `usableShops` once there was a basket, so three
                 shops down the road announced themselves as "1 nearby" — the
@@ -139,7 +139,7 @@ export default function NearbyShops({ coords, selectedShop, onSelectShop, basket
                 ? t('shops.noneCanFill')
                 : t('shops.nearbyCount', { count: shops.length })}
           </span>
-          <span className="block text-[11.5px] text-gray-500 truncate">
+          <span className="block text-[13px] text-gray-500 truncate">
             {noneCanFill
               ? t('shops.noneCanFillHint')
               : selectedShop
@@ -175,16 +175,16 @@ export default function NearbyShops({ coords, selectedShop, onSelectShop, basket
                 >
                   <span className="flex-1 min-w-0">
                     <span className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-[13.5px] font-bold text-gray-900 truncate">
+                      <span className="text-[15px] font-bold text-gray-900 truncate">
                         {shop.name}
                       </span>
                       {isBest && (
-                        <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-1.5 py-0.5">
+                        <span className="shrink-0 text-[10.5px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-1.5 py-0.5">
                           {t('shops.bestMatch')}
                         </span>
                       )}
                     </span>
-                    <span className="block text-[11.5px] text-gray-500 truncate">
+                    <span className="block text-[13px] text-gray-500 truncate">
                       {/* What stops this shop being usable comes first — the
                           address is no help when the answer is "not this one".
                           Distance is only the reason when coverage is not. */}

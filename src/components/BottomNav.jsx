@@ -73,7 +73,7 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
           }`}
         >
           <Home className={`w-5 h-5 transition-transform duration-300 ${routeActive('home') ? 'scale-110' : ''}`} />
-          <span className="text-[10px] font-semibold mt-0.5">{t('nav.home')}</span>
+          <span className="text-[11.5px] font-semibold mt-0.5">{t('nav.home')}</span>
         </button>
 
         {/* Prices Tab */}
@@ -86,7 +86,7 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
           }`}
         >
           <TrendingUp className={`w-5 h-5 transition-transform duration-300 ${routeActive('prices') ? 'scale-110' : ''}`} />
-          <span className="text-[10px] font-semibold mt-0.5">{t('nav.prices')}</span>
+          <span className="text-[11.5px] font-semibold mt-0.5">{t('nav.prices')}</span>
         </button>
 
         {/* Cart Button */}
@@ -103,7 +103,7 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
             <ShoppingBasket className={`w-5 h-5 transition-transform duration-300 ${cartOpen || cartBump ? 'scale-110' : ''}`} />
             {cartCount > 0 && (
               <span
-                className={`skeuo-badge-amber absolute -top-1.5 -right-2.5 text-white text-[10px] font-extrabold px-1.5 py-0.2 rounded-full ring-2 ring-[#FAF7F2] ${
+                className={`skeuo-badge-amber absolute -top-1.5 -right-2.5 text-white text-[11.5px] font-extrabold px-1.5 py-0.2 rounded-full ring-2 ring-[#FAF7F2] ${
                   cartBump ? 'scale-125' : ''
                 } transition-transform duration-300`}
               >
@@ -111,7 +111,7 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
               </span>
             )}
           </div>
-          <span className="text-[10px] font-semibold mt-0.5">{t('nav.cart')}</span>
+          <span className="text-[11.5px] font-semibold mt-0.5">{t('nav.cart')}</span>
         </button>
 
         {/* Orders Tab - Only for customers or guests */}
@@ -125,7 +125,7 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
             }`}
           >
             <Package className={`w-5 h-5 transition-transform duration-300 ${routeActive('orders') ? 'scale-110' : ''}`} />
-            <span className="text-[10px] font-semibold mt-0.5">{t('nav.orders')}</span>
+            <span className="text-[11.5px] font-semibold mt-0.5">{t('nav.orders')}</span>
           </button>
         )}
 
@@ -139,7 +139,7 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
           }`}
         >
           <UserCheck className={`w-5 h-5 transition-transform duration-300 ${routeActive('account') ? 'scale-110' : ''}`} />
-          <span className="text-[10px] font-semibold mt-0.5">{t('nav.account')}</span>
+          <span className="text-[11.5px] font-semibold mt-0.5">{t('nav.account')}</span>
         </button>
       </div>
     </nav>

@@ -128,7 +128,7 @@ export default function StallInventoryEditor({ autoAccept = false, onOpenSetting
               <Boxes className="w-4 h-4 text-emerald-700" />
               On my table
             </h3>
-            <p className="text-[11px] text-gray-500 font-medium">
+            <p className="text-[12.5px] text-gray-500 font-medium">
               {declared} item{declared === 1 ? '' : 's'} declared.
             </p>
           </div>
@@ -148,7 +148,7 @@ export default function StallInventoryEditor({ autoAccept = false, onOpenSetting
           why — the two settings live on different screens.
         */}
         <div
-          className={`rounded-xl p-2.5 border text-[11px] font-semibold leading-relaxed ${
+          className={`rounded-xl p-2.5 border text-[12.5px] font-semibold leading-relaxed ${
             autoAccept
               ? declared > 0
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
@@ -190,12 +190,12 @@ export default function StallInventoryEditor({ autoAccept = false, onOpenSetting
         </div>
 
         {error && (
-          <p className="text-[11px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2">
+          <p className="text-[12.5px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2">
             {error}
           </p>
         )}
         {saved && changed.length === 0 && !error && (
-          <p className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+          <p className="text-[12.5px] font-bold text-emerald-700 flex items-center gap-1">
             <Check className="w-3.5 h-3.5" /> Stock saved.
           </p>
         )}
@@ -216,7 +216,7 @@ export default function StallInventoryEditor({ autoAccept = false, onOpenSetting
                 <p className={`text-sm font-bold truncate ${has ? 'text-gray-900' : 'text-gray-400'}`}>
                   {product.name}
                 </p>
-                <p className="text-[10px] text-gray-400 font-semibold">{product.weight || '—'}</p>
+                <p className="text-[11.5px] text-gray-400 font-semibold">{product.weight || '—'}</p>
               </div>
 
               <input

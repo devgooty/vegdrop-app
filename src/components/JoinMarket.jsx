@@ -244,7 +244,7 @@ function Picker({ request, onChanged, onBack }) {
             {/* Set honestly: the applicant's number is a proposal, and the owner
                 confirms or changes it, because they are the one who knows which
                 pitches are free. */}
-            <span className="text-[11px] text-gray-400 block mt-1">
+            <span className="text-[12.5px] text-gray-400 block mt-1">
               The market owner confirms the final number when they accept you.
             </span>
           </label>

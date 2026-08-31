@@ -316,10 +316,10 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
             <Store className="w-5 h-5 text-white" />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="text-[15px] font-extrabold text-[#0F1F17] truncate">
+            <h1 className="text-[16.5px] font-extrabold text-[#0F1F17] truncate">
               Stall {stall?.stallNumber}
             </h1>
-            <p className="text-[12px] text-[#5B6B62] truncate">
+            <p className="text-[13.5px] text-[#5B6B62] truncate">
               {user?.name} · {stall?.activeLoad ?? 0} item{stall?.activeLoad === 1 ? '' : 's'} in hand
             </p>
           </div>
@@ -361,7 +361,7 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
         {!loading && !stall?.isOpen && (
           <div className="flex gap-3 p-4 rounded-2xl bg-amber-50 border border-amber-200">
             <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-[13px] text-amber-900">
+            <p className="text-[14.5px] text-amber-900">
               Your stall is closed, so you are not being offered anything. Tap
               <strong> Closed </strong> above to reopen.
             </p>
@@ -383,11 +383,11 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
             >
               <span className="flex items-center gap-2 min-w-0">
                 <Boxes className="w-4 h-4 text-[#0B7A37] shrink-0" />
-                <span className="text-[13px] font-extrabold text-[#0F1F17] truncate">
+                <span className="text-[14.5px] font-extrabold text-[#0F1F17] truncate">
                   On my table
                 </span>
                 {stall?.autoAccept && (
-                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 shrink-0">
+                  <span className="text-[11.5px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 shrink-0">
                     powers auto-accept
                   </span>
                 )}
@@ -467,8 +467,8 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
                 >
                   <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
                     <div className="min-w-0">
-                      <p className="text-[13px] font-bold text-[#0F1F17]">{order.orderNumber}</p>
-                      <p className="text-[11.5px] text-[#5B6B62]">
+                      <p className="text-[14.5px] font-bold text-[#0F1F17]">{order.orderNumber}</p>
+                      <p className="text-[13px] text-[#5B6B62]">
                         {order.openLines.length} item{order.openLines.length === 1 ? '' : 's'}
                         {order.openPool ? ' · open to any stall' : ' · held for you'}
                       </p>
@@ -493,10 +493,10 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
                               {ticked && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
                             </span>
                             <span className="flex-1 min-w-0">
-                              <span className="block text-[13.5px] font-semibold text-[#0F1F17] truncate">
+                              <span className="block text-[15px] font-semibold text-[#0F1F17] truncate">
                                 {line.name}
                               </span>
-                              <span className="block text-[12px] text-[#5B6B62]">
+                              <span className="block text-[13.5px] text-[#5B6B62]">
                                 Qty {line.quantity} · {formatPaise(line.unitPricePaise * line.quantity)}
                               </span>
                             </span>
@@ -516,7 +516,7 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
                       <button
                         onClick={() => handleDecline(order)}
                         disabled={busyOrder === order.id || remaining === 0}
-                        className="px-4 text-[14px] font-bold py-3.5 rounded-xl border border-gray-300 text-[#5B6B62] bg-white hover:bg-gray-100 transition active:translate-y-px disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-4 text-[15.5px] font-bold py-3.5 rounded-xl border border-gray-300 text-[#5B6B62] bg-white hover:bg-gray-100 transition active:translate-y-px disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Pass
                       </button>
@@ -524,7 +524,7 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
                     <button
                       onClick={() => handleAccept(order)}
                       disabled={busyOrder === order.id || !stall?.isOpen || remaining === 0}
-                      className="flex-1 bg-[#0B7A37] hover:bg-[#08652C] text-white text-[14px] font-bold py-3.5 rounded-xl transition active:translate-y-px disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex-1 bg-[#0B7A37] hover:bg-[#08652C] text-white text-[15.5px] font-bold py-3.5 rounded-xl transition active:translate-y-px disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {busyOrder === order.id
                         ? 'Accepting…'
@@ -568,8 +568,8 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
                 >
                   <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
                     <div>
-                      <p className="text-[13px] font-bold text-[#0F1F17]">{order.orderNumber}</p>
-                      <p className="text-[11.5px] text-[#5B6B62]">
+                      <p className="text-[14.5px] font-bold text-[#0F1F17]">{order.orderNumber}</p>
+                      <p className="text-[13px] text-[#5B6B62]">
                         Your share: {formatPaise(order.myTotalPaise)}
                       </p>
                     </div>
@@ -586,15 +586,15 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
                         ) : (
                           <Clock className="w-4 h-4 text-amber-500 shrink-0" />
                         )}
-                        <span className="flex-1 text-[13.5px] text-[#0F1F17] truncate">
+                        <span className="flex-1 text-[15px] text-[#0F1F17] truncate">
                           {line.name}
                           {line.auto && (
-                            <span className="ml-1.5 text-[10.5px] font-bold text-[#0B7A37] uppercase tracking-wide">
+                            <span className="ml-1.5 text-[12px] font-bold text-[#0B7A37] uppercase tracking-wide">
                               auto
                             </span>
                           )}
                         </span>
-                        <span className="text-[12.5px] font-semibold text-[#5B6B62] shrink-0">
+                        <span className="text-[14px] font-semibold text-[#5B6B62] shrink-0">
                           × {line.quantity}
                         </span>
                       </li>
@@ -606,7 +606,7 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
                       <button
                         onClick={() => handlePack(order)}
                         disabled={busyOrder === order.id}
-                        className="w-full bg-[#0F1F17] hover:bg-black text-white text-[14px] font-bold py-3.5 rounded-xl transition active:translate-y-px disabled:opacity-50"
+                        className="w-full bg-[#0F1F17] hover:bg-black text-white text-[15.5px] font-bold py-3.5 rounded-xl transition active:translate-y-px disabled:opacity-50"
                       >
                         {busyOrder === order.id ? 'Saving…' : `Mark ${unpacked.length} packed`}
                       </button>
@@ -670,23 +670,23 @@ function StockRow({ item, onEdit }) {
         onError={(e) => { e.target.style.visibility = 'hidden'; }}
       />
       <div className="min-w-0 flex-1">
-        <p className="text-[14px] font-bold text-[#0F1F17] truncate">{item.name}</p>
-        <p className="text-[12px] text-[#5B6B62]">
+        <p className="text-[15.5px] font-bold text-[#0F1F17] truncate">{item.name}</p>
+        <p className="text-[13.5px] text-[#5B6B62]">
           {formatPaise(item.pricePaise)}{item.weight ? ` · ${item.weight}` : ''}
         </p>
         {photoAge ? (
-          <p className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
+          <p className="text-[12.5px] text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
             <Camera className="w-3 h-3" /> Photo from {photoAge}
           </p>
         ) : (
-          <p className="text-[11px] text-[#8A9A91] flex items-center gap-1 mt-0.5">
+          <p className="text-[12.5px] text-[#8A9A91] flex items-center gap-1 mt-0.5">
             <Camera className="w-3 h-3" /> No photo yet
           </p>
         )}
       </div>
       <div className="text-right shrink-0">
-        <p className="text-[16px] font-black text-[#0F1F17]">{item.stock}</p>
-        <p className="text-[10px] text-[#8A9A91] uppercase tracking-wide">in stock</p>
+        <p className="text-[17.5px] font-black text-[#0F1F17]">{item.stock}</p>
+        <p className="text-[11.5px] text-[#8A9A91] uppercase tracking-wide">in stock</p>
       </div>
     </button>
   );
@@ -719,14 +719,14 @@ function ProductPicker({ products, onPick, onClose }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search vegetables…"
-            className="w-full bg-[#F6F8F6] border border-gray-200 rounded-xl pl-9 pr-3 py-2.5 text-[14px] outline-none focus:border-[#0B7A37]"
+            className="w-full bg-[#F6F8F6] border border-gray-200 rounded-xl pl-9 pr-3 py-2.5 text-[15.5px] outline-none focus:border-[#0B7A37]"
           />
         </div>
       </div>
 
       <div className="overflow-y-auto px-4 pb-6 space-y-2">
         {matches.length === 0 && (
-          <p className="text-[13px] text-[#5B6B62] text-center py-8">
+          <p className="text-[14.5px] text-[#5B6B62] text-center py-8">
             Nothing matches “{query}”. The list is what this market is selling today.
           </p>
         )}
@@ -745,13 +745,13 @@ function ProductPicker({ products, onPick, onClose }) {
               onError={(e) => { e.target.style.visibility = 'hidden'; }}
             />
             <div className="min-w-0 flex-1">
-              <p className="text-[14px] font-bold text-[#0F1F17] truncate">{p.name}</p>
-              <p className="text-[12px] text-[#5B6B62]">
+              <p className="text-[15.5px] font-bold text-[#0F1F17] truncate">{p.name}</p>
+              <p className="text-[13.5px] text-[#5B6B62]">
                 {formatPaise(p.pricePaise)}{p.weight ? ` · ${p.weight}` : ''}
               </p>
             </div>
             {p.stock > 0 ? (
-              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
+              <span className="text-[12.5px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
                 {p.stock} listed
               </span>
             ) : (
@@ -827,15 +827,15 @@ function StockSheet({ item, onClose, onSave }) {
             onError={(e) => { e.target.style.visibility = 'hidden'; }}
           />
           <div className="min-w-0">
-            <p className="text-[20px] font-black text-[#0F1F17]">{formatPaise(item.pricePaise)}</p>
-            <p className="text-[11px] text-[#5B6B62] leading-tight">
+            <p className="text-[21.5px] font-black text-[#0F1F17]">{formatPaise(item.pricePaise)}</p>
+            <p className="text-[12.5px] text-[#5B6B62] leading-tight">
               Set by the market owner. Every stall here sells at this price.
             </p>
           </div>
         </div>
 
         <div>
-          <label htmlFor="stall-stock" className="block text-[12px] font-bold text-[#0F1F17] mb-1.5">
+          <label htmlFor="stall-stock" className="block text-[13.5px] font-bold text-[#0F1F17] mb-1.5">
             How many do you have?
           </label>
           <input
@@ -847,16 +847,16 @@ function StockSheet({ item, onClose, onSave }) {
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
             placeholder="0"
-            className="w-full bg-[#F6F8F6] border border-gray-200 rounded-xl px-3 py-3 text-[18px] font-bold outline-none focus:border-[#0B7A37]"
+            className="w-full bg-[#F6F8F6] border border-gray-200 rounded-xl px-3 py-3 text-[19.5px] font-bold outline-none focus:border-[#0B7A37]"
           />
-          <p className="text-[11px] text-[#8A9A91] mt-1.5">
+          <p className="text-[12.5px] text-[#8A9A91] mt-1.5">
             This is what auto-accept and the ranking run on. Set it to 0 to take
             the line off your table.
           </p>
         </div>
 
         <div>
-          <p className="text-[12px] font-bold text-[#0F1F17] mb-1.5">
+          <p className="text-[13.5px] font-bold text-[#0F1F17] mb-1.5">
             Today’s photo <span className="font-normal text-[#8A9A91]">— optional</span>
           </p>
 
@@ -870,7 +870,7 @@ function StockSheet({ item, onClose, onSave }) {
                 onChange={handleFile}
                 className="hidden"
               />
-              <span className="flex items-center justify-center gap-2 w-full bg-white border-2 border-dashed border-gray-300 rounded-xl py-3 text-[13px] font-bold text-[#0F1F17] active:scale-[0.99] transition">
+              <span className="flex items-center justify-center gap-2 w-full bg-white border-2 border-dashed border-gray-300 rounded-xl py-3 text-[14.5px] font-bold text-[#0F1F17] active:scale-[0.99] transition">
                 {preparing
                   ? <><RefreshCw className="w-4 h-4 animate-spin" /> Preparing…</>
                   : <><Camera className="w-4 h-4" /> {hasPhoto ? 'Retake' : 'Take a photo'}</>}
@@ -888,7 +888,7 @@ function StockSheet({ item, onClose, onSave }) {
             )}
           </div>
 
-          <p className="text-[11px] text-[#8A9A91] mt-1.5 leading-relaxed">
+          <p className="text-[12.5px] text-[#8A9A91] mt-1.5 leading-relaxed">
             {photo
               ? `Ready to upload (${approximateKb(photo)} KB). It shows on the product page next to the catalogue picture.`
               : 'A picture of what is actually on your table today. Customers see it next to the catalogue image, so they know what they are getting.'}
@@ -898,7 +898,7 @@ function StockSheet({ item, onClose, onSave }) {
         <button
           onClick={submit}
           disabled={!valid || busy || preparing}
-          className="w-full bg-[#0F1F17] hover:bg-black text-white text-[15px] font-bold py-3.5 rounded-xl transition active:translate-y-px disabled:opacity-40"
+          className="w-full bg-[#0F1F17] hover:bg-black text-white text-[16.5px] font-bold py-3.5 rounded-xl transition active:translate-y-px disabled:opacity-40"
         >
           {busy ? 'Saving…' : 'Save'}
         </button>
@@ -915,7 +915,7 @@ function Sheet({ title, onClose, children }) {
       <button className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Close" />
       <div className="relative w-full max-w-2xl bg-[#F6F8F6] rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col animate-slide-up">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 shrink-0">
-          <h2 className="text-[15px] font-extrabold text-[#0F1F17] truncate pr-2">{title}</h2>
+          <h2 className="text-[16.5px] font-extrabold text-[#0F1F17] truncate pr-2">{title}</h2>
           <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-200 shrink-0">
             <X className="w-5 h-5 text-[#5B6B62]" />
           </button>
@@ -962,15 +962,15 @@ function EarningsCard({ earnings, busy, onWithdraw }) {
       <div className="px-5 pt-5 pb-4">
         <div className="flex items-center gap-2 mb-3">
           <Wallet className="w-4 h-4 text-emerald-400" />
-          <h2 className="text-[13px] font-bold uppercase tracking-wide text-emerald-400">Earnings</h2>
+          <h2 className="text-[14.5px] font-bold uppercase tracking-wide text-emerald-400">Earnings</h2>
         </div>
 
         <div className="flex items-end gap-4">
           <div>
-            <p className="text-[28px] font-extrabold leading-none tabular-nums">
+            <p className="text-[29.5px] font-extrabold leading-none tabular-nums">
               {formatPaise(pendingPaise)}
             </p>
-            <p className="text-[12px] text-white/60 mt-1.5">
+            <p className="text-[13.5px] text-white/60 mt-1.5">
               {pendingCount > 0
                 ? `waiting from ${pendingCount} order${pendingCount === 1 ? '' : 's'}`
                 : 'waiting'}
@@ -978,23 +978,23 @@ function EarningsCard({ earnings, busy, onWithdraw }) {
           </div>
           {releasedPaise > 0 && (
             <div className="pb-0.5">
-              <p className="text-[15px] font-bold text-white/80 tabular-nums">
+              <p className="text-[16.5px] font-bold text-white/80 tabular-nums">
                 {formatPaise(releasedPaise)}
               </p>
-              <p className="text-[11.5px] text-white/50">paid out</p>
+              <p className="text-[13px] text-white/50">paid out</p>
             </div>
           )}
         </div>
 
         {nothingYet && (
-          <p className="text-[12.5px] text-white/60 mt-3 leading-relaxed">
+          <p className="text-[14px] text-white/60 mt-3 leading-relaxed">
             You are paid once the customer has the goods — not when you accept or pack.
             The money then reaches your wallet on its own within {holdHours} hours.
           </p>
         )}
 
         {pendingPaise > 0 && nextReleaseAt && (
-          <div className="flex items-start gap-2 mt-3 text-[12.5px] text-white/70 leading-relaxed">
+          <div className="flex items-start gap-2 mt-3 text-[14px] text-white/70 leading-relaxed">
             <Lock className="w-3.5 h-3.5 shrink-0 mt-0.5 text-white/50" />
             <p>
               Reaches your wallet by itself <strong className="text-white">{timeUntil(nextReleaseAt)}</strong>.
@@ -1009,12 +1009,12 @@ function EarningsCard({ earnings, busy, onWithdraw }) {
           <button
             onClick={onWithdraw}
             disabled={!canWithdrawNow || busy}
-            className="w-full bg-emerald-500 hover:bg-emerald-400 text-[#0F1F17] text-[14px] font-extrabold py-3.5 rounded-xl transition active:translate-y-px disabled:bg-white/10 disabled:text-white/40 disabled:cursor-not-allowed"
+            className="w-full bg-emerald-500 hover:bg-emerald-400 text-[#0F1F17] text-[15.5px] font-extrabold py-3.5 rounded-xl transition active:translate-y-px disabled:bg-white/10 disabled:text-white/40 disabled:cursor-not-allowed"
           >
             {busy ? 'Moving money…' : canWithdrawNow ? 'Withdraw now' : `₹${(shortBy / 100).toFixed(0)} more to withdraw early`}
           </button>
           {!canWithdrawNow && (
-            <p className="text-[11.5px] text-white/50 text-center mt-2 leading-relaxed">
+            <p className="text-[13px] text-white/50 text-center mt-2 leading-relaxed">
               Early withdrawals start at {formatPaise(minEarlyPayoutPaise)}. Below that it simply waits
               for the {holdHours}-hour payout.
             </p>
@@ -1029,7 +1029,7 @@ function SwitchPill({ active, onClick, activeLabel, inactiveLabel, icon }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold transition ${
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13.5px] font-bold transition ${
         active
           ? 'bg-[#0B7A37] text-white'
           : 'bg-gray-100 text-[#5B6B62] hover:bg-gray-200'
@@ -1050,7 +1050,7 @@ function SwitchPill({ active, onClick, activeLabel, inactiveLabel, icon }) {
 function Countdown({ seconds }) {
   if (seconds <= 0) {
     return (
-      <span className="text-[11.5px] font-bold text-[#5B6B62] bg-gray-100 px-2.5 py-1 rounded-full">
+      <span className="text-[13px] font-bold text-[#5B6B62] bg-gray-100 px-2.5 py-1 rounded-full">
         Closing…
       </span>
     );
@@ -1058,7 +1058,7 @@ function Countdown({ seconds }) {
   const urgent = seconds <= 15;
   return (
     <span
-      className={`text-[12px] font-extrabold px-2.5 py-1 rounded-full tabular-nums ${
+      className={`text-[13.5px] font-extrabold px-2.5 py-1 rounded-full tabular-nums ${
         urgent ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800'
       }`}
     >
@@ -1070,7 +1070,7 @@ function Countdown({ seconds }) {
 function StatusChip({ status, collected }) {
   if (collected) {
     return (
-      <span className="text-[11px] font-bold text-[#0B7A37] bg-emerald-50 px-2.5 py-1 rounded-full">
+      <span className="text-[12.5px] font-bold text-[#0B7A37] bg-emerald-50 px-2.5 py-1 rounded-full">
         Collected
       </span>
     );
@@ -1082,7 +1082,7 @@ function StatusChip({ status, collected }) {
   }[status] || status;
 
   return (
-    <span className="text-[11px] font-bold text-[#0F1F17] bg-gray-100 px-2.5 py-1 rounded-full">
+    <span className="text-[12.5px] font-bold text-[#0F1F17] bg-gray-100 px-2.5 py-1 rounded-full">
       {label}
     </span>
   );
@@ -1093,9 +1093,9 @@ function SectionHeading({ icon, title, count, tone }) {
   return (
     <div className="flex items-center gap-2 mb-3">
       <span className="text-[#0F1F17]">{icon}</span>
-      <h2 className="text-[15px] font-extrabold text-[#0F1F17]">{title}</h2>
+      <h2 className="text-[16.5px] font-extrabold text-[#0F1F17]">{title}</h2>
       {count > 0 && (
-        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${toneClass}`}>{count}</span>
+        <span className={`text-[12.5px] font-bold px-2 py-0.5 rounded-full ${toneClass}`}>{count}</span>
       )}
     </div>
   );
@@ -1107,8 +1107,8 @@ function EmptyState({ icon, title, body }) {
       <div className="w-12 h-12 rounded-2xl bg-gray-100 text-[#5B6B62] flex items-center justify-center mx-auto mb-3">
         {icon}
       </div>
-      <p className="text-[14px] font-bold text-[#0F1F17]">{title}</p>
-      <p className="text-[12.5px] text-[#5B6B62] mt-1 max-w-xs mx-auto leading-relaxed">{body}</p>
+      <p className="text-[15.5px] font-bold text-[#0F1F17]">{title}</p>
+      <p className="text-[14px] text-[#5B6B62] mt-1 max-w-xs mx-auto leading-relaxed">{body}</p>
     </div>
   );
 }

@@ -361,11 +361,11 @@ export default function Header({
           className={
             searchOpen
               ? 'vd-search-input-expanded w-full rounded-xl py-2.5 pl-4 pr-[4.5rem] text-sm font-medium text-[#2D2A26] placeholder-[#9A8F7C] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/25 transition-all'
-              : 'w-full vd-glass-input rounded-full py-3 pl-10 pr-9 text-sm font-medium text-[#2D2A26] placeholder-[#9A8F7C] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30 transition-all'
+              : 'w-full vd-glass-input rounded-full py-3.5 pl-11 pr-10 text-[16.5px] font-medium text-[#2D2A26] placeholder-[#9A8F7C] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30 transition-all'
           }
         />
         {!searchOpen && (
-          <Search className="w-[18px] h-[18px] text-[#8A7E6B] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-5 h-5 text-[#8A7E6B] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
         )}
 
         <div className={`absolute top-1/2 -translate-y-1/2 flex items-center gap-0.5 ${searchOpen ? 'right-2' : 'right-2.5'}`}>
@@ -516,7 +516,7 @@ export default function Header({
               onClick={onOpenNotepad}
               aria-label={t('header.myList')}
               title={t('header.myList')}
-              className="shrink-0 flex items-center justify-center w-12 h-12 rounded-2xl vd-glass-input text-[#1B4D3E] hover:opacity-80 active:scale-95 transition-all cursor-pointer"
+              className="shrink-0 flex items-center justify-center w-[54px] h-[54px] rounded-2xl vd-glass-input text-[#1B4D3E] hover:opacity-80 active:scale-95 transition-all cursor-pointer"
             >
               <ClipboardList className="w-5 h-5" />
             </button>
@@ -527,7 +527,7 @@ export default function Header({
               onClick={openVoiceSearch}
               aria-label={t('header.voiceSearch')}
               title={t('header.voiceSearch')}
-              className="shrink-0 flex items-center justify-center w-12 h-12 rounded-2xl vd-glass-input text-[#1B4D3E] hover:opacity-80 active:scale-95 transition-all cursor-pointer"
+              className="shrink-0 flex items-center justify-center w-[54px] h-[54px] rounded-2xl vd-glass-input text-[#1B4D3E] hover:opacity-80 active:scale-95 transition-all cursor-pointer"
             >
               <Mic className="w-5 h-5" />
             </button>

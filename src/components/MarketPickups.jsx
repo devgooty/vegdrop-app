@@ -65,8 +65,8 @@ export default function MarketPickups({ isOnline, riderPosition }) {
     return (
       <div className="mx-4 mb-4 rounded-2xl border border-dashed border-gray-300 bg-white px-5 py-6 text-center">
         <Store className="w-6 h-6 text-gray-400 mx-auto mb-2" />
-        <p className="text-[13.5px] font-bold text-gray-900">No market pickups right now</p>
-        <p className="text-[12px] text-gray-500 mt-1">
+        <p className="text-[15px] font-bold text-gray-900">No market pickups right now</p>
+        <p className="text-[13.5px] text-gray-500 mt-1">
           You will be offered the nearest one as soon as a market has an order ready.
         </p>
       </div>
@@ -121,12 +121,12 @@ function OfferCard({ order, riderPosition, busy, onAccept, onDecline }) {
   return (
     <article className="rounded-2xl border-2 border-emerald-500 bg-white shadow-lg overflow-hidden">
       <div className="bg-emerald-500 px-4 py-2 flex items-center justify-between">
-        <span className="text-[12px] font-extrabold text-white uppercase tracking-wide">
+        <span className="text-[13.5px] font-extrabold text-white uppercase tracking-wide">
           New pickup
         </span>
         <div className="flex items-center gap-2">
           {order.offerExpiresAt && <OfferCountdown expiresAt={order.offerExpiresAt} />}
-          <span className="text-[12px] font-bold text-white">{order.orderNumber}</span>
+          <span className="text-[13.5px] font-bold text-white">{order.orderNumber}</span>
         </div>
       </div>
 
@@ -134,11 +134,11 @@ function OfferCard({ order, riderPosition, busy, onAccept, onDecline }) {
         <div className="flex items-start gap-2.5">
           <Store className="w-4.5 h-4.5 text-emerald-600 shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1">
-            <p className="text-[14px] font-bold text-gray-900">{order.marketName}</p>
-            <p className="text-[12px] text-gray-500">{order.marketAddress}</p>
+            <p className="text-[15.5px] font-bold text-gray-900">{order.marketName}</p>
+            <p className="text-[13.5px] text-gray-500">{order.marketAddress}</p>
           </div>
           {toMarket != null && (
-            <span className="text-[12px] font-extrabold text-emerald-700 shrink-0">
+            <span className="text-[13.5px] font-extrabold text-emerald-700 shrink-0">
               {formatDistance(toMarket)}
             </span>
           )}
@@ -158,7 +158,7 @@ function OfferCard({ order, riderPosition, busy, onAccept, onDecline }) {
         {/* Where it is going, roughly. The exact door arrives on accept. */}
         <div className="flex items-start gap-2.5 pt-1 border-t border-gray-100">
           <MapPin className="w-4.5 h-4.5 text-orange-500 shrink-0 mt-1.5" />
-          <p className="text-[12.5px] text-gray-700 pt-1 leading-snug">
+          <p className="text-[14px] text-gray-700 pt-1 leading-snug">
             {order.dropoffArea || 'Dropoff address shown once you accept'}
             {order.dropoffDistanceMeters != null && (
               <span className="text-gray-500">
@@ -174,14 +174,14 @@ function OfferCard({ order, riderPosition, busy, onAccept, onDecline }) {
             onClick={onDecline}
             disabled={busy}
             aria-label="Pass this pickup to the next rider"
-            className="px-4 py-3 rounded-xl border border-gray-300 text-gray-600 text-[13.5px] font-bold disabled:opacity-50"
+            className="px-4 py-3 rounded-xl border border-gray-300 text-gray-600 text-[15px] font-bold disabled:opacity-50"
           >
             <X className="w-4 h-4" />
           </button>
           <button
             onClick={onAccept}
             disabled={busy}
-            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[14px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:opacity-50"
+            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[15.5px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:opacity-50"
           >
             {busy ? 'Working…' : 'Accept pickup'}
           </button>
@@ -210,7 +210,7 @@ function OfferCountdown({ expiresAt }) {
   if (secondsLeft <= 0) return null;
 
   return (
-    <span className="text-[11px] font-extrabold text-white bg-black/25 px-2 py-0.5 rounded-full tabular-nums">
+    <span className="text-[12.5px] font-extrabold text-white bg-black/25 px-2 py-0.5 rounded-full tabular-nums">
       {secondsLeft}s
     </span>
   );
@@ -237,11 +237,11 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
     <article className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[13.5px] font-bold text-gray-900 truncate">{order.marketName}</p>
-          <p className="text-[11.5px] text-gray-500">{order.orderNumber}</p>
+          <p className="text-[15px] font-bold text-gray-900 truncate">{order.marketName}</p>
+          <p className="text-[13px] text-gray-500">{order.orderNumber}</p>
         </div>
         <span
-          className={`text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0 ${
+          className={`text-[12.5px] font-bold px-2.5 py-1 rounded-full shrink-0 ${
             readyToLeave ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700'
           }`}
         >
@@ -267,15 +267,15 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
         <div className="flex items-start gap-2.5">
           <User className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1">
-            <p className="text-[13.5px] font-bold text-gray-900 truncate">
+            <p className="text-[15px] font-bold text-gray-900 truncate">
               {order.customerName || 'Customer'}
             </p>
-            <p className="text-[12.5px] text-gray-600 leading-snug">{order.address}</p>
+            <p className="text-[14px] text-gray-600 leading-snug">{order.address}</p>
           </div>
         </div>
 
         {order.paymentMethod === 'cod' && (
-          <p className="flex items-center gap-1.5 text-[12px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+          <p className="flex items-center gap-1.5 text-[13.5px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
             <Banknote className="w-3.5 h-3.5 shrink-0" />
             Collect {formatPaise(order.totalAmountPaise)} in cash on handover
           </p>
@@ -287,7 +287,7 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
           <button
             type="button"
             onClick={() => setShowRound((v) => !v)}
-            className="w-full px-4 py-2 flex items-center justify-between text-[12px] font-bold text-gray-600"
+            className="w-full px-4 py-2 flex items-center justify-between text-[13.5px] font-bold text-gray-600"
           >
             <span>Your round — {order.pickups.length} stall{order.pickups.length === 1 ? '' : 's'}</span>
             {showRound ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -300,7 +300,7 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
                 return (
                   <li key={pickup.stall} className="px-4 py-3 flex items-center gap-3">
                     <span
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-[12px] font-extrabold shrink-0 ${
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-[13.5px] font-extrabold shrink-0 ${
                         pickup.collected
                           ? 'bg-emerald-100 text-emerald-700'
                           : packed
@@ -315,15 +315,15 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
                       {/* The trader's name, so the rider is looking for a shop
                           sign rather than counting pitches. */}
                       {pickup.stallName && (
-                        <p className="text-[12.5px] font-bold text-gray-900 truncate">
+                        <p className="text-[14px] font-bold text-gray-900 truncate">
                           {pickup.stallName}
                         </p>
                       )}
-                      <p className="text-[12.5px] text-gray-600 truncate">
+                      <p className="text-[14px] text-gray-600 truncate">
                         {pickup.lines.map((l) => `${l.name} ×${l.quantity}`).join(', ')}
                       </p>
                       {!packed && !pickup.collected && (
-                        <p className="text-[11.5px] text-amber-600 flex items-center gap-1 mt-0.5">
+                        <p className="text-[13px] text-amber-600 flex items-center gap-1 mt-0.5">
                           <Clock className="w-3 h-3" /> still packing
                         </p>
                       )}
@@ -348,7 +348,7 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
                         onClick={() => onCollect(pickup)}
                         disabled={!packed || busy}
                         aria-label={`Collected from stall ${pickup.stallNumber}`}
-                        className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-[12px] font-bold shrink-0 disabled:bg-gray-200 disabled:text-gray-400"
+                        className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-[13.5px] font-bold shrink-0 disabled:bg-gray-200 disabled:text-gray-400"
                       >
                         <Package className="w-4 h-4" />
                       </button>
@@ -380,7 +380,7 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
             href={`https://www.google.com/maps/dir/?api=1&destination=${destination.lat},${destination.lng}&travelmode=driving`}
             target="_blank"
             rel="noreferrer"
-            className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[12.5px] font-bold"
+            className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[14px] font-bold"
           >
             <Navigation className="w-4 h-4" />
             {readyToLeave ? 'To customer' : 'To market'}
@@ -390,7 +390,7 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
         <button
           onClick={onDeliver}
           disabled={!readyToLeave || busy}
-          className="flex-1 bg-gray-900 hover:bg-black text-white text-[14px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:bg-gray-200 disabled:text-gray-400"
+          className="flex-1 bg-gray-900 hover:bg-black text-white text-[15.5px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:bg-gray-200 disabled:text-gray-400"
         >
           <span className="flex items-center justify-center gap-2">
             <PackageCheck className="w-4 h-4" />
@@ -409,11 +409,11 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
 function Fact({ icon, label, value }) {
   return (
     <div className="bg-gray-50 border border-gray-100 rounded-xl px-2 py-1.5">
-      <div className="flex items-center gap-1 text-gray-400 text-[10px] font-bold uppercase tracking-wide">
+      <div className="flex items-center gap-1 text-gray-400 text-[11.5px] font-bold uppercase tracking-wide">
         {icon}
         {label}
       </div>
-      <div className="text-[13px] font-extrabold text-gray-900 truncate">{value}</div>
+      <div className="text-[14.5px] font-extrabold text-gray-900 truncate">{value}</div>
     </div>
   );
 }

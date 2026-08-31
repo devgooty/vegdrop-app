@@ -68,7 +68,7 @@ export default function AccountAddress({ onAddressChange }) {
         </div>
       </div>
 
-      <p className="text-[11px] font-semibold text-slate-400 leading-relaxed px-2">
+      <p className="text-[12.5px] font-semibold text-slate-400 leading-relaxed px-2">
         {t('account.savedAddressNote')}
       </p>
 

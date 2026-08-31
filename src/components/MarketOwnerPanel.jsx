@@ -318,7 +318,7 @@ export default function MarketOwnerPanel({ onExit }) {
               type="button"
               onClick={() => setTab(id)}
               aria-current={isActive ? 'page' : undefined}
-              className={`flex-1 min-w-[72px] py-2 px-2 rounded-xl flex items-center justify-center gap-1.5 text-[11px] font-bold transition-all cursor-pointer ${
+              className={`flex-1 min-w-[72px] py-2 px-2 rounded-xl flex items-center justify-center gap-1.5 text-[12.5px] font-bold transition-all cursor-pointer ${
                 isActive
                   ? 'bg-amber-900 text-white shadow-md'
                   : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
@@ -328,7 +328,7 @@ export default function MarketOwnerPanel({ onExit }) {
               <span className="truncate">{label}</span>
               {badge && (
                 <span
-                  className={`px-1.5 rounded-full text-[10px] font-black ${
+                  className={`px-1.5 rounded-full text-[11.5px] font-black ${
                     isActive ? 'bg-white text-amber-900' : 'bg-amber-100 text-amber-800'
                   }`}
                 >
@@ -452,7 +452,7 @@ function MarketHeader({ market, markets, marketId, onSelect, analytics, pendingC
             <p className="text-xs text-amber-100/90 font-medium truncate">{market?.address}</p>
           </div>
         </div>
-        <span className="px-2.5 py-1 bg-amber-400/20 text-amber-200 rounded-full text-[11px] font-bold border border-amber-300/30 flex items-center gap-1 shrink-0">
+        <span className="px-2.5 py-1 bg-amber-400/20 text-amber-200 rounded-full text-[12.5px] font-bold border border-amber-300/30 flex items-center gap-1 shrink-0">
           <Award className="w-3.5 h-3.5" />
           Owner
         </span>
@@ -462,7 +462,7 @@ function MarketHeader({ market, markets, marketId, onSelect, analytics, pendingC
           order list — a market switched off is the single likeliest explanation
           for "why is nothing coming in", and it is two taps away in Settings. */}
       {closed && (
-        <p className="mt-3 flex items-center gap-1.5 text-[11px] font-bold bg-red-500/20 text-red-100 border border-red-300/30 rounded-lg px-2.5 py-1.5">
+        <p className="mt-3 flex items-center gap-1.5 text-[12.5px] font-bold bg-red-500/20 text-red-100 border border-red-300/30 rounded-lg px-2.5 py-1.5">
           <PackageX className="w-3.5 h-3.5 shrink-0" />
           {!market.isActive
             ? 'This market is switched off. Customers cannot see it at all.'
@@ -531,7 +531,7 @@ function OverviewTab({ analytics, windowDays, onWindowChange, onRefresh, refresh
     <>
       <div className="flex items-center justify-between gap-2">
         <div
-          className="flex bg-white rounded-xl border border-gray-200 p-0.5 text-[11px] font-bold"
+          className="flex bg-white rounded-xl border border-gray-200 p-0.5 text-[12.5px] font-bold"
           role="group"
           aria-label="Reporting window"
         >
@@ -568,7 +568,7 @@ function OverviewTab({ analytics, windowDays, onWindowChange, onRefresh, refresh
         title="Orders"
         action={
           analytics && (
-            <span className="text-[11px] text-gray-400 font-semibold">
+            <span className="text-[12.5px] text-gray-400 font-semibold">
               last {analytics.windowDays} days
             </span>
           )
@@ -624,7 +624,7 @@ function OverviewTab({ analytics, windowDays, onWindowChange, onRefresh, refresh
                     <Store className="w-3 h-3 inline mr-1 text-gray-400" />
                     {s.stallNumber} — {s.stallName || s.ownerName || 'Stall'}
                   </span>
-                  <span className="text-[10px] text-gray-500">
+                  <span className="text-[11.5px] text-gray-500">
                     {s.orders} order{s.orders === 1 ? '' : 's'}
                     {s.ownerName ? ` • ${s.ownerName}` : ''}
                   </span>
@@ -633,7 +633,7 @@ function OverviewTab({ analytics, windowDays, onWindowChange, onRefresh, refresh
                   <span className="font-extrabold text-sm text-[#1B4D3E] block">
                     {formatPaise(s.grossPaise)}
                   </span>
-                  <span className="text-[10px] text-gray-500">
+                  <span className="text-[11.5px] text-gray-500">
                     {formatPaise(s.netPaise)} to stall
                   </span>
                 </div>
@@ -657,7 +657,7 @@ function OverviewTab({ analytics, windowDays, onWindowChange, onRefresh, refresh
                   <span className="font-bold text-xs text-gray-900 block truncate">
                     {r.name || 'Rider'}
                   </span>
-                  <span className="text-[10px] text-gray-500">{r.phone || ''}</span>
+                  <span className="text-[11.5px] text-gray-500">{r.phone || ''}</span>
                 </div>
                 <span className="font-extrabold text-sm text-gray-900 shrink-0">{r.deliveries}</span>
               </div>
@@ -751,7 +751,7 @@ function RequestsTab({ marketId, requests, decided, onRefresh, refreshing, onRep
                     <span className="font-bold text-sm text-gray-900 block truncate">
                       {r.applicant?.name || r.name}
                     </span>
-                    <span className="text-[11px] text-gray-500 block">
+                    <span className="text-[12.5px] text-gray-500 block">
                       {/* An unverified number is labelled rather than shown as
                           if confirmed: it is what they typed, not something the
                           platform has proved they answer. */}
@@ -764,12 +764,12 @@ function RequestsTab({ marketId, requests, decided, onRefresh, refreshing, onRep
                         : ''}
                     </span>
                     {r.name && r.name !== r.applicant?.name && (
-                      <span className="text-[11px] text-gray-400 block truncate">
+                      <span className="text-[12.5px] text-gray-400 block truncate">
                         trading as {r.name}
                       </span>
                     )}
                   </div>
-                  <span className="text-[10px] text-amber-700 font-bold flex items-center gap-1 shrink-0">
+                  <span className="text-[11.5px] text-amber-700 font-bold flex items-center gap-1 shrink-0">
                     <Clock className="w-3 h-3" />
                     {timeAgo(r.requestedAt)}
                   </span>
@@ -805,7 +805,7 @@ function RequestsTab({ marketId, requests, decided, onRefresh, refreshing, onRep
         icon={<Clock className="w-5 h-5 text-amber-600" />}
         title="Already decided"
         action={
-          <div className="flex bg-gray-100 rounded-lg p-0.5 text-[11px] font-bold">
+          <div className="flex bg-gray-100 rounded-lg p-0.5 text-[12.5px] font-bold">
             {['approved', 'rejected'].map((key) => (
               <button
                 key={key}
@@ -839,10 +839,10 @@ function RequestsTab({ marketId, requests, decided, onRefresh, refreshing, onRep
                       : ''}
                   </span>
                   {r.rejectionReason && (
-                    <span className="text-[10px] text-gray-500 block">“{r.rejectionReason}”</span>
+                    <span className="text-[11.5px] text-gray-500 block">“{r.rejectionReason}”</span>
                   )}
                 </div>
-                <span className="text-[10px] text-gray-400 font-semibold shrink-0">
+                <span className="text-[11.5px] text-gray-400 font-semibold shrink-0">
                   {timeAgo(r.reviewedAt || r.requestedAt)}
                 </span>
               </div>
@@ -903,7 +903,7 @@ function ApproveDialog({ request, busy, onCancel, onSubmit }) {
         </p>
 
         <label className="block">
-          <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">
+          <span className="text-[12.5px] font-bold text-gray-700 uppercase tracking-wide">
             Stall number
           </span>
           <input
@@ -923,7 +923,7 @@ function ApproveDialog({ request, busy, onCancel, onSubmit }) {
             onChange={(e) => setAutoAccept(e.target.checked)}
             className="mt-0.5 w-4 h-4 accent-amber-700 cursor-pointer"
           />
-          <span className="text-[11px] text-gray-600 leading-snug">
+          <span className="text-[12.5px] text-gray-600 leading-snug">
             <span className="font-bold text-gray-900 block">Answer offers automatically</span>
             Only fires on lines they have declared stock for. They can change this themselves later.
           </span>
@@ -970,7 +970,7 @@ function DeclineDialog({ request, busy, onCancel, onSubmit }) {
         </p>
 
         <label className="block">
-          <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">
+          <span className="text-[12.5px] font-bold text-gray-700 uppercase tracking-wide">
             Reason <span className="text-gray-400 font-semibold normal-case">(optional)</span>
           </span>
           <textarea
@@ -982,7 +982,7 @@ function DeclineDialog({ request, busy, onCancel, onSubmit }) {
             placeholder="No free pitches until next month."
             className="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-500"
           />
-          <span className="text-[10px] text-gray-400">{reason.length}/300</span>
+          <span className="text-[11.5px] text-gray-400">{reason.length}/300</span>
         </label>
 
         <div className="flex gap-2">
@@ -1059,7 +1059,7 @@ function StallsTab({ marketId, stalls, onStallPatched, onRefresh, refreshing, on
                     <span className="font-bold text-sm text-gray-900 block truncate">
                       {s.stallNumber} — {s.name}
                     </span>
-                    <span className="text-[11px] text-gray-500 block truncate">
+                    <span className="text-[12.5px] text-gray-500 block truncate">
                       {s.owner?.name || 'Unknown owner'}
                       {s.owner?.phone ? ` • ${s.owner.phone}` : ''}
                     </span>
@@ -1073,7 +1073,7 @@ function StallsTab({ marketId, stalls, onStallPatched, onRefresh, refreshing, on
                       <Pill tone="gray">Shutter down</Pill>
                     )}
                     {s.activeLoad > 0 && (
-                      <span className="text-[10px] text-gray-500 font-semibold">
+                      <span className="text-[11.5px] text-gray-500 font-semibold">
                         {s.activeLoad} packing
                       </span>
                     )}
@@ -1085,7 +1085,7 @@ function StallsTab({ marketId, stalls, onStallPatched, onRefresh, refreshing, on
                     type="button"
                     disabled={busyId === s.id}
                     onClick={() => setRenaming(s)}
-                    className="flex-1 bg-white text-gray-700 border border-gray-300 text-[11px] font-bold py-1.5 rounded-lg flex items-center justify-center gap-1 hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                    className="flex-1 bg-white text-gray-700 border border-gray-300 text-[12.5px] font-bold py-1.5 rounded-lg flex items-center justify-center gap-1 hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
                   >
                     <Pencil className="w-3 h-3" />
                     Move pitch
@@ -1095,7 +1095,7 @@ function StallsTab({ marketId, stalls, onStallPatched, onRefresh, refreshing, on
                       type="button"
                       disabled={busyId === s.id}
                       onClick={() => setConfirming(s)}
-                      className="flex-1 bg-white text-red-700 border border-red-200 text-[11px] font-bold py-1.5 rounded-lg flex items-center justify-center gap-1 hover:bg-red-50 disabled:opacity-50 cursor-pointer"
+                      className="flex-1 bg-white text-red-700 border border-red-200 text-[12.5px] font-bold py-1.5 rounded-lg flex items-center justify-center gap-1 hover:bg-red-50 disabled:opacity-50 cursor-pointer"
                     >
                       {busyId === s.id ? (
                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -1109,7 +1109,7 @@ function StallsTab({ marketId, stalls, onStallPatched, onRefresh, refreshing, on
                       type="button"
                       disabled={busyId === s.id}
                       onClick={() => patch(s, { isActive: true }, `${s.name} is trading again.`)}
-                      className="flex-1 bg-[#1B4D3E] text-white text-[11px] font-bold py-1.5 rounded-lg flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"
+                      className="flex-1 bg-[#1B4D3E] text-white text-[12.5px] font-bold py-1.5 rounded-lg flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"
                     >
                       {busyId === s.id ? (
                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -1204,7 +1204,7 @@ function RenumberDialog({ stall, busy, onCancel, onSubmit }) {
           on the pitch.
         </p>
         <label className="block">
-          <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">
+          <span className="text-[12.5px] font-bold text-gray-700 uppercase tracking-wide">
             Stall number
           </span>
           <input
@@ -1367,14 +1367,14 @@ function PricesTab({ marketId, onReport, toast }) {
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="text-[11px] font-bold text-amber-800 flex items-center gap-1 hover:text-amber-600 cursor-pointer"
+            className="text-[12.5px] font-bold text-amber-800 flex items-center gap-1 hover:text-amber-600 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             Add line
           </button>
         }
       >
-        <p className="text-[11px] text-gray-500 -mt-1">
+        <p className="text-[12.5px] text-gray-500 -mt-1">
           What this market charges today. Switching a line off hides it from customers without
           losing the price you set.
         </p>
@@ -1425,7 +1425,7 @@ function PricesTab({ marketId, onReport, toast }) {
                     <span className="font-bold text-xs text-gray-900 block truncate">
                       {row.product?.name || 'Unknown product'}
                     </span>
-                    <span className="text-[10px] text-gray-500">{row.product?.weight || ''}</span>
+                    <span className="text-[11.5px] text-gray-500">{row.product?.weight || ''}</span>
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
@@ -1619,7 +1619,7 @@ function AddLineDialog({ marketId, alreadyListed, onClose, onAdded, onReport }) 
                     className="flex-1 min-w-0 text-left cursor-pointer"
                   >
                     <span className="font-bold text-xs text-gray-900 block truncate">{p.name}</span>
-                    <span className="text-[10px] text-gray-500">
+                    <span className="text-[11.5px] text-gray-500">
                       {p.weight || ''}
                       {p.price !== undefined ? ` • catalog ₹${p.price}` : ''}
                     </span>
@@ -1792,7 +1792,7 @@ function SettingsTab({ market, onSaved, onReport, toast }) {
               up with a market in the Indian Ocean because lat and lng were
               swapped. */}
           {market.lat !== null && market.lng !== null && (
-            <p className="text-[11px] text-gray-400">
+            <p className="text-[12.5px] text-gray-400">
               Pinned at {Number(market.lat).toFixed(5)}, {Number(market.lng).toFixed(5)}
             </p>
           )}
@@ -1949,7 +1949,7 @@ function CreateMarketDialog({ onClose, onCreated, onReport }) {
         </Field>
 
         <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
-          <p className="text-[11px] text-gray-600 leading-snug">
+          <p className="text-[12.5px] text-gray-600 leading-snug">
             Which customers see this market is worked out from where it is, so stand in the market
             when you pin it.
           </p>
@@ -1963,7 +1963,7 @@ function CreateMarketDialog({ onClose, onCreated, onReport }) {
             {coords ? 'Re-pin here' : 'Pin where I am'}
           </button>
           {coords && (
-            <p className="text-[11px] font-bold text-emerald-700 text-center">
+            <p className="text-[12.5px] font-bold text-emerald-700 text-center">
               Pinned at {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
             </p>
           )}
@@ -2124,7 +2124,7 @@ function Toggle({ label, hint, checked, onChange, disabled, danger }) {
       />
       <span className="min-w-0">
         <span className="text-xs font-bold text-gray-900 block">{label}</span>
-        <span className="text-[11px] text-gray-500 leading-snug block">{hint}</span>
+        <span className="text-[12.5px] text-gray-500 leading-snug block">{hint}</span>
       </span>
     </label>
   );
@@ -2133,11 +2133,11 @@ function Toggle({ label, hint, checked, onChange, disabled, danger }) {
 function Field({ label, hint, children }) {
   return (
     <label className="block space-y-1">
-      <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide block">
+      <span className="text-[12.5px] font-bold text-gray-700 uppercase tracking-wide block">
         {label}
       </span>
       {children}
-      {hint && <span className="text-[10px] text-gray-400 block leading-snug">{hint}</span>}
+      {hint && <span className="text-[11.5px] text-gray-400 block leading-snug">{hint}</span>}
     </label>
   );
 }
@@ -2149,7 +2149,7 @@ function Pill({ tone, children }) {
     gray: 'bg-gray-100 text-gray-500 border-gray-200',
   };
   return (
-    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${tones[tone]}`}>
+    <span className={`px-2 py-0.5 rounded-full text-[11.5px] font-bold border ${tones[tone]}`}>
       {children}
     </span>
   );
@@ -2158,7 +2158,7 @@ function Pill({ tone, children }) {
 function Metric({ label, value, tone }) {
   return (
     <div className="bg-black/20 p-2 rounded-xl backdrop-blur-xs">
-      <div className="text-[10px] text-amber-200 font-semibold uppercase tracking-wider truncate">
+      <div className="text-[11.5px] text-amber-200 font-semibold uppercase tracking-wider truncate">
         {label}
       </div>
       <div className={`text-base font-black truncate ${tone}`}>{value}</div>
@@ -2169,7 +2169,7 @@ function Metric({ label, value, tone }) {
 function Figure({ label, value, tone }) {
   return (
     <div className="bg-white rounded-2xl p-3 border border-gray-200 shadow-sm">
-      <div className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">
+      <div className="text-[11.5px] text-gray-500 font-semibold uppercase tracking-wider">
         {label}
       </div>
       <div className={`text-base font-black truncate ${tone}`}>{value}</div>
@@ -2181,7 +2181,7 @@ function Tally({ label, value, tone }) {
   return (
     <div className="bg-gray-50 rounded-xl p-2.5 border border-gray-100">
       <div className={`text-xl font-black ${tone}`}>{value}</div>
-      <div className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">
+      <div className="text-[11.5px] text-gray-500 font-semibold uppercase tracking-wider">
         {label}
       </div>
     </div>

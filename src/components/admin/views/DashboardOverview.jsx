@@ -23,7 +23,7 @@ const KPICard = ({ title, value, subtext, icon: Icon, color, bg, isCurrency = fa
         <p className="text-2xl font-black text-slate-800 mt-1">
           {isCurrency ? `₹${Number(value || 0).toLocaleString('en-IN')}` : Number(value || 0).toLocaleString('en-IN')}
         </p>
-        {subtext && <p className="text-[11px] font-medium text-slate-500 mt-1">{subtext}</p>}
+        {subtext && <p className="text-[12.5px] font-medium text-slate-500 mt-1">{subtext}</p>}
       </div>
     </div>
   );
@@ -276,13 +276,13 @@ export default function DashboardOverview({ setActiveTab }) {
                 <div key={order._id} className="py-3 flex items-center justify-between gap-3 text-xs">
                   <div>
                     <p className="font-bold text-slate-800">{order.customerName}</p>
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-[12.5px] text-slate-400">
                       ID: {order.id.slice(-6).toUpperCase()} • {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="font-extrabold text-slate-900">₹{order.total?.toLocaleString('en-IN')}</p>
-                    <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                    <span className={`inline-block px-2 py-0.5 rounded-md text-[11.5px] font-bold ${
                       order.status === 'Delivered' ? 'bg-emerald-50 text-emerald-700' :
                       order.status === 'Cancelled' ? 'bg-rose-50 text-rose-700' :
                       'bg-blue-50 text-blue-700'
@@ -319,9 +319,9 @@ export default function DashboardOverview({ setActiveTab }) {
                 <div key={u.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
                   <div className="min-w-0">
                     <p className="font-bold text-slate-800 truncate">{u.name || 'User'}</p>
-                    <p className="text-[11px] text-slate-400 truncate">{u.phone || u.email || '—'}</p>
+                    <p className="text-[12.5px] text-slate-400 truncate">{u.phone || u.email || '—'}</p>
                   </div>
-                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase shrink-0 ${
+                  <span className={`px-2.5 py-1 rounded-full text-[11.5px] font-extrabold uppercase shrink-0 ${
                     u.role === 'shopkeeper' ? 'bg-emerald-50 text-emerald-700' :
                     u.role === 'delivery' ? 'bg-amber-50 text-amber-700' :
                     u.role === 'developer' ? 'bg-purple-50 text-purple-700' :

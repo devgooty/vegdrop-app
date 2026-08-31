@@ -1,8 +1,57 @@
 @import "tailwindcss";
 
+/**
+ * The type ramp, one step larger than Tailwind's stock scale.
+ *
+ * This app is unusually small-text heavy — 375 uses of text-xs, plus hundreds
+ * more at an explicit 9-11px — because nearly every row carries a weight, a
+ * struck-through price, a stock badge and a rating alongside the name. At the
+ * stock scale that bottom end sat at 12px and below, which is under what is
+ * comfortable to read on a phone held at arm's length in a market.
+ *
+ * The lift is tapered, not a flat multiplier: +12.5% at text-xs where the
+ * problem actually is, tapering to +4% by text-4xl. Display sizes are already
+ * legible and are the ones boxed in by fixed-height cards and single-line
+ * truncation, so scaling them at the same rate would buy nothing and break
+ * layout. Line heights move with the sizes rather than being left behind,
+ * since Tailwind's font-size utilities set both.
+ *
+ * Overriding the tokens here rather than editing ~640 call sites is what makes
+ * this reversible: the ramp is one block, not a sweep through every component.
+ */
+@theme {
+  /*
+   * Redefining the token rather than only setting font-family in @layer base:
+   * index.html puts `font-sans` on <body>, and a utility beats a base rule, so
+   * the base declaration alone was silently losing to Tailwind's stock stack —
+   * the whole app rendered in system UI while looking like it had been
+   * restyled. Overriding the token fixes the utility and the base default in
+   * one place, and keeps every `font-sans` in the app pointing at the same face.
+   */
+  --font-sans: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --default-font-family: var(--font-sans);
+
+  --text-xs: 0.84375rem;          /* 12    -> 13.5 */
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.96875rem;          /* 14    -> 15.5 */
+  --text-sm--line-height: 1.375rem;
+  --text-base: 1.0625rem;         /* 16    -> 17   */
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.1875rem;           /* 18    -> 19   */
+  --text-lg--line-height: 1.6875rem;
+  --text-xl: 1.3125rem;           /* 20    -> 21   */
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5625rem;          /* 24    -> 25   */
+  --text-2xl--line-height: 2rem;
+  --text-3xl: 1.9375rem;          /* 30    -> 31   */
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl: 2.34375rem;         /* 36    -> 37.5 */
+  --text-4xl--line-height: 2.5rem;
+}
+
 @layer base {
   body {
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Figtree', -apple-system, BlinkMacSystemFont, sans-serif;
     letter-spacing: -0.01em;
     background-color: #F6F3EC;
     -webkit-font-smoothing: antialiased;
@@ -10,7 +59,7 @@
   }
 
   h1, h2, h3, .font-vintage {
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Figtree', -apple-system, BlinkMacSystemFont, sans-serif;
     letter-spacing: -0.02em;
   }
 
@@ -554,7 +603,7 @@
   --si-bg: #FFFFFF;
 
   background: var(--si-bg);
-  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  font-family: 'Figtree', ui-sans-serif, system-ui, sans-serif;
 }
 
 /* Shopkeeper-only: closes the gap the shared <main> padding (pt-6/sm:pt-8)
@@ -713,7 +762,7 @@
   border-radius: 0.95rem;
 }
 
-/* Rounded and bubbly rather than the app's usual Plus Jakarta Sans — this is
+/* Rounded and bubbly rather than the app's usual Figtree — this is
    the one place on the login screen that reads as a logotype rather than UI
    text, standing in for the hand-lettered mark that used to be baked into
    hero.webp. Positive tracking, not the -0.02em the rest of the app's
@@ -726,7 +775,7 @@
      of the mark halfway through. */
   position: relative;
   z-index: 2;
-  font-family: 'Baloo 2', 'Plus Jakarta Sans', ui-sans-serif, sans-serif;
+  font-family: 'Baloo 2', 'Figtree', ui-sans-serif, sans-serif;
   font-weight: 800;
   font-size: clamp(2.1rem, 8.5vw, 2.75rem);
   letter-spacing: 0.01em;
@@ -1261,7 +1310,7 @@
    slightly different logos. */
 .vd-splash-wordmark {
   position: relative;
-  font-family: 'Baloo 2', 'Plus Jakarta Sans', ui-sans-serif, sans-serif;
+  font-family: 'Baloo 2', 'Figtree', ui-sans-serif, sans-serif;
   font-weight: 800;
   font-size: 1.6rem;
   letter-spacing: 0.01em;
@@ -1553,7 +1602,7 @@
    wants a cap height near 1.05rem beside it, and the app's 12px header text
    would read as a caption stuck to a logo. */
 .vd-home-wordmark {
-  font-family: 'Baloo 2', 'Plus Jakarta Sans', ui-sans-serif, sans-serif;
+  font-family: 'Baloo 2', 'Figtree', ui-sans-serif, sans-serif;
   font-weight: 800;
   font-size: 1.05rem;
   letter-spacing: 0.01em;

@@ -106,13 +106,13 @@ export default function AlertsView({ setActiveTab }) {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="text-sm font-black text-slate-800">{alert.title}</h4>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${getSeverityBadge(alert.severity)}`}>
+                    <span className={`text-[11.5px] font-bold px-2 py-0.5 rounded-full border uppercase ${getSeverityBadge(alert.severity)}`}>
                       {alert.severity}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500">{alert.description}</p>
                   {alert.timestamp && (
-                    <p className="text-[10px] text-slate-400 font-medium">
+                    <p className="text-[11.5px] text-slate-400 font-medium">
                       {new Date(alert.timestamp).toLocaleString()}
                     </p>
                   )}

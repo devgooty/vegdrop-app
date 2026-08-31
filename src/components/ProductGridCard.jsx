@@ -86,7 +86,7 @@ export default function ProductGridCard({
             </div>
 
             {item.isOrganic && (
-              <span className="bg-[#EAE4D7] text-[#1B4D3E] border border-[#D5CDBC] absolute top-1 left-1 text-[8px] font-extrabold px-1.5 py-0.2 rounded-md uppercase tracking-wider shadow-2xs">
+              <span className="bg-[#EAE4D7] text-[#1B4D3E] border border-[#D5CDBC] absolute top-1 left-1 text-[9.5px] font-extrabold px-1.5 py-0.2 rounded-md uppercase tracking-wider shadow-2xs">
                 {t('product.organic')}
               </span>
             )}
@@ -101,12 +101,12 @@ export default function ProductGridCard({
               someone is actually deciding whether to buy it.
             */}
             {item.freshPhotoAt && (
-              <span className="bg-[#1B4D3E] text-white absolute top-1 right-1 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider shadow-xs flex items-center gap-0.5">
+              <span className="bg-[#1B4D3E] text-white absolute top-1 right-1 text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider shadow-xs flex items-center gap-0.5">
                 <Camera className="w-2.5 h-2.5" />
                 {t('product.today')}
               </span>
             )}
-            <div className="absolute bottom-1 right-1 bg-[#FFFDF9]/95 backdrop-blur-xs px-1.5 py-0.2 rounded-md text-[9px] font-bold text-[#2D2A26] flex items-center gap-0.5 border border-[#E0D9C8] shadow-xs">
+            <div className="absolute bottom-1 right-1 bg-[#FFFDF9]/95 backdrop-blur-xs px-1.5 py-0.2 rounded-md text-[10.5px] font-bold text-[#2D2A26] flex items-center gap-0.5 border border-[#E0D9C8] shadow-xs">
               <Star className="w-2.5 h-2.5 text-amber-500 fill-amber-500" />
               <span>{item.rating}</span>
             </div>
@@ -119,9 +119,9 @@ export default function ProductGridCard({
             line there would just be a gap.
           */}
           {item.marketName && (
-            <p className="text-[10px] font-semibold text-[#1B4D3E] line-clamp-1">{item.marketName}</p>
+            <p className="text-[11.5px] font-semibold text-[#1B4D3E] line-clamp-1">{item.marketName}</p>
           )}
-          <p className="text-[10px] text-[#7A7060] font-medium">{productWeight(variantWeightStr, language)}</p>
+          <p className="text-[11.5px] text-[#7A7060] font-medium">{productWeight(variantWeightStr, language)}</p>
 
           {/* Weight Variants Selector */}
           {isWeightBased && (
@@ -130,7 +130,7 @@ export default function ProductGridCard({
                 <button
                   key={v.label}
                   onClick={(e) => { e.stopPropagation(); setSelectedVariant(v); }}
-                  className={`flex-1 text-[9px] font-extrabold py-0.5 rounded-md transition-all tracking-tighter ${
+                  className={`flex-1 text-[10.5px] font-extrabold py-0.5 rounded-md transition-all tracking-tighter ${
                     selectedVariant?.label === v.label
                       ? 'bg-white text-[#1B4D3E] shadow-sm border border-[#D5CDBC]'
                       : 'text-[#8A7E6B] hover:text-[#1B4D3E] border border-transparent'
@@ -149,7 +149,7 @@ export default function ProductGridCard({
         <div>
           <span className="font-vintage font-bold text-sm text-[#1B4D3E]">₹{displayPrice}</span>
           {displayOldPrice && (
-            <span className="text-[9px] text-[#9A8F7C] line-through ml-1">₹{displayOldPrice}</span>
+            <span className="text-[10.5px] text-[#9A8F7C] line-through ml-1">₹{displayOldPrice}</span>
           )}
         </div>
 
@@ -157,7 +157,7 @@ export default function ProductGridCard({
         {item.stock === 0 ? (
           <button
             disabled
-            className="bg-gray-200 text-gray-400 font-bold px-2 py-1 rounded-xl text-[10px] cursor-not-allowed"
+            className="bg-gray-200 text-gray-400 font-bold px-2 py-1 rounded-xl text-[11.5px] cursor-not-allowed"
           >
             {t('product.soldOut')}
           </button>

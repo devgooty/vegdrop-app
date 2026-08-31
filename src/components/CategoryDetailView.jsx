@@ -3,6 +3,7 @@ import { ArrowLeft, Search, Filter, Sparkles } from 'lucide-react';
 import ProductGridCard from './ProductGridCard';
 import { useLanguage } from '../i18n/LanguageContext';
 import { categoryTitle, categoryBadge, productName } from '../i18n/catalog';
+import { dedupeByCatalogItem } from '../services/products';
 
 export default function CategoryDetailView({ category, products, cartItems, onAddToCart, onUpdateQuantity, onBack, onSelectProduct }) {
   const { t, language } = useLanguage();
@@ -11,7 +12,9 @@ export default function CategoryDetailView({ category, products, cartItems, onAd
   const [filterOrganic, setFilterOrganic] = useState(false);
   const [sortBy, setSortBy] = useState('popular');
 
-  let categoryProducts = products.filter((p) => p.categoryId === category.id);
+  // Deduped before anything else, so the count shown in the header and
+  // "Showing N" both agree with the number of cards actually rendered below.
+  let categoryProducts = dedupeByCatalogItem(products.filter((p) => p.categoryId === category.id));
 
   if (search) {
     // Matched against the English name as well as the displayed one, so a
@@ -50,7 +53,7 @@ export default function CategoryDetailView({ category, products, cartItems, onAd
 
         <h1 className="font-vintage font-extrabold text-sm text-[#1B4D3E] truncate tracking-tight">{title}</h1>
 
-        <span className="bg-[#EAE4D7] text-[#1B4D3E] text-[10px] font-bold px-2 py-0.5 rounded-full border border-[#D5CDBC] shadow-2xs">
+        <span className="bg-[#EAE4D7] text-[#1B4D3E] text-[11.5px] font-bold px-2 py-0.5 rounded-full border border-[#D5CDBC] shadow-2xs">
           {categoryProducts.length === 1
             ? t('categoryView.itemOne')
             : t('categoryView.items', { count: categoryProducts.length })}
@@ -66,15 +69,15 @@ export default function CategoryDetailView({ category, products, cartItems, onAd
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent flex flex-col justify-end p-3 text-white">
           <div className="flex items-center gap-1.5 mb-0.5">
-            <span className="bg-[#EAE4D7] text-[#1B4D3E] text-[8px] font-extrabold px-1.5 py-0.2 rounded-md border border-[#D5CDBC] uppercase tracking-wider">
+            <span className="bg-[#EAE4D7] text-[#1B4D3E] text-[9.5px] font-extrabold px-1.5 py-0.2 rounded-md border border-[#D5CDBC] uppercase tracking-wider">
               {categoryBadge(category.badge, language) || t('categoryView.freshHarvest')}
             </span>
-            <span className="text-emerald-300 text-[10px] font-medium flex items-center gap-0.5">
+            <span className="text-emerald-300 text-[11.5px] font-medium flex items-center gap-0.5">
               <Sparkles className="w-3 h-3" /> {t('categoryView.farmFresh')}
             </span>
           </div>
           <h2 className="font-vintage text-xl font-black text-white leading-tight">{title}</h2>
-          <p className="text-[11px] text-gray-200 line-clamp-1">{t('categoryView.blurb')}</p>
+          <p className="text-[12.5px] text-gray-200 line-clamp-1">{t('categoryView.blurb')}</p>
         </div>
       </div>
 
@@ -94,7 +97,7 @@ export default function CategoryDetailView({ category, products, cartItems, onAd
 
           <button
             onClick={() => setFilterOrganic(!filterOrganic)}
-            className={`px-2.5 py-1.5 rounded-full text-[11px] font-bold border transition-all cursor-pointer flex-shrink-0 ${
+            className={`px-2.5 py-1.5 rounded-full text-[12.5px] font-bold border transition-all cursor-pointer flex-shrink-0 ${
               filterOrganic
                 ? 'skeuo-btn-emerald'
                 : 'skeuo-btn-light'
@@ -105,7 +108,7 @@ export default function CategoryDetailView({ category, products, cartItems, onAd
         </div>
 
         <div className="flex items-center justify-between text-xs text-[#7A7060]">
-          <span className="font-semibold text-[#2D2A26] text-[11px]">
+          <span className="font-semibold text-[#2D2A26] text-[12.5px]">
             {categoryProducts.length === 1
               ? t('search.showingOne')
               : t('search.showing', { count: categoryProducts.length })}
@@ -115,7 +118,7 @@ export default function CategoryDetailView({ category, products, cartItems, onAd
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="bg-transparent font-bold text-[#1B4D3E] text-[11px] focus:outline-none cursor-pointer"
+              className="bg-transparent font-bold text-[#1B4D3E] text-[12.5px] focus:outline-none cursor-pointer"
             >
               <option value="popular">{t('categoryView.mostPopular')}</option>
               <option value="price-low">{t('search.priceLowHigh')}</option>

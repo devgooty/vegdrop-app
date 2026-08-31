@@ -21,14 +21,27 @@ const { PRODUCT_NAME_TRANSLATIONS, translationsForSku } = require('./productTran
  * catalog does not: SEED_PRODUCTS is the shared platform catalog, not demo
  * data, and `seedProducts()` only ever inserts a sku that is missing — see
  * its own comment below.
+ *
+ * Every photo URL carries `w=900&h=506&fit=crop&auto=format&q=80` rather than
+ * `w=300` alone. Both the grid card and the detail view point at the same
+ * `image` field — there is no separate thumbnail — so the size has to serve
+ * the larger of the two: the detail view renders it at up to ~448px wide,
+ * which at 2x retina needs roughly 900px to stay crisp. `w=300` was soft
+ * there and, with no `h` given, `fit=crop` had nothing to crop TO, so
+ * Unsplash just resized to that width at its own aspect ratio rather than the
+ * 16:9-ish shape both card and detail actually render — same bug documented
+ * on `heroPhoto()` in HomeHeroBanner.jsx. The grid downloads more than a
+ * 96px-tall thumbnail needs, but the alternative is a second image field and
+ * a real thumbnailing pipeline, which is a bigger change than "the photos
+ * look bad" asked for.
  */
 
 const SEED_PRODUCTS = [
-  { sku: 'VEG-SPINACH-250', categoryId: 1, name: 'Organic Spinach (Palak)', weight: '250g', pricePaise: 3500, oldPricePaise: 4500, rating: 4.8, reviews: 128, isOrganic: true, stock: 15, image: 'https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=300' },
-  { sku: 'VEG-BROCCOLI-500', categoryId: 1, name: 'Fresh Broccoli Crown', weight: '500g', pricePaise: 6500, oldPricePaise: 8000, rating: 4.9, reviews: 94, isOrganic: true, stock: 8, image: 'https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?w=300' },
-  { sku: 'VEG-TOMATO-1000', categoryId: 2, name: 'Desi Tomatoes (Tamatar)', weight: '1kg', pricePaise: 4000, oldPricePaise: 5000, rating: 4.7, reviews: 210, isOrganic: false, stock: 25, image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=300' },
-  { sku: 'VEG-ONION-1000', categoryId: 2, name: 'Fresh Red Onions (Pyaaz)', weight: '1kg', pricePaise: 4500, oldPricePaise: 5500, rating: 4.6, reviews: 180, isOrganic: false, stock: 30, image: 'https://images.unsplash.com/photo-1618512496248-a07fe83aa8cb?w=300' },
-  { sku: 'FRT-AVOCADO-350', categoryId: 3, name: 'Fresh Hass Avocado', weight: '2 pcs (approx 350g)', pricePaise: 18000, oldPricePaise: 22000, rating: 4.9, reviews: 76, isOrganic: true, stock: 5, image: 'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=300' },
+  { sku: 'VEG-SPINACH-250', categoryId: 1, name: 'Organic Spinach (Palak)', weight: '250g', pricePaise: 3500, oldPricePaise: 4500, rating: 4.8, reviews: 128, isOrganic: true, stock: 15, image: 'https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-BROCCOLI-500', categoryId: 1, name: 'Fresh Broccoli Crown', weight: '500g', pricePaise: 6500, oldPricePaise: 8000, rating: 4.9, reviews: 94, isOrganic: true, stock: 8, image: 'https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-TOMATO-1000', categoryId: 2, name: 'Desi Tomatoes (Tamatar)', weight: '1kg', pricePaise: 4000, oldPricePaise: 5000, rating: 4.7, reviews: 210, isOrganic: false, stock: 25, image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-ONION-1000', categoryId: 2, name: 'Fresh Red Onions (Pyaaz)', weight: '1kg', pricePaise: 4500, oldPricePaise: 5500, rating: 4.6, reviews: 180, isOrganic: false, stock: 30, image: 'https://images.unsplash.com/photo-1618512496248-a07fe83aa8cb?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'FRT-AVOCADO-350', categoryId: 3, name: 'Fresh Hass Avocado', weight: '2 pcs (approx 350g)', pricePaise: 18000, oldPricePaise: 22000, rating: 4.9, reviews: 76, isOrganic: true, stock: 5, image: 'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=900&h=506&fit=crop&auto=format&q=80' },
 
   /**
    * Every other non-leafy item from the customer app's home-page vegetable
@@ -40,26 +53,26 @@ const SEED_PRODUCTS = [
    * those items in mockData.js, so the login marquee and the product card
    * agree on what each vegetable looks like.
    */
-  { sku: 'VEG-CHILLI-100', categoryId: 2, name: 'Green Chilli (Hari Mirch)', weight: '100g', pricePaise: 2000, oldPricePaise: 2500, rating: 4.5, reviews: 64, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1704473509931-971356e22feb?w=300' },
-  { sku: 'VEG-PEAS-500', categoryId: 2, name: 'Fresh Green Peas (Matar)', weight: '500g', pricePaise: 6000, oldPricePaise: 7500, rating: 4.6, reviews: 88, isOrganic: false, stock: 18, image: 'https://images.unsplash.com/photo-1690023614293-ac2ba2eb0731?w=300' },
-  { sku: 'VEG-BRINJAL-500', categoryId: 2, name: 'Purple Brinjal (Baingan)', weight: '500g', pricePaise: 3500, oldPricePaise: 4200, rating: 4.4, reviews: 55, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1683543122945-513029986574?w=300' },
-  { sku: 'VEG-CUCUMBER-500', categoryId: 2, name: 'Fresh Cucumber (Kheera)', weight: '500g', pricePaise: 3000, oldPricePaise: 3800, rating: 4.5, reviews: 102, isOrganic: false, stock: 25, image: 'https://images.unsplash.com/photo-1694153192731-ab5445654427?w=300' },
-  { sku: 'VEG-BOTTLEGOURD-600', categoryId: 2, name: 'Bottle Gourd (Lauki)', weight: '1 pc (approx 600g)', pricePaise: 3500, oldPricePaise: 4200, rating: 4.3, reviews: 41, isOrganic: false, stock: 15, image: 'https://images.unsplash.com/photo-1776653097091-47334b767dfa?w=300' },
-  { sku: 'VEG-CABBAGE-800', categoryId: 2, name: 'Green Cabbage (Patta Gobi)', weight: '1 pc (approx 800g)', pricePaise: 3000, oldPricePaise: 3800, rating: 4.4, reviews: 73, isOrganic: false, stock: 18, image: 'https://images.unsplash.com/photo-1583116935756-f66cd999cdbe?w=300' },
-  { sku: 'VEG-CAULIFLOWER-600', categoryId: 2, name: 'Cauliflower (Phool Gobi)', weight: '1 pc (approx 600g)', pricePaise: 3500, oldPricePaise: 4200, rating: 4.5, reviews: 90, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1784043437088-c86a43eb695d?w=300' },
-  { sku: 'VEG-CARROT-500', categoryId: 2, name: 'Fresh Carrot (Gajar)', weight: '500g', pricePaise: 4000, oldPricePaise: 5000, rating: 4.7, reviews: 115, isOrganic: false, stock: 22, image: 'https://images.unsplash.com/photo-1633380110125-f6e685676160?w=300' },
-  { sku: 'VEG-BEETROOT-500', categoryId: 2, name: 'Fresh Beetroot (Chukandar)', weight: '500g', pricePaise: 3500, oldPricePaise: 4200, rating: 4.4, reviews: 48, isOrganic: false, stock: 16, image: 'https://images.unsplash.com/photo-1639402480805-ea8ef529e028?w=300' },
-  { sku: 'VEG-POTATO-1000', categoryId: 2, name: 'Fresh Potato (Aloo)', weight: '1kg', pricePaise: 3000, oldPricePaise: 3800, rating: 4.6, reviews: 240, isOrganic: false, stock: 35, image: 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=300' },
-  { sku: 'VEG-GINGER-200', categoryId: 2, name: 'Fresh Ginger (Adrak)', weight: '200g', pricePaise: 4000, oldPricePaise: 5000, rating: 4.5, reviews: 67, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1635843104103-ddd88e1c5141?w=300' },
-  { sku: 'VEG-GARLIC-200', categoryId: 2, name: 'Fresh Garlic (Lahsun)', weight: '200g', pricePaise: 6000, oldPricePaise: 7200, rating: 4.6, reviews: 82, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1540148426945-6cf22a6b2383?w=300' },
-  { sku: 'VEG-RIDGEGOURD-500', categoryId: 2, name: 'Ridge Gourd (Turai)', weight: '500g', pricePaise: 3500, oldPricePaise: 4200, rating: 4.2, reviews: 29, isOrganic: false, stock: 14, image: 'https://images.unsplash.com/photo-1759156632043-eab44e007e67?w=300' },
-  { sku: 'VEG-BITTERGOURD-500', categoryId: 2, name: 'Bitter Gourd (Karela)', weight: '500g', pricePaise: 4000, oldPricePaise: 4800, rating: 4.1, reviews: 33, isOrganic: false, stock: 14, image: 'https://images.unsplash.com/photo-1739903760939-743aec69a05f?w=300' },
-  { sku: 'VEG-OKRA-500', categoryId: 2, name: 'Fresh Okra (Bhindi)', weight: '500g', pricePaise: 3500, oldPricePaise: 4200, rating: 4.5, reviews: 96, isOrganic: false, stock: 22, image: 'https://images.unsplash.com/photo-1558408525-1092038389ae?w=300' },
-  { sku: 'VEG-CAPSICUM-500', categoryId: 2, name: 'Green Capsicum (Shimla Mirch)', weight: '500g', pricePaise: 4500, oldPricePaise: 5500, rating: 4.6, reviews: 78, isOrganic: false, stock: 18, image: 'https://images.unsplash.com/photo-1563565375-f3fdfdbefa83?w=300' },
-  { sku: 'VEG-SWEETPOTATO-500', categoryId: 2, name: 'Sweet Potato (Shakarkandi)', weight: '500g', pricePaise: 4000, oldPricePaise: 5000, rating: 4.5, reviews: 52, isOrganic: false, stock: 16, image: 'https://images.unsplash.com/photo-1744659749700-c4213f840355?w=300' },
-  { sku: 'VEG-GREENBEANS-500', categoryId: 2, name: 'French Beans (Fansi)', weight: '500g', pricePaise: 4500, oldPricePaise: 5500, rating: 4.4, reviews: 61, isOrganic: false, stock: 18, image: 'https://images.unsplash.com/photo-1567375698348-5d9d5ae99de0?w=300' },
-  { sku: 'VEG-SPRINGONION-150', categoryId: 2, name: 'Spring Onion (Hara Pyaaz)', weight: '1 bunch (approx 150g)', pricePaise: 2000, oldPricePaise: 2500, rating: 4.3, reviews: 37, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1559836833-2a2c99b1f54f?w=300' },
-  { sku: 'VEG-TURNIP-500', categoryId: 2, name: 'Fresh Turnip (Shalgam)', weight: '500g', pricePaise: 3000, oldPricePaise: 3800, rating: 4.2, reviews: 24, isOrganic: false, stock: 14, image: 'https://images.unsplash.com/photo-1648291913186-951f2ef36c85?w=300' },
+  { sku: 'VEG-CHILLI-100', categoryId: 2, name: 'Green Chilli (Hari Mirch)', weight: '100g', pricePaise: 2000, oldPricePaise: 2500, rating: 4.5, reviews: 64, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1704473509931-971356e22feb?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-PEAS-500', categoryId: 2, name: 'Fresh Green Peas (Matar)', weight: '500g', pricePaise: 6000, oldPricePaise: 7500, rating: 4.6, reviews: 88, isOrganic: false, stock: 18, image: 'https://images.unsplash.com/photo-1690023614293-ac2ba2eb0731?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-BRINJAL-500', categoryId: 2, name: 'Purple Brinjal (Baingan)', weight: '500g', pricePaise: 3500, oldPricePaise: 4200, rating: 4.4, reviews: 55, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1683543122945-513029986574?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-CUCUMBER-500', categoryId: 2, name: 'Fresh Cucumber (Kheera)', weight: '500g', pricePaise: 3000, oldPricePaise: 3800, rating: 4.5, reviews: 102, isOrganic: false, stock: 25, image: 'https://images.unsplash.com/photo-1694153192731-ab5445654427?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-BOTTLEGOURD-600', categoryId: 2, name: 'Bottle Gourd (Lauki)', weight: '1 pc (approx 600g)', pricePaise: 3500, oldPricePaise: 4200, rating: 4.3, reviews: 41, isOrganic: false, stock: 15, image: 'https://images.unsplash.com/photo-1670005484897-3bdfea6c5c12?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-CABBAGE-800', categoryId: 2, name: 'Green Cabbage (Patta Gobi)', weight: '1 pc (approx 800g)', pricePaise: 3000, oldPricePaise: 3800, rating: 4.4, reviews: 73, isOrganic: false, stock: 18, image: 'https://images.unsplash.com/photo-1583116935756-f66cd999cdbe?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-CAULIFLOWER-600', categoryId: 2, name: 'Cauliflower (Phool Gobi)', weight: '1 pc (approx 600g)', pricePaise: 3500, oldPricePaise: 4200, rating: 4.5, reviews: 90, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1784043437088-c86a43eb695d?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-CARROT-500', categoryId: 2, name: 'Fresh Carrot (Gajar)', weight: '500g', pricePaise: 4000, oldPricePaise: 5000, rating: 4.7, reviews: 115, isOrganic: false, stock: 22, image: 'https://images.unsplash.com/photo-1633380110125-f6e685676160?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-BEETROOT-500', categoryId: 2, name: 'Fresh Beetroot (Chukandar)', weight: '500g', pricePaise: 3500, oldPricePaise: 4200, rating: 4.4, reviews: 48, isOrganic: false, stock: 16, image: 'https://images.unsplash.com/photo-1639402480805-ea8ef529e028?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-POTATO-1000', categoryId: 2, name: 'Fresh Potato (Aloo)', weight: '1kg', pricePaise: 3000, oldPricePaise: 3800, rating: 4.6, reviews: 240, isOrganic: false, stock: 35, image: 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-GINGER-200', categoryId: 2, name: 'Fresh Ginger (Adrak)', weight: '200g', pricePaise: 4000, oldPricePaise: 5000, rating: 4.5, reviews: 67, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1635843104103-ddd88e1c5141?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-GARLIC-200', categoryId: 2, name: 'Fresh Garlic (Lahsun)', weight: '200g', pricePaise: 6000, oldPricePaise: 7200, rating: 4.6, reviews: 82, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1540148426945-6cf22a6b2383?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-RIDGEGOURD-500', categoryId: 2, name: 'Ridge Gourd (Turai)', weight: '500g', pricePaise: 3500, oldPricePaise: 4200, rating: 4.2, reviews: 29, isOrganic: false, stock: 14, image: 'https://images.unsplash.com/photo-1608234086179-0966385be353?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-BITTERGOURD-500', categoryId: 2, name: 'Bitter Gourd (Karela)', weight: '500g', pricePaise: 4000, oldPricePaise: 4800, rating: 4.1, reviews: 33, isOrganic: false, stock: 14, image: 'https://images.unsplash.com/photo-1739903760939-743aec69a05f?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-OKRA-500', categoryId: 2, name: 'Fresh Okra (Bhindi)', weight: '500g', pricePaise: 3500, oldPricePaise: 4200, rating: 4.5, reviews: 96, isOrganic: false, stock: 22, image: 'https://images.unsplash.com/photo-1558408525-1092038389ae?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-CAPSICUM-500', categoryId: 2, name: 'Green Capsicum (Shimla Mirch)', weight: '500g', pricePaise: 4500, oldPricePaise: 5500, rating: 4.6, reviews: 78, isOrganic: false, stock: 18, image: 'https://images.unsplash.com/photo-1622376242797-538aa64a9d38?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-SWEETPOTATO-500', categoryId: 2, name: 'Sweet Potato (Shakarkandi)', weight: '500g', pricePaise: 4000, oldPricePaise: 5000, rating: 4.5, reviews: 52, isOrganic: false, stock: 16, image: 'https://images.unsplash.com/photo-1648722750947-a9614ffd359e?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-GREENBEANS-500', categoryId: 2, name: 'French Beans (Fansi)', weight: '500g', pricePaise: 4500, oldPricePaise: 5500, rating: 4.4, reviews: 61, isOrganic: false, stock: 18, image: 'https://images.unsplash.com/photo-1567375698348-5d9d5ae99de0?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-SPRINGONION-150', categoryId: 2, name: 'Spring Onion (Hara Pyaaz)', weight: '1 bunch (approx 150g)', pricePaise: 2000, oldPricePaise: 2500, rating: 4.3, reviews: 37, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1559836833-2a2c99b1f54f?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-TURNIP-500', categoryId: 2, name: 'Fresh Turnip (Shalgam)', weight: '500g', pricePaise: 3000, oldPricePaise: 3800, rating: 4.2, reviews: 24, isOrganic: false, stock: 14, image: 'https://images.unsplash.com/photo-1648291913186-951f2ef36c85?w=900&h=506&fit=crop&auto=format&q=80' },
 
   /**
    * The one item `marketVegetables` in mockData.js still had no matching row
@@ -67,7 +80,7 @@ const SEED_PRODUCTS = [
    * added. Same treatment: real product, categoryId 2, the exact photo id
    * already vetted for it in mockData.js.
    */
-  { sku: 'VEG-CORIANDER-100', categoryId: 2, name: 'Fresh Coriander (Dhaniya)', weight: '1 bunch (approx 100g)', pricePaise: 1500, oldPricePaise: 2000, rating: 4.4, reviews: 45, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1723810330043-dd05647294cb?w=300' },
+  { sku: 'VEG-CORIANDER-100', categoryId: 2, name: 'Fresh Coriander (Dhaniya)', weight: '1 bunch (approx 100g)', pricePaise: 1500, oldPricePaise: 2000, rating: 4.4, reviews: 45, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1723810330043-dd05647294cb?w=900&h=506&fit=crop&auto=format&q=80' },
 
   /**
    * A second round beyond `marketVegetables` itself: these widen the aisle
@@ -83,21 +96,21 @@ const SEED_PRODUCTS = [
    * green garlic, fenugreek, curry leaves, mint, kale, artichoke) were tried
    * and dropped for exactly that reason — nothing on Unsplash confirmed them.
    */
-  { sku: 'VEG-PUMPKIN-1000', categoryId: 2, name: 'Pumpkin (Kaddu)', weight: '1 pc (approx 1kg)', pricePaise: 3500, oldPricePaise: 4200, rating: 4.3, reviews: 58, isOrganic: false, stock: 12, image: 'https://images.unsplash.com/photo-1570586437263-ab629fccc818?w=300' },
-  { sku: 'VEG-RADISH-500', categoryId: 2, name: 'Fresh Radish (Mooli)', weight: '500g', pricePaise: 2500, oldPricePaise: 3200, rating: 4.2, reviews: 40, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1576072115035-5fe30e447e60?w=300' },
-  { sku: 'VEG-MUSHROOM-200', categoryId: 2, name: 'Button Mushroom', weight: '200g', pricePaise: 4500, oldPricePaise: 5500, rating: 4.6, reviews: 88, isOrganic: false, stock: 15, image: 'https://images.unsplash.com/photo-1552825898-07e419204683?w=300' },
-  { sku: 'VEG-ZUCCHINI-500', categoryId: 2, name: 'Zucchini', weight: '500g', pricePaise: 4000, oldPricePaise: 5000, rating: 4.3, reviews: 34, isOrganic: false, stock: 14, image: 'https://images.unsplash.com/photo-1753445657076-5c3c710c42c4?w=300' },
-  { sku: 'VEG-LEEK-250', categoryId: 2, name: 'Leek', weight: '250g', pricePaise: 3500, oldPricePaise: 4200, rating: 4.1, reviews: 22, isOrganic: false, stock: 12, image: 'https://images.unsplash.com/photo-1760108273146-c1ad5f5bce30?w=300' },
-  { sku: 'VEG-CELERY-250', categoryId: 2, name: 'Celery', weight: '1 bunch (approx 250g)', pricePaise: 3500, oldPricePaise: 4200, rating: 4.0, reviews: 19, isOrganic: false, stock: 10, image: 'https://images.unsplash.com/photo-1742805286467-305b3529c00a?w=300' },
-  { sku: 'VEG-RAWBANANA-500', categoryId: 2, name: 'Raw Banana (Kacha Kela)', weight: '3 pcs (approx 500g)', pricePaise: 2500, oldPricePaise: 3200, rating: 4.3, reviews: 42, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1528279335935-f486951a6adf?w=300' },
-  { sku: 'VEG-FENNEL-250', categoryId: 2, name: 'Fennel Bulb (Saunf)', weight: '250g', pricePaise: 4500, oldPricePaise: 5500, rating: 4.1, reviews: 24, isOrganic: false, stock: 10, image: 'https://images.unsplash.com/photo-1760393339688-cbb315e481f4?w=300' },
-  { sku: 'VEG-ASPARAGUS-250', categoryId: 2, name: 'Asparagus', weight: '250g', pricePaise: 8000, oldPricePaise: 9500, rating: 4.5, reviews: 30, isOrganic: false, stock: 8, image: 'https://images.unsplash.com/photo-1756364125457-ae0be9c397c1?w=300' },
+  { sku: 'VEG-PUMPKIN-1000', categoryId: 2, name: 'Pumpkin (Kaddu)', weight: '1 pc (approx 1kg)', pricePaise: 3500, oldPricePaise: 4200, rating: 4.3, reviews: 58, isOrganic: false, stock: 12, image: 'https://images.unsplash.com/photo-1570586437263-ab629fccc818?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-RADISH-500', categoryId: 2, name: 'Fresh Radish (Mooli)', weight: '500g', pricePaise: 2500, oldPricePaise: 3200, rating: 4.2, reviews: 40, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1576072115035-5fe30e447e60?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-MUSHROOM-200', categoryId: 2, name: 'Button Mushroom', weight: '200g', pricePaise: 4500, oldPricePaise: 5500, rating: 4.6, reviews: 88, isOrganic: false, stock: 15, image: 'https://images.unsplash.com/photo-1552825898-07e419204683?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-ZUCCHINI-500', categoryId: 2, name: 'Zucchini', weight: '500g', pricePaise: 4000, oldPricePaise: 5000, rating: 4.3, reviews: 34, isOrganic: false, stock: 14, image: 'https://images.unsplash.com/photo-1753445657076-5c3c710c42c4?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-LEEK-250', categoryId: 2, name: 'Leek', weight: '250g', pricePaise: 3500, oldPricePaise: 4200, rating: 4.1, reviews: 22, isOrganic: false, stock: 12, image: 'https://images.unsplash.com/photo-1760108273146-c1ad5f5bce30?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-CELERY-250', categoryId: 2, name: 'Celery', weight: '1 bunch (approx 250g)', pricePaise: 3500, oldPricePaise: 4200, rating: 4.0, reviews: 19, isOrganic: false, stock: 10, image: 'https://images.unsplash.com/photo-1742805286467-305b3529c00a?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-RAWBANANA-500', categoryId: 2, name: 'Raw Banana (Kacha Kela)', weight: '3 pcs (approx 500g)', pricePaise: 2500, oldPricePaise: 3200, rating: 4.3, reviews: 42, isOrganic: false, stock: 20, image: 'https://images.unsplash.com/photo-1528279335935-f486951a6adf?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-FENNEL-250', categoryId: 2, name: 'Fennel Bulb (Saunf)', weight: '250g', pricePaise: 4500, oldPricePaise: 5500, rating: 4.1, reviews: 24, isOrganic: false, stock: 10, image: 'https://images.unsplash.com/photo-1760393339688-cbb315e481f4?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-ASPARAGUS-250', categoryId: 2, name: 'Asparagus', weight: '250g', pricePaise: 8000, oldPricePaise: 9500, rating: 4.5, reviews: 30, isOrganic: false, stock: 8, image: 'https://images.unsplash.com/photo-1737056174976-bed9173aae3a?w=900&h=506&fit=crop&auto=format&q=80' },
 
   /**
    * Leafy, so categoryId 1 like spinach and broccoli above, not 2.
    */
-  { sku: 'VEG-LETTUCE-300', categoryId: 1, name: 'Iceberg Lettuce', weight: '1 pc (approx 300g)', pricePaise: 3500, oldPricePaise: 4200, rating: 4.4, reviews: 46, isOrganic: false, stock: 12, image: 'https://images.unsplash.com/photo-1693667660375-653320dbebb4?w=300' },
-  { sku: 'VEG-MUSTARDGREENS-500', categoryId: 1, name: 'Mustard Greens (Sarson Saag)', weight: '1 bunch (approx 500g)', pricePaise: 3000, oldPricePaise: 3800, rating: 4.3, reviews: 38, isOrganic: false, stock: 15, image: 'https://images.unsplash.com/photo-1772701488768-4ddd628abc84?w=300' },
+  { sku: 'VEG-LETTUCE-300', categoryId: 1, name: 'Iceberg Lettuce', weight: '1 pc (approx 300g)', pricePaise: 3500, oldPricePaise: 4200, rating: 4.4, reviews: 46, isOrganic: false, stock: 12, image: 'https://images.unsplash.com/photo-1693667660375-653320dbebb4?w=900&h=506&fit=crop&auto=format&q=80' },
+  { sku: 'VEG-MUSTARDGREENS-500', categoryId: 1, name: 'Mustard Greens (Sarson Saag)', weight: '1 bunch (approx 500g)', pricePaise: 3000, oldPricePaise: 3800, rating: 4.3, reviews: 38, isOrganic: false, stock: 15, image: 'https://images.unsplash.com/photo-1772701488768-4ddd628abc84?w=900&h=506&fit=crop&auto=format&q=80' },
 ];
 
 /**

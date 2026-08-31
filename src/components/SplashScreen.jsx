@@ -213,7 +213,7 @@ export default function SplashScreen({ onComplete, edition, handoff }) {
   // carry vowel marks above and below the line that 10px throws away, hence the
   // extra pixel.
   const subCase =
-    language === 'en' ? 'text-[10px] uppercase tracking-[0.22em]' : 'text-[11px] tracking-normal';
+    language === 'en' ? 'text-[11.5px] uppercase tracking-[0.22em]' : 'text-[12.5px] tracking-normal';
 
   // Read once per instance rather than per render, so the two instances of a
   // single launch cannot disagree across a midnight or a 5am boundary.
@@ -255,7 +255,7 @@ export default function SplashScreen({ onComplete, edition, handoff }) {
               rather than about the product, so it should not be the smallest
               thing on the screen. Muted sage rather than the brand green keeps
               it from competing with the lockup at this size. */}
-          <span className="text-[19px] font-bold text-[#5E6B5A]">{t(sky.greet)}</span>
+          <span className="text-[20.5px] font-bold text-[#5E6B5A]">{t(sky.greet)}</span>
         </div>
 
         {/*
@@ -295,10 +295,10 @@ export default function SplashScreen({ onComplete, edition, handoff }) {
         </div>
 
         <div className="absolute bottom-[16%] left-0 right-0 px-8 text-center">
-          <p className="vd-splash-tag vd-splash-tag-1 text-[15px] font-bold text-[#1B4D3E]">
+          <p className="vd-splash-tag vd-splash-tag-1 text-[16.5px] font-bold text-[#1B4D3E]">
             {t('splash.tagline1')}
           </p>
-          <p className="vd-splash-tag vd-splash-tag-2 text-[15px] font-bold text-[#2D6A4F]">
+          <p className="vd-splash-tag vd-splash-tag-2 text-[16.5px] font-bold text-[#2D6A4F]">
             {t('splash.tagline2')}
           </p>
         </div>

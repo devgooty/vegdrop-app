@@ -261,7 +261,7 @@ export default function ReverseOtpPanel({
 
   if (state === 'starting') {
     return (
-      <div className="flex items-center justify-center gap-2 rounded-xl bg-[#F4F7F5] px-3.5 py-6 text-[13px] text-[#5B6B62]">
+      <div className="flex items-center justify-center gap-2 rounded-xl bg-[#F4F7F5] px-3.5 py-6 text-[14.5px] text-[#5B6B62]">
         <Loader2 className="h-4 w-4 animate-spin" />
         <span>Getting your code…</span>
       </div>
@@ -317,23 +317,23 @@ export default function ReverseOtpPanel({
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-[#DCE9E1] bg-[#F4F7F5] px-3.5 py-4 text-center">
-        <span className="block text-[11px] font-bold uppercase tracking-wide text-[#5B6B62]">
+        <span className="block text-[12.5px] font-bold uppercase tracking-wide text-[#5B6B62]">
           Send us this code
         </span>
-        <span className="si-num mt-1.5 block text-[28px] font-bold tracking-[0.18em] text-[#0B7A37]">
+        <span className="si-num mt-1.5 block text-[29.5px] font-bold tracking-[0.18em] text-[#0B7A37]">
           {challenge.code}
         </span>
         <button
           type="button"
           onClick={copyCode}
-          className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-bold text-[#0B7A37] underline underline-offset-4 hover:text-[#08652C]"
+          className="mt-2 inline-flex items-center gap-1.5 text-[13.5px] font-bold text-[#0B7A37] underline underline-offset-4 hover:text-[#08652C]"
         >
           {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
           <span>{copied ? 'Copied' : 'Copy code'}</span>
         </button>
       </div>
 
-      <p className="text-[12.5px] leading-relaxed text-[#5B6B62]">
+      <p className="text-[14px] leading-relaxed text-[#5B6B62]">
         Tap a button below — your messaging app opens with the message ready. Just
         hit send, from <span className="si-num font-bold text-[#0F1F17]">+91 {phone}</span>.
       </p>
@@ -378,7 +378,7 @@ export default function ReverseOtpPanel({
 function StatusLine({ state, expectedPhone, code, remaining }) {
   if (state === 'verified') {
     return (
-      <p className="flex items-center gap-2 text-[12.5px] font-bold text-[#0B7A37]">
+      <p className="flex items-center gap-2 text-[14px] font-bold text-[#0B7A37]">
         <Check className="h-4 w-4" />
         <span>Number confirmed.</span>
       </p>
@@ -407,7 +407,7 @@ function StatusLine({ state, expectedPhone, code, remaining }) {
   const secs = String(remaining % 60).padStart(2, '0');
 
   return (
-    <p className="flex items-center justify-between gap-2 text-[12.5px] text-[#5B6B62]">
+    <p className="flex items-center justify-between gap-2 text-[14px] text-[#5B6B62]">
       <span className="flex items-center gap-2">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         <span>Waiting for your message…</span>
@@ -428,7 +428,7 @@ function PanelNotice({ tone = 'info', children }) {
   return (
     <p
       role={tone === 'error' ? 'alert' : undefined}
-      className={`flex gap-2 rounded-xl border px-3.5 py-3 text-[12.5px] leading-relaxed ${styles}`}
+      className={`flex gap-2 rounded-xl border px-3.5 py-3 text-[14px] leading-relaxed ${styles}`}
     >
       {tone === 'info' && <Info className="mt-[3px] h-3.5 w-3.5 shrink-0" />}
       <span>{children}</span>
@@ -440,12 +440,12 @@ function PanelNotice({ tone = 'info', children }) {
 // contrast reasoning applies: #0B7A37 rather than the lighter brand green,
 // because white bold text needs 4.5:1 and #16A34A only reaches 3.3.
 const PRIMARY_BUTTON =
-  'w-full bg-[#0B7A37] hover:bg-[#08652C] text-white text-[15px] font-bold py-4 rounded-xl ' +
+  'w-full bg-[#0B7A37] hover:bg-[#08652C] text-white text-[16.5px] font-bold py-4 rounded-xl ' +
   'shadow-[0_8px_18px_-8px_rgba(11,122,55,0.75)] active:translate-y-[1px] transition-all ' +
   'flex items-center justify-center gap-2 ' +
   'focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#16A34A]/35';
 
 const SECONDARY_BUTTON =
-  'w-full bg-white border border-[#DCE9E1] hover:border-[#16A34A] text-[#0F1F17] text-[15px] font-bold ' +
+  'w-full bg-white border border-[#DCE9E1] hover:border-[#16A34A] text-[#0F1F17] text-[16.5px] font-bold ' +
   'py-4 rounded-xl active:translate-y-[1px] transition-all flex items-center justify-center gap-2 ' +
   'focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#16A34A]/35';

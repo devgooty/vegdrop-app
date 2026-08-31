@@ -27,7 +27,7 @@ const GPayLogo = () => (
 
 const PaytmLogo = () => (
   <div className="w-9 h-9 rounded-xl bg-[#002E6E] flex items-center justify-center shadow-sm shrink-0">
-    <span className="text-[#00BAF2] font-black text-[11px] tracking-tighter">Paytm</span>
+    <span className="text-[#00BAF2] font-black text-[12.5px] tracking-tighter">Paytm</span>
   </div>
 );
 
@@ -191,7 +191,7 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-gray-900 text-sm truncate">{tx.label}</p>
-                  <p className="text-[10px] text-gray-400">{formatTs(tx.timestamp)}</p>
+                  <p className="text-[11.5px] text-gray-400">{formatTs(tx.timestamp)}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className={`font-black text-sm ${tx.type === 'credit' ? 'text-emerald-700' : 'text-rose-700'}`}>
@@ -200,7 +200,7 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
                   {/* The running balance, in place of a chip that could only
                       ever read "Success" — every ledger row is money that
                       already moved. */}
-                  <p className="text-[9px] text-gray-400 font-semibold">
+                  <p className="text-[10.5px] text-gray-400 font-semibold">
                     {t('wallet.balShort', { amount: rupees(tx.balanceAfter) })}
                   </p>
                 </div>
@@ -281,7 +281,7 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
           ))}
         </div>
 
-        <div className="flex items-center gap-2 text-[10px] text-gray-400 font-bold justify-center bg-gray-100/50 py-3 rounded-xl border border-gray-100">
+        <div className="flex items-center gap-2 text-[11.5px] text-gray-400 font-bold justify-center bg-gray-100/50 py-3 rounded-xl border border-gray-100">
           <ShieldCheck className="w-4 h-4 text-emerald-500" />
           {t('wallet.secured')}
         </div>
@@ -333,7 +333,7 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
                     {/* The server's own note, which carries the order number.
                         This slot used to print a `method` field the API has
                         never sent, so it always read "Wallet". */}
-                    {tx.note && <p className="text-[10px] text-gray-400 truncate">{tx.note}</p>}
+                    {tx.note && <p className="text-[11.5px] text-gray-400 truncate">{tx.note}</p>}
                   </div>
                 </div>
                 <p className={`font-black text-sm shrink-0 ${tx.type === 'credit' ? 'text-emerald-700' : 'text-rose-700'}`}>
@@ -341,8 +341,8 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
                 </p>
               </div>
               <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
-                <p className="text-[10px] text-gray-400">{formatTs(tx.timestamp)}</p>
-                <p className="text-[10px] text-gray-500 font-semibold">
+                <p className="text-[11.5px] text-gray-400">{formatTs(tx.timestamp)}</p>
+                <p className="text-[11.5px] text-gray-500 font-semibold">
                   {t('wallet.balanceAfter', { amount: rupees(tx.balanceAfter) })}
                 </p>
               </div>

@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { ChevronRight, Plus, Star, Check, Clock3, TrendingUp } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { popularSearchTerms, readRecentSearches } from '../services/search';
+import { dedupeByCatalogItem } from '../services/products';
 
 /**
  * What the search screen shows before anything has been typed.
@@ -69,7 +70,7 @@ function RailCard({ product, qty, onAdd, onOpen, t, language }) {
           className="w-full h-full object-cover"
         />
         {off !== null && (
-          <span className="absolute top-1.5 left-1.5 bg-[#1B4D3E] text-white text-[9px] font-black px-1.5 py-0.5 rounded-md">
+          <span className="absolute top-1.5 left-1.5 bg-[#1B4D3E] text-white text-[10.5px] font-black px-1.5 py-0.5 rounded-md">
             {t('discovery.percentOff', { n: off })}
           </span>
         )}
@@ -95,7 +96,7 @@ function RailCard({ product, qty, onAdd, onOpen, t, language }) {
       </div>
 
       {Number(product.rating) > 0 && (
-        <span className="flex items-center gap-0.5 text-[10px] font-bold text-[#2D2A26] -mt-0.5">
+        <span className="flex items-center gap-0.5 text-[11.5px] font-bold text-[#2D2A26] -mt-0.5">
           <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
           {product.rating}
           {Number(product.reviews) > 0 && (
@@ -107,9 +108,9 @@ function RailCard({ product, qty, onAdd, onOpen, t, language }) {
       )}
 
       <div className="min-w-0">
-        <p className="text-[11px] font-bold text-[#2D2A26] leading-tight line-clamp-2">{name}</p>
+        <p className="text-[12.5px] font-bold text-[#2D2A26] leading-tight line-clamp-2">{name}</p>
         {product.weight && (
-          <span className="inline-block mt-1 text-[9px] font-bold text-[#8A7E6B] border border-[#E7E1D5] rounded px-1 py-px">
+          <span className="inline-block mt-1 text-[10.5px] font-bold text-[#8A7E6B] border border-[#E7E1D5] rounded px-1 py-px">
             {product.weight}
           </span>
         )}
@@ -118,7 +119,7 @@ function RailCard({ product, qty, onAdd, onOpen, t, language }) {
       <div className="flex items-baseline gap-1.5">
         <span className="text-sm font-black text-[#2D2A26]">₹{product.price}</span>
         {off !== null && (
-          <span className="text-[10px] font-semibold text-[#9A8F7C] line-through">₹{product.oldPrice}</span>
+          <span className="text-[11.5px] font-semibold text-[#9A8F7C] line-through">₹{product.oldPrice}</span>
         )}
       </div>
     </div>
@@ -130,12 +131,12 @@ function Rail({ title, items, onSeeAll, qtyOf, t, ...cardProps }) {
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between gap-2 px-4">
-        <h3 className="font-black text-[#2D2A26] text-[15px] tracking-tight leading-tight">{title}</h3>
+        <h3 className="font-black text-[#2D2A26] text-[16.5px] tracking-tight leading-tight">{title}</h3>
         {onSeeAll && (
           <button
             type="button"
             onClick={onSeeAll}
-            className="flex items-center gap-0.5 text-[11px] font-black text-[#1B4D3E] hover:underline cursor-pointer shrink-0"
+            className="flex items-center gap-0.5 text-[12.5px] font-black text-[#1B4D3E] hover:underline cursor-pointer shrink-0"
           >
             {t('discovery.seeAll')}
             <ChevronRight className="w-3.5 h-3.5" />
@@ -166,7 +167,7 @@ function ChipRow({ icon: Icon, label, items, onPick }) {
   if (!items.length) return null;
   return (
     <section className="px-4 space-y-2">
-      <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-[#8A7E6B]">
+      <div className="flex items-center gap-1.5 text-[12.5px] font-black uppercase tracking-wider text-[#8A7E6B]">
         <Icon className="w-3.5 h-3.5" />
         {label}
       </div>
@@ -176,7 +177,7 @@ function ChipRow({ icon: Icon, label, items, onPick }) {
             key={term}
             type="button"
             onClick={() => onPick(term)}
-            className="px-3 py-1.5 rounded-full bg-white border border-[#E0D9C8] text-[12px] font-bold text-[#2D2A26] shadow-xs active:scale-95 cursor-pointer"
+            className="px-3 py-1.5 rounded-full bg-white border border-[#E0D9C8] text-[13.5px] font-bold text-[#2D2A26] shadow-xs active:scale-95 cursor-pointer"
           >
             {term}
           </button>
@@ -206,7 +207,10 @@ export default function SearchDiscovery({
     return (product) => map.get(String(product.id || product._id)) || 0;
   }, [cartItems]);
 
-  const available = useMemo(() => products.filter(inStock), [products]);
+  // Deduped once here, before any rail below is built from it — a stall
+  // duplicate would otherwise show up in "Best Deals", "Top Rated" AND its
+  // own category rail all at once.
+  const available = useMemo(() => dedupeByCatalogItem(products.filter(inStock)), [products]);
 
   const rails = useMemo(() => {
     const byDiscount = available

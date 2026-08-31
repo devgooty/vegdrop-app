@@ -91,7 +91,7 @@ export default function TopBar({ setIsMobileOpen, activeTabLabel, user, onLogout
         >
           <Bell className="w-5 h-5" />
           {alertCount > 0 && (
-            <span className="absolute top-1 right-1 px-1.5 py-0.5 min-w-4 text-[10px] font-black bg-rose-500 text-white rounded-full flex items-center justify-center leading-none">
+            <span className="absolute top-1 right-1 px-1.5 py-0.5 min-w-4 text-[11.5px] font-black bg-rose-500 text-white rounded-full flex items-center justify-center leading-none">
               {alertCount}
             </span>
           )}
@@ -106,7 +106,7 @@ export default function TopBar({ setIsMobileOpen, activeTabLabel, user, onLogout
             <p className="text-xs font-bold text-slate-800 leading-tight truncate max-w-[120px]">
               {user?.name || 'Developer'}
             </p>
-            <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">
+            <p className="text-[11.5px] text-emerald-600 font-bold uppercase tracking-wider">
               {user?.role || 'Developer'}
             </p>
           </div>

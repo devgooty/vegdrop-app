@@ -168,7 +168,7 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
             </div>
             <div>
               <h3 className="font-extrabold text-base tracking-tight">Verify Your Account</h3>
-              <p className="text-[11px] text-emerald-200/80 font-bold">
+              <p className="text-[12.5px] text-emerald-200/80 font-bold">
                 Required before you can list or update stock
               </p>
             </div>
@@ -189,7 +189,7 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
               {kyc?.status === 'rejected' && (
                 <div className="bg-rose-50 p-3 rounded-2xl border border-rose-200 flex gap-2">
                   <AlertTriangle className="w-4 h-4 text-rose-700 shrink-0 mt-0.5" />
-                  <p className="text-[11px] text-rose-900 font-semibold leading-relaxed">
+                  <p className="text-[12.5px] text-rose-900 font-semibold leading-relaxed">
                     {kyc.rejectionReason || 'Verification was declined.'} Check your details and try again.
                   </p>
                 </div>
@@ -278,7 +278,7 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
                   />
                   <Smartphone className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
                 </div>
-                <p className="text-[10px] text-gray-500 font-semibold mt-1.5 leading-relaxed">
+                <p className="text-[11.5px] text-gray-500 font-semibold mt-1.5 leading-relaxed">
                   We will send a small amount (under ₹1) to this UPI ID. You will need to tell us the
                   exact amount you received.
                 </p>
@@ -286,13 +286,13 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
 
               <div className="bg-gray-50 p-3 rounded-2xl border border-gray-200 flex gap-2">
                 <Lock className="w-3.5 h-3.5 text-gray-500 shrink-0 mt-0.5" />
-                <p className="text-[10px] text-gray-600 font-semibold leading-relaxed">
+                <p className="text-[11.5px] text-gray-600 font-semibold leading-relaxed">
                   Your account number is encrypted and never shown in full again — only the last four
                   digits.
                 </p>
               </div>
 
-              {error && <p className="text-[11px] font-bold text-rose-600">{error}</p>}
+              {error && <p className="text-[12.5px] font-bold text-rose-600">{error}</p>}
 
               <button
                 type="submit"
@@ -313,7 +313,7 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
                   <Smartphone className="w-4 h-4 text-blue-700" />
                   <span>Check your UPI account</span>
                 </div>
-                <p className="text-[11px] text-blue-800 leading-relaxed font-semibold">
+                <p className="text-[12.5px] text-blue-800 leading-relaxed font-semibold">
                   We sent a small amount to <span className="font-mono">{kyc?.upiVpa}</span>. Open your
                   banking or UPI app, find the credit from VegDrop, and enter the exact amount below.
                 </p>
@@ -333,14 +333,14 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
                   disabled={isBusy}
                 />
                 {kyc?.pennyDrop?.attemptsRemaining != null && (
-                  <p className="text-[10px] text-gray-500 font-semibold mt-1.5">
+                  <p className="text-[11.5px] text-gray-500 font-semibold mt-1.5">
                     {kyc.pennyDrop.attemptsRemaining} attempt
                     {kyc.pennyDrop.attemptsRemaining === 1 ? '' : 's'} remaining.
                   </p>
                 )}
               </div>
 
-              {error && <p className="text-[11px] font-bold text-rose-600">{error}</p>}
+              {error && <p className="text-[12.5px] font-bold text-rose-600">{error}</p>}
 
               <button
                 type="submit"
@@ -355,7 +355,7 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
                 type="button"
                 onClick={handleSendPennyDrop}
                 disabled={isBusy}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 rounded-2xl text-[11px] transition-colors cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-60"
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 rounded-2xl text-[12.5px] transition-colors cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-60"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Didn't receive it? Send again</span>
@@ -371,7 +371,7 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
               </div>
               <div className="space-y-1">
                 <h4 className="font-extrabold text-gray-900 text-base">Account Verified</h4>
-                <p className="text-[11px] text-gray-600 font-semibold leading-relaxed">
+                <p className="text-[12.5px] text-gray-600 font-semibold leading-relaxed">
                   You can now list products and update stock.
                 </p>
               </div>
@@ -399,7 +399,7 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
             <button
               type="button"
               onClick={onClose}
-              className="w-full text-gray-500 hover:text-gray-700 font-bold py-2 text-[11px] cursor-pointer"
+              className="w-full text-gray-500 hover:text-gray-700 font-bold py-2 text-[12.5px] cursor-pointer"
             >
               I'll do this later
             </button>
@@ -413,8 +413,8 @@ export default function VendorKycModal({ onVerified, onClose, allowDismiss = tru
 function Row({ label, value }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wide">{label}</span>
-      <span className="text-[11px] font-mono font-bold text-gray-900 truncate">{value || '—'}</span>
+      <span className="text-[11.5px] text-gray-500 uppercase font-bold tracking-wide">{label}</span>
+      <span className="text-[12.5px] font-mono font-bold text-gray-900 truncate">{value || '—'}</span>
     </div>
   );
 }

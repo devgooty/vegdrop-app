@@ -250,14 +250,14 @@ function DealRow({ product, qty, theme, onAdd, onAdjust, onOpen, t, language }) 
         onClick={() => onOpen(product)}
         className="min-w-0 flex-1 text-left cursor-pointer"
       >
-        <p className="text-[12px] font-bold text-[#2D2A26] leading-tight truncate">{name}</p>
+        <p className="text-[13.5px] font-bold text-[#2D2A26] leading-tight truncate">{name}</p>
         {weight ? (
-          <p className="text-[10px] font-semibold text-[#8A7E6B] mt-0.5">{weight}</p>
+          <p className="text-[11.5px] font-semibold text-[#8A7E6B] mt-0.5">{weight}</p>
         ) : null}
       </button>
 
       {soldOut ? (
-        <span className="shrink-0 text-[10px] font-bold text-slate-400 px-2">
+        <span className="shrink-0 text-[11.5px] font-bold text-slate-400 px-2">
           {t('product.soldOut')}
         </span>
       ) : qty > 0 ? (
@@ -271,7 +271,7 @@ function DealRow({ product, qty, theme, onAdd, onAdjust, onOpen, t, language }) 
           >
             <Minus className="w-3 h-3 stroke-[3]" style={{ color: theme.selectInk }} />
           </button>
-          <span className="text-[11px] font-black min-w-4 text-center" style={{ color: theme.selectInk }}>
+          <span className="text-[12.5px] font-black min-w-4 text-center" style={{ color: theme.selectInk }}>
             {qty}
           </span>
           <button
@@ -289,7 +289,7 @@ function DealRow({ product, qty, theme, onAdd, onAdjust, onOpen, t, language }) 
           type="button"
           onClick={(e) => onAdd(product, e)}
           aria-label={t('discovery.addNamed', { name })}
-          className="shrink-0 text-[11px] font-extrabold px-2.5 py-1 rounded-lg cursor-pointer active:scale-95"
+          className="shrink-0 text-[12.5px] font-extrabold px-2.5 py-1 rounded-lg cursor-pointer active:scale-95"
           style={{
             color: theme.selectInk,
             background: theme.selectFill,
@@ -302,9 +302,9 @@ function DealRow({ product, qty, theme, onAdd, onAdjust, onOpen, t, language }) 
 
       <div className="shrink-0 w-10 text-right leading-tight">
         {hasOld ? (
-          <p className="text-[9px] font-semibold text-[#9A8F7C] line-through">₹{product.oldPrice}</p>
+          <p className="text-[10.5px] font-semibold text-[#9A8F7C] line-through">₹{product.oldPrice}</p>
         ) : null}
-        <p className="text-[13px] font-black text-[#2D2A26]">₹{product.price}</p>
+        <p className="text-[14.5px] font-black text-[#2D2A26]">₹{product.price}</p>
       </div>
     </div>
   );
@@ -525,17 +525,17 @@ export default function HomeHeroBanner({
                       }}
                     >
                       <span
-                        className="text-[13px] font-black tracking-tight leading-none"
+                        className="text-[14.5px] font-black tracking-tight leading-none"
                         style={{ color: theme.badgeInk }}
                       >
                         {t(store.badge)}
                       </span>
                     </div>
-                    <h2 className="text-[22px] font-black tracking-tight leading-none" style={{ color: theme.ink }}>
+                    <h2 className="text-[23.5px] font-black tracking-tight leading-none" style={{ color: theme.ink }}>
                       {t(store.title)}
                     </h2>
                     <p
-                      className="ml-auto max-w-[42%] text-right text-[10px] font-bold leading-snug"
+                      className="ml-auto max-w-[42%] text-right text-[11.5px] font-bold leading-snug"
                       style={{ color: theme.accent }}
                     >
                       {t(store.subtitle)}
@@ -562,7 +562,7 @@ export default function HomeHeroBanner({
                 <button
                   type="button"
                   onClick={() => onExplore?.(category)}
-                  className="w-full py-2.5 text-[13px] font-extrabold cursor-pointer active:opacity-80"
+                  className="w-full py-2.5 text-[14.5px] font-extrabold cursor-pointer active:opacity-80"
                   style={{ backgroundColor: theme.footer, color: theme.accent }}
                 >
                   {t('hero.seeAll')}
@@ -607,12 +607,12 @@ export default function HomeHeroBanner({
               <div className="absolute inset-0 flex flex-col justify-center gap-2 p-5 w-[62%]">
                 <div className="space-y-1">
                   <h2
-                    className="font-vintage text-[22px] font-black leading-[1.1] tracking-tight"
+                    className="font-vintage text-[23.5px] font-black leading-[1.1] tracking-tight"
                     style={{ color: card.ink }}
                   >
                     {t(card.title)}
                   </h2>
-                  <p className="text-[12px] font-bold opacity-75 leading-snug" style={{ color: card.ink }}>
+                  <p className="text-[13.5px] font-bold opacity-75 leading-snug" style={{ color: card.ink }}>
                     {t(card.subtitle)}
                   </p>
                 </div>

@@ -3,6 +3,7 @@ import { Star, Plus, Minus, ChevronRight, Eye } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { productName, productWeight, categoryTitle } from '../i18n/catalog';
 import { packOptions, packLineId } from '../services/packs';
+import { dedupeByCatalogItem } from '../services/products';
 
 export default function ProductList({
   categories,
@@ -17,7 +18,9 @@ export default function ProductList({
   return (
     <section className="space-y-6 px-4 pb-6 select-none">
       {categories.map((category, catIndex) => {
-        const categoryProducts = products.filter((p) => p.categoryId === category.id);
+        // Deduped so a vegetable three stalls carry does not show up as three
+        // near-identical cards in the same row — see dedupeByCatalogItem.
+        const categoryProducts = dedupeByCatalogItem(products.filter((p) => p.categoryId === category.id));
         if (categoryProducts.length === 0) return null;
 
         return (
@@ -32,7 +35,7 @@ export default function ProductList({
                 <h3 className="font-vintage text-base font-bold text-[#1B4D3E] tracking-tight">
                   {categoryTitle(category, language)}
                 </h3>
-                <span className="text-[10px] font-bold text-[#1B4D3E] bg-[#EAE4D7] px-2.5 py-0.5 rounded-full border border-[#D5CDBC] shadow-2xs">
+                <span className="text-[11.5px] font-bold text-[#1B4D3E] bg-[#EAE4D7] px-2.5 py-0.5 rounded-full border border-[#D5CDBC] shadow-2xs">
                   {t('list.harvested', { count: categoryProducts.length })}
                 </span>
               </div>
@@ -156,7 +159,7 @@ function ProductCard({
 
             {/* Quick View Hover Indicator Overlay */}
             <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200">
-              <span className="bg-white/90 backdrop-blur-xs text-[#1B4D3E] font-bold text-[10px] px-2 py-1 rounded-full flex items-center gap-1 shadow-md border border-[#E5DFD1]">
+              <span className="bg-white/90 backdrop-blur-xs text-[#1B4D3E] font-bold text-[11.5px] px-2 py-1 rounded-full flex items-center gap-1 shadow-md border border-[#E5DFD1]">
                 <Eye className="w-3.5 h-3.5" />
                 {t('list.quickView')}
               </span>
@@ -164,7 +167,7 @@ function ProductCard({
 
             {item.stock === 0 && (
               <div className="absolute inset-0 bg-black/55 flex items-center justify-center p-1">
-                <span className="bg-rose-600 text-white font-extrabold text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full shadow-xs">
+                <span className="bg-rose-600 text-white font-extrabold text-[10.5px] uppercase tracking-wider px-2 py-0.5 rounded-full shadow-xs">
                   {t('product.soldOut')}
                 </span>
               </div>
@@ -172,12 +175,12 @@ function ProductCard({
           </div>
 
           {item.isOrganic && (
-            <span className="bg-[#EAE4D7] text-[#1B4D3E] border border-[#D5CDBC] absolute top-1.5 left-1.5 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider shadow-2xs">
+            <span className="bg-[#EAE4D7] text-[#1B4D3E] border border-[#D5CDBC] absolute top-1.5 left-1.5 text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider shadow-2xs">
               {t('product.organic')}
             </span>
           )}
           
-          <div className="absolute bottom-1.5 right-1.5 bg-[#FFFDF9]/95 backdrop-blur-xs px-1.5 py-0.5 rounded-md text-[10px] font-bold text-[#2D2A26] flex items-center gap-0.5 border border-[#E0D9C8] shadow-xs">
+          <div className="absolute bottom-1.5 right-1.5 bg-[#FFFDF9]/95 backdrop-blur-xs px-1.5 py-0.5 rounded-md text-[11.5px] font-bold text-[#2D2A26] flex items-center gap-0.5 border border-[#E0D9C8] shadow-xs">
             <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
             <span>{item.rating}</span>
           </div>
@@ -194,15 +197,15 @@ function ProductCard({
             line there would just be a gap.
           */}
           {item.marketName && (
-            <p className="text-[10px] font-semibold text-[#1B4D3E] line-clamp-1 -mt-0.5 mb-0.5">
+            <p className="text-[11.5px] font-semibold text-[#1B4D3E] line-clamp-1 -mt-0.5 mb-0.5">
               {item.marketName}
             </p>
           )}
 
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[11px] text-[#7A7060] font-semibold">{variantWeightStr}</p>
+            <p className="text-[12.5px] text-[#7A7060] font-semibold">{variantWeightStr}</p>
             {item.stock > 0 && item.stock <= 5 && (
-              <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1 rounded animate-pulse">
+              <span className="text-[10.5px] font-bold text-amber-700 bg-amber-50 px-1 rounded animate-pulse">
                 {t('list.onlyLeft', { count: item.stock })}
               </span>
             )}
@@ -215,7 +218,7 @@ function ProductCard({
                 <button
                   key={v.label}
                   onClick={(e) => { e.stopPropagation(); setSelectedVariant(v); }}
-                  className={`flex-1 text-[9px] font-extrabold py-0.5 rounded-md transition-all tracking-tighter ${
+                  className={`flex-1 text-[10.5px] font-extrabold py-0.5 rounded-md transition-all tracking-tighter ${
                     selectedVariant?.label === v.label 
                       ? 'bg-white text-[#1B4D3E] shadow-sm border border-[#D5CDBC]' 
                       : 'text-[#8A7E6B] hover:text-[#1B4D3E] border border-transparent'
@@ -234,14 +237,14 @@ function ProductCard({
         <div>
           <span className="font-vintage font-black text-sm text-[#1B4D3E]">₹{displayPrice}</span>
           {displayOldPrice && (
-            <span className="text-[9px] text-[#9A8F7C] line-through ml-1">₹{displayOldPrice}</span>
+            <span className="text-[10.5px] text-[#9A8F7C] line-through ml-1">₹{displayOldPrice}</span>
           )}
         </div>
 
         {item.stock === 0 ? (
           <button
             disabled
-            className="bg-gray-200 text-gray-400 font-bold px-2 py-1 rounded-xl text-[10px] cursor-not-allowed"
+            className="bg-gray-200 text-gray-400 font-bold px-2 py-1 rounded-xl text-[11.5px] cursor-not-allowed"
           >
             {t('product.soldOut')}
           </button>

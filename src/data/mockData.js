@@ -35,7 +35,7 @@ export const marketVegetables = [
   { slug: 'peas', title: 'Peas', imageUrl: producePhoto('1690023614293-ac2ba2eb0731') },
   { slug: 'brinjal', title: 'Brinjal', imageUrl: producePhoto('1683543122945-513029986574') },
   { slug: 'cucumber', title: 'Cucumber', imageUrl: producePhoto('1694153192731-ab5445654427') },
-  { slug: 'bottle-gourd', title: 'Bottle Gourd', imageUrl: producePhoto('1776653097091-47334b767dfa') },
+  { slug: 'bottle-gourd', title: 'Bottle Gourd', imageUrl: producePhoto('1670005484897-3bdfea6c5c12') },
   { slug: 'onion', title: 'Onion', imageUrl: producePhoto('1678954157605-38cc2f12c780') },
   { slug: 'cabbage', title: 'Cabbage', imageUrl: producePhoto('1583116935756-f66cd999cdbe') },
   { slug: 'cauliflower', title: 'Cauliflower', imageUrl: producePhoto('1784043437088-c86a43eb695d') },
@@ -46,11 +46,11 @@ export const marketVegetables = [
   { slug: 'coriander', title: 'Coriander', imageUrl: producePhoto('1723810330043-dd05647294cb') },
   { slug: 'ginger', title: 'Ginger', imageUrl: producePhoto('1635843104103-ddd88e1c5141') },
   { slug: 'garlic', title: 'Garlic', imageUrl: producePhoto('1540148426945-6cf22a6b2383') },
-  { slug: 'ridge-gourd', title: 'Ridge Gourd', imageUrl: producePhoto('1759156632043-eab44e007e67') },
+  { slug: 'ridge-gourd', title: 'Ridge Gourd', imageUrl: producePhoto('1608234086179-0966385be353') },
   { slug: 'bitter-gourd', title: 'Bitter Gourd', imageUrl: producePhoto('1739903760939-743aec69a05f') },
   { slug: 'okra', title: 'Okra', imageUrl: producePhoto('1558408525-1092038389ae') },
-  { slug: 'capsicum', title: 'Capsicum', imageUrl: producePhoto('1563565375-f3fdfdbefa83') },
-  { slug: 'sweet-potato', title: 'Sweet Potato', imageUrl: producePhoto('1744659749700-c4213f840355') },
+  { slug: 'capsicum', title: 'Capsicum', imageUrl: producePhoto('1622376242797-538aa64a9d38') },
+  { slug: 'sweet-potato', title: 'Sweet Potato', imageUrl: producePhoto('1648722750947-a9614ffd359e') },
   { slug: 'green-beans', title: 'Green Beans', imageUrl: producePhoto('1567375698348-5d9d5ae99de0') },
   { slug: 'spring-onion', title: 'Spring Onion', imageUrl: producePhoto('1559836833-2a2c99b1f54f') },
   { slug: 'turnip', title: 'Turnip', imageUrl: producePhoto('1648291913186-951f2ef36c85') },
@@ -62,7 +62,7 @@ export const marketVegetables = [
   { slug: 'celery', title: 'Celery', imageUrl: producePhoto('1742805286467-305b3529c00a') },
   { slug: 'raw-banana', title: 'Raw Banana', imageUrl: producePhoto('1528279335935-f486951a6adf') },
   { slug: 'fennel', title: 'Fennel', imageUrl: producePhoto('1760393339688-cbb315e481f4') },
-  { slug: 'asparagus', title: 'Asparagus', imageUrl: producePhoto('1756364125457-ae0be9c397c1') },
+  { slug: 'asparagus', title: 'Asparagus', imageUrl: producePhoto('1737056174976-bed9173aae3a') },
 ];
 
 /**
@@ -75,12 +75,21 @@ export const marketLeafyGreens = [
   { slug: 'mustard-greens', title: 'Mustard Greens', imageUrl: producePhoto('1772701488768-4ddd628abc84') },
 ];
 
+/**
+ * `w=800&h=450&fit=crop` rather than `producePhoto()`'s `w=300` alone: these
+ * four images serve two very different boxes from one field — the small
+ * square tile on Home, and CategoryDetailView's `h-32` full-width banner,
+ * which at 2x retina wants closer to 900px than 300. Same "fit=crop is inert
+ * without an explicit h" bug as the product catalog and heroPhoto().
+ */
 export const initialCategories = [
   {
     id: 1,
     slug: 'leafy-greens',
     title: 'Leafy Greens',
-    imageUrl: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=300&auto=format&fit=crop&q=80',
+    // Was a plated, dressed salad with a fork in it — a finished dish, not
+    // the raw aisle. Replaced with bare romaine leaves.
+    imageUrl: 'https://images.unsplash.com/photo-1450893979860-22a2c0a0518f?w=800&h=450&fit=crop&auto=format&q=80',
     itemCount: 12,
     badge: 'Fresh Today',
   },
@@ -88,7 +97,7 @@ export const initialCategories = [
     id: 2,
     slug: 'fresh-vegetables',
     title: 'Fresh Vegetables',
-    imageUrl: 'https://images.unsplash.com/photo-1566385101042-1a0aa0c1268c?w=300&auto=format&fit=crop&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1566385101042-1a0aa0c1268c?w=800&h=450&fit=crop&auto=format&q=80',
     itemCount: 24,
     badge: 'Popular',
   },
@@ -96,7 +105,7 @@ export const initialCategories = [
     id: 3,
     slug: 'organic-fruits',
     title: 'Organic Fruits',
-    imageUrl: 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?w=300&auto=format&fit=crop&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?w=800&h=450&fit=crop&auto=format&q=80',
     itemCount: 18,
     badge: '100% Organic',
   },
@@ -104,7 +113,9 @@ export const initialCategories = [
     id: 4,
     slug: 'exotic-imported',
     title: 'Exotic & Herbs',
-    imageUrl: 'https://images.unsplash.com/photo-1608686207856-001b95cf60ca?w=300&auto=format&fit=crop&q=80',
+    // Was a stack of red-and-teal shopping bags — no produce in frame at
+    // all. Replaced with the papaya/kiwi/grapefruit/avocado flat-lay.
+    imageUrl: 'https://images.unsplash.com/photo-1610832958506-aa56368176cf?w=800&h=450&fit=crop&auto=format&q=80',
     itemCount: 9,
     badge: 'Imported',
   },

@@ -46,7 +46,7 @@ export default class ErrorBoundary extends React.Component {
               <summary className="text-xs font-bold text-emerald-300 cursor-pointer select-none">
                 View Error Details
               </summary>
-              <pre className="mt-2 text-[10px] text-rose-300/80 font-mono overflow-x-auto whitespace-pre-wrap break-all max-h-40 overflow-y-auto">
+              <pre className="mt-2 text-[11.5px] text-rose-300/80 font-mono overflow-x-auto whitespace-pre-wrap break-all max-h-40 overflow-y-auto">
                 {this.state.error?.toString()}
                 {'\n\n'}
                 {this.state.errorInfo?.componentStack}
@@ -71,7 +71,7 @@ export default class ErrorBoundary extends React.Component {
             </div>
 
             {/* Branding */}
-            <p className="text-[10px] text-emerald-400/50 font-mono uppercase tracking-widest pt-2">
+            <p className="text-[11.5px] text-emerald-400/50 font-mono uppercase tracking-widest pt-2">
               VegDrop Production Error Handler
             </p>
           </div>

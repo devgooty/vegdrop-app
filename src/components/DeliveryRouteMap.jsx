@@ -261,7 +261,7 @@ export default function DeliveryRouteMap({ rider, market, customer, status, heig
         style={{ height }}
         className="rounded-2xl bg-gray-100 border border-gray-200 flex items-center justify-center px-6"
       >
-        <p className="text-[12px] text-gray-500 text-center leading-snug">
+        <p className="text-[13.5px] text-gray-500 text-center leading-snug">
           {leg === 'dropoff'
             ? 'This customer never pinned their address on the map, so there is nothing to route to. Use the written address and call them if you need to.'
             : 'This market has no location on file.'}
@@ -304,18 +304,18 @@ export default function DeliveryRouteMap({ rider, market, customer, status, heig
       </MapContainer>
 
       <div className="absolute bottom-2 left-2 right-2 z-[400] flex items-center gap-2 pointer-events-none">
-        <span className="bg-white/95 backdrop-blur px-2.5 py-1 rounded-lg text-[11.5px] font-bold text-gray-900 shadow">
+        <span className="bg-white/95 backdrop-blur px-2.5 py-1 rounded-lg text-[13px] font-bold text-gray-900 shadow">
           {leg === 'dropoff' ? '→ Customer' : `→ ${originLabel}`}
           {remainingMeters != null && ` · ${formatDistance(remainingMeters)}`}
           {road?.durationSeconds != null && ` · ${Math.max(1, Math.round(road.durationSeconds / 60))} min`}
         </span>
         {!road && straightLine && (
-          <span className="bg-amber-50/95 text-amber-800 px-2 py-1 rounded-lg text-[10.5px] font-semibold shadow">
+          <span className="bg-amber-50/95 text-amber-800 px-2 py-1 rounded-lg text-[12px] font-semibold shadow">
             direct line
           </span>
         )}
         {!rider && (
-          <span className="bg-amber-50/95 text-amber-800 px-2 py-1 rounded-lg text-[10.5px] font-semibold shadow">
+          <span className="bg-amber-50/95 text-amber-800 px-2 py-1 rounded-lg text-[12px] font-semibold shadow">
             waiting for GPS
           </span>
         )}

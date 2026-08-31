@@ -146,7 +146,7 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
         <Ticket className="w-4 h-4 text-amber-500" />
         {t('spin.title')}
       </h3>
-      <p className="text-[11px] font-semibold text-slate-500 leading-relaxed mb-4">
+      <p className="text-[12.5px] font-semibold text-slate-500 leading-relaxed mb-4">
         {t('spin.cost', { cost: TOKENS_PER_SPIN, left: tokensLeft })}
       </p>
 
@@ -322,7 +322,7 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
       {/* Past spins */}
       {spins.length > 0 && (
         <div className="mt-4 border-t border-slate-100 pt-3">
-          <h4 className="font-black text-slate-700 text-[11px] flex items-center gap-1.5 mb-2">
+          <h4 className="font-black text-slate-700 text-[12.5px] flex items-center gap-1.5 mb-2">
             <History className="w-3.5 h-3.5 text-slate-400" />
             {t('spin.recentSpins')}
           </h4>
@@ -332,7 +332,7 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
               return (
                 <div
                   key={`${entry.at}-${index}`}
-                  className="flex items-center justify-between gap-2 text-[11px]"
+                  className="flex items-center justify-between gap-2 text-[12.5px]"
                 >
                   <span className="font-bold text-slate-600 truncate flex items-center gap-1.5 min-w-0">
                     {prize?.image ? (
@@ -361,7 +361,7 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
       )}
 
       {/* Said up front, exactly as the token balance above it is. */}
-      <p className="flex items-start gap-2 text-[10px] font-semibold text-slate-400 leading-relaxed mt-3">
+      <p className="flex items-start gap-2 text-[11.5px] font-semibold text-slate-400 leading-relaxed mt-3">
         <Info className="w-3 h-3 shrink-0 mt-0.5" />
         <span>{t('spin.disclaimer')}</span>
       </p>

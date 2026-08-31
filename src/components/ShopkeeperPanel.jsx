@@ -622,7 +622,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
           >
             <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-transform duration-300 ease-in-out ${isStoreOnline ? 'translate-x-7' : 'translate-x-1'}`} />
           </button>
-          <span className={`text-[10px] font-black uppercase tracking-wider ${isStoreOnline ? 'text-green-600' : 'text-gray-400'}`}>
+          <span className={`text-[11.5px] font-black uppercase tracking-wider ${isStoreOnline ? 'text-green-600' : 'text-gray-400'}`}>
             {isStoreOnline === null ? 'Checking…' : isStoreOnline ? 'Shop Online' : 'Shop Offline'}
           </span>
         </div>
@@ -747,7 +747,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                   ))}
                 </select>
                 {activeScreen === 'edit-product' && (
-                  <p className="text-[11px] text-gray-400 mt-1">Category can't be changed after a product is created.</p>
+                  <p className="text-[12.5px] text-gray-400 mt-1">Category can't be changed after a product is created.</p>
                 )}
               </div>
               <div>
@@ -775,7 +775,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                   </option>
                 ))}
               </select>
-              <p className={`text-[11px] mt-1 ${productForm.catalogItem ? 'text-gray-400' : 'text-amber-600 font-bold'}`}>
+              <p className={`text-[12.5px] mt-1 ${productForm.catalogItem ? 'text-gray-400' : 'text-amber-600 font-bold'}`}>
                 {productForm.catalogItem
                   ? 'Shoppers looking for this item will see your shop.'
                   : 'Not linked — shoppers searching for this item won’t find your shop.'}
@@ -816,12 +816,12 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
               <h3 className="font-black text-gray-900">{product.name}</h3>
               <p className="text-xs text-gray-500 font-bold mb-1">₹{product.price} / {product.weight}</p>
               {(product.stock ?? 0) <= 0 ? (
-                <span className="text-[10px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded-md">OUT OF STOCK</span>
+                <span className="text-[11.5px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded-md">OUT OF STOCK</span>
               ) : (
-                <span className="text-[10px] font-black bg-green-100 text-green-700 px-2 py-0.5 rounded-md">IN STOCK ({product.stock})</span>
+                <span className="text-[11.5px] font-black bg-green-100 text-green-700 px-2 py-0.5 rounded-md">IN STOCK ({product.stock})</span>
               )}
               {formatAddedAt(product.createdAt) && (
-                <p className="text-[10px] text-gray-400 font-semibold mt-1">{formatAddedAt(product.createdAt)}</p>
+                <p className="text-[11.5px] text-gray-400 font-semibold mt-1">{formatAddedAt(product.createdAt)}</p>
               )}
             </div>
             <div className="flex flex-col gap-2">
@@ -874,7 +874,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                   <p className="text-xs text-gray-500 mb-1">
                     {order.items?.length} item{order.items?.length === 1 ? '' : 's'}
                   </p>
-                  <p className="text-[11px] text-gray-400 mb-3 line-clamp-2">{order.items?.map(i => `${i.quantity}x ${i.name}`).join(', ')}</p>
+                  <p className="text-[12.5px] text-gray-400 mb-3 line-clamp-2">{order.items?.map(i => `${i.quantity}x ${i.name}`).join(', ')}</p>
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleRejectOrder(order.id)}
@@ -909,7 +909,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                   <div className="flex justify-between items-start mb-2">
                     <span className="font-bold text-gray-900">Order #{order.id}</span>
                     <span
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                      className={`px-2 py-0.5 rounded-md text-[11.5px] font-bold ${
                         order.riderAccepted
                           ? 'bg-emerald-100 text-emerald-700'
                           : order.assignedTo
@@ -944,7 +944,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                       {(order.riderName || order.riderPhone) && (
                         <div className="flex items-center justify-between gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
                           <div className="min-w-0">
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Delivery partner</p>
+                            <p className="text-[11.5px] font-bold text-gray-400 uppercase tracking-wide">Delivery partner</p>
                             <p className="text-xs font-bold text-gray-900 truncate">{order.riderName || 'Rider'}</p>
                           </div>
                           {order.riderPhone && (
@@ -980,7 +980,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                               />
                             </Suspense>
                           ) : (
-                            <p className="text-[11px] text-amber-800 bg-amber-50 px-3 py-2.5 text-center leading-relaxed">
+                            <p className="text-[12.5px] text-amber-800 bg-amber-50 px-3 py-2.5 text-center leading-relaxed">
                               {riderFix === null
                                 ? 'Rider is on the way — waiting for their GPS to come through.'
                                 : 'Locating your delivery partner…'}
@@ -988,7 +988,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                           )}
                         </div>
                       ) : (
-                        <p className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 leading-relaxed">
+                        <p className="text-[12.5px] text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 leading-relaxed">
                           Rider is on the way. Add your shop's location in Profile to see them live on a map.
                         </p>
                       )}
@@ -1044,7 +1044,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
           </button>
         </div>
         {earnings && !earnings.canWithdrawNow && earnings.pendingPaise > 0 && (
-          <p className="text-[10px] text-green-200/80 mt-2">
+          <p className="text-[11.5px] text-green-200/80 mt-2">
             Reaches your wallet on its own within {earnings.holdHours} hours, or withdraw early from{' '}
             {formatPaise(earnings.minEarlyPayoutPaise)}.
           </p>
@@ -1239,7 +1239,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                   const updatedDays = { ...businessHours.days, [day]: !businessHours.days[day] };
                   setBusinessHours({ ...businessHours, days: updatedDays });
                 }}
-                className={`px-3 py-1 rounded-full text-[10px] font-black transition-all cursor-pointer ${
+                className={`px-3 py-1 rounded-full text-[11.5px] font-black transition-all cursor-pointer ${
                   businessHours.days[day] ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-gray-200 text-gray-500'
                 }`}
               >
@@ -1299,8 +1299,8 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
         {/* What is actually owed */}
         <div className="bg-gradient-to-r from-[#1B4D3E] to-[#276652] p-5 rounded-2xl text-white shadow-md">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-[10px] text-emerald-200 font-bold uppercase tracking-wider">Settlement account</span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${chip.cls}`}>{chip.text}</span>
+            <span className="text-[11.5px] text-emerald-200 font-bold uppercase tracking-wider">Settlement account</span>
+            <span className={`px-2 py-0.5 rounded-full text-[11.5px] font-black border ${chip.cls}`}>{chip.text}</span>
           </div>
 
           {earnings === null ? (
@@ -1308,7 +1308,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
           ) : (
             <>
               <p className="text-2xl font-black font-mono tracking-wider">{formatPaise(pendingPaise)}</p>
-              <p className="text-[11px] text-emerald-100 mt-1">
+              <p className="text-[12.5px] text-emerald-100 mt-1">
                 {pendingPaise === 0
                   ? 'Nothing waiting. Earnings appear here once an order is delivered.'
                   : earnings.nextReleaseAt
@@ -1316,7 +1316,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                     : 'Reaching your wallet shortly.'}
               </p>
               {releasedPaise > 0 && (
-                <p className="text-[10px] text-emerald-200/80 mt-1">
+                <p className="text-[11.5px] text-emerald-200/80 mt-1">
                   {formatPaise(releasedPaise)} already paid out
                 </p>
               )}
@@ -1349,8 +1349,8 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
         <div className="bg-white border border-gray-100 rounded-2xl p-4 flex gap-3 shadow-sm">
           <Wallet className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5" />
           <div>
-            <p className="text-[11px] font-black text-gray-900">How you get paid</p>
-            <p className="text-[10px] text-gray-500 mt-0.5 leading-relaxed">
+            <p className="text-[12.5px] font-black text-gray-900">How you get paid</p>
+            <p className="text-[11.5px] text-gray-500 mt-0.5 leading-relaxed">
               An order earns you money the moment the customer takes delivery — not when it
               is accepted, and not when it is packed. It is then held for{' '}
               {earnings?.holdHours ?? 24} hours and moves into your VegDrop wallet by itself.
@@ -1368,7 +1368,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
             </div>
             <div>
               <h3 className="font-extrabold text-gray-900 text-sm">Your bank details</h3>
-              <p className="text-[10px] text-gray-400">Verified once, then never shown in full</p>
+              <p className="text-[11.5px] text-gray-400">Verified once, then never shown in full</p>
             </div>
           </div>
 
@@ -1436,13 +1436,13 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                 <div key={row.id} className="flex items-center justify-between gap-3 py-1.5 border-b border-gray-50 last:border-0">
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-gray-900 font-mono truncate">{row.orderNumber}</p>
-                    <p className="text-[10px] text-gray-400">
+                    <p className="text-[11.5px] text-gray-400">
                       {row.itemCount} item{row.itemCount === 1 ? '' : 's'} · {new Date(row.earnedAt).toLocaleDateString()}
                     </p>
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-xs font-black text-emerald-700">{formatPaise(row.netPaise)}</p>
-                    <p className={`text-[9px] font-bold ${row.status === 'released' ? 'text-gray-400' : 'text-amber-600'}`}>
+                    <p className={`text-[10.5px] font-bold ${row.status === 'released' ? 'text-gray-400' : 'text-amber-600'}`}>
                       {row.status === 'released' ? 'Paid' : 'Held'}
                     </p>
                   </div>
@@ -1467,7 +1467,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
             {activeTab === 'analytics' && 'Analytics & Earnings'}
             {activeTab === 'profile' && t('header.shopSettings')}
           </h1>
-          <p className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+          <p className="text-[11.5px] text-emerald-600 font-bold flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
             <span>Live Auto-Sync Active</span>
           </p>
@@ -1513,7 +1513,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
               </div>
               <div>
                 <h3 className="font-extrabold text-gray-900 text-base">Edit Shopkeeper Profile</h3>
-                <p className="text-[11px] text-emerald-700 font-bold">Update store & license details</p>
+                <p className="text-[12.5px] text-emerald-700 font-bold">Update store & license details</p>
               </div>
             </div>
 
@@ -1550,7 +1550,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                 <div className="flex items-center justify-between mb-1">
                   <label className="font-bold text-gray-800">Shop No / ID</label>
                   {profileData.isShopNoLocked && (
-                    <span className="text-[10px] text-amber-700 font-black flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                    <span className="text-[11.5px] text-amber-700 font-black flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
                       <Lock className="w-3 h-3" /> Locked
                     </span>
                   )}
@@ -1573,7 +1573,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                     <Lock className="w-4 h-4 text-gray-400 absolute right-3 top-2.5 pointer-events-none" />
                   )}
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1">
+                <p className="text-[11.5px] text-gray-400 mt-1">
                   {profileData.isShopNoLocked 
                     ? '🔒 Shop No is permanently locked and cannot be edited.' 
                     : '⚡ Once you save your Shop No, it cannot be changed.'}
@@ -1586,7 +1586,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                 <div className="flex items-center justify-between mb-1">
                   <label className="font-bold text-gray-800">Phone Number</label>
                   {phoneChangeStep === 'idle' && (
-                    <span className="text-[10px] text-amber-700 font-black flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                    <span className="text-[11.5px] text-amber-700 font-black flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
                       <Lock className="w-3 h-3" /> Locked
                     </span>
                   )}
@@ -1605,11 +1605,11 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                       <Lock className="w-4 h-4 text-gray-400 absolute right-3 top-2.5 pointer-events-none" />
                     </div>
                     <div className="flex items-center justify-between mt-1">
-                      <p className="text-[10px] text-gray-400">🔒 Verified. Changing it needs a new code.</p>
+                      <p className="text-[11.5px] text-gray-400">🔒 Verified. Changing it needs a new code.</p>
                       <button
                         type="button"
                         onClick={() => setPhoneChangeStep('enter')}
-                        className="text-[10px] font-bold text-emerald-700 underline underline-offset-2 shrink-0 ml-2"
+                        className="text-[11.5px] font-bold text-emerald-700 underline underline-offset-2 shrink-0 ml-2"
                       >
                         Change
                       </button>
@@ -1632,8 +1632,8 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                         className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-3 py-2 text-xs font-semibold text-gray-900 font-mono focus:outline-none focus:border-emerald-600"
                       />
                     </div>
-                    {phoneChangeError && <p className="text-[10px] text-red-600 font-semibold">{phoneChangeError}</p>}
-                    <p className="text-[10px] text-gray-500">
+                    {phoneChangeError && <p className="text-[11.5px] text-red-600 font-semibold">{phoneChangeError}</p>}
+                    <p className="text-[11.5px] text-gray-500">
                       We'll text a code to this number. Every other device you're signed in on will be signed out once it's confirmed.
                     </p>
                     <div className="flex gap-2">
@@ -1641,7 +1641,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                         type="button"
                         onClick={handleSendPhoneCode}
                         disabled={phoneChangeBusy}
-                        className="flex-1 bg-emerald-600 text-white font-bold py-2 rounded-lg text-[11px] disabled:opacity-50"
+                        className="flex-1 bg-emerald-600 text-white font-bold py-2 rounded-lg text-[12.5px] disabled:opacity-50"
                       >
                         {phoneChangeBusy ? 'Sending…' : 'Send code'}
                       </button>
@@ -1649,7 +1649,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                         type="button"
                         onClick={resetPhoneChange}
                         disabled={phoneChangeBusy}
-                        className="px-3 bg-white border border-gray-300 text-gray-600 font-bold py-2 rounded-lg text-[11px]"
+                        className="px-3 bg-white border border-gray-300 text-gray-600 font-bold py-2 rounded-lg text-[12.5px]"
                       >
                         Cancel
                       </button>
@@ -1659,17 +1659,17 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
 
                 {phoneChangeStep === 'code' && (
                   <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3 space-y-2">
-                    <p className="text-[10px] text-gray-600 font-semibold">
+                    <p className="text-[11.5px] text-gray-600 font-semibold">
                       Code sent to +91 {newPhone}
                     </p>
                     <OTPBoxGroup value={phoneCode} onChange={setPhoneCode} />
-                    {phoneChangeError && <p className="text-[10px] text-red-600 font-semibold">{phoneChangeError}</p>}
+                    {phoneChangeError && <p className="text-[11.5px] text-red-600 font-semibold">{phoneChangeError}</p>}
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={handleVerifyPhoneCode}
                         disabled={phoneChangeBusy || phoneCode.length !== 6}
-                        className="flex-1 bg-emerald-600 text-white font-bold py-2 rounded-lg text-[11px] disabled:opacity-50"
+                        className="flex-1 bg-emerald-600 text-white font-bold py-2 rounded-lg text-[12.5px] disabled:opacity-50"
                       >
                         {phoneChangeBusy ? 'Verifying…' : 'Verify and update'}
                       </button>
@@ -1677,7 +1677,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                         type="button"
                         onClick={resetPhoneChange}
                         disabled={phoneChangeBusy}
-                        className="px-3 bg-white border border-gray-300 text-gray-600 font-bold py-2 rounded-lg text-[11px]"
+                        className="px-3 bg-white border border-gray-300 text-gray-600 font-bold py-2 rounded-lg text-[12.5px]"
                       >
                         Cancel
                       </button>
@@ -1741,7 +1741,7 @@ const NavButton = ({ icon: Icon, label, isActive, onClick }) => (
     <div className={`p-1.5 rounded-xl transition-colors ${isActive ? 'bg-green-100 text-green-700' : 'text-gray-400'}`}>
       <Icon className="w-5 h-5" strokeWidth={isActive ? 2.5 : 2} />
     </div>
-    <span className={`text-[10px] font-bold ${isActive ? 'text-green-700' : 'text-gray-400'}`}>{label}</span>
+    <span className={`text-[11.5px] font-bold ${isActive ? 'text-green-700' : 'text-gray-400'}`}>{label}</span>
   </button>
 );
 

@@ -63,7 +63,7 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
     return (
       <div className="mx-4 mt-4 rounded-2xl bg-white border border-gray-200 px-4 py-4 flex items-center gap-3">
         <RefreshCw className="w-4 h-4 text-emerald-600 animate-spin shrink-0" />
-        <span className="text-[13px] text-gray-600">{t('market.finding')}</span>
+        <span className="text-[14.5px] text-gray-600">{t('market.finding')}</span>
       </div>
     );
   }
@@ -73,14 +73,14 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
       <div className="mx-4 mt-4 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-4 flex items-start gap-3">
         <MapPin className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <p className="text-[13.5px] font-bold text-amber-900">{t('market.needAddressTitle')}</p>
-          <p className="text-[12px] text-amber-800 mt-0.5 leading-relaxed">
+          <p className="text-[15px] font-bold text-amber-900">{t('market.needAddressTitle')}</p>
+          <p className="text-[13.5px] text-amber-800 mt-0.5 leading-relaxed">
             {t('market.needAddressHint')}
           </p>
         </div>
         <button
           onClick={load}
-          className="text-[12px] font-bold text-amber-900 underline underline-offset-2 shrink-0"
+          className="text-[13.5px] font-bold text-amber-900 underline underline-offset-2 shrink-0"
         >
           {t('market.retry')}
         </button>
@@ -92,8 +92,8 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
     return (
       <div className="mx-4 mt-4 rounded-2xl bg-white border border-gray-200 px-4 py-4 flex items-start gap-3">
         <AlertTriangle className="w-4.5 h-4.5 text-gray-400 shrink-0 mt-0.5" />
-        <p className="text-[13px] text-gray-600 flex-1">{error}</p>
-        <button onClick={load} className="text-[12px] font-bold text-emerald-700 underline shrink-0">
+        <p className="text-[14.5px] text-gray-600 flex-1">{error}</p>
+        <button onClick={load} className="text-[13.5px] font-bold text-emerald-700 underline shrink-0">
           {t('market.retry')}
         </button>
       </div>
@@ -104,8 +104,8 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
     return (
       <div className="mx-4 mt-4 rounded-2xl bg-white border border-dashed border-gray-300 px-5 py-6 text-center">
         <Store className="w-6 h-6 text-gray-400 mx-auto mb-2" />
-        <p className="text-[13.5px] font-bold text-gray-900">{t('market.noneTitle')}</p>
-        <p className="text-[12px] text-gray-500 mt-1">{t('market.noneHint')}</p>
+        <p className="text-[15px] font-bold text-gray-900">{t('market.noneTitle')}</p>
+        <p className="text-[13.5px] text-gray-500 mt-1">{t('market.noneHint')}</p>
       </div>
     );
   }
@@ -120,14 +120,14 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
           <Store className="w-5 h-5 text-white" />
         </span>
         <span className="flex-1 min-w-0">
-          <span className="block text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+          <span className="block text-[11.5px] font-bold text-emerald-700 uppercase tracking-wider">
             {t('market.shoppingFrom')}
           </span>
-          <span className="block text-[14px] font-extrabold text-gray-900 truncate">
+          <span className="block text-[15.5px] font-extrabold text-gray-900 truncate">
             {selectedMarket ? selectedMarket.name : t('market.choose')}
           </span>
           {selectedMarket && (
-            <span className="block text-[11.5px] text-gray-500">
+            <span className="block text-[13px] text-gray-500">
               {t(selectedMarket.openStalls === 1 ? 'market.summaryOne' : 'market.summaryMany', {
                 km: selectedMarket.distanceKm,
                 stalls: selectedMarket.openStalls,
@@ -158,10 +158,10 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
                   className="w-full px-4 py-3 flex items-center gap-3 text-left active:bg-gray-50 disabled:opacity-50"
                 >
                   <span className="flex-1 min-w-0">
-                    <span className="block text-[13.5px] font-bold text-gray-900 truncate">
+                    <span className="block text-[15px] font-bold text-gray-900 truncate">
                       {market.name}
                     </span>
-                    <span className="block text-[11.5px] text-gray-500 truncate">
+                    <span className="block text-[13px] text-gray-500 truncate">
                       {t(
                         !market.isOpen
                           ? 'market.rowClosed'

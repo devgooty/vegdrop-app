@@ -80,7 +80,7 @@ export default function PaymentsView() {
           <p className="text-2xl font-black text-emerald-600 mt-2">
             +₹{Number(summary.totalCredits || 0).toLocaleString('en-IN')}
           </p>
-          <p className="text-[11px] text-slate-400 mt-1">Wallet topups & incoming settlements</p>
+          <p className="text-[12.5px] text-slate-400 mt-1">Wallet topups & incoming settlements</p>
         </div>
 
         <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
@@ -93,7 +93,7 @@ export default function PaymentsView() {
           <p className="text-2xl font-black text-rose-600 mt-2">
             −₹{Number(summary.totalDebits || 0).toLocaleString('en-IN')}
           </p>
-          <p className="text-[11px] text-slate-400 mt-1">Order checkouts & rider payouts</p>
+          <p className="text-[12.5px] text-slate-400 mt-1">Order checkouts & rider payouts</p>
         </div>
 
         <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
@@ -106,7 +106,7 @@ export default function PaymentsView() {
           <p className="text-2xl font-black text-slate-900 mt-2">
             ₹{Number(summary.netFlow || 0).toLocaleString('en-IN')}
           </p>
-          <p className="text-[11px] text-slate-400 mt-1">Across {summary.totalTransactions} recorded transactions</p>
+          <p className="text-[12.5px] text-slate-400 mt-1">Across {summary.totalTransactions} recorded transactions</p>
         </div>
       </div>
 
@@ -144,11 +144,11 @@ export default function PaymentsView() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/70">
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">User / Account</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Reason / Description</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Amount</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Balance After</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Timestamp</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">User / Account</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Reason / Description</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Amount</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Balance After</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Timestamp</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -170,11 +170,11 @@ export default function PaymentsView() {
                   <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="px-5 py-3.5">
                       <div className="font-bold text-slate-800 text-xs">{t.userName}</div>
-                      <div className="text-[11px] text-slate-400">{t.userPhone} ({t.userRole})</div>
+                      <div className="text-[12.5px] text-slate-400">{t.userPhone} ({t.userRole})</div>
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="font-mono text-xs text-slate-700 font-semibold">{t.reason}</div>
-                      {t.note && <div className="text-[11px] text-slate-400">{t.note}</div>}
+                      {t.note && <div className="text-[12.5px] text-slate-400">{t.note}</div>}
                     </td>
                     <td className="px-5 py-3.5">
                       <span className={`text-xs font-black ${

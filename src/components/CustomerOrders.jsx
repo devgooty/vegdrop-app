@@ -356,16 +356,16 @@ export default function CustomerOrders({
                         <span className="text-xs font-black text-gray-900 bg-gray-100 px-2 py-0.5 rounded-md border border-gray-200 shadow-xs">
                           #{String(order.id).slice(-6)}
                         </span>
-                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${getStatusColor(order.status)}`}>
+                        <span className={`text-[11.5px] font-extrabold px-2 py-0.5 rounded-full border ${getStatusColor(order.status)}`}>
                           {MARKET_STAGE_KEY[order.fulfillmentStatus]
                             ? t(MARKET_STAGE_KEY[order.fulfillmentStatus])
                             : order.status}
                         </span>
                       </div>
                       {order.marketName && (
-                        <p className="text-[10px] font-bold text-[#1B4D3E] mb-1">{order.marketName}</p>
+                        <p className="text-[11.5px] font-bold text-[#1B4D3E] mb-1">{order.marketName}</p>
                       )}
-                      <div className="flex items-center gap-1 text-[10px] text-gray-500 font-semibold">
+                      <div className="flex items-center gap-1 text-[11.5px] text-gray-500 font-semibold">
                         <Clock className="w-3 h-3" />
                         <span>{new Date(order.timestamp).toLocaleString(dateLocale(language))}</span>
                       </div>
@@ -375,12 +375,12 @@ export default function CustomerOrders({
                         <IndianRupee className="w-4 h-4" />
                         {order.totalAmount}
                       </span>
-                      <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">{order.paymentMethod || t('orders.online')}</span>
+                      <span className="text-[10.5px] text-gray-400 font-bold uppercase tracking-wider">{order.paymentMethod || t('orders.online')}</span>
                     </div>
                   </div>
 
                   <div className="bg-[#FAF7F2] rounded-xl p-3 border border-[#EAE3D2] shadow-inner mb-3">
-                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                    <h4 className="text-[11.5px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
                       <Package className="w-3 h-3" /> {t('orders.orderItems')}
                     </h4>
                     <div className="space-y-1.5">
@@ -409,7 +409,7 @@ export default function CustomerOrders({
                   */}
                   {order.fulfillmentStatus === 'sourcing' && (
                     <div className="mt-3 space-y-2">
-                      <div className="flex items-start gap-2 text-[11px] font-semibold text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                      <div className="flex items-start gap-2 text-[12.5px] font-semibold text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
                         <Clock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                         <p className="leading-snug">
                           {order.sourcingAttempt > 1
@@ -438,7 +438,7 @@ export default function CustomerOrders({
                   */}
                   {order.awaitingPartialChoice && (
                     <div className="mt-3 space-y-2">
-                      <div className="text-[11px] font-semibold text-amber-900 bg-amber-50 p-3 rounded-xl border border-amber-200">
+                      <div className="text-[12.5px] font-semibold text-amber-900 bg-amber-50 p-3 rounded-xl border border-amber-200">
                         <div className="flex items-start gap-2">
                           <PauseCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                           <p className="leading-snug">
@@ -504,7 +504,7 @@ export default function CustomerOrders({
                   {order.riderName && (
                     <div className="mt-3 flex items-center justify-between gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
                       <div className="min-w-0">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                        <p className="text-[11.5px] font-bold text-gray-400 uppercase tracking-wide">
                           Delivery partner
                         </p>
                         <p className="text-xs font-bold text-gray-900 truncate">{order.riderName}</p>
@@ -512,7 +512,7 @@ export default function CustomerOrders({
                       {order.riderPhone && (
                         <a
                           href={`tel:${order.riderPhone}`}
-                          className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-bold active:scale-95 transition-transform"
+                          className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[12.5px] font-bold active:scale-95 transition-transform"
                         >
                           Call
                         </a>
@@ -521,7 +521,7 @@ export default function CustomerOrders({
                   )}
 
                   {order.fulfillmentStatus === 'packing' && (
-                    <div className="mt-3 flex items-start gap-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
+                    <div className="mt-3 flex items-start gap-2 text-[12.5px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
                       <Package className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                       <p className="leading-snug">
                         {t('orders.packingNote')}
@@ -541,21 +541,21 @@ export default function CustomerOrders({
                   )}
 
                   {order.fulfillmentStatus === 'awaiting_rider' && (
-                    <div className="mt-3 flex items-start gap-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
+                    <div className="mt-3 flex items-start gap-2 text-[12.5px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
                       <Package className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                       <p className="leading-snug">{t('orders.awaitingRider')}</p>
                     </div>
                   )}
 
                   {order.fulfillmentStatus === 'collecting' && (
-                    <div className="mt-3 flex items-start gap-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
+                    <div className="mt-3 flex items-start gap-2 text-[12.5px] font-semibold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
                       <Navigation className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                       <p className="leading-snug">{t('orders.collecting')}</p>
                     </div>
                   )}
 
                   {order.fulfillmentStatus === 'failed' && (
-                    <div className="mt-3 flex items-start gap-2 text-[11px] font-semibold text-rose-800 bg-rose-50 p-2.5 rounded-xl border border-rose-200">
+                    <div className="mt-3 flex items-start gap-2 text-[12.5px] font-semibold text-rose-800 bg-rose-50 p-2.5 rounded-xl border border-rose-200">
                       <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                       <p className="leading-snug">{t('orders.failedNote')}</p>
                     </div>
@@ -590,7 +590,7 @@ export default function CustomerOrders({
             {scheduleError && (
               <div
                 role="alert"
-                className="mb-4 bg-red-50 border border-red-200 rounded-2xl p-3 text-[12.5px] text-red-800 font-medium"
+                className="mb-4 bg-red-50 border border-red-200 rounded-2xl p-3 text-[14px] text-red-800 font-medium"
               >
                 {scheduleError}
               </div>
@@ -662,7 +662,7 @@ export default function CustomerOrders({
                         <CalendarIcon className="w-5 h-5 text-blue-600" />
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">{t('sched.deliveryDate')}</p>
+                        <p className="text-[11.5px] font-bold text-blue-500 uppercase tracking-wider">{t('sched.deliveryDate')}</p>
                         <p className="font-black text-gray-800 text-sm">
                           {new Date(selectedDates[0]).toLocaleDateString(dateLocale(language), { weekday: 'long', month: 'short', day: 'numeric' })}
                         </p>
@@ -678,7 +678,7 @@ export default function CustomerOrders({
                 ) : (
                   <>
                     {/* Days of week */}
-                    <div className="grid grid-cols-7 gap-1 mb-2 text-center text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                    <div className="grid grid-cols-7 gap-1 mb-2 text-center text-[11.5px] font-black text-gray-400 uppercase tracking-wider">
                       {weekdayHeadings.map((day, i) => (
                         <div key={i}>{day}</div>
                       ))}
@@ -759,11 +759,11 @@ export default function CustomerOrders({
                     {(!cartItems || cartItems.length === 0) ? (
                       <div className="text-center py-5 bg-white rounded-lg border border-blue-100 border-dashed">
                         <ShoppingBag className="w-8 h-8 text-blue-200 mx-auto mb-2" />
-                        <p className="text-[10px] font-bold text-gray-500">{t('sched.cartEmpty')}</p>
-                        <p className="text-[9px] text-gray-400 mb-3">{t('sched.cartEmptyHint')}</p>
+                        <p className="text-[11.5px] font-bold text-gray-500">{t('sched.cartEmpty')}</p>
+                        <p className="text-[10.5px] text-gray-400 mb-3">{t('sched.cartEmptyHint')}</p>
                         <button 
                           onClick={onStartScheduledShopping}
-                          className="bg-[#1B4D3E] hover:bg-[#143B2B] text-white text-[10px] font-black px-5 py-2 rounded-full shadow-sm transition-all active:scale-95"
+                          className="bg-[#1B4D3E] hover:bg-[#143B2B] text-white text-[11.5px] font-black px-5 py-2 rounded-full shadow-sm transition-all active:scale-95"
                         >
                           {t('sched.goToStore')}
                         </button>
@@ -774,7 +774,7 @@ export default function CustomerOrders({
                           {cartItems.map((item, idx) => (
                             <div key={idx} className="flex justify-between items-center text-xs font-bold bg-white p-2 rounded-lg shadow-xs border border-blue-50">
                               <span className="text-gray-700 flex items-center gap-1.5">
-                                <span className="bg-blue-100 text-blue-700 w-4 h-4 flex items-center justify-center rounded text-[9px]">{item.quantity}</span>
+                                <span className="bg-blue-100 text-blue-700 w-4 h-4 flex items-center justify-center rounded text-[10.5px]">{item.quantity}</span>
                                 {item.name}
                               </span>
                               <span className="text-gray-900">₹{item.price * item.quantity}</span>
@@ -841,7 +841,7 @@ export default function CustomerOrders({
                     <div key={schedule.id} className={`bg-white rounded-[1.5rem] p-4 shadow-sm border border-gray-100 transition-all relative overflow-hidden group animate-fade-in mb-4 ${schedule.status === 'paused' ? 'opacity-70' : ''}`}>
                       
                       {/* Frequency ribbon */}
-                      <div className={`absolute -right-8 top-4 rotate-45 text-[9px] font-black uppercase tracking-wider py-1 px-10 text-white shadow-sm ${freqStyle.bg}`}>
+                      <div className={`absolute -right-8 top-4 rotate-45 text-[10.5px] font-black uppercase tracking-wider py-1 px-10 text-white shadow-sm ${freqStyle.bg}`}>
                         {frequencyWord(
                           String(schedule.frequency).replace(/^./, (c) => c.toUpperCase())
                         )}
@@ -854,7 +854,7 @@ export default function CustomerOrders({
                             <span className="text-xs font-black text-gray-900 bg-gray-100 px-2 py-0.5 rounded-md border border-gray-200 shadow-xs">
                               {schedule.id}
                             </span>
-                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                            <span className={`text-[11.5px] font-extrabold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
                               schedule.status === 'active' 
                                 ? 'bg-emerald-100 text-emerald-800 border-emerald-200' 
                                 : 'bg-amber-100 text-amber-800 border-amber-200'
@@ -865,11 +865,11 @@ export default function CustomerOrders({
                           </div>
                           
                           {/* Frequency label */}
-                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${freqStyle.badge}`}>
+                          <span className={`text-[11.5px] font-extrabold px-2 py-0.5 rounded-full border ${freqStyle.badge}`}>
                             {freqStyle.label}
                           </span>
                           
-                          <div className="flex items-center gap-1 text-[11px] text-gray-500 font-bold mt-2">
+                          <div className="flex items-center gap-1 text-[12.5px] text-gray-500 font-bold mt-2">
                             <CalendarRange className="w-3.5 h-3.5 text-[#1B4D3E]" />
                             <span className="text-[#1B4D3E] font-extrabold">
                               {t('sched.nextDelivery', {
@@ -893,10 +893,10 @@ export default function CustomerOrders({
                           ahead. What it recurs on is the useful fact.
                         */}
                         <div className="text-right mt-1 max-w-[45%]">
-                          <span className="text-[11px] font-black text-[#1B4D3E] block leading-tight">
+                          <span className="text-[12.5px] font-black text-[#1B4D3E] block leading-tight">
                             {describeRecurrence(schedule, t, dateLocale(language))}
                           </span>
-                          <span className="text-[9px] text-gray-400 font-bold uppercase">
+                          <span className="text-[10.5px] text-gray-400 font-bold uppercase">
                             {t('sched.pricedOnDay')}
                           </span>
                         </div>
@@ -904,7 +904,7 @@ export default function CustomerOrders({
 
                       {/* Items */}
                       <div className="bg-[#FAF7F2] rounded-xl p-3 border border-[#EAE3D2] shadow-inner mb-3">
-                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                        <h4 className="text-[11.5px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
                           <Package className="w-3 h-3" /> {t('sched.subscribedItems')}
                         </h4>
                         <div className="space-y-1.5">
@@ -924,7 +924,7 @@ export default function CustomerOrders({
                       {schedule.lastFailure && (
                         <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-start gap-2">
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
-                          <p className="text-[11px] text-amber-900 leading-snug">
+                          <p className="text-[12.5px] text-amber-900 leading-snug">
                             {schedule.lastFailure.message}
                           </p>
                         </div>
@@ -999,7 +999,7 @@ export default function CustomerOrders({
                 return (
                   <li key={stage.key} className="flex items-start gap-3">
                     <span
-                      className={`w-5 h-5 rounded-full shrink-0 mt-0.5 flex items-center justify-center text-[10px] font-black ${
+                      className={`w-5 h-5 rounded-full shrink-0 mt-0.5 flex items-center justify-center text-[11.5px] font-black ${
                         state === 'done'
                           ? 'bg-emerald-500 text-white'
                           : state === 'current'
@@ -1011,14 +1011,14 @@ export default function CustomerOrders({
                     </span>
                     <div className="min-w-0">
                       <p
-                        className={`text-[13px] font-bold ${
+                        className={`text-[14.5px] font-bold ${
                           state === 'pending' ? 'text-gray-400' : 'text-gray-900'
                         }`}
                       >
                         {t(stage.labelKey)}
                       </p>
                       {state === 'current' && stage.hintKey && (
-                        <p className="text-[11.5px] text-emerald-700">{t(stage.hintKey)}</p>
+                        <p className="text-[13px] text-emerald-700">{t(stage.hintKey)}</p>
                       )}
                     </div>
                   </li>
@@ -1030,7 +1030,7 @@ export default function CustomerOrders({
             <div className="px-4 py-3 flex items-start gap-2 border-t border-gray-100">
               <MapPin className="w-4 h-4 text-rose-500 mt-0.5 shrink-0" />
               <div>
-                <p className="text-[10px] text-gray-400 font-bold uppercase">{t('orders.deliveringTo')}</p>
+                <p className="text-[11.5px] text-gray-400 font-bold uppercase">{t('orders.deliveringTo')}</p>
                 <p className="text-xs font-semibold text-gray-700">{trackingModalOrder.deliveryAddress || trackingModalOrder.address}</p>
               </div>
             </div>

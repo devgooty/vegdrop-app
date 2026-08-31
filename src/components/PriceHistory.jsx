@@ -188,7 +188,7 @@ function DetailChart({ series, color, width = 300, height = 130 }) {
 
       {hover !== null && changeDots[hover] && (
         <div
-          className="absolute -top-2 bg-gray-900 text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-lg pointer-events-none whitespace-nowrap z-10"
+          className="absolute -top-2 bg-gray-900 text-white text-[11.5px] font-bold px-2 py-1 rounded-lg shadow-lg pointer-events-none whitespace-nowrap z-10"
           style={{ left: `${(changeDots[hover].x / width) * 100}%`, transform: 'translateX(-50%)' }}
         >
           ₹{(changeDots[hover].point.pricePaise / 100).toFixed(2).replace(/\.00$/, '')} ·{' '}
@@ -287,23 +287,30 @@ export default function PriceHistory({ products = [], categories = [], market = 
 
   return (
     <section className="px-4 pb-24 space-y-4 animate-fade-in">
-      <div className="bg-gradient-to-br from-[#1B4D3E] via-[#2D6A4F] to-[#40916C] p-5 rounded-3xl shadow-xl text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-8 translate-x-8" />
+      {/*
+        A light mint card carrying dark-green ink, not a solid saturated
+        gradient carrying white — the latter was the only full-bleed dark
+        block in an app built entirely on warm cream surfaces with the same
+        forest green reserved for text and buttons. It matched nothing else
+        on the page it sits on top of.
+      */}
+      <div className="bg-gradient-to-br from-[#EAF6EC] to-[#D9EEDE] p-5 rounded-3xl shadow-sm border border-[#CFE6D5] relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/40 rounded-full blur-2xl -translate-y-8 translate-x-8" />
         <div className="relative z-10">
           <div className="flex items-center gap-2 mb-1">
-            <TrendingUp className="w-5 h-5 text-emerald-300" />
-            <h2 className="text-lg font-black tracking-tight">{t('price.title')}</h2>
+            <TrendingUp className="w-5 h-5 text-[#1B4D3E]" />
+            <h2 className="text-lg font-black tracking-tight text-[#1B4D3E]">{t('price.title')}</h2>
           </div>
-          <p className="text-emerald-200/80 text-xs font-medium mb-4">
+          <p className="text-[#5C6E60] text-xs font-medium mb-4">
             {market
               ? t('price.subtitleMarket', { market: market.name, days: windowDays })
               : t('price.subtitleNoMarket')}
           </p>
 
           <div className="grid grid-cols-3 gap-3">
-            <Tally label={t('price.rising')} value={rising} tone="text-rose-300" icon={<TrendingUp className="w-3.5 h-3.5" />} />
-            <Tally label={t('price.falling')} value={falling} tone="text-emerald-300" icon={<TrendingDown className="w-3.5 h-3.5" />} />
-            <Tally label={t('price.steady')} value={steady} tone="text-white" icon={<Minus className="w-3.5 h-3.5" />} />
+            <Tally label={t('price.rising')} value={rising} tone="text-rose-600" icon={<TrendingUp className="w-3.5 h-3.5" />} />
+            <Tally label={t('price.falling')} value={falling} tone="text-[#1B4D3E]" icon={<TrendingDown className="w-3.5 h-3.5" />} />
+            <Tally label={t('price.steady')} value={steady} tone="text-[#8A7E6B]" icon={<Minus className="w-3.5 h-3.5" />} />
           </div>
 
           {market && (
@@ -314,8 +321,10 @@ export default function PriceHistory({ products = [], categories = [], market = 
                   type="button"
                   onClick={() => setWindowDays(days)}
                   aria-pressed={windowDays === days}
-                  className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-colors ${
-                    windowDays === days ? 'bg-white text-[#1B4D3E]' : 'bg-white/10 text-emerald-100'
+                  className={`px-3 py-1 rounded-lg text-[12.5px] font-bold transition-colors cursor-pointer ${
+                    windowDays === days
+                      ? 'bg-[#1B4D3E] text-white'
+                      : 'bg-white/60 text-[#5C6E60] hover:bg-white'
                   }`}
                 >
                   {days}d
@@ -422,7 +431,7 @@ export default function PriceHistory({ products = [], categories = [], market = 
                       />
                     </>
                   ) : (
-                    <span className="text-[11px] text-gray-400 font-semibold shrink-0">
+                    <span className="text-[12.5px] text-gray-400 font-semibold shrink-0">
                       {t('price.noChanges')}
                     </span>
                   )}
@@ -431,7 +440,7 @@ export default function PriceHistory({ products = [], categories = [], market = 
                 {expanded && points?.length > 0 && (
                   <div className="px-3.5 pb-4 pt-1 border-t border-gray-50">
                     <DetailChart series={points} color={color} />
-                    <p className="text-[11px] text-gray-400 mt-2 leading-snug">
+                    <p className="text-[12.5px] text-gray-400 mt-2 leading-snug">
                       {points.length === 1
                         ? t('price.oneOnRecord')
                         : t('price.changesRecorded', { count: points.length })}
@@ -449,10 +458,10 @@ export default function PriceHistory({ products = [], categories = [], market = 
 
 function Tally({ label, value, tone, icon }) {
   return (
-    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center border border-white/10">
+    <div className="bg-white/70 backdrop-blur-sm rounded-xl p-3 text-center border border-white/80">
       <div className={`flex items-center justify-center gap-1 mb-1 ${tone}`}>{icon}</div>
-      <p className="text-xl font-black">{value}</p>
-      <p className="text-[10px] text-emerald-200/80 font-bold uppercase tracking-wider">{label}</p>
+      <p className="text-xl font-black text-[#2D2A26]">{value}</p>
+      <p className="text-[11.5px] text-[#8A7E6B] font-bold uppercase tracking-wider">{label}</p>
     </div>
   );
 }
@@ -477,7 +486,7 @@ function Notice({ children }) {
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-start gap-2.5">
       <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-      <p className="text-[12.5px] text-blue-900 leading-relaxed">{children}</p>
+      <p className="text-[14px] text-blue-900 leading-relaxed">{children}</p>
     </div>
   );
 }

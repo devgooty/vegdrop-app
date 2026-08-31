@@ -61,7 +61,7 @@ export default function SearchSuggestions({
                   <Highlighted text={option.label} match={option.match} />
                 )}
               </p>
-              <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-wider text-[#9A8F7C]">
+              <p className="mt-0.5 truncate text-[11.5px] font-bold uppercase tracking-wider text-[#9A8F7C]">
                 {describe(option)}
               </p>
             </div>

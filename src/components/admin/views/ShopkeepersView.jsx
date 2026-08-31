@@ -78,12 +78,12 @@ export default function ShopkeepersView() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/70">
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Shopkeeper</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Stall / Market</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Stall Status</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">KYC Status</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Listed Products</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Joined</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Shopkeeper</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Stall / Market</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Stall Status</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">KYC Status</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Listed Products</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Joined</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -105,14 +105,14 @@ export default function ShopkeepersView() {
                   <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="px-5 py-3.5">
                       <div className="font-bold text-slate-800 text-xs">{s.name || 'Vendor'}</div>
-                      <div className="text-[11px] text-slate-400">{s.phone}</div>
+                      <div className="text-[12.5px] text-slate-400">{s.phone}</div>
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="font-bold text-slate-800 text-xs">{s.stallName}</div>
-                      <div className="text-[11px] text-slate-400">{s.marketName}</div>
+                      <div className="text-[12.5px] text-slate-400">{s.marketName}</div>
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border uppercase ${
+                      <span className={`text-[11.5px] font-extrabold px-2.5 py-0.5 rounded-full border uppercase ${
                         s.stallStatus === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                         s.stallStatus === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                         'bg-slate-100 text-slate-600 border-slate-200'
@@ -121,7 +121,7 @@ export default function ShopkeepersView() {
                       </span>
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border uppercase ${
+                      <span className={`text-[11.5px] font-extrabold px-2.5 py-0.5 rounded-full border uppercase ${
                         s.kycStatus === 'verified' || s.kycStatus === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                         s.kycStatus === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                         'bg-rose-50 text-rose-700 border-rose-200'

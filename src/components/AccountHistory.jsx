@@ -49,7 +49,7 @@ export default function AccountHistory({ user, orders }) {
         
         <div className="relative z-10 flex items-center justify-between">
           <div>
-            <p className="text-emerald-200/80 text-[10px] font-extrabold uppercase tracking-widest mb-1">{t('history.lifetimeSpent')}</p>
+            <p className="text-emerald-200/80 text-[11.5px] font-extrabold uppercase tracking-widest mb-1">{t('history.lifetimeSpent')}</p>
             <div className="flex items-end gap-1">
               <span className="text-2xl font-bold text-emerald-400">₹</span>
               <span className="text-4xl font-black tracking-tight drop-shadow-sm">{totalSpent.toLocaleString(dateLocale(language))}</span>
@@ -62,11 +62,11 @@ export default function AccountHistory({ user, orders }) {
 
         <div className="mt-5 grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
           <div>
-            <p className="text-emerald-200/60 text-[9px] font-bold uppercase tracking-wider mb-0.5">{t('history.totalOrders')}</p>
+            <p className="text-emerald-200/60 text-[10.5px] font-bold uppercase tracking-wider mb-0.5">{t('history.totalOrders')}</p>
             <p className="font-black text-lg text-emerald-50">{userOrders.length}</p>
           </div>
           <div>
-            <p className="text-emerald-200/60 text-[9px] font-bold uppercase tracking-wider mb-0.5">{t('history.itemsPurchased')}</p>
+            <p className="text-emerald-200/60 text-[10.5px] font-bold uppercase tracking-wider mb-0.5">{t('history.itemsPurchased')}</p>
             <p className="font-black text-lg text-emerald-50">{totalItemsOrdered}</p>
           </div>
         </div>
@@ -98,7 +98,7 @@ export default function AccountHistory({ user, orders }) {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-black text-slate-800">{order.id}</span>
-                    <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider ${
+                    <span className={`text-[10.5px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider ${
                       order.status === 'Delivered' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
                       order.status === 'Cancelled' ? 'bg-rose-50 text-rose-600 border border-rose-100' :
                       'bg-amber-50 text-amber-600 border border-amber-100'
@@ -106,14 +106,14 @@ export default function AccountHistory({ user, orders }) {
                       {STATUS_KEY[order.status] ? t(STATUS_KEY[order.status]) : order.status}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400">
+                  <div className="flex items-center gap-1 text-[11.5px] font-bold text-slate-400">
                     <Clock className="w-3 h-3" />
                     {new Date(order.timestamp).toLocaleDateString(dateLocale(language), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
                 <div className="text-right">
                   <span className="block font-black text-emerald-700 text-base">₹{order.totalAmount}</span>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase">{order.paymentMethod || t('history.cash')}</span>
+                  <span className="text-[10.5px] font-bold text-slate-400 uppercase">{order.paymentMethod || t('history.cash')}</span>
                 </div>
               </div>
 
@@ -122,7 +122,7 @@ export default function AccountHistory({ user, orders }) {
                 {order.items?.map((item, idx) => (
                   <div key={idx} className="flex justify-between items-center text-xs">
                     <div className="flex items-center gap-2 overflow-hidden pr-2">
-                      <span className="w-5 h-5 rounded-md bg-white border border-slate-100 flex items-center justify-center font-bold text-[9px] text-slate-600 shrink-0">
+                      <span className="w-5 h-5 rounded-md bg-white border border-slate-100 flex items-center justify-center font-bold text-[10.5px] text-slate-600 shrink-0">
                         {item.quantity}x
                       </span>
                       <span className="font-semibold text-slate-700 truncate">{item.name}</span>

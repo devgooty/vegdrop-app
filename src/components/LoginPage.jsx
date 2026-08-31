@@ -474,23 +474,23 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
   }
 
   const fieldClass =
-    'w-full bg-[#F1F7F3] border border-[#DCE9E1] rounded-xl px-4 py-3.5 text-[15px] text-[#0F1F17] ' +
+    'w-full bg-[#F1F7F3] border border-[#DCE9E1] rounded-xl px-4 py-3.5 text-[16.5px] text-[#0F1F17] ' +
     'placeholder:text-[#5B6B62]/60 focus:outline-none focus:bg-white focus:border-[#16A34A] ' +
     'focus:ring-[3px] focus:ring-[#16A34A]/18 transition';
 
-  const labelClass = 'block text-[12.5px] font-bold text-[#0F1F17] mb-2';
+  const labelClass = 'block text-[14px] font-bold text-[#0F1F17] mb-2';
 
   // #0B7A37 rather than the lighter brand green: white 15px bold needs 4.5:1,
   // which #16A34A misses at 3.3. This clears it at 5.4.
   const primaryButton =
-    'w-full bg-[#0B7A37] hover:bg-[#08652C] text-white text-[15px] font-bold py-4 rounded-xl ' +
+    'w-full bg-[#0B7A37] hover:bg-[#08652C] text-white text-[16.5px] font-bold py-4 rounded-xl ' +
     'shadow-[0_8px_18px_-8px_rgba(11,122,55,0.75)] active:translate-y-[1px] transition-all ' +
     'flex items-center justify-center gap-2 ' +
     'focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#16A34A]/35 ' +
     'disabled:opacity-55 disabled:cursor-not-allowed disabled:shadow-none disabled:translate-y-0';
 
   const quietButton =
-    'text-[12.5px] font-bold text-[#0B7A37] hover:text-[#08652C] underline underline-offset-4 ' +
+    'text-[14px] font-bold text-[#0B7A37] hover:text-[#08652C] underline underline-offset-4 ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#16A34A]/40 rounded';
 
   // A definite height, not a minimum: flex-shrink only engages when the
@@ -618,7 +618,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                 skipping straight back to h1 here would break the outline. */}
             <div className="si-underline mb-4">
               <h2 className="text-[1.25rem] font-extrabold text-[#0F1F17]">{title}</h2>
-              <p className="mt-1 text-[13.5px] leading-relaxed text-[#5B6B62]">{sub}</p>
+              <p className="mt-1 text-[15px] leading-relaxed text-[#5B6B62]">{sub}</p>
             </div>
 
             {/* STEP 1 — the mobile number */}
@@ -649,7 +649,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                     onChange={(e) => setRememberMe(e.target.checked)}
                     className="w-4 h-4 rounded border-[#C9D4CD] accent-[#0B7A37] focus:ring-[#16A34A]"
                   />
-                  <span className="text-[13px] text-[#5B6B62]">{t('login.rememberMe')}</span>
+                  <span className="text-[14.5px] text-[#5B6B62]">{t('login.rememberMe')}</span>
                 </label>
 
                 {error && <Notice tone="error">{error}</Notice>}
@@ -668,8 +668,8 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               <form onSubmit={handleVerifyLogin} className="si-step space-y-4">
                 <div className="flex items-center justify-between gap-3 rounded-xl bg-[#F4F7F5] px-3.5 py-3">
                   <div className="min-w-0">
-                    <span className="block text-[11px] font-bold text-[#5B6B62]">{t('login.sentTo')}</span>
-                    <span className="si-num block truncate text-[13px] text-[#0F1F17]">
+                    <span className="block text-[12.5px] font-bold text-[#5B6B62]">{t('login.sentTo')}</span>
+                    <span className="si-num block truncate text-[14.5px] text-[#0F1F17]">
                       {challenge?.destination || identifier}
                     </span>
                   </div>
@@ -730,7 +730,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                 <div>
                   <label htmlFor="phone" className={labelClass}>{t('login.whatsappNumber')}</label>
                   <div className="relative flex items-center">
-                    <span className="si-num absolute left-4 text-[14px] text-[#5B6B62] pointer-events-none">
+                    <span className="si-num absolute left-4 text-[15.5px] text-[#5B6B62] pointer-events-none">
                       +91
                     </span>
                     <input
@@ -779,7 +779,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                           onClick={() => setLanguage(lang.code)}
                           aria-pressed={isActive}
                           disabled={isSubmitting}
-                          className={`py-2.5 rounded-xl text-[13.5px] font-bold border transition-all active:scale-95 ${
+                          className={`py-2.5 rounded-xl text-[15px] font-bold border transition-all active:scale-95 ${
                             isActive
                               ? 'bg-[#0B7A37] text-white border-[#0B7A37] shadow-[0_4px_10px_-4px_rgba(11,122,55,0.6)]'
                               : 'bg-[#F1F7F3] text-[#0F1F17] border-[#DCE9E1] hover:bg-[#E7F1EA]'
@@ -895,7 +895,7 @@ function Notice({ tone = 'info', children }) {
   return (
     <p
       role={tone === 'error' ? 'alert' : undefined}
-      className={`flex gap-2 rounded-xl border px-3.5 py-3 text-[12.5px] leading-relaxed ${styles}`}
+      className={`flex gap-2 rounded-xl border px-3.5 py-3 text-[14px] leading-relaxed ${styles}`}
     >
       {tone === 'info' && <Info className="w-3.5 h-3.5 shrink-0 mt-[3px]" />}
       <span>{children}</span>

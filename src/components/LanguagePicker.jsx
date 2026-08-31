@@ -46,10 +46,10 @@ export default function LanguagePicker({ standalone = false }) {
             <Languages className="w-4.5 h-4.5 text-emerald-700" />
           </span>
           <span className="flex-1 min-w-0">
-            <span className="block text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+            <span className="block text-[11.5px] font-bold text-emerald-700 uppercase tracking-wider">
               {t('settings.language')}
             </span>
-            <span className="block text-[14px] font-extrabold text-gray-900 truncate">
+            <span className="block text-[15.5px] font-extrabold text-gray-900 truncate">
               {current.nativeName}
             </span>
           </span>
@@ -84,7 +84,7 @@ export default function LanguagePicker({ standalone = false }) {
                     }`}
                   >
                     <span
-                      className={`text-[14px] font-bold ${isActive ? 'text-emerald-700' : 'text-gray-700'}`}
+                      className={`text-[15.5px] font-bold ${isActive ? 'text-emerald-700' : 'text-gray-700'}`}
                     >
                       {lang.nativeName}
                     </span>

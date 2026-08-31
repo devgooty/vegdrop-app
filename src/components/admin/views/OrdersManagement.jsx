@@ -119,13 +119,13 @@ export default function OrdersManagement() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/70">
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Order ID</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Customer</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Items / Stall</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Total</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Status</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Created At</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 text-right">Details</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Order ID</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Customer</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Items / Stall</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Total</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Status</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Created At</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 text-right">Details</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -154,7 +154,7 @@ export default function OrdersManagement() {
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="font-bold text-slate-800 text-xs">{o.deliveryAddress?.name || o.customer?.name || 'Customer'}</div>
-                        <div className="text-[11px] text-slate-400">{o.deliveryAddress?.phone || o.customer?.phone || '—'}</div>
+                        <div className="text-[12.5px] text-slate-400">{o.deliveryAddress?.phone || o.customer?.phone || '—'}</div>
                       </td>
                       <td className="px-5 py-3.5 text-xs text-slate-600">
                         {o.items?.length || 0} item(s)
@@ -163,7 +163,7 @@ export default function OrdersManagement() {
                         ₹{Number(o.total || 0).toLocaleString('en-IN')}
                       </td>
                       <td className="px-5 py-3.5">
-                        <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border uppercase ${getStatusBadge(o.status)}`}>
+                        <span className={`text-[11.5px] font-extrabold px-2.5 py-1 rounded-full border uppercase ${getStatusBadge(o.status)}`}>
                           {o.status}
                         </span>
                       </td>
@@ -223,7 +223,7 @@ export default function OrdersManagement() {
                   <div key={idx} className="p-3 flex items-center justify-between text-xs">
                     <div>
                       <p className="font-bold text-slate-800">{item.name || item.product?.name || 'Item'}</p>
-                      <p className="text-[11px] text-slate-400">Qty: {item.quantity} × ₹{item.price}</p>
+                      <p className="text-[12.5px] text-slate-400">Qty: {item.quantity} × ₹{item.price}</p>
                     </div>
                     <p className="font-bold text-slate-900">₹{(item.quantity * item.price).toLocaleString('en-IN')}</p>
                   </div>

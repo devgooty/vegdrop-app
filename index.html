@@ -69,14 +69,23 @@
       permitting inline script across the whole app, which is a far worse trade
       than one render-blocking stylesheet.
 
+      Figtree is the app-wide UI face, replacing Plus Jakarta Sans. It was
+      chosen for x-height rather than for style: this app leans heavily on
+      small text — badges, weights, struck-through prices, nav labels — and
+      Figtree sets a visibly larger lowercase at the same nominal size, so the
+      dense rows read more clearly without needing another point of size.
+
+      400 is loaded as well as 500-900. Jakarta was pulled in from 500 up,
+      which meant any `font-normal` in the app was silently synthesised or
+      snapped to Medium; Figtree's own 400 is now the regular weight.
+
       Baloo 2 is scoped to the login screen's "VegDrop" wordmark only (see
       `.si-hero-wordmark` in src/index.css) — a rounded, bubbly display face for
       the one spot that reads as a logotype, standing in for the hand-lettered
-      wordmark that used to be painted into hero.webp. Every other heading in
-      the app stays on Plus Jakarta Sans; this isn't a site-wide type change.
+      wordmark that used to be painted into hero.webp.
     -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=DM+Mono:wght@400;500&family=Baloo+2:wght@700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&family=Baloo+2:wght@700;800&display=swap"
       rel="stylesheet"
     />
 

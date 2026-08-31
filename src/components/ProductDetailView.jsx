@@ -123,13 +123,13 @@ export default function ProductDetailView({
           />
 
           {product.isOrganic && (
-            <span className="skeuo-badge-emerald absolute top-3 left-3 text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm">
+            <span className="skeuo-badge-emerald absolute top-3 left-3 text-white text-[11.5px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm">
               🌿 {t('product.certifiedOrganic')}
             </span>
           )}
 
           {discountPercent > 0 && (
-            <span className="skeuo-badge-amber absolute top-3 right-3 text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm">
+            <span className="skeuo-badge-amber absolute top-3 right-3 text-white text-[11.5px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm">
               {t('product.save', { percent: discountPercent })}
             </span>
           )}
@@ -208,7 +208,7 @@ export default function ProductDetailView({
           {/* Detailed Weight Variants Selector */}
           {isWeightBased && (
             <div className="pt-2 border-t border-[#EFEBE0]">
-              <p className="text-[10px] font-bold text-[#8A7E6B] mb-2 uppercase tracking-wider">
+              <p className="text-[11.5px] font-bold text-[#8A7E6B] mb-2 uppercase tracking-wider">
                 {t('product.selectWeight')}
               </p>
               <div className="flex items-center gap-2 bg-[#F3EFE6] p-1.5 rounded-xl border border-[#E5DFD1]">
@@ -249,7 +249,7 @@ export default function ProductDetailView({
             </div>
             <div>
               <h4 className="text-xs font-bold text-[#1B4D3E]">{t('product.pesticideFree')}</h4>
-              <p className="text-[10px] text-[#7A7060]">{t('product.pesticideFreeSub')}</p>
+              <p className="text-[11.5px] text-[#7A7060]">{t('product.pesticideFreeSub')}</p>
             </div>
           </div>
 
@@ -259,7 +259,7 @@ export default function ProductDetailView({
             </div>
             <div>
               <h4 className="text-xs font-bold text-[#1B4D3E]">{t('product.fastDelivery')}</h4>
-              <p className="text-[10px] text-[#7A7060]">{t('product.fastDeliverySub')}</p>
+              <p className="text-[11.5px] text-[#7A7060]">{t('product.fastDeliverySub')}</p>
             </div>
           </div>
         </div>
@@ -303,7 +303,7 @@ function FreshPhoto({ url, takenAt }) {
     <div className="mx-4 mt-3 rounded-3xl overflow-hidden bg-[#FAF7F2] border border-[#DCD5C6] shadow-md p-3">
       <div className="flex items-center gap-1.5 mb-2 px-0.5">
         <Camera className="w-3.5 h-3.5 text-[#1B4D3E]" />
-        <p className="text-[11px] font-black text-[#1B4D3E] uppercase tracking-wider">
+        <p className="text-[12.5px] font-black text-[#1B4D3E] uppercase tracking-wider">
           {t('freshPhoto.title')}
         </p>
       </div>
@@ -316,7 +316,7 @@ function FreshPhoto({ url, takenAt }) {
           onError={() => setFailed(true)}
         />
       </div>
-      <p className="text-[10px] text-[#7A736A] mt-2 px-0.5">
+      <p className="text-[11.5px] text-[#7A736A] mt-2 px-0.5">
         {t('freshPhoto.caption', { age: describeAge(takenAt, t) })}
       </p>
     </div>

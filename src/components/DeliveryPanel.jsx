@@ -217,7 +217,7 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onAcc
             <div className="relative">
               <Bell className="w-6 h-6 text-gray-500" />
               {notifications.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white text-[10px] font-black rounded-full flex items-center justify-center animate-bounce">
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white text-[11.5px] font-black rounded-full flex items-center justify-center animate-bounce">
                   {notifications.length}
                 </span>
               )}
@@ -499,13 +499,13 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
     <article className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[13.5px] font-bold text-gray-900 truncate">
+          <p className="text-[15px] font-bold text-gray-900 truncate">
             {awaitingAccept ? order.shopName : order.customerName}
           </p>
-          <p className="text-[11.5px] text-gray-500">{order.id}</p>
+          <p className="text-[13px] text-gray-500">{order.id}</p>
         </div>
         <span
-          className={`text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0 ${
+          className={`text-[12.5px] font-bold px-2.5 py-1 rounded-full shrink-0 ${
             readyToDeliver ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
           }`}
         >
@@ -516,12 +516,12 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
       {awaitingAccept ? (
         <>
           <div className="px-4 py-3 space-y-2">
-            <p className="text-[12.5px] text-gray-700 leading-snug">
+            <p className="text-[14px] text-gray-700 leading-snug">
               {order.shopName} wants a rider for {order.items?.length || 1} item
               {order.items?.length === 1 ? '' : 's'}.
             </p>
             {order.paymentMethod === 'cod' && (
-              <p className="text-[12px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+              <p className="text-[13.5px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
                 Collect ₹{order.totalAmount} in cash on handover
               </p>
             )}
@@ -531,7 +531,7 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
               type="button"
               onClick={() => runAction(onDecline)}
               disabled={acting}
-              className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[12.5px] font-bold disabled:opacity-50"
+              className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[14px] font-bold disabled:opacity-50"
             >
               <X className="w-4 h-4" />
               Decline
@@ -540,7 +540,7 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
               type="button"
               onClick={() => runAction(onAccept)}
               disabled={acting}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[14px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:opacity-60"
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[15.5px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:opacity-60"
             >
               <span className="flex items-center justify-center gap-2">
                 {acting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
@@ -556,7 +556,7 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 flex items-center gap-2.5">
                 <KeyRound className="w-4 h-4 text-emerald-700 shrink-0" />
                 <div>
-                  <p className="text-[10.5px] font-bold text-emerald-700 uppercase tracking-wide">
+                  <p className="text-[12px] font-bold text-emerald-700 uppercase tracking-wide">
                     Show this to the shop
                   </p>
                   <p className="text-lg font-black text-emerald-900 tracking-[0.25em]">{order.pickupCode}</p>
@@ -567,28 +567,28 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
               <MapPin className={`w-4 h-4 shrink-0 mt-0.5 ${awaitingHandoff ? 'text-blue-500' : 'text-orange-500'}`} />
               <div>
                 {awaitingHandoff && (
-                  <p className="text-[10.5px] font-bold text-blue-600 uppercase tracking-wide">
+                  <p className="text-[12px] font-bold text-blue-600 uppercase tracking-wide">
                     Pick up from {order.shopName}
                   </p>
                 )}
-                <p className="text-[12.5px] text-gray-700 leading-snug">
+                <p className="text-[14px] text-gray-700 leading-snug">
                   {awaitingHandoff ? order.shopAddress || order.shopName : order.address}
                 </p>
               </div>
             </div>
             {order.paymentMethod === 'cod' && (
-              <p className="text-[12px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+              <p className="text-[13.5px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
                 Collect ₹{order.totalAmount} in cash on handover
               </p>
             )}
             {awaitingHandoff ? (
-              <p className="text-[11.5px] text-gray-500 flex items-center gap-1.5">
+              <p className="text-[13px] text-gray-500 flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 shrink-0" />
                 Waiting for the shop to confirm the code.
               </p>
             ) : (
               !readyToDeliver && (
-                <p className="text-[11.5px] text-gray-500 flex items-center gap-1.5">
+                <p className="text-[13px] text-gray-500 flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5 shrink-0" />
                   The shop has not handed this over yet.
                 </p>
@@ -616,7 +616,7 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
               )}`}
               target="_blank"
               rel="noreferrer"
-              className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[12.5px] font-bold"
+              className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[14px] font-bold"
             >
               <MapPin className="w-4 h-4" />
               {awaitingHandoff ? 'Navigate to shop' : 'Navigate'}
@@ -625,7 +625,7 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
               type="button"
               onClick={onDeliver}
               disabled={!readyToDeliver}
-              className="flex-1 bg-gray-900 hover:bg-black text-white text-[14px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:bg-gray-200 disabled:text-gray-400"
+              className="flex-1 bg-gray-900 hover:bg-black text-white text-[15.5px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:bg-gray-200 disabled:text-gray-400"
             >
               <span className="flex items-center justify-center gap-2">
                 <PackageCheck className="w-4 h-4" />
@@ -685,7 +685,7 @@ function RiderLiveMapTab({ riderPosition }) {
               : `${activeJob.marketName} · ${activeJob.stallCount} stall${activeJob.stallCount === 1 ? '' : 's'}`}
           </p>
         </div>
-        <span className="bg-emerald-600 text-white px-2 py-1 rounded-md text-[10px] font-black shrink-0">
+        <span className="bg-emerald-600 text-white px-2 py-1 rounded-md text-[11.5px] font-black shrink-0">
           {activeJob.orderNumber}
         </span>
       </div>
@@ -731,7 +731,7 @@ function DeliveriesTab({ delivered, deliveredToday }) {
 
       <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-start gap-2.5">
         <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-        <p className="text-[12.5px] text-blue-900 leading-relaxed">
+        <p className="text-[14px] text-blue-900 leading-relaxed">
           <span className="font-bold block">Payouts are not tracked here yet.</span>
           This app records the deliveries you complete, but the platform has no rider payout
           ledger, so it cannot tell you what you have earned. Check with the market office for
@@ -1016,13 +1016,13 @@ function BankDetailsCard() {
 
           <div className="bg-gray-50 p-3 rounded-2xl border border-gray-200 flex gap-2">
             <Lock className="w-3.5 h-3.5 text-gray-500 shrink-0 mt-0.5" />
-            <p className="text-[10px] text-gray-600 font-semibold leading-relaxed">
+            <p className="text-[11.5px] text-gray-600 font-semibold leading-relaxed">
               Your account number is encrypted and never shown in full again — only the last four
               digits.
             </p>
           </div>
 
-          {error && <p className="text-[11px] font-bold text-rose-600">{error}</p>}
+          {error && <p className="text-[12.5px] font-bold text-rose-600">{error}</p>}
 
           <div className="flex gap-2">
             {details && (
@@ -1056,8 +1056,8 @@ function BankDetailsCard() {
 function Row({ label, value }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wide">{label}</span>
-      <span className="text-[11px] font-mono font-bold text-gray-900 truncate">{value || '—'}</span>
+      <span className="text-[11.5px] text-gray-500 uppercase font-bold tracking-wide">{label}</span>
+      <span className="text-[12.5px] font-mono font-bold text-gray-900 truncate">{value || '—'}</span>
     </div>
   );
 }
@@ -1071,7 +1071,7 @@ function Stat({ label, value, hint }) {
     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
       <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{label}</span>
       <span className="text-3xl font-black text-gray-900">{value}</span>
-      <span className="text-[11px] text-gray-400 font-semibold">{hint}</span>
+      <span className="text-[12.5px] text-gray-400 font-semibold">{hint}</span>
     </div>
   );
 }
@@ -1085,7 +1085,7 @@ const NavButton = ({ icon: Icon, label, isActive, onClick }) => (
     <div className={`p-1.5 rounded-xl transition-colors ${isActive ? 'bg-emerald-100 text-emerald-700' : 'text-gray-400'}`}>
       <Icon className="w-5 h-5" strokeWidth={isActive ? 2.5 : 2} />
     </div>
-    <span className={`text-[10px] font-bold ${isActive ? 'text-emerald-700' : 'text-gray-400'}`}>{label}</span>
+    <span className={`text-[11.5px] font-bold ${isActive ? 'text-emerald-700' : 'text-gray-400'}`}>{label}</span>
   </button>
 );
 

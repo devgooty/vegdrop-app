@@ -139,8 +139,8 @@ const ACCOUNT_VIEW_TITLES = {
  */
 function accountSectionLabel(language) {
   return language === 'en'
-    ? 'px-1 mb-2 text-[10px] font-black uppercase tracking-wider'
-    : 'px-1 mb-2 text-[11px] font-black tracking-normal';
+    ? 'px-1 mb-2 text-[11.5px] font-black uppercase tracking-wider'
+    : 'px-1 mb-2 text-[12.5px] font-black tracking-normal';
 }
 
 export default function App() {
@@ -2145,19 +2145,19 @@ export default function App() {
               <div className="sticky top-0 z-30 bg-[#1B4D3E] text-white p-3 flex flex-col gap-2 shadow-lg border-b border-emerald-900 animate-slide-in-right">
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col">
-                    <span className="text-[10px] font-black text-emerald-300 uppercase tracking-wider">Scheduled Delivery Mode</span>
+                    <span className="text-[11.5px] font-black text-emerald-300 uppercase tracking-wider">Scheduled Delivery Mode</span>
                     <span className="text-sm font-black">{scheduledCartItems.length} items selected</span>
                   </div>
                   <div className="flex gap-2">
                     <button 
                       onClick={() => setIsScheduledCartOpen(true)}
-                      className="bg-emerald-700 hover:bg-emerald-600 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-sm transition-all active:scale-95 flex items-center"
+                      className="bg-emerald-700 hover:bg-emerald-600 text-white text-[11.5px] font-black px-3 py-1.5 rounded-full shadow-sm transition-all active:scale-95 flex items-center"
                     >
                       Show Cart
                     </button>
                     <button 
                       onClick={handleScheduleCart}
-                      className="bg-yellow-500 hover:bg-yellow-400 text-[#1B4D3E] text-[10px] font-black px-3 py-1.5 rounded-full shadow-sm transition-all active:scale-95 flex items-center"
+                      className="bg-yellow-500 hover:bg-yellow-400 text-[#1B4D3E] text-[11.5px] font-black px-3 py-1.5 rounded-full shadow-sm transition-all active:scale-95 flex items-center"
                     >
                       Place Order
                     </button>
@@ -2166,7 +2166,7 @@ export default function App() {
                         setActiveTab('orders');
                         setShoppingMode('regular');
                       }}
-                      className="bg-emerald-500 hover:bg-emerald-400 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-md transition-all active:scale-95 flex items-center"
+                      className="bg-emerald-500 hover:bg-emerald-400 text-white text-[11.5px] font-black px-3 py-1.5 rounded-full shadow-md transition-all active:scale-95 flex items-center"
                     >
                       Return to Calendar
                     </button>
@@ -2342,7 +2342,7 @@ export default function App() {
                             </div>
                             <div className="flex-1">
                               <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('account.profileDetails')}</h3>
-                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">{t('account.profileDetailsSub')}</p>
+                              <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{t('account.profileDetailsSub')}</p>
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
                               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
@@ -2358,7 +2358,7 @@ export default function App() {
                             </div>
                             <div className="flex-1">
                               <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('account.purchaseHistory')}</h3>
-                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">{t('account.purchaseHistorySub')}</p>
+                              <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{t('account.purchaseHistorySub')}</p>
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
                               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
@@ -2374,7 +2374,7 @@ export default function App() {
                             </div>
                             <div className="flex-1">
                               <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('rewards.title')}</h3>
-                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                              <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">
                                 {t('account.rewardsSub', { tokens: TOKENS_PER_BATCH, rupees: RUPEES_PER_BATCH })}
                               </p>
                             </div>
@@ -2392,7 +2392,7 @@ export default function App() {
                             </div>
                             <div className="flex-1">
                               <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('account.wishlist')}</h3>
-                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">{t('account.wishlistSub')}</p>
+                              <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{t('account.wishlistSub')}</p>
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
                               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
@@ -2408,7 +2408,7 @@ export default function App() {
                             </div>
                             <div className="flex-1">
                               <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('account.savedAddress')}</h3>
-                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">{t('account.savedAddressSub')}</p>
+                              <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{t('account.savedAddressSub')}</p>
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
                               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
@@ -2429,7 +2429,7 @@ export default function App() {
                             </div>
                             <div className="flex-1">
                               <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('settings.language')}</h3>
-                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">{currentLanguageName}</p>
+                              <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{currentLanguageName}</p>
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
                               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
@@ -2471,7 +2471,7 @@ export default function App() {
                           
                           <div className="text-center mb-3 sm:mb-8">
                             <h3 className="font-extrabold text-lg sm:text-2xl text-slate-800 drop-shadow-sm mb-1 sm:mb-1.5 tracking-tight">{user.name}</h3>
-                            <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-widest shadow-[inset_1px_1px_2px_rgba(255,255,255,0.4),2px_4px_8px_rgba(16,185,129,0.3)] border border-emerald-400/50">
+                            <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-[10.5px] sm:text-[11.5px] font-black uppercase tracking-widest shadow-[inset_1px_1px_2px_rgba(255,255,255,0.4),2px_4px_8px_rgba(16,185,129,0.3)] border border-emerald-400/50">
                               <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse shadow-[0_0_4px_white]"></span>
                               Role: {user.role ? user.role.replace('_', ' ') : 'Customer'}
                             </div>
@@ -2489,7 +2489,7 @@ export default function App() {
                           
                           <div className="space-y-3.5">
                             <div className="relative group">
-                              <label className="block text-slate-500 font-extrabold mb-1.5 text-[10px] uppercase tracking-widest pl-1 group-focus-within:text-[#1B4D3E] transition-colors">User Name</label>
+                              <label className="block text-slate-500 font-extrabold mb-1.5 text-[11.5px] uppercase tracking-widest pl-1 group-focus-within:text-[#1B4D3E] transition-colors">User Name</label>
                               <input
                                 type="text"
                                 value={editName}
@@ -2499,7 +2499,7 @@ export default function App() {
                               />
                             </div>
                             <div className="relative group">
-                              <label className="block text-slate-500 font-extrabold mb-1.5 text-[10px] uppercase tracking-widest pl-1 group-focus-within:text-[#1B4D3E] transition-colors">Email Address</label>
+                              <label className="block text-slate-500 font-extrabold mb-1.5 text-[11.5px] uppercase tracking-widest pl-1 group-focus-within:text-[#1B4D3E] transition-colors">Email Address</label>
                               {/* Optional: signing up needs only a phone number,
                                   so most accounts have no email at all. Marking
                                   this required made the form unsubmittable for
@@ -2513,7 +2513,7 @@ export default function App() {
                               />
                             </div>
                             <div className="relative group">
-                              <label className="block text-slate-500 font-extrabold mb-1.5 text-[10px] uppercase tracking-widest pl-1 group-focus-within:text-[#1B4D3E] transition-colors">Mobile Number</label>
+                              <label className="block text-slate-500 font-extrabold mb-1.5 text-[11.5px] uppercase tracking-widest pl-1 group-focus-within:text-[#1B4D3E] transition-colors">Mobile Number</label>
                               <input
                                 type="text"
                                 value={editPhone}
@@ -2543,19 +2543,19 @@ export default function App() {
                       ) : (
                         <div className="bg-slate-50/90 backdrop-blur-2xl rounded-[2rem] p-3 sm:p-5 border border-white space-y-2 sm:space-y-3 text-left text-sm shadow-[inset_2px_2px_4px_rgba(255,255,255,0.9),12px_12px_24px_rgba(166,180,200,0.4),-12px_-12px_24px_rgba(255,255,255,0.9)] relative z-10 transition-all duration-300">
                           <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center py-1.5 sm:py-2 border-b border-emerald-900/5 group gap-0.5 sm:gap-0">
-                            <span className="text-slate-400 font-extrabold text-[10px] uppercase tracking-wider group-hover:text-slate-600 transition-colors">User Name</span>
+                            <span className="text-slate-400 font-extrabold text-[11.5px] uppercase tracking-wider group-hover:text-slate-600 transition-colors">User Name</span>
                             <span className="font-black text-slate-800 drop-shadow-sm break-words max-w-full">{user.name}</span>
                           </div>
                           <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center py-1.5 sm:py-2 border-b border-emerald-900/5 group gap-0.5 sm:gap-0">
-                            <span className="text-slate-400 font-extrabold text-[10px] uppercase tracking-wider group-hover:text-slate-600 transition-colors">Email Address</span>
+                            <span className="text-slate-400 font-extrabold text-[11.5px] uppercase tracking-wider group-hover:text-slate-600 transition-colors">Email Address</span>
                             <span className="font-bold text-slate-700 drop-shadow-sm break-all sm:break-words max-w-full">{user.email}</span>
                           </div>
                           <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center py-1.5 sm:py-2 border-b border-emerald-900/5 group gap-0.5 sm:gap-0">
-                            <span className="text-slate-400 font-extrabold text-[10px] uppercase tracking-wider group-hover:text-slate-600 transition-colors">Mobile Number</span>
+                            <span className="text-slate-400 font-extrabold text-[11.5px] uppercase tracking-wider group-hover:text-slate-600 transition-colors">Mobile Number</span>
                             <span className="font-black text-[#1B4D3E] drop-shadow-sm break-words max-w-full">{user.phone || user.pendingPhone || '—'}</span>
                           </div>
                           <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center py-1.5 sm:py-2 border-b border-emerald-900/5 group bg-emerald-50/50 -mx-2 px-2 rounded-xl gap-0.5 sm:gap-0">
-                            <span className="text-emerald-700 font-extrabold text-[10px] uppercase tracking-wider">VegWallet Balance</span>
+                            <span className="text-emerald-700 font-extrabold text-[11.5px] uppercase tracking-wider">VegWallet Balance</span>
                             <span className="font-black text-emerald-600 text-lg drop-shadow-md">₹{walletBalance.toFixed(0)}</span>
                           </div>
 
@@ -2584,7 +2584,7 @@ export default function App() {
                                 <h4 className="font-extrabold text-gray-900 text-sm">
                                   {profileChallenge?.kind === 'email' ? 'Verify New Email' : 'Verify New Number'}
                                 </h4>
-                                <p className="text-[10px] text-amber-700 font-semibold">
+                                <p className="text-[11.5px] text-amber-700 font-semibold">
                                   {profileChallenge?.kind === 'email'
                                     ? 'Login codes will be copied here.'
                                     : 'This is your sign-in credential.'}
@@ -2593,7 +2593,7 @@ export default function App() {
                             </div>
 
                             <form onSubmit={handleVerifyProfileOTP} className="space-y-3">
-                              <div className="bg-blue-50/80 p-2.5 rounded-xl border border-blue-100 text-[10px] text-blue-900 font-semibold leading-relaxed">
+                              <div className="bg-blue-50/80 p-2.5 rounded-xl border border-blue-100 text-[11.5px] text-blue-900 font-semibold leading-relaxed">
                                 We sent a 6-digit code on WhatsApp to{' '}
                                 <span className="font-extrabold">{profileChallenge?.destination || editPhone}</span>.
                                 Enter it to move your account to that number — every other device
@@ -2620,14 +2620,14 @@ export default function App() {
                                 </div>
                               ) : (
                                 <div className="space-y-2 border-t border-gray-100 pt-3">
-                                  <label className="block font-bold text-gray-700 mb-2 text-[10px] uppercase tracking-wider text-center">
+                                  <label className="block font-bold text-gray-700 mb-2 text-[11.5px] uppercase tracking-wider text-center">
                                     {profileChallenge?.kind === 'email' ? 'Email OTP' : 'WhatsApp OTP'}
                                   </label>
                                   <OTPBoxGroup value={profileMobileOTP} onChange={setProfileMobileOTP} />
                                 </div>
                               )}
 
-                              {profileOtpError && <p className="text-[10px] font-bold text-rose-600">{profileOtpError}</p>}
+                              {profileOtpError && <p className="text-[11.5px] font-bold text-rose-600">{profileOtpError}</p>}
 
                               {/* Offered only for the number leg — an email address
                                   has nothing to send a message from. */}
@@ -2635,7 +2635,7 @@ export default function App() {
                                 <button
                                   type="button"
                                   onClick={() => { setProfileOtpError(''); setProfileReverse((on) => !on); }}
-                                  className="w-full text-[10px] font-bold text-[#1B4D3E] underline underline-offset-4 hover:text-[#143B2B]"
+                                  className="w-full text-[11.5px] font-bold text-[#1B4D3E] underline underline-offset-4 hover:text-[#143B2B]"
                                 >
                                   {profileReverse
                                     ? 'Type a code instead'
@@ -2763,7 +2763,7 @@ export default function App() {
                           </h4>
                           <button
                             onClick={handleLogout}
-                            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] sm:text-sm font-extrabold px-2 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all cursor-pointer text-center shadow-[inset_1px_1px_2px_rgba(255,255,255,0.8),4px_4px_8px_rgba(166,180,200,0.3),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(166,180,200,0.4),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
+                            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11.5px] sm:text-sm font-extrabold px-2 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all cursor-pointer text-center shadow-[inset_1px_1px_2px_rgba(255,255,255,0.8),4px_4px_8px_rgba(166,180,200,0.3),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(166,180,200,0.4),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
                           >
                             {t('common.signOut')}
                           </button>
@@ -2776,7 +2776,7 @@ export default function App() {
                               here mean. */}
                           <button
                             onClick={handleLogoutEverywhere}
-                            className="mt-1.5 w-full text-rose-600/80 hover:text-rose-700 text-[10px] sm:text-xs font-bold px-2 py-1.5 rounded-xl transition-colors cursor-pointer text-center hover:bg-rose-50/60"
+                            className="mt-1.5 w-full text-rose-600/80 hover:text-rose-700 text-[11.5px] sm:text-xs font-bold px-2 py-1.5 rounded-xl transition-colors cursor-pointer text-center hover:bg-rose-50/60"
                           >
                             {t('account.signOutAllDevices')}
                           </button>
@@ -2802,7 +2802,7 @@ export default function App() {
                             {t('account.dangerZone')}
                           </h4>
                           <div className="rounded-2xl border border-rose-200/60 bg-rose-50/40 p-4">
-                            <p className="text-[10px] font-bold text-slate-500 mb-2.5 leading-relaxed">
+                            <p className="text-[11.5px] font-bold text-slate-500 mb-2.5 leading-relaxed">
                               {t('account.dangerZoneSub')}
                             </p>
                             <button
