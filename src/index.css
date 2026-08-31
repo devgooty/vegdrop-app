@@ -1082,27 +1082,32 @@
    way — putting a final value only inside a `to {}` block would make
    reduced-motion render whatever the base rule happened to say. */
 
-/* Cream, not the deep green this started as. The green looked good on its own
-   and was wrong in sequence: the splash handed straight over to a cream app, so
-   every launch ended in a full-screen colour flip. It is now the same surface
-   the app itself sits on (#F8F5EF, matching body in index.html and the white
-   `theme_color`), which makes the hand-off invisible — the lockup fades and the
-   storefront is already on the same paper. */
-.vd-splash-field {
-  --vd-sky: rgba(27, 77, 62, 0.07);
-  background:
-    radial-gradient(120% 80% at 50% 38%, var(--vd-sky) 0%, rgba(27, 77, 62, 0) 62%),
-    linear-gradient(170deg, #FDFBF6 0%, #F8F5EF 45%, #F0ECE2 100%);
-}
+/* A warm-to-cool aurora wash — sun-gold top-left, sky-blue bottom-right,
+   soft peach and rose bands carrying the eye between them — replacing the
+   plain cream this used to be, at the owner's request for a more colourful
+   launch screen.
 
-/* The light in the room, by hour. Only the glow moves — the paper underneath
-   stays the app's own cream at every hour, because the whole point of that
-   colour is that the splash and the storefront are the same surface. Kept at
-   this strength on purpose: enough that 6am and 10pm are not the same picture,
-   nowhere near enough to read as a coloured background. */
-.vd-splash-field[data-sky='dawn'] { --vd-sky: rgba(232, 163, 61, 0.13); }
-.vd-splash-field[data-sky='dusk'] { --vd-sky: rgba(217, 119, 6, 0.14); }
-.vd-splash-field[data-sky='night'] { --vd-sky: rgba(90, 110, 145, 0.14); }
+   This gives up something the cream version had: the storefront behind it
+   is still #F8F5EF, so the fade at hand-off is no longer invisible the way
+   the comment below used to promise — the screen now visibly dissolves from
+   colour to paper rather than continuing the same surface. That is the
+   trade being made here, not an oversight.
+
+   Deliberately ONE picture rather than four. The cream version varied only
+   a low-alpha tint by hour, cheap because near-white plus a tint is still
+   near-white. This palette is the opposite of subtle, and the app's text
+   colours on it — muted sage greeting, dark green wordmark and tagline —
+   were tuned for a light ground. A "night" variant dark enough to read as
+   night would drop every one of them below readable contrast, which is a
+   bigger regression than the app not knowing what time it launched. The sky
+   icon beside the greeting still changes with the hour; only the field
+   behind it stopped. */
+.vd-splash-field {
+  background:
+    radial-gradient(48% 36% at 6% 2%, rgba(255, 255, 255, 0.95) 0%, rgba(248, 152, 42, 0.68) 32%, rgba(248, 152, 42, 0) 68%),
+    radial-gradient(52% 40% at 97% 98%, rgba(80, 155, 230, 0.62) 0%, rgba(80, 155, 230, 0) 62%),
+    linear-gradient(140deg, #FCEBD4 0%, #FBE6DE 25%, #F8E7EC 50%, #E9EEFA 72%, #DCE9FB 100%);
+}
 
 /* Paper grain.
    Two thirds of this screen is empty cream, and a flat fill of it reads as a

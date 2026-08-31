@@ -156,6 +156,22 @@ export const DEFAULT_HERO_ACCENT = {
   wash: '#FAF7F2',
 };
 
+/**
+ * One short buzz when the carousel settles on a different card.
+ *
+ * `navigator.vibrate` is Android-only — Safari has never implemented the
+ * Vibration API on iOS, in-app or otherwise — so this is a no-op there rather
+ * than a broken feature; nothing here needs to detect that, an absent method
+ * just fails the `typeof` check silently. 15ms rather than a longer buzz: this
+ * fires on every card change, and anything longer starts to feel like the UI
+ * is complaining rather than confirming a swipe landed.
+ */
+function vibrateOnce() {
+  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    navigator.vibrate(15);
+  }
+}
+
 function inStock(product) {
   return product?.isActive !== false && Number(product?.stock ?? 0) > 0;
 }
@@ -358,6 +374,16 @@ export default function HomeHeroBanner({
   const pausedRef = useRef(false);
   const resumeTimer = useRef(0);
   const activeRef = useRef(0);
+  /**
+   * The index syncActive last vibrated for — written synchronously, unlike
+   * `active` state. A hard flick fires two native `scroll` events at the same
+   * settled position (the instant jump, then the browser's own snap
+   * correction), and both schedule a rAF call to syncActive before React has
+   * committed the first one's setState — so comparing against the `prev`
+   * argument of a functional setActive update saw the same stale value twice
+   * and buzzed twice for one card change. A ref has no commit to wait for.
+   */
+  const lastVibratedRef = useRef(0);
   const [active, setActive] = useState(0);
 
   const cards = useMemo(() => {
@@ -403,6 +429,14 @@ export default function HomeHeroBanner({
         best = gap;
         nearest = i;
       }
+    }
+    // A single buzz the moment the midpoint crosses into a new card — not on
+    // every scroll frame, which would turn one swipe into a rattle, and not
+    // only once the snap has fully settled, which would feel late against
+    // when the eye and the finger already agree the card has changed.
+    if (nearest !== lastVibratedRef.current) {
+      vibrateOnce();
+      lastVibratedRef.current = nearest;
     }
     setActive(nearest);
   }, []);
@@ -494,6 +528,16 @@ export default function HomeHeroBanner({
         }}
       />
 
+      {/*
+        snap-mandatory alone only guarantees the track SETTLES on a card —
+        it says nothing about how many it may pass through to get there. A
+        fast flick has enough momentum to sail two or three cards past the
+        next one before the browser decelerates enough to lock on, which is
+        the "scrolls too much" a single swipe was producing. `snap-always`
+        (scroll-snap-stop) on each card below is what turns "nearest card
+        once it stops" into "the very next card, always" — supported in
+        every evergreen browser, iOS Safari included since 15.
+      */}
       <div
         ref={trackRef}
         onScroll={handleScroll}
@@ -511,7 +555,7 @@ export default function HomeHeroBanner({
             return (
               <article
                 key={card.key}
-                className="group relative snap-center shrink-0 w-[94%] min-h-80 rounded-3xl overflow-hidden border border-black/[0.04] shadow-sm"
+                className="group relative snap-center snap-always shrink-0 w-[94%] min-h-80 rounded-3xl overflow-hidden border border-black/[0.04] shadow-sm"
                 style={{ backgroundColor: theme.wash }}
               >
                 <header className="relative px-3 pt-3 pb-2">
@@ -585,7 +629,7 @@ export default function HomeHeroBanner({
           return (
             <article
               key={card.key}
-              className="group relative snap-center shrink-0 w-[94%] min-h-80 self-stretch rounded-3xl overflow-hidden border border-black/5 shadow-sm"
+              className="group relative snap-center snap-always shrink-0 w-[94%] min-h-80 self-stretch rounded-3xl overflow-hidden border border-black/5 shadow-sm"
               style={{ backgroundColor: card.cardFrom }}
             >
               <img
