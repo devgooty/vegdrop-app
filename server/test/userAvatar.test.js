@@ -73,6 +73,55 @@ test('a preset is stored on the user and reported by the profile read', async ()
   assert.equal(res.body.data.avatar.photoUpdatedAt, null);
 });
 
+test('a person avatar carries its skin tone and hair colour', async () => {
+  const { accessToken, user } = await authenticatedUser('customer');
+
+  const res = await api()
+    .put(`/api/users/${user._id}/avatar`)
+    .set(auth(accessToken))
+    .send({ preset: 'female', skinTone: 'deep', hair: 'auburn' });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.data.avatar.preset, 'female');
+  assert.equal(res.body.data.avatar.skinTone, 'deep');
+  assert.equal(res.body.data.avatar.hair, 'auburn');
+});
+
+/**
+ * The clearing half, which is the one that can rot quietly: a vegetable that
+ * inherited a skin tone renders identically today, and reads as a deliberate
+ * choice the day anything starts drawing one.
+ */
+test('an avatar with nothing to edit clears the tone the last one wore', async () => {
+  const { accessToken, user } = await authenticatedUser('customer');
+
+  await api()
+    .put(`/api/users/${user._id}/avatar`)
+    .set(auth(accessToken))
+    .send({ preset: 'male', skinTone: 'light', hair: 'grey' });
+
+  const res = await api()
+    .put(`/api/users/${user._id}/avatar`)
+    .set(auth(accessToken))
+    .send({ preset: 'tomato' });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.data.avatar.preset, 'tomato');
+  assert.equal(res.body.data.avatar.skinTone, null);
+  assert.equal(res.body.data.avatar.hair, null);
+});
+
+test('a skin tone sent with a photo is refused', async () => {
+  const { accessToken, user } = await authenticatedUser('customer');
+
+  const res = await api()
+    .put(`/api/users/${user._id}/avatar`)
+    .set(auth(accessToken))
+    .send({ image: jpegUri, skinTone: 'deep' });
+
+  assert.equal(res.status, 400);
+});
+
 test('an uploaded photo is reported as a pointer, never as bytes', async () => {
   const { accessToken, user } = await authenticatedUser('customer');
 

@@ -183,6 +183,20 @@ const userSchema = new mongoose.Schema(
       preset: { type: String, default: null, trim: true, maxlength: 24 },
 
       /**
+       * The two things about a person avatar anyone may change.
+       *
+       * Slugs naming a swatch in src/data/avatars.js, and not enums here for
+       * exactly the reason `preset` is not one: the palette is a visual list
+       * that lives where it is drawn, and an unrecognised value falls back to
+       * a default tone rather than to a broken face. They mean nothing for a
+       * vegetable, and the route clears them when one is chosen — a stored
+       * skin tone nothing can render is a value that will later be mistaken
+       * for a choice somebody made.
+       */
+      skinTone: { type: String, default: null, trim: true, maxlength: 24 },
+      hair: { type: String, default: null, trim: true, maxlength: 24 },
+
+      /**
        * When the uploaded photo in `UserAvatar` was last replaced — the signal
        * that one exists at all, and the cache key the client re-fetches on.
        * The bytes themselves are in that separate collection; see the note
@@ -302,6 +316,8 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
      */
     avatar: {
       preset: this.avatar?.preset || null,
+      skinTone: this.avatar?.skinTone || null,
+      hair: this.avatar?.hair || null,
       photoUpdatedAt: this.avatar?.photoUpdatedAt || null,
     },
     // Duty status only — never the position. A rider's live coordinates are

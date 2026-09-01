@@ -65,3 +65,30 @@ export function productSkuFromHash(hash = window.location.hash) {
   const match = /^#?\/p\/([^/?#]+)/.exec(hash);
   return match ? decodeURIComponent(match[1]) : null;
 }
+
+/**
+ * Hand the app itself — not a product — to the OS share sheet, or to the
+ * clipboard. Same contract as `shareProduct`, deliberately: one caller
+ * (Account) can treat both the same way instead of learning a second set of
+ * outcome strings.
+ */
+export async function shareApp({ origin = window.location.origin } = {}) {
+  const url = `${origin}/`;
+  const title = 'VegDrop';
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ title, text: 'Fresh groceries, delivered — VegDrop', url });
+      return 'shared';
+    } catch (err) {
+      if (err?.name === 'AbortError') return 'cancelled';
+    }
+  }
+
+  try {
+    await navigator.clipboard.writeText(url);
+    return 'copied';
+  } catch {
+    return 'failed';
+  }
+}

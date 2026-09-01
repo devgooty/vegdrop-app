@@ -1152,6 +1152,17 @@ const STRINGS = {
     te: 'ఈ వస్తువును షేర్ చేయలేకపోయాం.',
   },
 
+  'toast.appLinkCopied': {
+    en: 'Link copied — paste it anywhere to share VegDrop.',
+    hi: 'लिंक कॉपी हो गया — इसे कहीं भी चिपकाकर VegDrop साझा करें।',
+    te: 'లింక్ కాపీ అయ్యింది — ఎక్కడైనా పేస్ట్ చేసి VegDrop షేర్ చేయండి.',
+  },
+  'toast.appShareFailed': {
+    en: 'Could not share the app.',
+    hi: 'ऐप साझा नहीं हो सकी।',
+    te: 'యాప్‌ను షేర్ చేయలేకపోయాం.',
+  },
+
   // --- VegWallet (WalletModal.jsx) ---------------------------------------------
   //
   // A ledger row's `label` and `note` are NOT here. They arrive from the server
@@ -1428,10 +1439,27 @@ const STRINGS = {
   'account.editProfile': { en: 'Edit Profile Details', hi: 'प्रोफ़ाइल विवरण बदलें', te: 'ప్రొఫైల్ వివరాలు మార్చండి' },
 
   // --- Profile picture (AvatarPicker.jsx) -------------------------------------
+  'profile.name': { en: 'Name', hi: 'नाम', te: 'పేరు' },
+  'profile.email': { en: 'Email address', hi: 'ईमेल पता', te: 'ఇమెయిల్ చిరునామా' },
+  'profile.phone': { en: 'Mobile number', hi: 'मोबाइल नंबर', te: 'మొబైల్ నంబర్' },
+  'profile.notAdded': { en: 'Not added', hi: 'जोड़ा नहीं गया', te: 'జోడించలేదు' },
   'avatar.title': { en: 'Profile Picture', hi: 'प्रोफ़ाइल फ़ोटो', te: 'ప్రొఫైల్ ఫోటో' },
   'avatar.change': { en: 'Change profile picture', hi: 'प्रोफ़ाइल फ़ोटो बदलें', te: 'ప్రొఫైల్ ఫోటో మార్చండి' },
   'avatar.upload': { en: 'Upload a photo', hi: 'फ़ोटो अपलोड करें', te: 'ఫోటో అప్‌లోడ్ చేయండి' },
-  'avatar.remove': { en: 'Remove picture', hi: 'फ़ोटो हटाएँ', te: 'ఫోటో తొలగించండి' },
+  'avatar.save': { en: 'Save picture', hi: 'फ़ोटो सहेजें', te: 'ఫోటో సేవ్ చేయండి' },
+  'avatar.subtitle': { en: 'Pick one, then save.', hi: 'एक चुनें, फिर सहेजें।', te: 'ఒకటి ఎంచుకుని సేవ్ చేయండి.' },
+  'avatar.people': { en: 'People', hi: 'लोग', te: 'వ్యక్తులు' },
+  'avatar.photo': { en: 'Photo', hi: 'फ़ोटो', te: 'ఫోటో' },
+  'avatar.surprise': { en: 'Surprise me', hi: 'कुछ भी चुनें', te: 'ఏదైనా ఎంచుకో' },
+  'avatar.photoHint': { en: 'JPEG or WebP — we crop it square.', hi: 'JPEG या WebP — हम इसे चौकोर काटते हैं।', te: 'JPEG లేదా WebP — చతురస్రంగా కత్తిరిస్తాం.' },
+  'avatar.peopleHint': {
+    en: 'Pick a face above to choose its skin tone and hair.',
+    hi: 'त्वचा का रंग और बाल चुनने के लिए ऊपर एक चेहरा चुनें।',
+    te: 'చర్మ ఛాయ, జుట్టు ఎంచుకోవడానికి పైన ఒక ముఖాన్ని ఎంచుకోండి.',
+  },
+  'avatar.produce': { en: 'Fresh picks', hi: 'ताज़ा चुनाव', te: 'తాజా ఎంపికలు' },
+  'avatar.skin': { en: 'Skin tone', hi: 'त्वचा का रंग', te: 'చర్మ ఛాయ' },
+  'avatar.hair': { en: 'Hair', hi: 'बाल', te: 'జుట్టు' },
   'avatar.working': { en: 'Saving…', hi: 'सहेजा जा रहा है…', te: 'సేవ్ అవుతోంది…' },
   'avatar.updated': { en: 'Profile picture updated.', hi: 'प्रोफ़ाइल फ़ोटो बदल दी गई।', te: 'ప్రొఫైల్ ఫోటో మారింది.' },
   'avatar.failed': {
@@ -1440,11 +1468,39 @@ const STRINGS = {
     te: 'ప్రొఫైల్ ఫోటో మార్చలేకపోయాం.',
   },
   'account.savedAddress': { en: 'Saved Address', hi: 'सहेजा गया पता', te: 'సేవ్ చేసిన చిరునామా' },
+  'account.shareApp': { en: 'Share App', hi: 'ऐप शेयर करें', te: 'యాప్ షేర్ చేయండి' },
+  'account.shareAppSub': {
+    en: 'Tell a friend where the fresh produce is',
+    hi: 'किसी दोस्त को ताज़ा सामान के बारे में बताएँ',
+    te: 'తాజా కూరగాయల గురించి స్నేహితుడికి చెప్పండి',
+  },
+  'account.rateApp': { en: 'Rate App', hi: 'ऐप को रेट करें', te: 'యాప్‌ను రేట్ చేయండి' },
+  'account.rateAppSub': {
+    en: 'Tell us how VegDrop is doing',
+    hi: 'बताएँ VegDrop कैसा चल रहा है',
+    te: 'VegDrop ఎలా ఉందో మాకు చెప్పండి',
+  },
   'account.savedAddressSub': {
     en: 'Manage your delivery address',
     hi: 'अपना डिलीवरी पता प्रबंधित करें',
     te: 'మీ డెలివరీ చిరునామాను నిర్వహించండి',
   },
+  'rateApp.title': { en: 'Rate VegDrop', hi: 'VegDrop को रेट करें', te: 'VegDropను రేట్ చేయండి' },
+  'rateApp.subtitle': {
+    en: 'How has shopping with us been?',
+    hi: 'हमारे साथ खरीदारी का अनुभव कैसा रहा?',
+    te: 'మాతో షాపింగ్ ఎలా ఉంది?',
+  },
+  'rateApp.starLabel': { en: '{count} star', hi: '{count} स्टार', te: '{count} స్టార్' },
+  'rateApp.commentPlaceholder': {
+    en: "Anything you'd like us to know? (optional)",
+    hi: 'कुछ बताना चाहेंगे? (वैकल्पिक)',
+    te: 'మాకు చెప్పాలనుకుంటున్నారా? (ఐచ్ఛికం)',
+  },
+  'rateApp.submit': { en: 'Submit', hi: 'सबमिट करें', te: 'సమర్పించండి' },
+  'rateApp.working': { en: 'Sending…', hi: 'भेजा जा रहा है…', te: 'పంపుతోంది…' },
+  'rateApp.thanks': { en: 'Thanks for the feedback!', hi: 'फ़ीडबैक के लिए धन्यवाद!', te: 'ఫీడ్‌బ్యాక్‌కు ధన్యవాదాలు!' },
+
   'account.savedAddressNote': {
     en: 'This is the address orders are delivered to, and what markets and shops near you are found from.',
     hi: 'यह पता ही ऑर्डर डिलीवर करने और आपके आस-पास के मार्केट व दुकानें खोजने के लिए इस्तेमाल होता है।',

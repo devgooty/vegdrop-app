@@ -70,9 +70,3 @@ export async function setUserAvatar(userId, choice) {
   const result = await api.put(`/users/${userId}/avatar`, choice);
   return result.data;
 }
-
-/** Back to initials. */
-export async function clearUserAvatar(userId) {
-  const result = await api.delete(`/users/${userId}/avatar`);
-  return result.data;
-}

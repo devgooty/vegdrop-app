@@ -237,19 +237,39 @@ router.put(
           .trim()
           .regex(/^[a-z0-9-]{1,24}$/, 'Not a valid avatar.')
           .optional(),
+        /**
+         * The person avatars' two editable parts, validated as slugs for the
+         * same reason and against no list for the same reason. Meaningful only
+         * alongside a preset — sent with an image they would describe a face
+         * that is not being drawn.
+         */
+        skinTone: z
+          .string()
+          .trim()
+          .regex(/^[a-z0-9-]{1,24}$/, 'Not a valid skin tone.')
+          .optional(),
+        hair: z
+          .string()
+          .trim()
+          .regex(/^[a-z0-9-]{1,24}$/, 'Not a valid hair colour.')
+          .optional(),
         image: z.string().min(32).max(400_000).optional(),
       })
       .strict()
       .refine(
         (data) => Boolean(data.preset) !== Boolean(data.image),
         { message: 'Send either a preset or an image, not both.' }
+      )
+      .refine(
+        (data) => !data.image || (!data.skinTone && !data.hair),
+        { message: 'A skin tone and hair colour belong to an avatar, not a photo.' }
       ),
   }),
   async (req, res) => {
     const targetId = req.valid.params.id;
     assertMayEdit(req, targetId);
 
-    const { preset, image } = req.valid.body;
+    const { preset, skinTone, hair, image } = req.valid.body;
     const update = {};
 
     if (preset) {
@@ -257,6 +277,11 @@ router.put(
       // leaving orphaned bytes behind for a photo nothing can now display.
       await UserAvatar.deleteOne({ user: targetId });
       update['avatar.preset'] = preset;
+      // Always written, never merged: an avatar with nothing to edit has to
+      // clear whatever the previous one was wearing, or a tomato inherits the
+      // skin tone of the face it replaced.
+      update['avatar.skinTone'] = skinTone || null;
+      update['avatar.hair'] = hair || null;
       update['avatar.photoUpdatedAt'] = null;
     } else {
       const parsed = parseDataUri(image);
@@ -277,6 +302,8 @@ router.put(
         { upsert: true, setDefaultsOnInsert: true }
       );
       update['avatar.preset'] = null;
+      update['avatar.skinTone'] = null;
+      update['avatar.hair'] = null;
       update['avatar.photoUpdatedAt'] = new Date();
     }
 
@@ -304,7 +331,14 @@ router.delete(
 
     const user = await User.findOneAndUpdate(
       { _id: targetId, status: { $ne: 'deleted' } },
-      { $set: { 'avatar.preset': null, 'avatar.photoUpdatedAt': null } },
+      {
+        $set: {
+          'avatar.preset': null,
+          'avatar.skinTone': null,
+          'avatar.hair': null,
+          'avatar.photoUpdatedAt': null,
+        },
+      },
       { returnDocument: 'after' }
     );
     if (!user) throw new ApiError(404, 'User not found.', 'NOT_FOUND');

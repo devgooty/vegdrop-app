@@ -23,6 +23,7 @@ import AccountWishlist from './components/AccountWishlist';
 import AccountPermissions from './components/AccountPermissions';
 import ProfileAvatar from './components/ProfileAvatar';
 import AvatarPicker from './components/AvatarPicker';
+import RateAppModal from './components/RateAppModal';
 import PageTransition from './components/PageTransition';
 import OTPBoxGroup from './components/OTPBoxGroup';
 import ReverseOtpPanel from './components/ReverseOtpPanel';
@@ -37,13 +38,13 @@ import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
 import { rememberSearch } from './services/search';
 import { fetchShopsForBasket, linesForShop } from './services/shops';
 import { savedCustomerAddress } from './services/address';
-import { productSkuFromHash } from './services/share';
+import { productSkuFromHash, shareApp } from './services/share';
 import { mergeCartLines, cartItemCount } from './services/cart';
 import { unitsOf } from './services/packs';
 import { createSchedule, fetchSchedules, recurrenceFromDates, describeRecurrence } from './services/schedules';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
-import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon, MapPin as MapPinIcon, Heart as HeartIcon, Settings as SettingsIcon, Wallet as WalletIcon, ClipboardList as ClipboardListIcon, Camera as CameraIcon } from 'lucide-react';
+import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon, MapPin as MapPinIcon, Heart as HeartIcon, Settings as SettingsIcon, Wallet as WalletIcon, ClipboardList as ClipboardListIcon, Camera as CameraIcon, Mail as MailIcon, Phone as PhoneIcon, Pencil as PencilIcon, BadgeCheck as BadgeCheckIcon, Share2 as ShareIcon, Star as StarIcon } from 'lucide-react';
 import {
   logout,
   logoutEverywhere,
@@ -59,7 +60,7 @@ import {
   acceptPartialOrder, retryPartialOrder,
 } from './services/orders';
 import { fetchWallet, topUpWallet } from './services/wallet';
-import { fetchUsers, updateUser, updateUserRole, deleteUser, fetchUserAvatar, setUserAvatar, clearUserAvatar } from './services/users';
+import { fetchUsers, updateUser, updateUserRole, deleteUser, fetchUserAvatar, setUserAvatar } from './services/users';
 import { ApiRequestError, NetworkError } from './services/apiClient';
 import { RUPEES_PER_BATCH, TOKENS_PER_BATCH } from './services/rewards';
 
@@ -146,6 +147,35 @@ function accountSectionLabel(language) {
   return language === 'en'
     ? 'px-1 mb-2 text-[11.5px] font-black uppercase tracking-wider'
     : 'px-1 mb-2 text-[12.5px] font-black tracking-normal';
+}
+
+/**
+ * One line of the profile card: icon, label, value.
+ *
+ * Stacked rather than label-left/value-right, which is what the card did
+ * before. An email address is the reason: on a narrow phone the two halves
+ * collided and the address wrapped mid-word against the label. Given the whole
+ * width it simply reads.
+ */
+function ProfileField({ icon: Icon, label, value, placeholder, verified = false }) {
+  const empty = !value;
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 last:border-0">
+      <span className="w-9 h-9 rounded-xl bg-emerald-50 text-[#1B4D3E] flex items-center justify-center shrink-0">
+        <Icon className="w-4 h-4" strokeWidth={2.25} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
+        <p className={`font-bold break-words leading-snug ${empty ? 'text-slate-300' : 'text-slate-800'}`}>
+          {empty ? placeholder : value}
+        </p>
+      </div>
+      {verified && (
+        <BadgeCheckIcon className="w-4 h-4 text-emerald-500 shrink-0" strokeWidth={2.5} />
+      )}
+    </div>
+  );
 }
 
 export default function App() {
@@ -347,6 +377,7 @@ export default function App() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [activeAccountView, setActiveAccountView] = useState('menu');
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
+  const [isRateAppOpen, setIsRateAppOpen] = useState(false);
   /**
    * The uploaded profile photo, as a data URI.
    *
@@ -937,34 +968,43 @@ export default function App() {
   }, [user?.id, avatarStamp]);
 
   /**
-   * The three ways to set a picture, all adopting the user record the server
-   * returns rather than assuming the write landed. Each throws on failure so
-   * AvatarPicker can report it and stay open.
+   * The one write behind the picture sheet, whichever kind of picture it is.
+   *
+   * Adopts the user record the server returns rather than assuming the write
+   * landed, and throws on failure so AvatarPicker can report it and stay open
+   * with the draft the person assembled still on screen.
    */
-  const applyAvatarUpdate = useCallback((updated) => {
+  const handleSaveAvatar = useCallback(async (choice) => {
+    const updated = await setUserAvatar(user.id, choice);
+    // A photo is held locally rather than waiting on the fetch its new
+    // timestamp triggers — these are the same bytes and they are already here.
+    // Set only after the write succeeds, so a refused upload never appears to
+    // have worked. An avatar clears it, because the two are exclusive.
+    setAvatarPhoto(choice.image || null);
     setUser(updated);
     setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
     toast.success(t('avatar.updated'));
-  }, [setUser, setRegisteredUsers, toast, t]);
+  }, [user, setUser, setRegisteredUsers, toast, t]);
 
-  const handleSelectAvatarPreset = useCallback(async (preset) => {
-    applyAvatarUpdate(await setUserAvatar(user.id, { preset }));
-    setAvatarPhoto(null);
-  }, [user, applyAvatarUpdate]);
+  /**
+   * Same outcome contract as sharing a product (services/share.js): 'shared'
+   * needs nothing said, the OS sheet already confirmed it; 'cancelled' means
+   * they backed out on purpose; 'copied' and 'failed' are the two outcomes
+   * silent enough to need a toast.
+   */
+  const handleShareApp = useCallback(async () => {
+    const result = await shareApp();
+    if (result === 'copied') toast.success(t('toast.appLinkCopied'));
+    else if (result === 'failed') toast.error(t('toast.appShareFailed'));
+  }, [toast, t]);
 
-  const handleUploadAvatarPhoto = useCallback(async (image) => {
-    const updated = await setUserAvatar(user.id, { image });
-    // Held locally rather than waiting on the fetch the new timestamp triggers —
-    // these are the same bytes, and they are already here. Set only after the
-    // write succeeds, so a refused upload never appears to have worked.
-    setAvatarPhoto(image);
-    applyAvatarUpdate(updated);
-  }, [user, applyAvatarUpdate]);
-
-  const handleClearAvatar = useCallback(async () => {
-    applyAvatarUpdate(await clearUserAvatar(user.id));
-    setAvatarPhoto(null);
-  }, [user, applyAvatarUpdate]);
+  /**
+   * There is no backend to send this to — no rating this build persists
+   * anywhere — so the "submit" is entirely local: acknowledge the tap, let
+   * the modal show its thank-you. Kept as its own handler rather than inlined
+   * so that a real submission only ever needs to change in one place.
+   */
+  const handleSubmitRating = useCallback(() => {}, []);
 
   const handleStartEditingProfile = useCallback(() => {
     if (!user) return;
@@ -2550,6 +2590,44 @@ export default function App() {
                               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
                             </div>
                           </button>
+
+                          {/*
+                            Share and Rate: not a "view" like the rows above —
+                            neither pushes into a sub-screen, so they fire an
+                            action directly (the OS share sheet, or the rating
+                            sheet) instead of routing through activeAccountView.
+                          */}
+                          <button
+                            onClick={handleShareApp}
+                            className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
+                          >
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
+                              <ShareIcon className="w-5 h-5 drop-shadow-sm" />
+                            </div>
+                            <div className="flex-1">
+                              <h3 className="font-extrabold text-slate-600 text-sm tracking-tight">{t('account.shareApp')}</h3>
+                              <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{t('account.shareAppSub')}</p>
+                            </div>
+                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
+                              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
+                            </div>
+                          </button>
+
+                          <button
+                            onClick={() => setIsRateAppOpen(true)}
+                            className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
+                          >
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
+                              <StarIcon className="w-5 h-5 drop-shadow-sm" />
+                            </div>
+                            <div className="flex-1">
+                              <h3 className="font-extrabold text-slate-600 text-sm tracking-tight">{t('account.rateApp')}</h3>
+                              <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{t('account.rateAppSub')}</p>
+                            </div>
+                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
+                              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
+                            </div>
+                          </button>
                         </div>
                       ) : activeAccountView === 'history' ? (
                         <AccountHistory user={user} orders={orders} />
@@ -2576,61 +2654,69 @@ export default function App() {
                         <>
                           {!isEditingProfile && (
                         <>
-                          {/* Premium Skeuomorphic Profile Avatar & Info */}
-                          <div className="relative w-16 h-16 sm:w-28 sm:h-28 mx-auto mb-2 sm:mb-5 animate-scale-in drop-shadow-xl shrink-0">
-                            <div className="absolute inset-0 bg-gradient-to-br from-white to-emerald-100 rounded-full shadow-[8px_8px_16px_rgba(27,77,62,0.1),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white"></div>
-                            <ProfileAvatar
-                              name={user.name}
-                              avatar={user.avatar}
-                              photo={avatarPhoto}
-                              className="absolute inset-1.5 rounded-full text-2xl sm:text-4xl border border-[#0d2a20]"
-                              emojiClassName="text-2xl sm:text-5xl"
-                            />
-                            {/* Replaces the online-glow dot that used to sit here.
-                                That corner is the one place on a round avatar the
-                                eye already goes, and a pulsing indicator of
-                                nothing actionable was spending it. */}
-                            <button
-                              type="button"
-                              onClick={() => setIsAvatarPickerOpen(true)}
-                              aria-label={t('avatar.change')}
-                              className="absolute -bottom-0.5 -right-0.5 sm:bottom-1 sm:right-1 w-6 h-6 sm:w-9 sm:h-9 bg-white rounded-full border-2 border-white text-[#1B4D3E] flex items-center justify-center shadow-[0_2px_6px_rgba(27,77,62,0.25)] hover:bg-emerald-50 transition-colors cursor-pointer active:scale-95"
-                            >
-                              <CameraIcon className="w-3 h-3 sm:w-4.5 sm:h-4.5" strokeWidth={2.25} />
-                            </button>
-                          </div>
-                          
-                          <div className="text-center mb-3 sm:mb-8">
-                            <h3 className="font-extrabold text-lg sm:text-2xl text-slate-800 drop-shadow-sm mb-1 sm:mb-1.5 tracking-tight">{user.name}</h3>
-                            <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-[10.5px] sm:text-[11.5px] font-black uppercase tracking-widest shadow-[inset_1px_1px_2px_rgba(255,255,255,0.4),2px_4px_8px_rgba(16,185,129,0.3)] border border-emerald-400/50">
-                              <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse shadow-[0_0_4px_white]"></span>
-                              Role: {user.role ? user.role.replace('_', ' ') : 'Customer'}
+                          {/*
+                            One soft card carrying the picture, the name and the
+                            role, instead of three separately-shadowed objects
+                            stacked on the page background. The old block piled
+                            four shadows on the avatar alone — an outer drop
+                            shadow, a neumorphic pair on the plate behind it and
+                            a dark hairline border — which at 64px on a phone
+                            read as grime around the edge rather than depth.
+                          */}
+                          <div className="rounded-[2rem] bg-gradient-to-b from-emerald-50/90 to-white border border-emerald-100/70 px-5 pt-6 pb-5 mb-4 flex flex-col items-center animate-scale-in shrink-0">
+                            <div className="relative w-20 h-20 sm:w-28 sm:h-28">
+                              <ProfileAvatar
+                                name={user.name}
+                                avatar={user.avatar}
+                                photo={avatarPhoto}
+                                className="w-full h-full rounded-full ring-4 ring-white shadow-[0_10px_28px_rgba(15,60,45,0.18)] text-2xl sm:text-4xl"
+                                emojiClassName="text-3xl sm:text-5xl"
+                              />
+                              {/* Replaces the online-glow dot that used to sit here.
+                                  That corner is the one place on a round avatar the
+                                  eye already goes, and a pulsing indicator of
+                                  nothing actionable was spending it. */}
+                              <button
+                                type="button"
+                                onClick={() => setIsAvatarPickerOpen(true)}
+                                aria-label={t('avatar.change')}
+                                className="absolute -bottom-1 -right-1 w-8 h-8 sm:w-9 sm:h-9 bg-[#1B4D3E] rounded-full ring-4 ring-white text-white flex items-center justify-center shadow-[0_4px_10px_rgba(27,77,62,0.35)] hover:bg-[#123B2F] transition-colors cursor-pointer active:scale-95"
+                              >
+                                <CameraIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" strokeWidth={2.25} />
+                              </button>
                             </div>
+
+                            <h3 className="mt-3.5 font-black text-lg sm:text-2xl text-[#123B2F] tracking-tight text-center break-words max-w-full">{user.name}</h3>
                           </div>
                         </>
                       )}
 
                       {isEditingProfile ? (
-                        <form onSubmit={handleSaveProfile} className="bg-slate-50/90 backdrop-blur-2xl rounded-[2rem] p-5 border border-white space-y-4 text-left text-sm shadow-[inset_2px_2px_4px_rgba(255,255,255,0.9),12px_12px_24px_rgba(166,180,200,0.4),-12px_-12px_24px_rgba(255,255,255,0.9)] relative z-10 transition-all duration-300">
-                          <h4 className="font-black text-[#1B4D3E] border-b-2 border-emerald-900/5 pb-2.5 text-sm flex items-center gap-2 drop-shadow-sm">
-                            <span className="bg-white p-1.5 rounded-xl shadow-[inset_1px_1px_2px_rgba(0,0,0,0.1),2px_2px_4px_rgba(255,255,255,1)] flex items-center justify-center">
-                              <svg className="w-4 h-4 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                            </span> {t('account.editProfile')}
+                        <form onSubmit={handleSaveProfile} className="bg-white rounded-[2rem] border border-slate-100 shadow-[0_8px_24px_rgba(15,60,45,0.06)] p-5 space-y-4 text-left text-sm relative z-10">
+                          <h4 className="font-black text-[#123B2F] text-sm flex items-center gap-2.5">
+                            <span className="w-9 h-9 rounded-xl bg-emerald-50 text-[#1B4D3E] flex items-center justify-center">
+                              <PencilIcon className="w-4 h-4" strokeWidth={2.5} />
+                            </span>
+                            {t('account.editProfile')}
                           </h4>
-                          
-                          <div className="space-y-3.5">
-                            <div className="relative group">
-                              <label className="block text-slate-500 font-extrabold mb-1.5 text-[11.5px] uppercase tracking-widest pl-1 group-focus-within:text-[#1B4D3E] transition-colors">User Name</label>
+
+                          <div className="space-y-3">
+                            <div className="group">
+                              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 group-focus-within:text-[#1B4D3E] transition-colors">
+                                {t('profile.name')}
+                              </label>
                               <input
                                 type="text"
                                 value={editName}
                                 onChange={(e) => setEditName(e.target.value)}
-                                className="w-full bg-slate-100/50 border-0 rounded-2xl px-4 py-2.5 font-bold text-slate-800 focus:outline-none focus:ring-0 shadow-[inset_4px_4px_8px_rgba(166,180,200,0.4),inset_-4px_-4px_8px_rgba(255,255,255,0.9)] transition-all"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-bold text-slate-800 focus:outline-none focus:border-emerald-400 focus:bg-white transition-all"
                                 required
                               />
                             </div>
-                            <div className="relative group">
-                              <label className="block text-slate-500 font-extrabold mb-1.5 text-[11.5px] uppercase tracking-widest pl-1 group-focus-within:text-[#1B4D3E] transition-colors">Email Address</label>
+                            <div className="group">
+                              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 group-focus-within:text-[#1B4D3E] transition-colors">
+                                {t('profile.email')}
+                              </label>
                               {/* Optional: signing up needs only a phone number,
                                   so most accounts have no email at all. Marking
                                   this required made the form unsubmittable for
@@ -2639,66 +2725,80 @@ export default function App() {
                                 type="email"
                                 value={editEmail}
                                 onChange={(e) => setEditEmail(e.target.value)}
-                                placeholder="Optional"
-                                className="w-full bg-slate-100/50 border-0 rounded-2xl px-4 py-2.5 font-bold text-slate-800 focus:outline-none focus:ring-0 shadow-[inset_4px_4px_8px_rgba(166,180,200,0.4),inset_-4px_-4px_8px_rgba(255,255,255,0.9)] transition-all"
+                                placeholder={t('profile.notAdded')}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-bold text-slate-800 placeholder:text-slate-300 placeholder:font-semibold focus:outline-none focus:border-emerald-400 focus:bg-white transition-all"
                               />
                             </div>
-                            <div className="relative group">
-                              <label className="block text-slate-500 font-extrabold mb-1.5 text-[11.5px] uppercase tracking-widest pl-1 group-focus-within:text-[#1B4D3E] transition-colors">Mobile Number</label>
+                            <div className="group">
+                              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 group-focus-within:text-[#1B4D3E] transition-colors">
+                                {t('profile.phone')}
+                              </label>
                               <input
                                 type="text"
+                                inputMode="numeric"
                                 value={editPhone}
                                 onChange={(e) => setEditPhone(e.target.value.replace(/\D/g, ''))}
-                                className="w-full bg-slate-100/50 border-0 rounded-2xl px-4 py-2.5 font-bold text-slate-800 focus:outline-none focus:ring-0 shadow-[inset_4px_4px_8px_rgba(166,180,200,0.4),inset_-4px_-4px_8px_rgba(255,255,255,0.9)] transition-all"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-bold text-slate-800 focus:outline-none focus:border-emerald-400 focus:bg-white transition-all"
                                 required
                               />
                             </div>
                           </div>
 
-                          <div className="flex gap-3 pt-3 border-t border-emerald-900/5">
+                          <div className="flex gap-3 pt-1">
                             <button
                               type="button"
                               onClick={() => setIsEditingProfile(false)}
-                              className="flex-1 bg-slate-100 text-slate-600 font-extrabold py-2.5 rounded-2xl text-center cursor-pointer transition-all active:scale-95 shadow-[4px_4px_8px_rgba(166,180,200,0.3),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:shadow-[inset_2px_2px_4px_rgba(166,180,200,0.3),inset_-2px_-2px_4px_rgba(255,255,255,0.8)]"
+                              className="flex-1 bg-slate-100 text-slate-600 font-black py-3 rounded-2xl text-center cursor-pointer transition-all active:scale-[0.98] hover:bg-slate-200"
                             >
-                              Cancel
+                              {t('common.cancel')}
                             </button>
                             <button
                               type="submit"
-                              className="flex-1 bg-gradient-to-br from-[#1B4D3E] to-[#0A2E22] text-white font-black py-2.5 rounded-2xl text-center cursor-pointer transition-all active:scale-95 shadow-[4px_4px_10px_rgba(27,77,62,0.4),-4px_-4px_10px_rgba(255,255,255,0.9)] border border-[#143B2B]"
+                              className="flex-1 bg-[#1B4D3E] text-white font-black py-3 rounded-2xl text-center cursor-pointer transition-all active:scale-[0.98] hover:bg-[#123B2F] shadow-[0_6px_18px_rgba(27,77,62,0.25)]"
                             >
-                              Save Details
+                              {t('common.save')}
                             </button>
                           </div>
                         </form>
                       ) : (
-                        <div className="bg-slate-50/90 backdrop-blur-2xl rounded-[2rem] p-3 sm:p-5 border border-white space-y-2 sm:space-y-3 text-left text-sm shadow-[inset_2px_2px_4px_rgba(255,255,255,0.9),12px_12px_24px_rgba(166,180,200,0.4),-12px_-12px_24px_rgba(255,255,255,0.9)] relative z-10 transition-all duration-300">
-                          <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center py-1.5 sm:py-2 border-b border-emerald-900/5 group gap-0.5 sm:gap-0">
-                            <span className="text-slate-400 font-extrabold text-[11.5px] uppercase tracking-wider group-hover:text-slate-600 transition-colors">User Name</span>
-                            <span className="font-black text-slate-800 drop-shadow-sm break-words max-w-full">{user.name}</span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center py-1.5 sm:py-2 border-b border-emerald-900/5 group gap-0.5 sm:gap-0">
-                            <span className="text-slate-400 font-extrabold text-[11.5px] uppercase tracking-wider group-hover:text-slate-600 transition-colors">Email Address</span>
-                            <span className="font-bold text-slate-700 drop-shadow-sm break-all sm:break-words max-w-full">{user.email}</span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center py-1.5 sm:py-2 border-b border-emerald-900/5 group gap-0.5 sm:gap-0">
-                            <span className="text-slate-400 font-extrabold text-[11.5px] uppercase tracking-wider group-hover:text-slate-600 transition-colors">Mobile Number</span>
-                            <span className="font-black text-[#1B4D3E] drop-shadow-sm break-words max-w-full">{user.phone || user.pendingPhone || '—'}</span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center py-1.5 sm:py-2 border-b border-emerald-900/5 group bg-emerald-50/50 -mx-2 px-2 rounded-xl gap-0.5 sm:gap-0">
-                            <span className="text-emerald-700 font-extrabold text-[11.5px] uppercase tracking-wider">VegWallet Balance</span>
-                            <span className="font-black text-emerald-600 text-lg drop-shadow-md">₹{walletBalance.toFixed(0)}</span>
-                          </div>
+                        <div className="bg-white rounded-[2rem] border border-slate-100 shadow-[0_8px_24px_rgba(15,60,45,0.06)] text-left text-sm overflow-hidden relative z-10">
+                          <ProfileField
+                            icon={UserIcon}
+                            label={t('profile.name')}
+                            value={user.name}
+                            placeholder={t('profile.notAdded')}
+                          />
+                          {/*
+                            An account is created from a phone number alone, so
+                            most have no address at all — an empty value here
+                            used to render as a blank line that looked like a
+                            failed load rather than a field nobody has filled.
+                          */}
+                          <ProfileField
+                            icon={MailIcon}
+                            label={t('profile.email')}
+                            value={user.email}
+                            placeholder={t('profile.notAdded')}
+                          />
+                          <ProfileField
+                            icon={PhoneIcon}
+                            label={t('profile.phone')}
+                            value={user.phone || user.pendingPhone}
+                            placeholder={t('profile.notAdded')}
+                            // The credential of record, and the only field here
+                            // that is ever proved. Worth saying so.
+                            verified={Boolean(user.phone && user.phoneVerified)}
+                          />
 
-                          <button
-                            type="button"
-                            onClick={handleStartEditingProfile}
-                            className="w-full mt-2 sm:mt-3 py-2 sm:py-2.5 bg-gradient-to-br from-emerald-50 to-white text-[#1B4D3E] font-black rounded-2xl border border-emerald-100 hover:border-emerald-200 transition-all text-center cursor-pointer active:scale-95 shadow-[4px_4px_10px_rgba(166,180,200,0.2),-4px_-4px_10px_rgba(255,255,255,0.9)] hover:shadow-[inset_2px_2px_4px_rgba(166,180,200,0.2),inset_-2px_-2px_4px_rgba(255,255,255,0.9)] animate-fade-in flex items-center justify-center gap-2"
-                          >
-                            <span className="flex items-center justify-center bg-white/50 p-1.5 rounded-xl shadow-[inset_1px_1px_2px_rgba(0,0,0,0.05),1px_1px_2px_rgba(255,255,255,1)]">
-                              <svg className="w-5 h-5 text-[#1B4D3E]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                            </span> {t('account.editProfile')}
-                          </button>
+                          <div className="p-3">
+                            <button
+                              type="button"
+                              onClick={handleStartEditingProfile}
+                              className="w-full py-3 bg-[#1B4D3E] text-white font-black rounded-2xl transition-all text-center cursor-pointer active:scale-[0.99] shadow-[0_6px_18px_rgba(27,77,62,0.25)] hover:bg-[#123B2F] flex items-center justify-center gap-2 text-[0.82rem]"
+                            >
+                              <PencilIcon className="w-4 h-4" strokeWidth={2.5} /> {t('account.editProfile')}
+                            </button>
+                          </div>
                         </div>
                       )}
 
@@ -3027,10 +3127,15 @@ export default function App() {
         <AvatarPicker
           user={user}
           currentPhoto={avatarPhoto}
-          onSelectPreset={handleSelectAvatarPreset}
-          onUploadPhoto={handleUploadAvatarPhoto}
-          onClear={handleClearAvatar}
+          onSave={handleSaveAvatar}
           onClose={() => setIsAvatarPickerOpen(false)}
+        />
+      )}
+
+      {isRateAppOpen && (
+        <RateAppModal
+          onSubmit={handleSubmitRating}
+          onClose={() => setIsRateAppOpen(false)}
         />
       )}
 

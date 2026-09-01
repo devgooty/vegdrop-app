@@ -1,4 +1,5 @@
 import React from 'react';
+import { avatarPalette } from '../data/avatars';
 
 /**
  * The built-in avatars, drawn.
@@ -271,7 +272,80 @@ function Sprout() {
   );
 }
 
+/**
+ * A person, drawn from the two swatches anyone is allowed to change.
+ *
+ * The face is the SAME `Face` the vegetables wear, deliberately: a person with
+ * a bespoke expression standing next to twelve mascots reads as artwork
+ * borrowed from somewhere else. Only the body below the chin differs.
+ *
+ * The shirt colours live HERE and not in the roster because they are not a
+ * choice — nothing stores them, and they exist only so the silhouette reads as
+ * a person rather than a floating head. The two things that ARE stored, skin
+ * and hair, arrive already resolved (see `avatarPalette`), so this component
+ * never has to know what a slug means or what to do with one it cannot place.
+ *
+ * Every fill is paired with its own `shade`, and the order of these elements is
+ * the drawing: shoulders, then neck, then the hair BEHIND the head, then the
+ * head over both, then the fringe over that.
+ */
+function Person({ female = false, skin, hair }) {
+  const shirt = female ? '#B4487A' : '#2F6FA8';
+  const shirtShade = female ? '#933A63' : '#255A88';
+
+  return (
+    <>
+      <path d="M13 100 C13 83 29 74 50 74 C71 74 87 83 87 100 Z" fill={shirt} />
+      {/* A light coming from the left, so the torso is not one flat block. */}
+      <path d="M13 100 C13 83 29 74 50 74 C40 78 33 88 31 100 Z" fill="#fff" opacity="0.14" />
+      <path d="M43 74.2 Q50 82 57 74.2 Q50 72.8 43 74.2 Z" fill={shirtShade} />
+
+      <rect x="43.5" y="55" width="13" height="21" rx="6.2" fill={skin.shade} />
+
+      {female && (
+        <>
+          {/* Behind the head, and long enough to reach the shoulders — which is
+              the whole of what distinguishes the two silhouettes at tile size. */}
+          <rect x="24.5" y="38" width="11.5" height="45" rx="5.7" fill={hair.shade} />
+          <rect x="64" y="38" width="11.5" height="45" rx="5.7" fill={hair.shade} />
+        </>
+      )}
+
+      <ellipse cx="50" cy="46" rx="20.5" ry="22" fill={skin.hex} />
+      {!female && (
+        <>
+          <circle cx="29.5" cy="50" r="4.6" fill={skin.hex} />
+          <circle cx="70.5" cy="50" r="4.6" fill={skin.hex} />
+          {/* A crease inside each ear rather than a whole ear in the shade —
+              at the size the picker draws these, a solid darker circle stops
+              reading as an ear and starts reading as a smudge. */}
+          <path d="M28.2 48.6 A2.2 2.2 0 0 0 28.2 51.8" fill="none" stroke={skin.shade} strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M71.8 48.6 A2.2 2.2 0 0 1 71.8 51.8" fill="none" stroke={skin.shade} strokeWidth="1.4" strokeLinecap="round" />
+        </>
+      )}
+      {/* The jaw, one shade down, so the chin has an underside. */}
+      <path d="M31 54 C34 66 42 70 50 70 C58 70 66 66 69 54 C66 63 59 66 50 66 C41 66 34 63 31 54 Z" fill={skin.shade} opacity="0.45" />
+
+      <path
+        d="M27.5 47 C27.5 12 72.5 12 72.5 47 C72.5 38 63 40 50 40 C37 40 27.5 38 27.5 47 Z"
+        fill={hair.hex}
+      />
+      {/* The parting: without it the fringe is one flat cap of colour. */}
+      <path
+        d={female
+          ? 'M50 18 C 40 20 34 28 32 40 C 36 39 40 38.6 46 38.4 C 46 30 48 23 50 18 Z'
+          : 'M50 17.5 C 62 19 70 27 71.5 40 C 67 38.8 60 38.2 50 38.2 Z'}
+        fill={hair.shade}
+      />
+
+      <Face y={48} spread={7.6} scale={0.86} />
+    </>
+  );
+}
+
 const ART = {
+  male: (props) => <Person {...props} />,
+  female: (props) => <Person {...props} female />,
   tomato: Tomato,
   carrot: Carrot,
   broccoli: Broccoli,
@@ -297,10 +371,18 @@ export function hasAvatarArt(key) {
  * `delay` staggers the idle animation across a grid. Without it twelve mascots
  * bob in perfect unison, which reads as one mechanism rather than twelve
  * characters.
+ *
+ * `options` are the stored skin-tone and hair slugs. They are resolved to
+ * colours HERE rather than in each caller, so the picker's grid, its preview
+ * and the account header cannot end up drawing the same person differently.
+ * The vegetables take the props and ignore them — there is nothing about a
+ * tomato for anyone to edit.
  */
-export default function AvatarArt({ avatarKey, delay = 0, className = '' }) {
+export default function AvatarArt({ avatarKey, options, delay = 0, className = '' }) {
   const Art = ART[avatarKey];
   if (!Art) return null;
+
+  const palette = avatarPalette(options);
 
   return (
     <svg
@@ -310,7 +392,7 @@ export default function AvatarArt({ avatarKey, delay = 0, className = '' }) {
       style={{ '--vd-mascot-delay': `${delay}ms` }}
     >
       <g className="vd-mascot">
-        <Art />
+        <Art skin={palette.skin} hair={palette.hair} />
       </g>
     </svg>
   );

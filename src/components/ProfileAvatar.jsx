@@ -36,6 +36,7 @@ export default function ProfileAvatar({ name, avatar, photo, className = '', emo
           // is what stops it reading as a sticker dropped into a badge.
           <AvatarArt
             avatarKey={preset.key}
+            options={avatar}
             delay={preset.index * 240}
             className="w-[86%] h-[86%] translate-y-[6%]"
           />
