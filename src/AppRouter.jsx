@@ -1,5 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import SplashScreen from './components/SplashScreen';
+import { installTapHaptics } from './lib/haptics';
 
 /**
  * Hash-based routing between the three role apps.
@@ -31,6 +32,10 @@ export default function AppRouter() {
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
+
+  // Mounted once, above the role switch, so a tap vibrates the same way
+  // whichever of the three apps is active.
+  useEffect(() => installTapHaptics(), []);
 
   const Active =
     route === 'shopkeeper'
