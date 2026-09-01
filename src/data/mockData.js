@@ -97,7 +97,10 @@ export const initialCategories = [
     id: 2,
     slug: 'fresh-vegetables',
     title: 'Fresh Vegetables',
-    imageUrl: 'https://images.unsplash.com/photo-1566385101042-1a0aa0c1268c?w=800&h=450&fit=crop&auto=format&q=80',
+    // Was a chaotic overhead pile of a dozen-plus veg crammed edge to edge —
+    // abundant but unreadable at tile size. Replaced with a smaller, tidier
+    // flat-lay that still fills the frame.
+    imageUrl: 'https://images.unsplash.com/photo-1669909910353-7bcf47c2139d?w=800&h=450&fit=crop&auto=format&q=80',
     itemCount: 24,
     badge: 'Popular',
   },
