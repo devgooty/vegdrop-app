@@ -6,6 +6,8 @@ import ProductList from './components/ProductList';
 import BottomNav from './components/BottomNav';
 import WalletModal from './components/WalletModal';
 import NotepadModal from './components/NotepadModal';
+import NotepadChooser from './components/NotepadChooser';
+import ListShoppingResults from './components/ListShoppingResults';
 import CartModal from './components/CartModal';
 import CategoryDetailView from './components/CategoryDetailView';
 import SearchResultsView from './components/SearchResultsView';
@@ -429,6 +431,17 @@ export default function App() {
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isNotepadOpen, setIsNotepadOpen] = useState(false);
+  // Which of the chooser's two cards opened the modal — read once by
+  // NotepadModal to decide whether to start listening or focus the field,
+  // then irrelevant until the chooser is used again.
+  const [notepadMode, setNotepadMode] = useState(null);
+  const [isNotepadChooserOpen, setIsNotepadChooserOpen] = useState(false);
+  /**
+   * The list lines "Find these in the shop" was pressed with — a snapshot, not
+   * a live read of the notepad. Ticking something off while the results are
+   * open must not make its row vanish out from under the finger.
+   */
+  const [listSearchNotes, setListSearchNotes] = useState(null);
 
   /**
    * The colour the home hero is currently painting the top of the screen.
@@ -2224,7 +2237,7 @@ export default function App() {
               searchOpen={searchDiscoveryOpen}
               onCloseSearch={handleClearSearch}
               onAddressChange={() => setAddressVersion((v) => v + 1)}
-              onOpenNotepad={() => setIsNotepadOpen(true)}
+              onOpenNotepad={() => setIsNotepadChooserOpen(true)}
             />
           )}
 
@@ -2521,24 +2534,6 @@ export default function App() {
                           </button>
 
                           <button
-                            onClick={() => setActiveAccountView('rewards')}
-                            className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
-                          >
-                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
-                              <CoinsIcon className="w-5 h-5 drop-shadow-sm" />
-                            </div>
-                            <div className="flex-1">
-                              <h3 className="font-extrabold text-slate-600 text-sm tracking-tight">{t('rewards.title')}</h3>
-                              <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">
-                                {t('account.rewardsSub', { tokens: TOKENS_PER_BATCH, rupees: RUPEES_PER_BATCH })}
-                              </p>
-                            </div>
-                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
-                              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
-                            </div>
-                          </button>
-
-                          <button
                             onClick={() => setActiveAccountView('wishlist')}
                             className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
                           >
@@ -2554,23 +2549,7 @@ export default function App() {
                             </div>
                           </button>
 
-                          <button
-                            onClick={() => setActiveAccountView('address')}
-                            className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
-                          >
-                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
-                              <MapPinIcon className="w-5 h-5 drop-shadow-sm" />
-                            </div>
-                            <div className="flex-1">
-                              <h3 className="font-extrabold text-slate-600 text-sm tracking-tight">{t('account.savedAddress')}</h3>
-                              <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{t('account.savedAddressSub')}</p>
-                            </div>
-                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
-                              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
-                            </div>
-                          </button>
-
-                          {/* Language is a destination like the four above it,
+                          {/* Language is a destination like the rows above it,
                               rather than a card repeated at the foot of every
                               account screen, which is what it was. The subtitle
                               is the setting's current value, so the row answers
@@ -3118,10 +3097,48 @@ export default function App() {
         onRazorpayPayment={handleTopUpSettled}
       />
 
+      {isNotepadChooserOpen && (
+        <NotepadChooser
+          onChoose={(mode) => {
+            setNotepadMode(mode);
+            setIsNotepadChooserOpen(false);
+            setIsNotepadOpen(true);
+          }}
+          onClose={() => setIsNotepadChooserOpen(false)}
+        />
+      )}
+
       <NotepadModal
         isOpen={isNotepadOpen}
+        initialMode={notepadMode}
+        onBuildCart={setListSearchNotes}
         onClose={() => setIsNotepadOpen(false)}
       />
+
+      {listSearchNotes && (
+        <ListShoppingResults
+          notes={listSearchNotes}
+          // The chosen market's sheet, exactly as SearchResultsView uses —
+          // otherwise the list could offer produce this market does not sell,
+          // at a price the rest of the app disagrees with.
+          products={browseProducts}
+          categories={categories}
+          cartItems={activeCartItems}
+          onAddToCart={handleAddToCart}
+          onUpdateQuantity={handleUpdateQuantity}
+          onSelectProduct={(product, category) => {
+            setListSearchNotes(null);
+            setIsNotepadOpen(false);
+            handleOpenProductDetail(product, category);
+          }}
+          onSeeAll={(term) => {
+            setListSearchNotes(null);
+            setIsNotepadOpen(false);
+            handleSubmitSearch(term);
+          }}
+          onBack={() => setListSearchNotes(null)}
+        />
+      )}
 
       {isAvatarPickerOpen && user && (
         <AvatarPicker

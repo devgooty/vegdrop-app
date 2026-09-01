@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ClipboardList, X, Plus, Trash2, Check, ListChecks, Mic } from 'lucide-react';
+import { ClipboardList, X, Plus, Trash2, Check, ListChecks, Mic, Search } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { getNotes, addNote, toggleNote, removeNote, clearChecked } from '../services/notepad';
 import { createSpeechRecognition, mapSpeechError } from '../services/voiceSearch';
@@ -25,7 +25,7 @@ function splitIntoItems(text) {
  * onto that one stored list, not state of its own, so it always shows what
  * is actually saved.
  */
-export default function NotepadModal({ isOpen, onClose }) {
+export default function NotepadModal({ isOpen, initialMode, onBuildCart, onClose }) {
   const { t, language } = useLanguage();
   const [notes, setNotes] = useState([]);
   const [draft, setDraft] = useState('');
@@ -66,6 +66,29 @@ export default function NotepadModal({ isOpen, onClose }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
+
+  /**
+   * Carries out whichever choice NotepadChooser made — this modal itself has
+   * no opinion about how it was opened. 'voice' starts listening the instant
+   * the sheet is up, matching what tapping the mic on the chooser promised.
+   * 'write' focuses the field once the slide-up has had time to finish;
+   * focusing on the same frame the sheet opens fights that transition and
+   * sometimes loses the focus outright.
+   */
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    if (initialMode === 'voice') {
+      openVoiceAdd();
+      return undefined;
+    }
+    if (initialMode === 'write') {
+      const id = setTimeout(() => inputRef.current?.focus(), 350);
+      return () => clearTimeout(id);
+    }
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialMode]);
 
   if (!isOpen) return null;
 
@@ -153,6 +176,7 @@ export default function NotepadModal({ isOpen, onClose }) {
   };
 
   const checkedCount = notes.filter((n) => n.checked).length;
+  const outstanding = notes.filter((n) => !n.checked);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-[200] animate-fade-in">
@@ -268,17 +292,37 @@ export default function NotepadModal({ isOpen, onClose }) {
 
         {/* Footer: item count + clear-completed, only once there is something to clear */}
         {notes.length > 0 && (
-          <div className="flex-shrink-0 px-4 py-3 border-t border-gray-100 bg-white flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">
-              {t('notepad.itemCount', { count: notes.length })}
-            </span>
-            {checkedCount > 0 && (
+          <div className="flex-shrink-0 px-4 py-3 border-t border-gray-100 bg-white space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-400">
+                {t('notepad.itemCount', { count: notes.length })}
+              </span>
+              {checkedCount > 0 && (
+                <button
+                  onClick={handleClearChecked}
+                  className="flex items-center gap-1.5 text-xs font-black text-[#1B4D3E] hover:underline cursor-pointer"
+                >
+                  <ListChecks className="w-3.5 h-3.5" />
+                  {t('notepad.clearChecked', { count: checkedCount })}
+                </button>
+              )}
+            </div>
+
+            {/*
+              Turns the written list into something buyable. Offered on the
+              items still OUTSTANDING: a ticked line means "already got it", so
+              searching the shop for it is work nobody asked for. With every
+              line ticked there is nothing to find and the button is gone
+              rather than sitting there promising an empty screen.
+            */}
+            {outstanding.length > 0 && (
               <button
-                onClick={handleClearChecked}
-                className="flex items-center gap-1.5 text-xs font-black text-[#1B4D3E] hover:underline cursor-pointer"
+                type="button"
+                onClick={() => onBuildCart?.(outstanding)}
+                className="w-full flex items-center justify-center gap-2 bg-[#1B4D3E] text-white rounded-2xl py-3 text-sm font-black shadow-[0_6px_18px_rgba(27,77,62,0.25)] active:scale-[0.99] transition hover:bg-[#123B2F] cursor-pointer"
               >
-                <ListChecks className="w-3.5 h-3.5" />
-                {t('notepad.clearChecked', { count: checkedCount })}
+                <Search className="w-4 h-4" strokeWidth={2.5} />
+                {t('notepad.buildCart')}
               </button>
             )}
           </div>

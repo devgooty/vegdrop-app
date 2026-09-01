@@ -100,6 +100,32 @@ const STRINGS = {
   'common.close': { en: 'Close', hi: 'बंद करें', te: 'మూసివేయి' },
   'common.delete': { en: 'Delete', hi: 'हटाएँ', te: 'తొలగించు' },
 
+  // --- List -> catalog results (ListShoppingResults.jsx) ----------------------
+  'listResults.title': { en: 'Your list, in stock', hi: 'आपकी सूची, स्टॉक में', te: 'మీ జాబితా, స్టాక్‌లో' },
+  'listResults.matched': {
+    en: '{found} of {total} items found',
+    hi: '{total} में से {found} वस्तुएँ मिलीं',
+    te: '{total}లో {found} అంశాలు దొరికాయి',
+  },
+  'listResults.resultsFor': { en: 'Results for', hi: 'परिणाम', te: 'ఫలితాలు' },
+  'listResults.seeAll': { en: 'See all', hi: 'सभी देखें', te: 'అన్నీ చూడండి' },
+  'listResults.noMatch': {
+    en: 'This market does not stock it right now.',
+    hi: 'यह बाज़ार अभी इसे नहीं रखता।',
+    te: 'ఈ మార్కెట్‌లో ఇది ప్రస్తుతం లేదు.',
+  },
+  'notepad.buildCart': { en: 'Find these in the shop', hi: 'इन्हें दुकान में खोजें', te: 'వీటిని షాప్‌లో వెతకండి' },
+
+  // --- Notepad entry chooser (NotepadChooser.jsx) -----------------------------
+  'notepad.chooserTitle': { en: 'Add to My List', hi: 'मेरी सूची में जोड़ें', te: 'నా జాబితాకు జోడించండి' },
+  'notepad.chooserSubtitle': {
+    en: 'Say it or write it — whatever’s quicker',
+    hi: 'बोलकर या लिखकर — जो भी आसान लगे',
+    te: 'చెప్పండి లేదా రాయండి — ఏది సులభమైతే అది',
+  },
+  'notepad.sayIt': { en: 'Say it', hi: 'बोलकर बताएँ', te: 'చెప్పండి' },
+  'notepad.writeIt': { en: 'Write it', hi: 'लिखें', te: 'రాయండి' },
+
   // --- Notepad modal (NotepadModal.jsx) ---------------------------------------
   'notepad.placeholder': { en: 'Add something to remember…', hi: 'याद रखने के लिए कुछ जोड़ें…', te: 'గుర్తుంచుకోవడానికి ఏదైనా జోడించండి…' },
   'notepad.add': { en: 'Add', hi: 'जोड़ें', te: 'జోడించు' },
