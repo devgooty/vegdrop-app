@@ -105,7 +105,10 @@ export const initialCategories = [
     id: 3,
     slug: 'organic-fruits',
     title: 'Organic Fruits',
-    imageUrl: 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?w=800&h=450&fit=crop&auto=format&q=80',
+    // Was a fruit basket crammed with 8+ varieties (grapes, plums, mango,
+    // starfruit, pineapple, apples...) reading as cluttered rather than
+    // premium. Replaced with a single well-lit plate of whole fruit.
+    imageUrl: 'https://images.unsplash.com/photo-1743956345250-4a43d73a7628?w=800&h=450&fit=crop&auto=format&q=80',
     itemCount: 18,
     badge: '100% Organic',
   },
