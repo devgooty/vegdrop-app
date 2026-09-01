@@ -1042,10 +1042,21 @@ export default function App() {
       }
 
       if (phoneChanged) {
-        const issued = await startPhoneChange({ phone });
-        // `issued.destination` is masked, so the raw number is kept alongside —
-        // the reverse-OTP panel needs a real number to raise a challenge for.
-        setProfileChallenge({ kind: 'phone', rawPhone: phone, ...issued });
+        try {
+          const issued = await startPhoneChange({ phone });
+          setProfileChallenge({ kind: 'phone', rawPhone: phone, ...issued });
+          setProfileReverse(false);
+        } catch (err) {
+          // Reverse OTP is the recovery path when nothing can be delivered.
+          // Gating the panel on a successful send made that failure a dead end.
+          if (err instanceof ApiRequestError && err.code === 'OTP_DELIVERY_FAILED') {
+            setProfileChallenge({ kind: 'phone', rawPhone: phone, destination: phone });
+            setProfileReverse(true);
+          } else {
+            toast.error(err.message || t('toast.profileUpdateFailed'));
+            return;
+          }
+        }
         setPendingPhoneChange(null);
         setProfileMobileOTP('');
         setProfileOtpError('');
@@ -2713,12 +2724,14 @@ export default function App() {
                             </div>
 
                             <form onSubmit={handleVerifyProfileOTP} className="space-y-3">
-                              <div className="bg-blue-50/80 p-2.5 rounded-xl border border-blue-100 text-[11.5px] text-blue-900 font-semibold leading-relaxed">
-                                We sent a 6-digit code on WhatsApp to{' '}
-                                <span className="font-extrabold">{profileChallenge?.destination || editPhone}</span>.
-                                Enter it to move your account to that number — every other device
-                                will be signed out.
-                              </div>
+                              {!profileReverse && (
+                                <div className="bg-blue-50/80 p-2.5 rounded-xl border border-blue-100 text-[11.5px] text-blue-900 font-semibold leading-relaxed">
+                                  We sent a 6-digit code on WhatsApp to{' '}
+                                  <span className="font-extrabold">{profileChallenge?.destination || editPhone}</span>.
+                                  Enter it to move your account to that number — every other device
+                                  will be signed out.
+                                </div>
+                              )}
 
                               {profileReverse && profileChallenge?.kind === 'phone' ? (
                                 <div className="border-t border-gray-100 pt-3">
@@ -2736,6 +2749,15 @@ export default function App() {
                                       setProfileReverse(false);
                                       toast.success(t('toast.phoneUpdated'));
                                     }}
+                                    onUnavailable={() => {
+                                      if (profileChallenge?.challengeId) {
+                                        setProfileReverse(false);
+                                      } else {
+                                        setProfileOtpError(
+                                          'This option is not available right now. Please use the code we send you instead.'
+                                        );
+                                      }
+                                    }}
                                   />
                                 </div>
                               ) : (
@@ -2751,10 +2773,13 @@ export default function App() {
 
                               {/* Offered only for the number leg — an email address
                                   has nothing to send a message from. */}
-                              {profileChallenge?.kind === 'phone' && profileChallenge?.rawPhone && (
+                              {profileChallenge?.kind === 'phone' && profileChallenge?.rawPhone && !(profileReverse && !profileChallenge?.challengeId) && (
                                 <button
                                   type="button"
-                                  onClick={() => { setProfileOtpError(''); setProfileReverse((on) => !on); }}
+                                  onClick={() => {
+                                    setProfileOtpError('');
+                                    setProfileReverse((on) => !on);
+                                  }}
                                   className="w-full text-[11.5px] font-bold text-[#1B4D3E] underline underline-offset-4 hover:text-[#143B2B]"
                                 >
                                   {profileReverse

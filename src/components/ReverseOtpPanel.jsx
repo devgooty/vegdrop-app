@@ -74,8 +74,12 @@ function describeError(err) {
  * @param {Function} props.onVerified called with `{ token, user }`. `user` is the
  *                                    signed-in account for flows this panel
  *                                    completes, and null for registration, whose
- *                                    email leg still has to be proved by the
- *                                    caller — it takes the token instead.
+ *                                    caller spends the token on `/register/verify`
+ *                                    (that endpoint is what creates the account).
+ * @param {Function} [props.onUnavailable] called instead of showing a dead-end
+ *                                    error when reverse OTP is not configured.
+ *                                    The parent should switch to the outbound
+ *                                    code — this is the fallback, not a failure.
  * @param {boolean}  [props.completeHere=true] whether this panel spends the
  *                                    token itself. False for registration.
  */
@@ -85,6 +89,7 @@ export default function ReverseOtpPanel({
   app,
   name,
   onVerified,
+  onUnavailable,
   completeHere = true,
 }) {
   const [challenge, setChallenge] = useState(null);
@@ -115,6 +120,10 @@ export default function ReverseOtpPanel({
    * production.
    */
   const startingRef = useRef(false);
+  const onUnavailableRef = useRef(onUnavailable);
+  onUnavailableRef.current = onUnavailable;
+  const onVerifiedRef = useRef(onVerified);
+  onVerifiedRef.current = onVerified;
 
   const begin = useCallback(async () => {
     if (startingRef.current) return;
@@ -134,6 +143,10 @@ export default function ReverseOtpPanel({
       setChallenge(started);
       setState('pending');
     } catch (err) {
+      if (err instanceof ApiRequestError && err.code === 'REVERSE_OTP_NOT_CONFIGURED' && onUnavailableRef.current) {
+        onUnavailableRef.current();
+        return;
+      }
       setError(describeError(err));
       setState('failed');
     } finally {
@@ -159,21 +172,22 @@ export default function ReverseOtpPanel({
     if (completingRef.current) return;
     completingRef.current = true;
 
-    if (!completeHere) {
-      // Registration: the email leg still has to be proved, so the caller
-      // redeems this token as part of its own verify call.
-      setState('verified');
-      onVerified?.({ token: challenge.token, user: null });
-      return;
-    }
-
     try {
+      if (!completeHere) {
+        // Registration: the caller spends this token on /register/verify, which
+        // is what creates the account. Await it so a failed create surfaces here
+        // rather than leaving "Number confirmed" over an account that was not.
+        await onVerifiedRef.current?.({ token: challenge.token, user: null });
+        setState('verified');
+        return;
+      }
+
       const user =
         purpose === 'phone_change'
           ? await completeReverseOtpPhoneChange(challenge.token)
           : await completeReverseOtp(challenge.token);
       setState('verified');
-      onVerified?.({ token: challenge.token, user });
+      await onVerifiedRef.current?.({ token: challenge.token, user });
     } catch (err) {
       setError(describeError(err));
       setState('failed');
@@ -181,7 +195,7 @@ export default function ReverseOtpPanel({
       // Let the user raise a fresh one rather than stranding them.
       completingRef.current = false;
     }
-  }, [challenge, completeHere, purpose, onVerified]);
+  }, [challenge, completeHere, purpose]);
 
   // Polling. Chained timeouts rather than setInterval, so a slow response can
   // never stack requests on top of each other.

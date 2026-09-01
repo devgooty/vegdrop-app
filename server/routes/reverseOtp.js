@@ -36,18 +36,20 @@ const router = express.Router();
  * whichever poll happened to land first rather than when the client asked. The
  * read stays a read; spending the token is an explicit POST.
  *
- * REGISTRATION IS NOT COMPLETED HERE. It needs an email proved as well as a
- * phone, so the reverse token is handed to /auth/register/verify (and its vendor
- * and delivery siblings) as `phoneToken`, replacing that flow's phone leg only.
+ * REGISTRATION IS NOT COMPLETED HERE. Creating the account is
+ * /auth/register/verify's job (and its vendor and delivery siblings), so the
+ * reverse token is handed there as `phoneToken` rather than spent on /complete.
+ * /complete would mint a session without going through that route, which is
+ * what stamps the role and (for vendors) the KYC-inert flag.
  */
 
 const PURPOSES = ['login', 'registration', 'vendor_registration', 'delivery_registration', 'phone_change'];
 
 /**
  * Purposes whose token /complete will spend. Registration is absent on purpose:
- * its token belongs to the register-verify routes, and letting it be redeemed
- * here would mint a session for a half-finished sign-up that never proved an
- * email.
+ * its token belongs to the register-verify routes, which are what create the
+ * account under the right role. Redeeming it here would mint a customer session
+ * for a vendor or rider sign-up.
  */
 const COMPLETABLE_PURPOSES = ['login'];
 
@@ -285,7 +287,7 @@ router.post(
      * `app` comes off the STORED challenge, never off this request — otherwise
      * omitting it would be enough to turn a shopkeeper sign-in into a customer
      * account. Shopkeeper and delivery accounts are only ever created through
-     * their own dual-OTP registration, which proves an email too; see the long
+     * their own registration routes, which hardcode the role; see the long
      * comment at /otp/start.
      */
     if (!appMayCreateAccount(challenge.app)) {
