@@ -98,6 +98,21 @@ const STRINGS = {
   'common.back': { en: 'Back', hi: 'वापस', te: 'వెనుకకు' },
   'common.change': { en: 'Change', hi: 'बदलें', te: 'మార్చు' },
   'common.close': { en: 'Close', hi: 'बंद करें', te: 'మూసివేయి' },
+  'common.delete': { en: 'Delete', hi: 'हटाएँ', te: 'తొలగించు' },
+
+  // --- Notepad modal (NotepadModal.jsx) ---------------------------------------
+  'notepad.placeholder': { en: 'Add something to remember…', hi: 'याद रखने के लिए कुछ जोड़ें…', te: 'గుర్తుంచుకోవడానికి ఏదైనా జోడించండి…' },
+  'notepad.add': { en: 'Add', hi: 'जोड़ें', te: 'జోడించు' },
+  'notepad.emptyTitle': { en: 'Your list is empty', hi: 'आपकी सूची खाली है', te: 'మీ జాబితా ఖాళీగా ఉంది' },
+  'notepad.emptySub': {
+    en: 'Jot down anything you don’t want to forget to buy.',
+    hi: 'जो कुछ भी खरीदना नहीं भूलना चाहते, वह यहाँ लिखें।',
+    te: 'కొనడం మర్చిపోకూడదు అనుకున్నది ఇక్కడ రాయండి.',
+  },
+  'notepad.markDone': { en: 'Mark as done', hi: 'पूरा किया गया चिह्नित करें', te: 'పూర్తయినట్లు గుర్తించండి' },
+  'notepad.markUndone': { en: 'Mark as not done', hi: 'अधूरा चिह्नित करें', te: 'పూర్తికానట్లు గుర్తించండి' },
+  'notepad.itemCount': { en: '{count} item(s)', hi: '{count} वस्तु(एँ)', te: '{count} అంశాలు' },
+  'notepad.clearChecked': { en: 'Clear {count} done', hi: '{count} पूरे किए साफ़ करें', te: '{count} పూర్తయినవి తొలగించు' },
 
   // --- Header (Header.jsx) ---------------------------------------------------
   'header.searchLabel': { en: 'Search the shop', hi: 'दुकान में खोजें', te: 'షాప్‌లో వెతకండి' },

@@ -5,6 +5,7 @@ import Categories from './components/Categories';
 import ProductList from './components/ProductList';
 import BottomNav from './components/BottomNav';
 import WalletModal from './components/WalletModal';
+import NotepadModal from './components/NotepadModal';
 import CartModal from './components/CartModal';
 import CategoryDetailView from './components/CategoryDetailView';
 import SearchResultsView from './components/SearchResultsView';
@@ -383,6 +384,7 @@ export default function App() {
   // Modals state
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isNotepadOpen, setIsNotepadOpen] = useState(false);
 
   /**
    * The colour the home hero is currently painting the top of the screen.
@@ -2105,14 +2107,7 @@ export default function App() {
               searchOpen={searchDiscoveryOpen}
               onCloseSearch={handleClearSearch}
               onAddressChange={() => setAddressVersion((v) => v + 1)}
-              // The notepad icon opens the wishlist rather than a new notes
-              // feature — it is the closest thing this app already has to a
-              // running shopping list, and building a second, unrelated list
-              // feature just to match an icon would be scope no one asked for.
-              onOpenNotepad={() => {
-                setActiveAccountView('wishlist');
-                setActiveTab('account');
-              }}
+              onOpenNotepad={() => setIsNotepadOpen(true)}
             />
           )}
 
@@ -2899,6 +2894,11 @@ export default function App() {
         transactions={walletTransactions}
         user={user}
         onRazorpayPayment={handleTopUpSettled}
+      />
+
+      <NotepadModal
+        isOpen={isNotepadOpen}
+        onClose={() => setIsNotepadOpen(false)}
       />
 
       <CartModal
