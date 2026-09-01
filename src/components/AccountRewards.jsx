@@ -31,40 +31,53 @@ export default function AccountRewards({ user, orders }) {
 
   return (
     <div className="space-y-4 text-left animate-fade-in w-full max-w-md mx-auto">
-      {/* Token balance */}
-      <div className="bg-gradient-to-br from-[#B45309] to-[#7C2D12] p-5 rounded-[2rem] shadow-[0_8px_16px_rgba(180,83,9,0.25)] text-white relative overflow-hidden">
+      {/*
+        Token balance, back on warm gold/copper rather than the emerald this
+        card briefly wore — a three-stop gradient instead of the original
+        flat two-stop, for depth without leaving the family that reads as
+        "coins" here.
+      */}
+      <div className="bg-gradient-to-br from-[#F59E0B] via-[#C2660C] to-[#7C2D12] p-5 rounded-[2rem] shadow-[0_8px_20px_rgba(124,45,18,0.35)] text-white relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -translate-y-8 translate-x-8" />
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full blur-2xl translate-y-8 -translate-x-4" />
+        <div className="absolute bottom-0 left-0 w-24 h-24 bg-black/10 rounded-full blur-2xl translate-y-8 -translate-x-4" />
+        {/* A single diagonal sheen across the whole card, the same device the
+            spin wheel's segments use, so the two pieces of the same screen
+            read as one material rather than two different design passes. */}
+        <div
+          className="absolute inset-0 opacity-[0.12]"
+          style={{ background: 'linear-gradient(135deg, #FFFFFF 0%, transparent 55%)' }}
+          aria-hidden="true"
+        />
 
         <div className="relative z-10 flex items-center justify-between">
           <div>
-            <p className="text-amber-200/80 text-[11.5px] font-extrabold uppercase tracking-widest mb-1">
+            <p className="text-amber-100/85 text-[11.5px] font-extrabold uppercase tracking-widest mb-1">
               {t('rewards.tokensEarned')}
             </p>
             <div className="flex items-end gap-2">
-              <span className="text-4xl font-black tracking-tight drop-shadow-sm">{totalTokens}</span>
-              <span className="text-sm font-bold text-amber-200/90 mb-1">
+              <span className="text-4xl font-black tracking-tight text-white drop-shadow-sm">{totalTokens}</span>
+              <span className="text-sm font-bold text-amber-100/90 mb-1">
                 {totalTokens === 1 ? t('rewards.tokenOne') : t('rewards.tokens')}
               </span>
             </div>
           </div>
-          <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md border border-white/10">
-            <Coins className="w-6 h-6 text-amber-300" />
+          <div className="w-12 h-12 bg-white/15 rounded-2xl flex items-center justify-center backdrop-blur-md border border-white/20 shadow-[0_3px_8px_rgba(0,0,0,0.2)]">
+            <Coins className="w-6 h-6 text-white" strokeWidth={2.25} />
           </div>
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-3 border-t border-white/10 pt-4 relative z-10">
+        <div className="mt-5 grid grid-cols-2 gap-3 border-t border-white/15 pt-4 relative z-10">
           <div>
-            <p className="text-amber-200/60 text-[10.5px] font-bold uppercase tracking-wider mb-0.5">
+            <p className="text-amber-100/70 text-[10.5px] font-bold uppercase tracking-wider mb-0.5">
               {t('rewards.countedSpend')}
             </p>
-            <p className="font-black text-lg text-amber-50">₹{totalSpent.toLocaleString('en-IN')}</p>
+            <p className="font-black text-lg text-white">₹{totalSpent.toLocaleString('en-IN')}</p>
           </div>
           <div>
-            <p className="text-amber-200/60 text-[10.5px] font-bold uppercase tracking-wider mb-0.5">
+            <p className="text-amber-100/70 text-[10.5px] font-bold uppercase tracking-wider mb-0.5">
               {t('rewards.earningOrders')}
             </p>
-            <p className="font-black text-lg text-amber-50">{entries.length}</p>
+            <p className="font-black text-lg text-white">{entries.length}</p>
           </div>
         </div>
       </div>

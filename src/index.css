@@ -381,6 +381,31 @@
   }
 }
 
+/* The spin wheel's halo. A quiet amber glow at rest — the settled value below
+   — brighter and pulsing once the wheel is actually turning, so the pulse
+   reads as excitement about the spin rather than as the wheel's normal state.
+   Reduced motion keeps the brighter ring without the pulse, rather than
+   dropping back to idle: the wheel IS spinning, and a page that stops saying
+   so is worse than one that says it without motion. */
+.vd-wheel-glow-idle {
+  box-shadow: 0 0 0 10px rgba(217, 119, 6, 0.06);
+}
+.vd-wheel-glow-spin {
+  animation: vd-wheel-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes vd-wheel-pulse {
+  0%, 100% { box-shadow: 0 0 0 8px rgba(217, 119, 6, 0.10); }
+  50% { box-shadow: 0 0 0 20px rgba(217, 119, 6, 0.24); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vd-wheel-glow-spin {
+    animation: none;
+    box-shadow: 0 0 0 14px rgba(217, 119, 6, 0.16);
+  }
+}
+
 /* Vintage Badges */
 .skeuo-badge-amber {
   background: linear-gradient(180deg, #F59E0B 0%, #D97706 100%);

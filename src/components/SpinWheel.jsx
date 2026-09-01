@@ -18,6 +18,22 @@ const SPIN_MS = 4200;
 const R = 100;
 
 /**
+ * The carnival bulbs set into the gold bezel, computed once — they never move
+ * relative to the rim, so there is nothing here for a render to recompute.
+ * Twenty four evenly spaced points at the rim's own radius, alternating lit
+ * and unlit exactly the way a real marquee wheel does.
+ */
+const RIM_BULBS = Array.from({ length: 24 }, (_, index) => {
+  const angle = (index / 24) * 360 * (Math.PI / 180);
+  const radius = R + 8;
+  return {
+    x: radius * Math.cos(angle),
+    y: radius * Math.sin(angle),
+    lit: index % 2 === 0,
+  };
+});
+
+/**
  * The prize photo, in the segment group's local units — where -y points outward
  * toward the rim, because the group is rotated to make the label read outward.
  *
@@ -152,14 +168,42 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
 
       {/* Wheel */}
       <div className="relative w-56 h-56 mx-auto mb-4">
-        {/* Pointer, at twelve o'clock — the origin every angle above is measured from. */}
+        {/* A halo behind the rim: a quiet amber glow at rest, brighter and
+            pulsing once the wheel is actually turning — so the wheel reads as
+            something worth tapping before anyone has touched it, not only
+            once it is already spinning. */}
         <div
-          className="absolute left-1/2 -translate-x-1/2 -top-1 z-20 w-0 h-0 drop-shadow-md
-                     border-l-[10px] border-l-transparent
-                     border-r-[10px] border-r-transparent
-                     border-t-[18px] border-t-amber-500"
+          className={`absolute inset-2 rounded-full pointer-events-none ${
+            spinning ? 'vd-wheel-glow-spin' : 'vd-wheel-glow-idle'
+          }`}
           aria-hidden="true"
         />
+
+        {/* Pointer, at twelve o'clock — the origin every angle above is
+            measured from. A pin rather than a flat CSS triangle, so it reads
+            as part of the same gold hardware as the rim and hub rather than a
+            flat sticker sitting above them. */}
+        <svg
+          viewBox="0 0 32 36"
+          className="absolute left-1/2 -translate-x-1/2 -top-3 z-20 w-8 h-9 drop-shadow-md"
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient id={`${photoClipId}-pointer`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#FDE68A" />
+              <stop offset="55%" stopColor="#D97706" />
+              <stop offset="100%" stopColor="#92400E" />
+            </linearGradient>
+          </defs>
+          <path
+            d="M16 36 C8 24 4 17 4 11 A12 12 0 0 1 28 11 C28 17 24 24 16 36 Z"
+            fill={`url(#${photoClipId}-pointer)`}
+            stroke="#7C4A0A"
+            strokeWidth="1"
+          />
+          <circle cx="16" cy="11" r="5.5" fill="#FFF7DA" opacity="0.9" />
+          <circle cx="16" cy="11" r="5.5" fill="none" stroke="#B8791A" strokeWidth="1" />
+        </svg>
 
         <svg
           viewBox="-110 -110 220 220"
@@ -183,9 +227,42 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
             <clipPath id={photoClipId} clipPathUnits="objectBoundingBox">
               <circle cx="0.5" cy="0.5" r="0.5" />
             </clipPath>
+            {/* The rim's gold bezel, the hub's gem and every segment's sheen
+                share these three gradients rather than each inventing a flat
+                colour, which is what made the wheel read as printed paper
+                rather than hardware. */}
+            <linearGradient id={`${photoClipId}-rim`} x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#FDE68A" />
+              <stop offset="45%" stopColor="#D97706" />
+              <stop offset="100%" stopColor="#92400E" />
+            </linearGradient>
+            <radialGradient id={`${photoClipId}-hub`} cx="35%" cy="30%" r="75%">
+              <stop offset="0%" stopColor="#FFF7DA" />
+              <stop offset="55%" stopColor="#F5C453" />
+              <stop offset="100%" stopColor="#B8791A" />
+            </radialGradient>
+            <linearGradient id={`${photoClipId}-gloss`} x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.5" />
+              <stop offset="55%" stopColor="#FFFFFF" stopOpacity="0" />
+            </linearGradient>
           </defs>
 
-          <circle cx="0" cy="0" r={R + 6} fill="#FFFDF9" stroke="#DCD5C6" strokeWidth="3" />
+          <circle cx="0" cy="0" r={R + 8} fill="none" stroke={`url(#${photoClipId}-rim)`} strokeWidth="7" />
+          <circle cx="0" cy="0" r={R + 3.5} fill="none" stroke="#FFFDF9" strokeWidth="2.5" />
+
+          {/* Marquee bulbs set into the gold bezel — the detail that reads as
+              "carnival prize wheel" rather than "pie chart" at a glance. */}
+          {RIM_BULBS.map((bulb, index) => (
+            <circle
+              key={index}
+              cx={bulb.x}
+              cy={bulb.y}
+              r={bulb.lit ? 2.1 : 1.6}
+              fill={bulb.lit ? '#FDE68A' : '#FFFDF9'}
+              stroke="#92400E"
+              strokeWidth="0.5"
+            />
+          ))}
 
           {PRIZES.map((prize, index) => {
             // Text sits along the segment's centre line, pushed out toward the
@@ -198,6 +275,14 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
             return (
               <g key={prize.id}>
                 <path d={segmentPath(index)} fill={prize.color} stroke="#FFFDF9" strokeWidth="1.5" />
+                {/* A diagonal sheen per segment, under the photo and label so
+                    it lights the colour without dulling either — a flat fill
+                    is what read as "printed" rather than "enamelled". */}
+                <path
+                  d={segmentPath(index)}
+                  fill={`url(#${photoClipId}-gloss)`}
+                  style={{ pointerEvents: 'none' }}
+                />
                 <g transform={`translate(${tx} ${ty}) rotate(${mid + 90})`}>
                   {/*
                     Undoes the segment's rotation about the photo's own centre,
@@ -262,7 +347,11 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
             );
           })}
 
-          <circle cx="0" cy="0" r="14" fill="#FFFDF9" stroke="#DCD5C6" strokeWidth="3" />
+          {/* The hub, in the same gold as the rim and pointer rather than the
+              plain cream disc it was — three unrelated materials on one
+              object is what made it read as parts rather than a wheel. */}
+          <circle cx="0" cy="0" r="16" fill={`url(#${photoClipId}-hub)`} stroke="#92400E" strokeWidth="1.5" />
+          <circle cx="-4" cy="-5.5" r="5.5" fill="#FFFFFF" opacity="0.4" />
         </svg>
       </div>
 
