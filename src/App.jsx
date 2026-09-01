@@ -19,6 +19,7 @@ import AccountHistory from './components/AccountHistory';
 import AccountRewards from './components/AccountRewards';
 import AccountAddress from './components/AccountAddress';
 import AccountWishlist from './components/AccountWishlist';
+import AccountPermissions from './components/AccountPermissions';
 import PageTransition from './components/PageTransition';
 import OTPBoxGroup from './components/OTPBoxGroup';
 import ReverseOtpPanel from './components/ReverseOtpPanel';
@@ -39,7 +40,7 @@ import { unitsOf } from './services/packs';
 import { createSchedule, fetchSchedules, recurrenceFromDates, describeRecurrence } from './services/schedules';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
-import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon, MapPin as MapPinIcon, Heart as HeartIcon } from 'lucide-react';
+import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon, MapPin as MapPinIcon, Heart as HeartIcon, Settings as SettingsIcon } from 'lucide-react';
 import {
   logout,
   logoutEverywhere,
@@ -126,6 +127,7 @@ const ACCOUNT_VIEW_TITLES = {
   wishlist: 'account.wishlist',
   address: 'account.savedAddress',
   language: 'settings.language',
+  permissions: 'permissions.title',
 };
 
 /**
@@ -2327,6 +2329,22 @@ export default function App() {
                         </div>
                       )}
 
+                      {/* Settings entry point, top-right of the menu screen
+                          only — the sub-views already carry the back header
+                          above, which would leave two right-aligned controls
+                          fighting for the same corner. */}
+                      {activeAccountView === 'menu' && (
+                        <div className="flex justify-end mb-2">
+                          <button
+                            onClick={() => setActiveAccountView('permissions')}
+                            aria-label={t('permissions.title')}
+                            className="p-2 bg-white rounded-xl shadow-sm border border-slate-100 text-slate-600 hover:text-[#1B4D3E] transition-colors cursor-pointer active:scale-95"
+                          >
+                            <SettingsIcon className="w-5 h-5" />
+                          </button>
+                        </div>
+                      )}
+
                       {activeAccountView === 'menu' ? (
                         /* One grouped card with a hairline between rows, rather
                            than six cards each carrying their own shadow and
@@ -2455,6 +2473,8 @@ export default function App() {
                         <div className="text-left">
                           <LanguagePicker standalone />
                         </div>
+                      ) : activeAccountView === 'permissions' ? (
+                        <AccountPermissions />
                       ) : (
                         <>
                           {!isEditingProfile && (

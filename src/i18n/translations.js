@@ -60,6 +60,37 @@ const STRINGS = {
     te: 'యాప్‌లో మెనూలు మరియు బటన్ల కోసం భాషను ఎంచుకోండి.',
   },
 
+  // --- App permissions (AccountPermissions.jsx) -------------------------------
+  'permissions.title': { en: 'App Permissions', hi: 'ऐप अनुमतियाँ', te: 'యాప్ అనుమతులు' },
+  'permissions.location': { en: 'Location', hi: 'लोकेशन', te: 'లొకేషన్' },
+  'permissions.locationHint': {
+    en: 'Finds markets and stalls that deliver to your address.',
+    hi: 'आपके पते तक डिलीवर करने वाले बाज़ार और स्टॉल ढूँढने के लिए।',
+    te: 'మీ చిరునామాకు డెలివరీ చేసే మార్కెట్లు, స్టాల్స్‌ను కనుగొనడానికి.',
+  },
+  'permissions.microphone': { en: 'Microphone', hi: 'माइक्रोफ़ोन', te: 'మైక్రోఫోన్' },
+  'permissions.microphoneHint': {
+    en: 'Used for voice search.',
+    hi: 'वॉइस सर्च के लिए इस्तेमाल होता है।',
+    te: 'వాయిస్ సెర్చ్ కోసం ఉపయోగిస్తారు.',
+  },
+  'permissions.statusGranted': { en: 'Allowed', hi: 'अनुमति है', te: 'అనుమతించబడింది' },
+  'permissions.statusDenied': { en: 'Blocked', hi: 'ब्लॉक है', te: 'బ్లాక్ చేయబడింది' },
+  'permissions.statusPrompt': { en: 'Not asked yet', hi: 'अभी नहीं पूछा गया', te: 'ఇంకా అడగలేదు' },
+  'permissions.statusUnknown': { en: 'Unknown', hi: 'अज्ञात', te: 'తెలియదు' },
+  'permissions.allow': { en: 'Allow', hi: 'अनुमति दें', te: 'అనుమతించు' },
+  'permissions.requesting': { en: 'Requesting…', hi: 'माँगा जा रहा है…', te: 'అభ్యర్థిస్తోంది…' },
+  'permissions.deniedHint': {
+    en: 'Blocked in your browser. Open your browser’s site settings to allow it.',
+    hi: 'आपके ब्राउज़र में ब्लॉक है। इसे अनुमति देने के लिए ब्राउज़र की साइट सेटिंग खोलें।',
+    te: 'మీ బ్రౌజర్‌లో బ్లాక్ చేయబడింది. అనుమతించడానికి బ్రౌజర్ సైట్ సెట్టింగ్‌లను తెరవండి.',
+  },
+  'permissions.note': {
+    en: 'These are your browser’s own permissions for this app — VegDrop only ever asks for what a screen you open actually needs.',
+    hi: 'ये इस ऐप के लिए आपके ब्राउज़र की अपनी अनुमतियाँ हैं — VegDrop केवल वही माँगता है जो आपके खोले गए स्क्रीन को वाकई चाहिए।',
+    te: 'ఇవి ఈ యాప్ కోసం మీ బ్రౌజర్ యొక్క సొంత అనుమతులు — మీరు తెరిచిన స్క్రీన్‌కు నిజంగా అవసరమైనది మాత్రమే VegDrop అడుగుతుంది.',
+  },
+
   // --- Shared buttons ----------------------------------------------------------
   'common.save': { en: 'Save', hi: 'सहेजें', te: 'సేవ్ చేయండి' },
   'common.cancel': { en: 'Cancel', hi: 'रद्द करें', te: 'రద్దు చేయండి' },
