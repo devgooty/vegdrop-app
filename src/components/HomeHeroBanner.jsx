@@ -520,11 +520,29 @@ export default function HomeHeroBanner({
       onTouchStart={pauseAuto}
       onTouchEnd={resumeAutoSoon}
     >
+      {/*
+        A colour fade behind the carousel, kept in step with the header's own
+        `--vd-hero-accent` transition above it — both move on the same 700ms
+        ease-out, because a browser will not interpolate one `background-image`
+        gradient into another; it snaps at the very first frame. That was the
+        actual bug: the header takes 700ms to fade to a new card's tint, this
+        layer used to jump the instant the card changed, and for as long as the
+        header lagged, two mismatched hues sat flush against each other at the
+        seam between them — a visible line that grew and healed on every card
+        change, including the automatic ones nobody had touched.
+
+        `background-color` animates natively, so the fix moves the colour onto
+        that (matching the header's own mechanism) and gets the vertical fade
+        from a static mask instead of a gradient that has to change colour —
+        a mask's shape never needs to transition, only the fill underneath it.
+      */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 bottom-0 -z-10 transition-[background-image] duration-700 ease-out"
+        className="pointer-events-none absolute inset-x-0 top-0 bottom-0 -z-10 transition-colors duration-700 ease-out"
         style={{
-          backgroundImage: `linear-gradient(to bottom, ${activeWash} 0%, ${activeWash} 55%, transparent 100%)`,
+          backgroundColor: activeWash,
+          WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 55%, transparent 100%)',
+          maskImage: 'linear-gradient(to bottom, black 0%, black 55%, transparent 100%)',
         }}
       />
 
