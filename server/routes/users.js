@@ -3,6 +3,8 @@
 const express = require('express');
 const User = require('../models/User');
 const { ROLES } = require('../models/User');
+const UserAvatar = require('../models/UserAvatar');
+const config = require('../config/env');
 const { ApiError } = require('../middleware/errors');
 const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
@@ -140,6 +142,170 @@ router.patch(
       { _id: targetId, status: { $ne: 'deleted' } },
       { $set: update },
       { returnDocument: 'after', runValidators: true }
+    );
+    if (!user) throw new ApiError(404, 'User not found.', 'NOT_FOUND');
+
+    return res.json({ data: user.toPublicJSON() });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Profile picture
+// ---------------------------------------------------------------------------
+
+/**
+ * A body parser for the upload route alone.
+ *
+ * The app-wide limit is 100 KB (see server/app.js), which is right for JSON but
+ * too small once base64 has inflated an image by a third. Widening the global
+ * limit to suit one route would raise the ceiling on every endpoint, so this is
+ * scoped here — exactly as routes/stalls.js scopes its own photo parser.
+ */
+const avatarBody = express.json({ limit: '256kb' });
+
+/** `data:image/jpeg;base64,…` → the parts, or null if it is not one. */
+function parseDataUri(value) {
+  const match = /^data:(image\/(?:jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(value);
+  if (!match) return null;
+
+  const [, mimeType, base64] = match;
+  const buffer = Buffer.from(base64, 'base64');
+  // Round-trip check: a truncated or padded string decodes without complaint
+  // and would be stored as an image that never renders.
+  if (buffer.length === 0 || buffer.toString('base64') !== base64) return null;
+
+  return { mimeType, base64, bytes: buffer.length };
+}
+
+/** Self or an admin. Mirrors the check on GET /:id and PATCH /:id. */
+function assertMayEdit(req, targetId) {
+  const isSelf = targetId === req.user._id.toHexString();
+  if (!isSelf && !ADMIN_ROLES.includes(req.user.role)) {
+    throw new ApiError(404, 'User not found.', 'NOT_FOUND');
+  }
+}
+
+/**
+ * The uploaded photo's bytes, which `toPublicJSON` deliberately omits.
+ *
+ * Behind auth and scoped to self-or-admin like the rest of this file. An avatar
+ * is not sensitive in itself, but it is only ever rendered for the signed-in
+ * account, so there is no reason to make one addressable by anybody holding an
+ * id.
+ */
+router.get(
+  '/:id/avatar',
+  requireAuth,
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const targetId = req.valid.params.id;
+    assertMayEdit(req, targetId);
+
+    const avatar = await UserAvatar.findOne({ user: targetId });
+    if (!avatar) throw new ApiError(404, 'No photo has been uploaded.', 'NOT_FOUND');
+
+    return res.json({ data: { image: avatar.dataUri, bytes: avatar.bytes } });
+  }
+);
+
+/**
+ * Set the picture — either one of the built-in avatars, or an uploaded photo.
+ *
+ * ONE endpoint for both on purpose. The two are mutually exclusive, and putting
+ * the preset on `PATCH /:id` instead would split that rule across two handlers
+ * that each have to remember to undo the other. Here it is a single write.
+ *
+ * The format allow-list is jpeg and webp, and the exclusions matter more than
+ * the inclusions: SVG is a script container and this file is rendered back into
+ * a page, and PNG is lossless so it would blow the size cap on any real photo.
+ */
+router.put(
+  '/:id/avatar',
+  requireAuth,
+  avatarBody,
+  validate({
+    params: z.object({ id: fields.objectId }).strict(),
+    body: z
+      .object({
+        /**
+         * Not validated against a list of known avatars — see the note on
+         * `avatar.preset` in models/User.js. A slug pattern is enforced so the
+         * field can never hold anything but a key.
+         */
+        preset: z
+          .string()
+          .trim()
+          .regex(/^[a-z0-9-]{1,24}$/, 'Not a valid avatar.')
+          .optional(),
+        image: z.string().min(32).max(400_000).optional(),
+      })
+      .strict()
+      .refine(
+        (data) => Boolean(data.preset) !== Boolean(data.image),
+        { message: 'Send either a preset or an image, not both.' }
+      ),
+  }),
+  async (req, res) => {
+    const targetId = req.valid.params.id;
+    assertMayEdit(req, targetId);
+
+    const { preset, image } = req.valid.body;
+    const update = {};
+
+    if (preset) {
+      // Picking a built-in avatar discards the upload it replaces, rather than
+      // leaving orphaned bytes behind for a photo nothing can now display.
+      await UserAvatar.deleteOne({ user: targetId });
+      update['avatar.preset'] = preset;
+      update['avatar.photoUpdatedAt'] = null;
+    } else {
+      const parsed = parseDataUri(image);
+      if (!parsed) {
+        throw new ApiError(400, 'Send a JPEG or WebP photo as a data URI.', 'UNSUPPORTED_IMAGE');
+      }
+      if (parsed.bytes > config.avatar.maxBytes) {
+        throw new ApiError(
+          413,
+          `That photo is ${Math.round(parsed.bytes / 1024)} KB. The limit is ${Math.round(config.avatar.maxBytes / 1024)} KB.`,
+          'PHOTO_TOO_LARGE'
+        );
+      }
+
+      await UserAvatar.findOneAndUpdate(
+        { user: targetId },
+        { $set: { image: parsed.base64, mimeType: parsed.mimeType, bytes: parsed.bytes } },
+        { upsert: true, setDefaultsOnInsert: true }
+      );
+      update['avatar.preset'] = null;
+      update['avatar.photoUpdatedAt'] = new Date();
+    }
+
+    const user = await User.findOneAndUpdate(
+      { _id: targetId, status: { $ne: 'deleted' } },
+      { $set: update },
+      { returnDocument: 'after', runValidators: true }
+    );
+    if (!user) throw new ApiError(404, 'User not found.', 'NOT_FOUND');
+
+    return res.json({ data: user.toPublicJSON() });
+  }
+);
+
+/** Back to initials. Clears both halves, whichever one was in use. */
+router.delete(
+  '/:id/avatar',
+  requireAuth,
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const targetId = req.valid.params.id;
+    assertMayEdit(req, targetId);
+
+    await UserAvatar.deleteOne({ user: targetId });
+
+    const user = await User.findOneAndUpdate(
+      { _id: targetId, status: { $ne: 'deleted' } },
+      { $set: { 'avatar.preset': null, 'avatar.photoUpdatedAt': null } },
+      { returnDocument: 'after' }
     );
     if (!user) throw new ApiError(404, 'User not found.', 'NOT_FOUND');
 

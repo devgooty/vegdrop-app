@@ -50,3 +50,29 @@ export async function updateUserStatus(userId, status) {
 export async function deleteUser(userId) {
   await api.delete(`/users/${userId}`);
 }
+
+/**
+ * The uploaded profile photo's bytes.
+ *
+ * A separate call because the profile read deliberately carries only a pointer
+ * to it — see `toPublicJSON` in server/models/User.js.
+ */
+export async function fetchUserAvatar(userId) {
+  const result = await api.get(`/users/${userId}/avatar`);
+  return result.data.image;
+}
+
+/**
+ * Set the picture. Exactly one of `preset` or `image` — the server refuses
+ * both, because they are two ways of answering the same question.
+ */
+export async function setUserAvatar(userId, choice) {
+  const result = await api.put(`/users/${userId}/avatar`, choice);
+  return result.data;
+}
+
+/** Back to initials. */
+export async function clearUserAvatar(userId) {
+  const result = await api.delete(`/users/${userId}/avatar`);
+  return result.data;
+}

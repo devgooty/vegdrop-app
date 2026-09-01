@@ -161,6 +161,37 @@ const userSchema = new mongoose.Schema(
     },
 
     /**
+     * How this account is pictured. Cosmetic throughout — nothing authorises on
+     * it — and both halves are deliberately tiny, because this document is
+     * re-read on every authenticated request by middleware/auth.js.
+     *
+     * The two are mutually exclusive and the route enforces it in one place:
+     * picking a preset deletes the photo, uploading a photo clears the preset.
+     * Neither set means initials, which is what every account starts as.
+     */
+    avatar: {
+      /**
+       * A slug naming one of the built-in avatars, which the client draws from
+       * the key alone (src/data/avatars.js) — no bytes are stored for it.
+       *
+       * Not an enum, on purpose. The list is a visual one that lives where it
+       * is drawn, and duplicating it here would make adding an avatar a
+       * two-repo-halves change with a migration-shaped failure when they drift.
+       * A key the client does not recognise falls back to initials, so the
+       * worst case of an unknown value is the default rendering.
+       */
+      preset: { type: String, default: null, trim: true, maxlength: 24 },
+
+      /**
+       * When the uploaded photo in `UserAvatar` was last replaced — the signal
+       * that one exists at all, and the cache key the client re-fetches on.
+       * The bytes themselves are in that separate collection; see the note
+       * there for why they are not here.
+       */
+      photoUpdatedAt: { type: Date, default: null },
+    },
+
+    /**
      * Bumped to invalidate every outstanding access token for this user
      * (forced logout, role change, suspension).
      */
@@ -264,6 +295,15 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
     role: this.role,
     status: this.status,
     phoneVerified: Boolean(this.phoneVerifiedAt),
+    /**
+     * The pointer, never the pixels. An uploaded photo is fetched separately
+     * from GET /api/users/:id/avatar, so a 200-row admin list stays a list of
+     * names rather than several megabytes of JPEG.
+     */
+    avatar: {
+      preset: this.avatar?.preset || null,
+      photoUpdatedAt: this.avatar?.photoUpdatedAt || null,
+    },
     // Duty status only — never the position. A rider's live coordinates are
     // dispatch input, not something to hand back out on a profile read.
     dutyStatus: this.role === 'delivery' ? this.rider?.dutyStatus || 'offline' : undefined,

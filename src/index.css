@@ -286,6 +286,68 @@
   }
 }
 
+/* ══════════════════════════════════════════════════════════════
+   AVATAR MASCOTS (components/AvatarArt.jsx)
+   ══════════════════════════════════════════════════════════════
+
+   Every rule here states the SETTLED value and each keyframe moves away from
+   it and back, which is what lets prefers-reduced-motion be a single
+   `animation: none` — put a resting value only inside a keyframe and reduced
+   motion renders a half-built drawing. Same invariant as the .vd-splash-* set.
+
+   `transform-box: fill-box` is required on SVG children: without it a percentage
+   transform-origin resolves against the whole viewport rather than the element,
+   and the eyes blink somewhere off-screen. */
+
+.vd-mascot {
+  transform-origin: 50% 100%;
+  transform-box: fill-box;
+  animation: vd-mascot-bob 3.4s ease-in-out infinite;
+  animation-delay: var(--vd-mascot-delay, 0ms);
+}
+
+.vd-mascot-eyes {
+  transform-origin: center;
+  transform-box: fill-box;
+  /* Steps rather than a smooth ease: a blink is shut-then-open, and easing it
+     reads as a squint. Long cycle, brief close — the ratio is the whole
+     illusion. */
+  animation: vd-mascot-blink 4.6s ease-in-out infinite;
+  animation-delay: var(--vd-mascot-delay, 0ms);
+}
+
+.vd-mascot-top {
+  transform-origin: 50% 100%;
+  transform-box: fill-box;
+  animation: vd-mascot-sway 3.9s ease-in-out infinite;
+  animation-delay: var(--vd-mascot-delay, 0ms);
+}
+
+@keyframes vd-mascot-bob {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  45% { transform: translateY(-3.5px) scaleY(1.015); }
+  70% { transform: translateY(0.8px) scaleY(0.99); }
+}
+
+@keyframes vd-mascot-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95%, 97% { transform: scaleY(0.1); }
+}
+
+@keyframes vd-mascot-sway {
+  0%, 100% { transform: rotate(0deg); }
+  35% { transform: rotate(5.5deg); }
+  70% { transform: rotate(-4.5deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vd-mascot,
+  .vd-mascot-eyes,
+  .vd-mascot-top {
+    animation: none;
+  }
+}
+
 /* Vintage Badges */
 .skeuo-badge-amber {
   background: linear-gradient(180deg, #F59E0B 0%, #D97706 100%);

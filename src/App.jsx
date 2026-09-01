@@ -21,6 +21,8 @@ import AccountRewards from './components/AccountRewards';
 import AccountAddress from './components/AccountAddress';
 import AccountWishlist from './components/AccountWishlist';
 import AccountPermissions from './components/AccountPermissions';
+import ProfileAvatar from './components/ProfileAvatar';
+import AvatarPicker from './components/AvatarPicker';
 import PageTransition from './components/PageTransition';
 import OTPBoxGroup from './components/OTPBoxGroup';
 import ReverseOtpPanel from './components/ReverseOtpPanel';
@@ -41,7 +43,7 @@ import { unitsOf } from './services/packs';
 import { createSchedule, fetchSchedules, recurrenceFromDates, describeRecurrence } from './services/schedules';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
-import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon, MapPin as MapPinIcon, Heart as HeartIcon, Settings as SettingsIcon, Wallet as WalletIcon, ClipboardList as ClipboardListIcon } from 'lucide-react';
+import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon, MapPin as MapPinIcon, Heart as HeartIcon, Settings as SettingsIcon, Wallet as WalletIcon, ClipboardList as ClipboardListIcon, Camera as CameraIcon } from 'lucide-react';
 import {
   logout,
   logoutEverywhere,
@@ -57,7 +59,7 @@ import {
   acceptPartialOrder, retryPartialOrder,
 } from './services/orders';
 import { fetchWallet, topUpWallet } from './services/wallet';
-import { fetchUsers, updateUser, updateUserRole, deleteUser } from './services/users';
+import { fetchUsers, updateUser, updateUserRole, deleteUser, fetchUserAvatar, setUserAvatar, clearUserAvatar } from './services/users';
 import { ApiRequestError, NetworkError } from './services/apiClient';
 import { RUPEES_PER_BATCH, TOKENS_PER_BATCH } from './services/rewards';
 
@@ -344,6 +346,17 @@ export default function App() {
   // Profile editing, plus the verified phone-change flow
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [activeAccountView, setActiveAccountView] = useState('menu');
+  const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
+  /**
+   * The uploaded profile photo, as a data URI.
+   *
+   * Fetched separately because the session payload carries only a pointer to it
+   * — see `toPublicJSON` in server/models/User.js for why the bytes are not on
+   * the user record. Null covers both "never uploaded one" and "not fetched
+   * yet"; ProfileAvatar falls through to the preset or the initial either way,
+   * so there is no loading state to render.
+   */
+  const [avatarPhoto, setAvatarPhoto] = useState(null);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editPhone, setEditPhone] = useState('');
@@ -899,6 +912,59 @@ export default function App() {
     setActiveTab('login');
     toast.warning(t('toast.accountDeleted'));
   }, [user, clearCart, setActiveTab, setRegisteredUsers, toast, t]);
+
+  /**
+   * Pull the uploaded photo whenever the record says there is a newer one.
+   *
+   * Keyed on `photoUpdatedAt` rather than just its presence, so replacing a
+   * photo re-fetches instead of leaving the previous one on screen. A failure
+   * is swallowed: an avatar that will not load is a fallback to initials, not
+   * something to interrupt someone with.
+   */
+  const avatarStamp = user?.avatar?.photoUpdatedAt || null;
+  useEffect(() => {
+    if (!user?.id || !avatarStamp) {
+      setAvatarPhoto(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    fetchUserAvatar(user.id)
+      .then((image) => { if (!cancelled) setAvatarPhoto(image); })
+      .catch(() => { if (!cancelled) setAvatarPhoto(null); });
+
+    return () => { cancelled = true; };
+  }, [user?.id, avatarStamp]);
+
+  /**
+   * The three ways to set a picture, all adopting the user record the server
+   * returns rather than assuming the write landed. Each throws on failure so
+   * AvatarPicker can report it and stay open.
+   */
+  const applyAvatarUpdate = useCallback((updated) => {
+    setUser(updated);
+    setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+    toast.success(t('avatar.updated'));
+  }, [setUser, setRegisteredUsers, toast, t]);
+
+  const handleSelectAvatarPreset = useCallback(async (preset) => {
+    applyAvatarUpdate(await setUserAvatar(user.id, { preset }));
+    setAvatarPhoto(null);
+  }, [user, applyAvatarUpdate]);
+
+  const handleUploadAvatarPhoto = useCallback(async (image) => {
+    const updated = await setUserAvatar(user.id, { image });
+    // Held locally rather than waiting on the fetch the new timestamp triggers —
+    // these are the same bytes, and they are already here. Set only after the
+    // write succeeds, so a refused upload never appears to have worked.
+    setAvatarPhoto(image);
+    applyAvatarUpdate(updated);
+  }, [user, applyAvatarUpdate]);
+
+  const handleClearAvatar = useCallback(async () => {
+    applyAvatarUpdate(await clearUserAvatar(user.id));
+    setAvatarPhoto(null);
+  }, [user, applyAvatarUpdate]);
 
   const handleStartEditingProfile = useCallback(() => {
     if (!user) return;
@@ -2375,11 +2441,11 @@ export default function App() {
                             onClick={() => setActiveAccountView('profile')}
                             className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
                           >
-                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
                               <UserIcon className="w-5 h-5 drop-shadow-sm" />
                             </div>
                             <div className="flex-1">
-                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('account.profileDetails')}</h3>
+                              <h3 className="font-extrabold text-slate-600 text-sm tracking-tight">{t('account.profileDetails')}</h3>
                               <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{t('account.profileDetailsSub')}</p>
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
@@ -2391,11 +2457,11 @@ export default function App() {
                             onClick={() => setActiveAccountView('history')}
                             className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
                           >
-                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
                               <HistoryIcon className="w-5 h-5 drop-shadow-sm" />
                             </div>
                             <div className="flex-1">
-                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('account.purchaseHistory')}</h3>
+                              <h3 className="font-extrabold text-slate-600 text-sm tracking-tight">{t('account.purchaseHistory')}</h3>
                               <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{t('account.purchaseHistorySub')}</p>
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
@@ -2407,11 +2473,11 @@ export default function App() {
                             onClick={() => setActiveAccountView('rewards')}
                             className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
                           >
-                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
                               <CoinsIcon className="w-5 h-5 drop-shadow-sm" />
                             </div>
                             <div className="flex-1">
-                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('rewards.title')}</h3>
+                              <h3 className="font-extrabold text-slate-600 text-sm tracking-tight">{t('rewards.title')}</h3>
                               <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">
                                 {t('account.rewardsSub', { tokens: TOKENS_PER_BATCH, rupees: RUPEES_PER_BATCH })}
                               </p>
@@ -2425,11 +2491,11 @@ export default function App() {
                             onClick={() => setActiveAccountView('wishlist')}
                             className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
                           >
-                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
                               <HeartIcon className="w-5 h-5 drop-shadow-sm" />
                             </div>
                             <div className="flex-1">
-                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('account.wishlist')}</h3>
+                              <h3 className="font-extrabold text-slate-600 text-sm tracking-tight">{t('account.wishlist')}</h3>
                               <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{t('account.wishlistSub')}</p>
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
@@ -2441,11 +2507,11 @@ export default function App() {
                             onClick={() => setActiveAccountView('address')}
                             className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
                           >
-                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
                               <MapPinIcon className="w-5 h-5 drop-shadow-sm" />
                             </div>
                             <div className="flex-1">
-                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('account.savedAddress')}</h3>
+                              <h3 className="font-extrabold text-slate-600 text-sm tracking-tight">{t('account.savedAddress')}</h3>
                               <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{t('account.savedAddressSub')}</p>
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
@@ -2462,11 +2528,11 @@ export default function App() {
                             onClick={() => setActiveAccountView('language')}
                             className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
                           >
-                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
                               <LanguagesIcon className="w-5 h-5 drop-shadow-sm" />
                             </div>
                             <div className="flex-1">
-                              <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">{t('settings.language')}</h3>
+                              <h3 className="font-extrabold text-slate-600 text-sm tracking-tight">{t('settings.language')}</h3>
                               <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{currentLanguageName}</p>
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
@@ -2502,11 +2568,25 @@ export default function App() {
                           {/* Premium Skeuomorphic Profile Avatar & Info */}
                           <div className="relative w-16 h-16 sm:w-28 sm:h-28 mx-auto mb-2 sm:mb-5 animate-scale-in drop-shadow-xl shrink-0">
                             <div className="absolute inset-0 bg-gradient-to-br from-white to-emerald-100 rounded-full shadow-[8px_8px_16px_rgba(27,77,62,0.1),-8px_-8px_16px_rgba(255,255,255,0.8)] border border-white"></div>
-                            <div className="absolute inset-1.5 bg-gradient-to-br from-[#1B4D3E] to-[#0A2E22] rounded-full flex items-center justify-center font-extrabold text-2xl sm:text-4xl text-white shadow-[inset_4px_4px_8px_rgba(0,0,0,0.6),inset_-4px_-4px_8px_rgba(255,255,255,0.1)] border border-[#0d2a20]">
-                              {user.name.charAt(0).toUpperCase()}
-                            </div>
-                            {/* Glow indicator */}
-                            <div className="absolute bottom-0 right-0 sm:bottom-2 sm:right-2 w-4 h-4 sm:w-6 sm:h-6 bg-emerald-400 rounded-full border sm:border-4 border-white shadow-[0_0_12px_rgba(52,211,153,0.9)] animate-pulse"></div>
+                            <ProfileAvatar
+                              name={user.name}
+                              avatar={user.avatar}
+                              photo={avatarPhoto}
+                              className="absolute inset-1.5 rounded-full text-2xl sm:text-4xl border border-[#0d2a20]"
+                              emojiClassName="text-2xl sm:text-5xl"
+                            />
+                            {/* Replaces the online-glow dot that used to sit here.
+                                That corner is the one place on a round avatar the
+                                eye already goes, and a pulsing indicator of
+                                nothing actionable was spending it. */}
+                            <button
+                              type="button"
+                              onClick={() => setIsAvatarPickerOpen(true)}
+                              aria-label={t('avatar.change')}
+                              className="absolute -bottom-0.5 -right-0.5 sm:bottom-1 sm:right-1 w-6 h-6 sm:w-9 sm:h-9 bg-white rounded-full border-2 border-white text-[#1B4D3E] flex items-center justify-center shadow-[0_2px_6px_rgba(27,77,62,0.25)] hover:bg-emerald-50 transition-colors cursor-pointer active:scale-95"
+                            >
+                              <CameraIcon className="w-3 h-3 sm:w-4.5 sm:h-4.5" strokeWidth={2.25} />
+                            </button>
                           </div>
                           
                           <div className="text-center mb-3 sm:mb-8">
@@ -2838,20 +2918,12 @@ export default function App() {
                           Save/Cancel pair is what the eye is on. */}
                       {activeAccountView === 'profile' && !isEditingProfile && (
                         <div className="max-w-sm mx-auto text-left pt-5 relative z-10">
-                          <h4 className={`${sectionLabel} text-rose-600`}>
-                            {t('account.dangerZone')}
-                          </h4>
-                          <div className="rounded-2xl border border-rose-200/60 bg-rose-50/40 p-4">
-                            <p className="text-[11.5px] font-bold text-slate-500 mb-2.5 leading-relaxed">
-                              {t('account.dangerZoneSub')}
-                            </p>
-                            <button
-                              onClick={handleDeleteAccount}
-                              className="w-full bg-gradient-to-br from-rose-50 to-rose-100 hover:from-rose-100 hover:to-rose-200 text-rose-600 text-xs sm:text-sm font-black px-4 py-2.5 rounded-2xl transition-all border border-rose-200/50 cursor-pointer active:scale-95 shadow-[inset_1px_1px_2px_rgba(255,255,255,0.9),4px_4px_8px_rgba(225,29,72,0.15),-4px_-4px_8px_rgba(255,255,255,0.8)] active:shadow-[inset_4px_4px_8px_rgba(225,29,72,0.2),inset_-4px_-4px_8px_rgba(255,255,255,0.9)]"
-                            >
-                              {t('account.deleteAccount')}
-                            </button>
-                          </div>
+                          <button
+                            onClick={handleDeleteAccount}
+                            className="w-full text-rose-600/80 hover:text-rose-700 text-xs sm:text-sm font-bold py-2 rounded-xl transition-colors cursor-pointer text-center hover:bg-rose-50/60"
+                          >
+                            {t('account.deleteAccount')}
+                          </button>
                         </div>
                       )}
                       </div>
@@ -2925,6 +2997,17 @@ export default function App() {
         isOpen={isNotepadOpen}
         onClose={() => setIsNotepadOpen(false)}
       />
+
+      {isAvatarPickerOpen && user && (
+        <AvatarPicker
+          user={user}
+          currentPhoto={avatarPhoto}
+          onSelectPreset={handleSelectAvatarPreset}
+          onUploadPhoto={handleUploadAvatarPhoto}
+          onClear={handleClearAvatar}
+          onClose={() => setIsAvatarPickerOpen(false)}
+        />
+      )}
 
       <CartModal
         isOpen={isCartOpen}

@@ -238,7 +238,10 @@ function createApp() {
    * and one route needing more is not a reason to let all of them accept a
    * megabyte.
    */
-  const LARGE_BODY_PATHS = [/^\/api\/stalls\/me\/photos\//];
+  const LARGE_BODY_PATHS = [
+    /^\/api\/stalls\/me\/photos\//,
+    /^\/api\/users\/[0-9a-fA-F]{24}\/avatar$/,
+  ];
 
   app.use((req, res, next) => {
     if (LARGE_BODY_PATHS.some((pattern) => pattern.test(req.path))) return next();

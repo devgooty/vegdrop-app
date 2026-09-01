@@ -262,6 +262,25 @@ Things worth knowing:
   process. Setting it in `helpers.js` would flip `whatsapp.test.js`'s assertion
   that an unsigned POST is refused with 503 *because* no secret is configured.
 
+### Profile pictures
+
+An account is pictured in one of three ways, in this order: an uploaded photo, one of the built-in avatars, or the first letter of the name. The last is a fallback, not a fourth option — an account that has chosen nothing and one carrying an avatar key this build does not recognise both land there.
+
+**The two choices are mutually exclusive and one endpoint writes both.** `PUT /api/users/:id/avatar` takes either `{ preset }` or `{ image }`, never both and never neither. Splitting them — putting the preset on `PATCH /api/users/:id` and the photo on its own route — would mean two handlers each having to remember to undo the other; `.strict()` refuses `avatar` on the PATCH body precisely so that second door cannot open.
+
+**The bytes are in their own collection, and that is load-bearing.** `middleware/auth.js` re-reads the whole `User` document on every authenticated request so a demotion applies immediately, and the three role apps poll orders every five seconds. A base64 image on that document would be dragged through the hot path of every API call in the system. `UserAvatar` holds it instead; `User.avatar` carries only `preset` (a slug) and `photoUpdatedAt` (the existence signal and the client's cache key). `toPublicJSON` returns that pointer and never the image, so a 200-row admin list stays a list of names — `test/userAvatar.test.js` asserts the bytes are absent from the profile read, which is the only thing standing between this and someone later "simplifying" the image onto the user record. Same reasoning, at length, on `models/StallPhoto.js`.
+
+**The preset list is not duplicated on the server.** `src/data/avatars.js` is the only definition; the route stores whatever slug it is sent, length-capped and pattern-checked. An enum on the server would make adding an avatar a two-halves change that fails as drift, and there is nothing to protect — the key is cosmetic, and an unknown one renders as initials.
+
+**The built-in avatars are drawn, not emoji.** `components/AvatarArt.jsx` holds twelve inline-SVG mascots; `avatars.js` holds the roster, the tile gradients, and an emoji that renders *only* for a key with no drawing. Vector for the same reason the splash screen is: raster art would be twelve requests, and the same mascot is drawn on the account header at four times the picker's size. Two things here have already been got wrong:
+
+- **A `transform` attribute and the CSS `transform` property are the same property, and the stylesheet wins.** Putting `.vd-mascot-top` on the element that also carries `transform="translate(…)"` silently discards the translate and parks the leaves in the corner of the tile. The `Top` wrapper exists to keep placement and animation on different elements; `transform-box: fill-box` is likewise required, or a percentage `transform-origin` resolves against the viewport and the eyes blink off-screen.
+- **Each tile's background contrasts with its mascot rather than matching it.** A red tomato on a red tile is a silhouette, which is why the greens sit on warm grounds and the reds and oranges on cool ones.
+
+The idle animation lives entirely in `.vd-mascot-*` in `index.css`, stated as settled values with keyframes moving away and back, so `prefers-reduced-motion` is one `animation: none` block — the same invariant as the `.vd-splash-*` set. Delays are staggered by grid index; without that, twelve mascots bob in lockstep and read as one mechanism.
+
+Uploads are cropped square in the browser (`toAvatarJpeg` in `services/imageCapture.js`) rather than covered with CSS: `object-fit` would hide the excess in the circle while every byte of it was still stored and sent. Re-encoding through a canvas also drops the EXIF block, which on a phone photo carries GPS coordinates. jpeg and webp only — never SVG, which is a script container being rendered back into a page.
+
 ### Vendor KYC
 
 Holding the `shopkeeper` role no longer implies a human vetted the account, so catalog writes are gated separately. `middleware/vendorVerified.js` guards every write in `routes/products.js` and refuses unless the caller's `VendorKyc.status` is `verified`. `market_owner` and `developer` bypass it; neither sells anything.

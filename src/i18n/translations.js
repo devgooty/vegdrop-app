@@ -1414,6 +1414,19 @@ const STRINGS = {
     te: 'మీ వ్యక్తిగత సమాచారాన్ని చూడండి, మార్చండి',
   },
   'account.editProfile': { en: 'Edit Profile Details', hi: 'प्रोफ़ाइल विवरण बदलें', te: 'ప్రొఫైల్ వివరాలు మార్చండి' },
+
+  // --- Profile picture (AvatarPicker.jsx) -------------------------------------
+  'avatar.title': { en: 'Profile Picture', hi: 'प्रोफ़ाइल फ़ोटो', te: 'ప్రొఫైల్ ఫోటో' },
+  'avatar.change': { en: 'Change profile picture', hi: 'प्रोफ़ाइल फ़ोटो बदलें', te: 'ప్రొఫైల్ ఫోటో మార్చండి' },
+  'avatar.upload': { en: 'Upload a photo', hi: 'फ़ोटो अपलोड करें', te: 'ఫోటో అప్‌లోడ్ చేయండి' },
+  'avatar.remove': { en: 'Remove picture', hi: 'फ़ोटो हटाएँ', te: 'ఫోటో తొలగించండి' },
+  'avatar.working': { en: 'Saving…', hi: 'सहेजा जा रहा है…', te: 'సేవ్ అవుతోంది…' },
+  'avatar.updated': { en: 'Profile picture updated.', hi: 'प्रोफ़ाइल फ़ोटो बदल दी गई।', te: 'ప్రొఫైల్ ఫోటో మారింది.' },
+  'avatar.failed': {
+    en: 'Could not update your profile picture.',
+    hi: 'प्रोफ़ाइल फ़ोटो नहीं बदल सकी।',
+    te: 'ప్రొఫైల్ ఫోటో మార్చలేకపోయాం.',
+  },
   'account.savedAddress': { en: 'Saved Address', hi: 'सहेजा गया पता', te: 'సేవ్ చేసిన చిరునామా' },
   'account.savedAddressSub': {
     en: 'Manage your delivery address',
