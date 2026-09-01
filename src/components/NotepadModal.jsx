@@ -1,7 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ClipboardList, X, Plus, Trash2, Check, ListChecks } from 'lucide-react';
+import { ClipboardList, X, Plus, Trash2, Check, ListChecks, Mic } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { getNotes, addNote, toggleNote, removeNote, clearChecked } from '../services/notepad';
+import { createSpeechRecognition, mapSpeechError } from '../services/voiceSearch';
+import VoiceSearchOverlay from './VoiceSearchOverlay';
+
+/**
+ * "milk, bread and eggs" becomes three notes, not one — a shopping list is
+ * usually said as a run-on, and splitting it is what makes "Say it" actually
+ * faster than typing each item. A single item with no separator still comes
+ * back as a one-element list, so this never loses a plain "get ginger".
+ */
+function splitIntoItems(text) {
+  return text
+    .split(/,| and |\s&\s/gi)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 /**
  * A freeform shopping notepad — "remember to get ginger" rather than a saved
@@ -11,16 +26,45 @@ import { getNotes, addNote, toggleNote, removeNote, clearChecked } from '../serv
  * is actually saved.
  */
 export default function NotepadModal({ isOpen, onClose }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [notes, setNotes] = useState([]);
   const [draft, setDraft] = useState('');
   const inputRef = useRef(null);
+
+  // Voice add — same recognition plumbing as Header's search mic
+  // (services/voiceSearch.js), pointed at addNote instead of a search box.
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState('idle');
+  const [voiceLive, setVoiceLive] = useState('');
+  const recognitionRef = useRef(null);
+  const applyVoiceRef = useRef(null);
 
   // Re-read on every open rather than once on mount: the modal instance stays
   // mounted-or-not across the app's lifetime, so a stale open would otherwise
   // show whatever the list looked like the first time it was ever opened.
   useEffect(() => {
     if (isOpen) setNotes(getNotes());
+  }, [isOpen]);
+
+  const stopVoiceSession = () => {
+    const recognition = recognitionRef.current;
+    recognitionRef.current = null;
+    try {
+      recognition?.abort();
+    } catch {
+      // abort() throws if the session never started
+    }
+  };
+
+  // Closing the modal must not leave a mic session listening behind it.
+  useEffect(() => {
+    if (!isOpen) {
+      stopVoiceSession();
+      setVoiceOpen(false);
+      setVoiceStatus('idle');
+      setVoiceLive('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -36,6 +80,77 @@ export default function NotepadModal({ isOpen, onClose }) {
   const handleToggle = (id) => setNotes(toggleNote(id));
   const handleRemove = (id) => setNotes(removeNote(id));
   const handleClearChecked = () => setNotes(clearChecked());
+
+  const startVoiceSession = () => {
+    const recognition = createSpeechRecognition(language);
+    if (!recognition) {
+      setVoiceStatus('unsupported');
+      return;
+    }
+
+    recognition.onstart = () => setVoiceStatus('listening');
+    recognition.onend = () => {
+      if (recognitionRef.current !== recognition) return;
+      recognitionRef.current = null;
+      setVoiceStatus((current) => (current === 'listening' ? 'nospeech' : current));
+    };
+    recognition.onerror = (event) => {
+      if (recognitionRef.current !== recognition) return;
+      const mapped = mapSpeechError(event.error, { online: navigator.onLine });
+      if (!mapped) return;
+      setVoiceStatus(mapped);
+    };
+    recognition.onresult = (event) => {
+      const last = event.results[event.results.length - 1];
+      if (!last) return;
+      const transcript = last[0]?.transcript?.trim();
+      if (transcript) setVoiceLive(transcript);
+      if (last.isFinal) {
+        setVoiceStatus('heard');
+        applyVoiceRef.current?.(transcript);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch {
+      recognitionRef.current = null;
+      setVoiceStatus('failed');
+    }
+  };
+
+  applyVoiceRef.current = (transcript) => {
+    const items = splitIntoItems(transcript || '');
+    if (items.length === 0) {
+      setVoiceStatus('nospeech');
+      return;
+    }
+    stopVoiceSession();
+    setVoiceOpen(false);
+    setVoiceStatus('idle');
+    setVoiceLive('');
+    let updated = notes;
+    items.forEach((item) => {
+      updated = addNote(item);
+    });
+    setNotes(updated);
+  };
+
+  const openVoiceAdd = () => {
+    stopVoiceSession();
+    setVoiceLive('');
+    setVoiceStatus('listening');
+    setVoiceOpen(true);
+    startVoiceSession();
+  };
+
+  const closeVoiceAdd = () => {
+    stopVoiceSession();
+    setVoiceOpen(false);
+    setVoiceStatus('idle');
+    setVoiceLive('');
+  };
 
   const checkedCount = notes.filter((n) => n.checked).length;
 
@@ -66,6 +181,16 @@ export default function NotepadModal({ isOpen, onClose }) {
             className="flex-1 min-w-0 skeuo-inset-input rounded-full py-2.5 px-4 text-sm font-medium text-[#2D2A26] placeholder-[#9A8F7C] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30"
           />
           <button
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={openVoiceAdd}
+            className="shrink-0 w-11 h-11 rounded-full flex items-center justify-center border border-slate-200 bg-white text-[#1B4D3E] hover:bg-slate-50 transition-all active:scale-95 cursor-pointer"
+            aria-label={t('notepad.voiceAdd')}
+            title={t('notepad.voiceAdd')}
+          >
+            <Mic className="w-5 h-5" />
+          </button>
+          <button
             type="submit"
             disabled={!draft.trim()}
             className="skeuo-btn-emerald shrink-0 w-11 h-11 rounded-full flex items-center justify-center disabled:opacity-40 transition-all active:scale-95 cursor-pointer"
@@ -75,6 +200,21 @@ export default function NotepadModal({ isOpen, onClose }) {
             <Plus className="w-5 h-5" />
           </button>
         </form>
+
+        <VoiceSearchOverlay
+          open={voiceOpen}
+          status={voiceStatus}
+          liveText={voiceLive}
+          onClose={closeVoiceAdd}
+          onMicTap={openVoiceAdd}
+          micLabel={t('notepad.voiceAdd')}
+          headlineOverrides={{
+            permission: t('notepad.voicePermission'),
+            unsupported: t('notepad.voiceUnsupported'),
+            network: t('notepad.voiceNetwork'),
+            failed: t('notepad.voiceFailed'),
+          }}
+        />
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4">

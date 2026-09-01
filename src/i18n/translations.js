@@ -113,6 +113,27 @@ const STRINGS = {
   'notepad.markUndone': { en: 'Mark as not done', hi: 'अधूरा चिह्नित करें', te: 'పూర్తికానట్లు గుర్తించండి' },
   'notepad.itemCount': { en: '{count} item(s)', hi: '{count} वस्तु(एँ)', te: '{count} అంశాలు' },
   'notepad.clearChecked': { en: 'Clear {count} done', hi: '{count} पूरे किए साफ़ करें', te: '{count} పూర్తయినవి తొలగించు' },
+  'notepad.voiceAdd': { en: 'Add by voice', hi: 'आवाज़ से जोड़ें', te: 'వాయిస్‌తో జోడించండి' },
+  'notepad.voicePermission': {
+    en: 'Allow the microphone to add items by voice.',
+    hi: 'आवाज़ से आइटम जोड़ने के लिए माइक्रोफ़ोन की अनुमति दें।',
+    te: 'వాయిస్‌తో అంశాలు జోడించడానికి మైక్ అనుమతి ఇవ్వండి.',
+  },
+  'notepad.voiceUnsupported': {
+    en: 'Voice add needs Chrome or Edge on this device.',
+    hi: 'आवाज़ से जोड़ने के लिए Chrome या Edge चाहिए।',
+    te: 'వాయిస్‌తో జోడించడానికి Chrome లేదా Edge కావాలి.',
+  },
+  'notepad.voiceNetwork': {
+    en: 'Voice add needs a network connection.',
+    hi: 'आवाज़ से जोड़ने के लिए नेटवर्क चाहिए।',
+    te: 'వాయిస్‌తో జోడించడానికి నెట్‌వర్క్ కావాలి.',
+  },
+  'notepad.voiceFailed': {
+    en: 'Voice add failed. Type it instead.',
+    hi: 'आवाज़ से जोड़ना नहीं हुआ। टाइप करें।',
+    te: 'వాయిస్‌తో జోడించడం విఫలమైంది. టైప్ చేయండి.',
+  },
 
   // --- Header (Header.jsx) ---------------------------------------------------
   'header.searchLabel': { en: 'Search the shop', hi: 'दुकान में खोजें', te: 'షాప్‌లో వెతకండి' },
@@ -1379,6 +1400,7 @@ const STRINGS = {
   'account.goToSignIn': { en: 'Go to Sign In Page', hi: 'साइन इन पेज पर जाएँ', te: 'సైన్ ఇన్ పేజీకి వెళ్లండి' },
 
   // --- Account menu -----------------------------------------------------------
+  'account.quickWallet': { en: 'VegWallet', hi: 'VegWallet', te: 'VegWallet' },
   'account.purchaseHistory': { en: 'Purchase History', hi: 'ख़रीद इतिहास', te: 'కొనుగోలు చరిత్ర' },
   'account.purchaseHistorySub': {
     en: 'Track your past orders and total spending',

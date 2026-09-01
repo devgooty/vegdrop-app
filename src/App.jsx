@@ -41,7 +41,7 @@ import { unitsOf } from './services/packs';
 import { createSchedule, fetchSchedules, recurrenceFromDates, describeRecurrence } from './services/schedules';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
-import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon, MapPin as MapPinIcon, Heart as HeartIcon, Settings as SettingsIcon } from 'lucide-react';
+import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon, MapPin as MapPinIcon, Heart as HeartIcon, Settings as SettingsIcon, Wallet as WalletIcon, ClipboardList as ClipboardListIcon } from 'lucide-react';
 import {
   logout,
   logoutEverywhere,
@@ -2337,6 +2337,31 @@ export default function App() {
                           >
                             <SettingsIcon className="w-5 h-5" />
                           </button>
+                        </div>
+                      )}
+
+                      {/* Quick actions — shortcuts to destinations that also
+                          live in the grouped list below. Real ones only:
+                          Wallet and Notepad are actual features of this app
+                          (VegWallet, the header clipboard icon), not stand-ins
+                          for things it doesn't have. */}
+                      {activeAccountView === 'menu' && (
+                        <div className="flex gap-2.5 overflow-x-auto pb-1 mb-4 scrollbar-none snap-x snap-mandatory -mx-2 px-2">
+                          {[
+                            { Icon: MapPinIcon, label: t('account.savedAddress'), onClick: () => setActiveAccountView('address') },
+                            { Icon: WalletIcon, label: t('account.quickWallet'), onClick: () => setIsWalletOpen(true) },
+                            { Icon: ClipboardListIcon, label: t('header.myList'), onClick: () => setIsNotepadOpen(true) },
+                            { Icon: CoinsIcon, label: t('rewards.title'), onClick: () => setActiveAccountView('rewards') },
+                          ].map(({ Icon, label, onClick }) => (
+                            <button
+                              key={label}
+                              onClick={onClick}
+                              className="shrink-0 snap-start w-[5.5rem] bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col items-center gap-2 active:scale-95 transition-all cursor-pointer"
+                            >
+                              <Icon className="w-5.5 h-5.5 text-slate-700" strokeWidth={1.75} />
+                              <span className="text-[11px] font-bold text-slate-600 text-center leading-tight">{label}</span>
+                            </button>
+                          ))}
                         </div>
                       )}
 

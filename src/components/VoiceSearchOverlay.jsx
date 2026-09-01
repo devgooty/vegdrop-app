@@ -12,8 +12,18 @@ export default function VoiceSearchOverlay({
   liveText = '',
   onClose,
   onMicTap,
+  // Overridable so a non-search caller (the notepad's voice-add) doesn't
+  // announce itself as "Search by voice" to a screen reader.
+  micLabel,
+  // Same reason, for the on-screen status copy: the built-in strings all say
+  // "search" ("Voice search needs Chrome or Edge…"), which is wrong wherever
+  // this overlay isn't searching. Keyed by the same status names as the
+  // headline map below; a status with no override falls back to the header
+  // copy, so Header's own usage (which passes nothing) is unaffected.
+  headlineOverrides = {},
 }) {
   const { t } = useLanguage();
+  const label = micLabel || t('header.voiceSearch');
 
   useEffect(() => {
     if (!open) return undefined;
@@ -36,10 +46,10 @@ export default function VoiceSearchOverlay({
     listening: t('header.voiceSpeakNow'),
     heard: liveText || t('header.voiceSpeakNow'),
     nospeech: t('header.voiceNoSpeech'),
-    permission: t('header.voicePermission'),
-    network: t('header.voiceNetwork'),
-    unsupported: t('header.voiceUnsupported'),
-    failed: t('header.voiceFailed'),
+    permission: headlineOverrides.permission || t('header.voicePermission'),
+    network: headlineOverrides.network || t('header.voiceNetwork'),
+    unsupported: headlineOverrides.unsupported || t('header.voiceUnsupported'),
+    failed: headlineOverrides.failed || t('header.voiceFailed'),
     idle: t('header.voiceSpeakNow'),
   }[status] || t('header.voiceSpeakNow');
 
@@ -48,7 +58,7 @@ export default function VoiceSearchOverlay({
       className="vd-voice-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label={t('header.voiceSearch')}
+      aria-label={label}
     >
       <button
         type="button"
@@ -72,7 +82,7 @@ export default function VoiceSearchOverlay({
             }
             onClose?.();
           }}
-          aria-label={listening ? t('header.voiceStop') : t('header.voiceSearch')}
+          aria-label={listening ? t('header.voiceStop') : label}
         >
           <span className="vd-voice-mic-halo" aria-hidden="true" />
           {listening && <span className="vd-voice-mic-ring" aria-hidden="true" />}

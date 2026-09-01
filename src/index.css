@@ -177,11 +177,14 @@
 }
 
 /* YouTube-style voice search: full screen, "Speak now", red mic in a grey ring.
-   The old listening state was a slashed mic in the bar, which read as muted. */
+   The old listening state was a slashed mic in the bar, which read as muted.
+   z-index above the z-[200] modals (WalletModal, NotepadModal) — it now also
+   opens from inside NotepadModal, so it has to out-rank the sheet it floats
+   over rather than the bare header it was first built for. */
 .vd-voice-overlay {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 210;
   max-width: 28rem;
   margin-inline: auto;
   background: #ffffff;
