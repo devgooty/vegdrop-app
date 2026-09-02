@@ -28,15 +28,13 @@
  * lookup inside SpinWheel so an id and its translation cannot drift apart, and
  * the English stays as the readable name in a spin log or a test assertion.
  *
- * `color` stays inside one warm family — gold, brick red, bright yellow,
- * burnt terracotta — rather than spreading across the wheel, which is what
- * makes it read as one gilded object instead of four unrelated stickers next
- * to the wheel's own gold rim and pointer. Distinction between segments comes
- * from swinging value and saturation within that family (a near-black
- * palette failed at exactly this), not from reaching for an unrelated hue.
- * `none` stays deliberately duller than all four: the blank is not a fifth
- * prize, and giving it a vivid colour would make the segment someone lands on
- * most of the time look like the one worth landing on.
+ * There is deliberately no `color` here any more. Each segment used to carry
+ * one, and the wheel was read as a colour wheel with objects stuck on it: five
+ * saturated wedges are far louder than four small photographs, so the fill was
+ * doing the work the prize should. The face is now a single cream, divided by a
+ * hairline, and the only colour on the whole object is the gold bezel around
+ * it. Don't reintroduce a per-segment fill — if a segment needs distinguishing,
+ * it needs a clearer prize, not a louder background.
  */
 /**
  * A prize photograph, served out of `public/` like every other image here.
@@ -81,16 +79,16 @@ function prizePhoto(name) {
 }
 
 export const PRIZES = [
-  { id: 'egg-basket', label: 'Egg Basket', short: 'Egg Basket', labelKey: 'spin.prize.eggBasket', shortKey: 'spin.prize.short.eggBasket', emoji: '🧺', image: prizePhoto('egg-basket'), weight: 8, color: '#D97706' },
-  { id: 'knife', label: 'Kitchen Knife', short: 'Knife', labelKey: 'spin.prize.knife', shortKey: 'spin.prize.short.knife', emoji: '🔪', image: prizePhoto('knife'), weight: 8, color: '#B91C1C' },
-  { id: 'juice-glass', label: 'Juice Glass', short: 'Juice Glass', labelKey: 'spin.prize.juiceGlass', shortKey: 'spin.prize.short.juiceGlass', emoji: '🥤', image: prizePhoto('juice-glass'), weight: 10, color: '#EAB308' },
-  { id: 'slicer', label: '2-in-1 Vegetable Slicer', short: 'Slicer', labelKey: 'spin.prize.slicer', shortKey: 'spin.prize.short.slicer', emoji: '🔧', image: prizePhoto('slicer'), weight: 4, color: '#9A3412' },
+  { id: 'egg-basket', label: 'Egg Basket', short: 'Egg Basket', labelKey: 'spin.prize.eggBasket', shortKey: 'spin.prize.short.eggBasket', emoji: '🧺', image: prizePhoto('egg-basket'), weight: 8 },
+  { id: 'knife', label: 'Kitchen Knife', short: 'Knife', labelKey: 'spin.prize.knife', shortKey: 'spin.prize.short.knife', emoji: '🔪', image: prizePhoto('knife'), weight: 8 },
+  { id: 'juice-glass', label: 'Juice Glass', short: 'Juice Glass', labelKey: 'spin.prize.juiceGlass', shortKey: 'spin.prize.short.juiceGlass', emoji: '🥤', image: prizePhoto('juice-glass'), weight: 10 },
+  { id: 'slicer', label: '2-in-1 Vegetable Slicer', short: 'Slicer', labelKey: 'spin.prize.slicer', shortKey: 'spin.prize.short.slicer', emoji: '🔧', image: prizePhoto('slicer'), weight: 4 },
   /**
    * The blank keeps the clover and gets NO photo, deliberately — there is no
    * object to photograph, and a picture of a prize on the losing segment would
    * be actively misleading as the wheel slows past it.
    */
-  { id: 'none', label: 'Better Luck Next Time', short: 'Try Again', labelKey: 'spin.prize.none', shortKey: 'spin.prize.short.none', emoji: '🍀', image: null, weight: 70, color: '#78716C' },
+  { id: 'none', label: 'Better Luck Next Time', short: 'Try Again', labelKey: 'spin.prize.none', shortKey: 'spin.prize.short.none', emoji: '🍀', image: null, weight: 70 },
 ];
 
 /** Tokens burned by one spin. */

@@ -34,29 +34,54 @@ const RIM_BULBS = Array.from({ length: 24 }, (_, index) => {
 });
 
 /**
- * The prize photo, in the segment group's local units — where -y points outward
- * toward the rim, because the group is rotated to make the label read outward.
+ * The prize, and where it sits in its slice. Local units, on the segment group,
+ * where -y points outward toward the rim.
  *
- * These are as large as the face allows, and the two are a solved pair rather
- * than a pair of tastes: they are the largest photo satisfying both clearances
- * below, which is why neither is round. Moving one without re-solving walks the
- * photo into something.
+ * The photo used to be a small disc pushed out against the rim with the name
+ * tucked between it and the hub, and THAT ORDER is what kept it small. A label
+ * needs tangential room, which only exists far from the centre; parking it at
+ * radius 52 spent the widest part of the slice on one line of text and left the
+ * prize a 31-unit band to live in. Growing the photo inside that band was never
+ * going to amount to much — the band was the problem.
  *
- * The backing disc (`PHOTO_R + 0.5`) is the visible extent, and it spans radius
- * 65 to 97 — the group sits at radius 62, plus `|PHOTO_CY|`, plus the disc.
+ * So the two are swapped. The name now runs along the outer band, where the
+ * slice is 100 units across and the longest label ("Juice Glass") uses barely
+ * half of it, and the prize takes the whole of the rest.
  *
- * - **97 against the rim at 100.** The segment ends there; beyond it the photo
- *   simply hangs off the edge of its own slice.
- * - **3.6 units of daylight to the label**, measured from the photo's centre to
- *   the nearest corner of the label's box, not between radial bands — the two
- *   sit at the same angle, so bands would report a collision the geometry does
- *   not have. 3.6 is the figure the previous, smaller photo was vetted at.
+ * `PHOTO_R` and `GROUP_R` are solved together against three walls rather than
+ * chosen, so moving either one alone walks the photo into something:
  *
- * Sideways never binds and does not need checking: at radius 81 the slice is 48
- * units wide at the half-angle, against a photo half-width of 16.
+ * - **The two straight edges**, cleared by `GROUP_R·sin(36°) − PHOTO_R` = 2.7
+ *   units. This is the binding constraint, and it is the reason the photo
+ *   cannot simply be pushed further out: the slice narrows toward the hub, so
+ *   every unit inward costs 0.59 of radius.
+ * - **The label**, whose baseline sits at radius 86, 4.5 units clear of the
+ *   photo's outer edge at 81.5.
+ * - **The hub** at 16, cleared by 8.5.
+ *
+ * The object inside each file is drawn at 94% of its frame, so a 57-unit frame
+ * puts ~53 units of prize in a slice whose inscribed circle is 31 — it fills
+ * the slot, which is the whole point of these numbers.
  */
-const PHOTO_R = 15.5;
-const PHOTO_CY = -19;
+const PHOTO_R = 28.5;
+const GROUP_R = 53;
+
+/**
+ * The name's baseline, in the same local units — negative is outward, so this
+ * is radius 86.
+ */
+const LABEL_Y = -33;
+
+/**
+ * The clover on the blank, sized off `PHOTO_R` rather than independently so the
+ * two cannot drift apart the next time one of them moves. An emoji's box runs
+ * about 1.08x its font size ABOVE the baseline and has almost nothing below it,
+ * so the baseline drops by roughly half that to centre the glyph on the same
+ * point a photo is centred on. Left a little smaller than the photos on
+ * purpose: the blank is not a fifth prize.
+ */
+const EMOJI_SIZE = PHOTO_R * 1.55;
+const EMOJI_BASELINE = EMOJI_SIZE * 0.54;
 
 /**
  * One pie slice, drawn from the centre.
@@ -227,10 +252,10 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
             <clipPath id={photoClipId} clipPathUnits="objectBoundingBox">
               <circle cx="0.5" cy="0.5" r="0.5" />
             </clipPath>
-            {/* The rim's gold bezel, the hub's gem and every segment's sheen
-                share these three gradients rather than each inventing a flat
-                colour, which is what made the wheel read as printed paper
-                rather than hardware. */}
+            {/* The gold hardware — bezel, pointer and hub — is gradient rather
+                than flat, which is what makes it read as metal. The FACE is
+                deliberately not: the segments carry no colour of their own, so
+                the only things on it are the prizes themselves. */}
             <linearGradient id={`${photoClipId}-rim`} x1="0" y1="0" x2="1" y2="1">
               <stop offset="0%" stopColor="#FDE68A" />
               <stop offset="45%" stopColor="#D97706" />
@@ -241,10 +266,6 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
               <stop offset="55%" stopColor="#F5C453" />
               <stop offset="100%" stopColor="#B8791A" />
             </radialGradient>
-            <linearGradient id={`${photoClipId}-gloss`} x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.5" />
-              <stop offset="55%" stopColor="#FFFFFF" stopOpacity="0" />
-            </linearGradient>
           </defs>
 
           <circle cx="0" cy="0" r={R + 8} fill="none" stroke={`url(#${photoClipId}-rim)`} strokeWidth="7" />
@@ -269,20 +290,24 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
             // rim and rotated to match so it reads outward rather than sideways.
             const mid = index * SEGMENT_ANGLE + SEGMENT_ANGLE / 2 - 90;
             const rad = mid * (Math.PI / 180);
-            const tx = R * 0.62 * Math.cos(rad);
-            const ty = R * 0.62 * Math.sin(rad);
+            const tx = GROUP_R * Math.cos(rad);
+            const ty = GROUP_R * Math.sin(rad);
 
             return (
               <g key={prize.id}>
-                <path d={segmentPath(index)} fill={prize.color} stroke="#FFFDF9" strokeWidth="1.5" />
-                {/* A diagonal sheen per segment, under the photo and label so
-                    it lights the colour without dulling either — a flat fill
-                    is what read as "printed" rather than "enamelled". */}
-                <path
-                  d={segmentPath(index)}
-                  fill={`url(#${photoClipId}-gloss)`}
-                  style={{ pointerEvents: 'none' }}
-                />
+                {/*
+                  Every segment is the same cream. The wheel used to carry a
+                  colour per slice, and the colour was doing the work the
+                  prize should: five saturated wedges around four small
+                  photographs read as a colour wheel someone had stuck objects
+                  onto. Undressed, the only thing on the face is what can be
+                  won, and the gold bezel is left as the sole piece of colour.
+
+                  The slices are still separated, by a hairline rather than by
+                  hue — without it the five prizes float on one white disc and
+                  the wheel stops reading as something divided into chances.
+                */}
+                <path d={segmentPath(index)} fill="#FFFDF9" stroke="#E8DAC0" strokeWidth="1.1" />
                 <g transform={`translate(${tx} ${ty}) rotate(${mid + 90})`}>
                   {/*
                     Undoes the segment's rotation about the photo's own centre,
@@ -292,21 +317,21 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
                     enlarging the photos only made that more obvious. The label
                     stays outside this group because it SHOULD follow the slice.
                   */}
-                  <g transform={`rotate(${-(mid + 90)} 0 ${PHOTO_CY})`}>
+                  <g transform={`rotate(${-(mid + 90)})`}>
                     {prize.image ? (
                       <>
                         {/*
                           Drawn UNDER the photo so a slow or failed load leaves
                           a deliberate-looking disc rather than a hole in the
-                          segment. The photo's own background is this same
-                          cream, so the half-unit that shows is a rim and not a
-                          seam.
+                          segment. It is the same cream as the segment and as
+                          the photo's own background, so on a face with no
+                          colour it is invisible until it is needed.
                         */}
-                        <circle cx="0" cy={PHOTO_CY} r={PHOTO_R + 0.5} fill="#FFFDF9" opacity="0.95" />
+                        <circle cx="0" cy="0" r={PHOTO_R + 0.5} fill="#FFFDF9" opacity="0.95" />
                         <image
                           href={prize.image}
                           x={-PHOTO_R}
-                          y={PHOTO_CY - PHOTO_R}
+                          y={-PHOTO_R}
                           width={PHOTO_R * 2}
                           height={PHOTO_R * 2}
                           clipPath={`url(#${photoClipId})`}
@@ -315,29 +340,27 @@ export default function SpinWheel({ userId, totalTokens, onResult }) {
                         />
                       </>
                     ) : (
-                      /*
-                        Grown with the photos so the losing segment does not
-                        read as an afterthought. 21 rather than the 24 that
-                        would match them by eye: an emoji glyph's box runs about
-                        1.08x its font size ABOVE the baseline, so 24 put the
-                        clover 1.1 units off the rim while the photos sit 3.
-                      */
+                      /* Sized and centred by EMOJI_SIZE / EMOJI_BASELINE, which
+                         are derived from PHOTO_R — see their definition. */
                       <text
                         textAnchor="middle"
-                        y={PHOTO_CY + 8}
-                        fontSize="21"
+                        y={EMOJI_BASELINE}
+                        fontSize={EMOJI_SIZE}
                         style={{ userSelect: 'none' }}
                       >
                         {prize.emoji}
                       </text>
                     )}
                   </g>
+                  {/* Dark on cream, where it was cream on a saturated wedge.
+                      Kept in the bezel's own brown rather than a neutral grey,
+                      so the face reads as one object with the gold around it. */}
                   <text
                     textAnchor="middle"
-                    y="10"
+                    y={LABEL_Y}
                     fontSize="8.5"
                     fontWeight="800"
-                    fill="#FFFDF9"
+                    fill="#7C4A0A"
                     style={{ userSelect: 'none' }}
                   >
                     {t(prize.shortKey)}
