@@ -165,9 +165,11 @@ const userSchema = new mongoose.Schema(
      * it — and both halves are deliberately tiny, because this document is
      * re-read on every authenticated request by middleware/auth.js.
      *
-     * The two are mutually exclusive and the route enforces it in one place:
-     * picking a preset deletes the photo, uploading a photo clears the preset.
-     * Neither set means initials, which is what every account starts as.
+     * There is no uploaded photo here any more, and no `photoUpdatedAt`
+     * pointing at one. That whole half is deleted — see the note on
+     * `PUT /:id/avatar` in routes/users.js for what came off with it, and
+     * `migrateRemovedAvatarPhotos` in db/migrations.js for the stored bytes.
+     * No preset set means initials, which is what every account starts as.
      */
     avatar: {
       /**
@@ -195,14 +197,6 @@ const userSchema = new mongoose.Schema(
        */
       skinTone: { type: String, default: null, trim: true, maxlength: 24 },
       hair: { type: String, default: null, trim: true, maxlength: 24 },
-
-      /**
-       * When the uploaded photo in `UserAvatar` was last replaced — the signal
-       * that one exists at all, and the cache key the client re-fetches on.
-       * The bytes themselves are in that separate collection; see the note
-       * there for why they are not here.
-       */
-      photoUpdatedAt: { type: Date, default: null },
     },
 
     /**
@@ -310,15 +304,15 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
     status: this.status,
     phoneVerified: Boolean(this.phoneVerifiedAt),
     /**
-     * The pointer, never the pixels. An uploaded photo is fetched separately
-     * from GET /api/users/:id/avatar, so a 200-row admin list stays a list of
-     * names rather than several megabytes of JPEG.
+     * Three slugs, never pixels. This used to carry a pointer to an uploaded
+     * photo that a second request fetched; the picture is now drawn from these
+     * keys alone, so a 200-row admin list costs the same as a list of names
+     * whatever anybody has chosen.
      */
     avatar: {
       preset: this.avatar?.preset || null,
       skinTone: this.avatar?.skinTone || null,
       hair: this.avatar?.hair || null,
-      photoUpdatedAt: this.avatar?.photoUpdatedAt || null,
     },
     // Duty status only — never the position. A rider's live coordinates are
     // dispatch input, not something to hand back out on a profile read.

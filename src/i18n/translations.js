@@ -94,6 +94,7 @@ const STRINGS = {
   // --- Shared buttons ----------------------------------------------------------
   'common.save': { en: 'Save', hi: 'सहेजें', te: 'సేవ్ చేయండి' },
   'common.cancel': { en: 'Cancel', hi: 'रद्द करें', te: 'రద్దు చేయండి' },
+  'common.edit': { en: 'Edit', hi: 'बदलें', te: 'మార్చండి' },
   'common.signOut': { en: 'Sign Out', hi: 'लॉग आउट', te: 'లాగ్ అవుట్' },
   'common.back': { en: 'Back', hi: 'वापस', te: 'వెనుకకు' },
   'common.change': { en: 'Change', hi: 'बदलें', te: 'మార్చు' },
@@ -1471,13 +1472,10 @@ const STRINGS = {
   'profile.notAdded': { en: 'Not added', hi: 'जोड़ा नहीं गया', te: 'జోడించలేదు' },
   'avatar.title': { en: 'Profile Picture', hi: 'प्रोफ़ाइल फ़ोटो', te: 'ప్రొఫైల్ ఫోటో' },
   'avatar.change': { en: 'Change profile picture', hi: 'प्रोफ़ाइल फ़ोटो बदलें', te: 'ప్రొఫైల్ ఫోటో మార్చండి' },
-  'avatar.upload': { en: 'Upload a photo', hi: 'फ़ोटो अपलोड करें', te: 'ఫోటో అప్‌లోడ్ చేయండి' },
   'avatar.save': { en: 'Save picture', hi: 'फ़ोटो सहेजें', te: 'ఫోటో సేవ్ చేయండి' },
   'avatar.subtitle': { en: 'Pick one, then save.', hi: 'एक चुनें, फिर सहेजें।', te: 'ఒకటి ఎంచుకుని సేవ్ చేయండి.' },
   'avatar.people': { en: 'People', hi: 'लोग', te: 'వ్యక్తులు' },
-  'avatar.photo': { en: 'Photo', hi: 'फ़ोटो', te: 'ఫోటో' },
   'avatar.surprise': { en: 'Surprise me', hi: 'कुछ भी चुनें', te: 'ఏదైనా ఎంచుకో' },
-  'avatar.photoHint': { en: 'JPEG or WebP — we crop it square.', hi: 'JPEG या WebP — हम इसे चौकोर काटते हैं।', te: 'JPEG లేదా WebP — చతురస్రంగా కత్తిరిస్తాం.' },
   'avatar.peopleHint': {
     en: 'Pick a face above to choose its skin tone and hair.',
     hi: 'त्वचा का रंग और बाल चुनने के लिए ऊपर एक चेहरा चुनें।',

@@ -292,6 +292,52 @@ async function migrateDroppedEmailVerification() {
 }
 
 /**
+ * Profile photo uploads were removed, so the stored photographs and the field
+ * that pointed at them have to go with the feature.
+
+ * WHY THE BYTES ARE DELETED RATHER THAN LEFT ALONE
+ *
+ * Nothing reads them any more, so leaving them costs no correctness — but they
+ * are photographs of people's faces that their owners can no longer see, edit
+ * or delete, because every screen and endpoint that reached them is gone. A
+ * dropped feature must not turn its data into a permanent holding of personal
+ * images nobody can act on. That is the whole reason this runs.
+ *
+ * `avatar.photoUpdatedAt` goes for the same reason `emailVerifiedAt` did above:
+ * a leftover timestamp asserting "this account has a photo" is exactly the kind
+ * of field a later change reads again without checking whether anything still
+ * writes it, and every pre-migration account would then claim a picture that
+ * does not exist.
+ *
+ * Idempotent both halves. `$unset` matches nothing on a second run, and a
+ * missing collection reports `NamespaceNotFound` (26), which is swallowed — two
+ * instances booting at once race harmlessly, and the second simply finds the
+ * work already done.
+ */
+async function migrateRemovedAvatarPhotos() {
+  const User = mongoose.connection.collection('users');
+
+  const result = await User.updateMany(
+    { 'avatar.photoUpdatedAt': { $exists: true } },
+    { $unset: { 'avatar.photoUpdatedAt': '' } }
+  );
+
+  let photosDropped = 0;
+  try {
+    const collection = mongoose.connection.collection('useravatars');
+    photosDropped = await collection.countDocuments();
+    await collection.drop();
+  } catch (err) {
+    // 26 is NamespaceNotFound: already dropped, or never existed on a database
+    // that post-dates the feature. Anything else is a real failure.
+    if (err?.code !== 26) throw err;
+    photosDropped = 0;
+  }
+
+  return { cleared: result?.modifiedCount ?? 0, photosDropped };
+}
+
+/**
  * Link each shop's own listings to the shared-catalog item they are an instance
  * of, so basket coverage can be asked across shops (see `Product.catalogItem`).
  *
@@ -436,6 +482,20 @@ async function runMigrations() {
   }
 
   try {
+    const { cleared, photosDropped } = await migrateRemovedAvatarPhotos();
+
+    if (cleared > 0 || photosDropped > 0) {
+      console.info(
+        `[db] migration: removed ${photosDropped} uploaded profile photo(s) and ` +
+          `cleared avatar.photoUpdatedAt from ${cleared} account(s) — uploads are gone`
+      );
+    }
+  } catch (err) {
+    console.error(`[db] migration (removed avatar photos) failed: ${err?.message}`);
+    ok = false;
+  }
+
+  try {
     const { linked, unmatched, ambiguous } = await migrateProductCatalogItem();
 
     if (linked > 0) {
@@ -468,5 +528,6 @@ module.exports = {
   migrateUserContactIndexes,
   migrateWalletLedgerSequence,
   migrateDroppedEmailVerification,
+  migrateRemovedAvatarPhotos,
   migrateProductCatalogItem,
 };

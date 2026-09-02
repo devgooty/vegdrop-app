@@ -24,6 +24,7 @@ import AccountAddress from './components/AccountAddress';
 import AccountWishlist from './components/AccountWishlist';
 import AccountPermissions from './components/AccountPermissions';
 import ProfileAvatar from './components/ProfileAvatar';
+import { avatarPreset } from './data/avatars';
 import AvatarPicker from './components/AvatarPicker';
 import RateAppModal from './components/RateAppModal';
 import PageTransition from './components/PageTransition';
@@ -62,7 +63,7 @@ import {
   acceptPartialOrder, retryPartialOrder,
 } from './services/orders';
 import { fetchWallet, topUpWallet } from './services/wallet';
-import { fetchUsers, updateUser, updateUserRole, deleteUser, fetchUserAvatar, setUserAvatar } from './services/users';
+import { fetchUsers, updateUser, updateUserRole, deleteUser, setUserAvatar } from './services/users';
 import { ApiRequestError, NetworkError } from './services/apiClient';
 import { RUPEES_PER_BATCH, TOKENS_PER_BATCH } from './services/rewards';
 
@@ -159,12 +160,139 @@ function accountSectionLabel(language) {
  * collided and the address wrapped mid-word against the label. Given the whole
  * width it simply reads.
  */
-function ProfileField({ icon: Icon, label, value, placeholder, verified = false }) {
+/**
+ * Profile Details, wearing whatever avatar the account chose.
+ *
+ * Each avatar carries its own two-stop gradient (src/data/avatars.js), and it
+ * used to stop at the circle: the card behind it was a fixed emerald wash
+ * whichever mascot was standing on it. Reading the ground off the picture is
+ * what makes the screen feel like it belongs to the person rather than to the
+ * brand — and it costs nothing stored, because the colour is derived from the
+ * preset key that was already there.
+ *
+ * TWO THINGS HERE ARE LOAD-BEARING, AND BOTH ARE THE SAME MISTAKE.
+ *
+ * The card takes `to` at 65% over white rather than `to` itself. The avatar's
+ * own gradient ENDS at `to`, so a card painted the same value would put the
+ * mascot's darkest corner against an identical ground — the silhouette problem
+ * avatars.js already calls out for the tiles, arriving one layer further out.
+ * Held lighter, the circle stays an object sitting on a surface. The `ring-4
+ * ring-white` on the avatar is the second guard, not the first.
+ *
+ * The wash also has to reach white well before the card ends, or the name below
+ * sits on a tint that some presets do not carry dark enough text against.
+ *
+ * An account on its initials keeps the emerald, which is the brand answer for
+ * "no choice made" — not a neutral grey, which would read as unfinished.
+ */
+/**
+ * The hue of a palette colour, 0-360.
+ *
+ * Only the hue is taken. Every `to` in the roster is a pale tint, so using one
+ * as a button would be white text on a pastel — the accents below rebuild the
+ * colour at the brand's own saturation and lightness instead, and borrow
+ * nothing from the tint but which way round the wheel it sits.
+ *
+ * A grey with no hue to read falls back to the brand's own 162°, which is what
+ * `#1B4D3E` is. Nothing in the roster is grey today; the branch exists so that
+ * adding one is a muted button rather than an undefined one.
+ */
+function hueOf(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+
+  const max = Math.max(r, g, b);
+  const delta = max - Math.min(r, g, b);
+  if (delta === 0) return 162;
+
+  let h;
+  if (max === r) h = ((g - b) / delta) % 6;
+  else if (max === g) h = (b - r) / delta + 2;
+  else h = (r - g) / delta + 4;
+
+  h = Math.round(h * 60);
+  return h < 0 ? h + 360 : h;
+}
+
+/**
+ * The screen's primary actions, in the avatar's hue.
+ *
+ * `#1B4D3E` is `hsl(162 48% 20%)` almost exactly, so these are the brand green
+ * ROTATED rather than replaced: same saturation, same lightness, different hue.
+ * That is what keeps a themed button as legible as the one it replaces — 20%
+ * lightness clears white text by better than 12:1 at every hue, where the tint
+ * the chips use would clear nothing.
+ *
+ * Custom properties rather than inline `backgroundColor`, because these buttons
+ * need a hover state and a matching shadow, and neither can be written inline.
+ * See `.vd-profile-cta` in index.css.
+ */
+function accentVars(hex) {
+  const h = hueOf(hex);
+  return {
+    '--vd-accent': `hsl(${h} 48% 20%)`,
+    '--vd-accent-hover': `hsl(${h} 48% 13%)`,
+    '--vd-accent-shadow': `hsl(${h} 48% 20% / 0.3)`,
+  };
+}
+
+const INITIALS_THEME = Object.freeze({
+  hero: {
+    background: 'linear-gradient(to bottom, rgba(236, 253, 245, 0.9) 0%, #FFFFFF 78%)',
+    borderColor: 'rgba(167, 243, 208, 0.7)',
+  },
+  card: { borderColor: 'rgb(241, 245, 249)' },
+  chip: { backgroundColor: 'rgb(236, 253, 245)' },
+  /**
+   * The literal brand values, not `accentVars` at 162° — which lands two units
+   * away per channel. Imperceptible, but an account that has chosen nothing
+   * should be provably unchanged rather than approximately so.
+   */
+  accent: {
+    '--vd-accent': '#1B4D3E',
+    '--vd-accent-hover': '#123B2F',
+    '--vd-accent-shadow': 'rgba(27, 77, 62, 0.3)',
+  },
+});
+
+function profileTheme(avatar) {
+  const preset = avatarPreset(avatar?.preset);
+  if (!preset) return INITIALS_THEME;
+
+  // 8-digit hex: every value in the roster is a 6-digit literal, so the two
+  // alpha digits append cleanly. A palette entry in any other notation would
+  // silently produce an invalid colour and fall back to transparent.
+  return {
+    hero: {
+      background: `linear-gradient(to bottom, ${preset.to}A6 0%, #FFFFFF 78%)`,
+      borderColor: `${preset.to}B3`,
+    },
+    card: { borderColor: `${preset.to}B3` },
+    /**
+     * The chips take `to` at full strength, where the two card grounds take it
+     * washed — and the difference is the point rather than an inconsistency.
+     * Nothing is drawn on top of a chip but a 16px icon in the brand's own dark
+     * green, which clears every value in the roster comfortably; the cards have
+     * a mascot and body text on them, so they cannot be painted that strongly.
+     */
+    chip: { backgroundColor: preset.to },
+    accent: accentVars(preset.to),
+  };
+}
+
+function ProfileField({ icon: Icon, label, value, placeholder, verified = false, chip }) {
   const empty = !value;
 
   return (
     <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 last:border-0">
-      <span className="w-9 h-9 rounded-xl bg-emerald-50 text-[#1B4D3E] flex items-center justify-center shrink-0">
+      {/* `chip` carries the avatar's colour — see profileTheme. Transitioned
+          with the cards above so the whole screen re-dresses as one thing when
+          a new avatar is saved, rather than the rows snapping. */}
+      <span
+        className="w-9 h-9 rounded-xl text-[#1B4D3E] flex items-center justify-center shrink-0 transition-colors duration-500"
+        style={chip}
+      >
         <Icon className="w-4 h-4" strokeWidth={2.25} />
       </span>
       <div className="min-w-0 flex-1">
@@ -380,16 +508,6 @@ export default function App() {
   const [activeAccountView, setActiveAccountView] = useState('menu');
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
   const [isRateAppOpen, setIsRateAppOpen] = useState(false);
-  /**
-   * The uploaded profile photo, as a data URI.
-   *
-   * Fetched separately because the session payload carries only a pointer to it
-   * — see `toPublicJSON` in server/models/User.js for why the bytes are not on
-   * the user record. Null covers both "never uploaded one" and "not fetched
-   * yet"; ProfileAvatar falls through to the preset or the initial either way,
-   * so there is no loading state to render.
-   */
-  const [avatarPhoto, setAvatarPhoto] = useState(null);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editPhone, setEditPhone] = useState('');
@@ -958,30 +1076,11 @@ export default function App() {
   }, [user, clearCart, setActiveTab, setRegisteredUsers, toast, t]);
 
   /**
-   * Pull the uploaded photo whenever the record says there is a newer one.
+   * The one write behind the picture sheet.
    *
-   * Keyed on `photoUpdatedAt` rather than just its presence, so replacing a
-   * photo re-fetches instead of leaving the previous one on screen. A failure
-   * is swallowed: an avatar that will not load is a fallback to initials, not
-   * something to interrupt someone with.
-   */
-  const avatarStamp = user?.avatar?.photoUpdatedAt || null;
-  useEffect(() => {
-    if (!user?.id || !avatarStamp) {
-      setAvatarPhoto(null);
-      return undefined;
-    }
-
-    let cancelled = false;
-    fetchUserAvatar(user.id)
-      .then((image) => { if (!cancelled) setAvatarPhoto(image); })
-      .catch(() => { if (!cancelled) setAvatarPhoto(null); });
-
-    return () => { cancelled = true; };
-  }, [user?.id, avatarStamp]);
-
-  /**
-   * The one write behind the picture sheet, whichever kind of picture it is.
+   * There is no companion fetch. The session payload carries the whole picture
+   * — three slugs — so the avatar is drawable the moment the user record lands,
+   * where an uploaded photo needed a second request keyed on its timestamp.
    *
    * Adopts the user record the server returns rather than assuming the write
    * landed, and throws on failure so AvatarPicker can report it and stay open
@@ -989,15 +1088,29 @@ export default function App() {
    */
   const handleSaveAvatar = useCallback(async (choice) => {
     const updated = await setUserAvatar(user.id, choice);
-    // A photo is held locally rather than waiting on the fetch its new
-    // timestamp triggers — these are the same bytes and they are already here.
-    // Set only after the write succeeds, so a refused upload never appears to
-    // have worked. An avatar clears it, because the two are exclusive.
-    setAvatarPhoto(choice.image || null);
     setUser(updated);
     setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
     toast.success(t('avatar.updated'));
   }, [user, setUser, setRegisteredUsers, toast, t]);
+
+  /**
+   * The account screen's colours, read off whichever avatar is being worn.
+   *
+   * Derived once here rather than at each of the five places that use it: it is
+   * a Map lookup and an object literal, but five independent calls are five
+   * chances for one surface to be dressed from a different source than the rest.
+   */
+  const profileSkin = profileTheme(user?.avatar);
+
+  /**
+   * Whether the account header shows its Edit pill.
+   *
+   * Only on the profile view — the header is shared by every account sub-view,
+   * and Rewards or Saved Address have nothing for it to edit. Hidden while the
+   * form is open too, where Cancel and Save are the actions and a third one
+   * pointing back at the form someone is already in is just noise.
+   */
+  const showProfileEditAction = activeAccountView === 'profile' && !isEditingProfile;
 
   /**
    * Same outcome contract as sharing a product (services/share.js): 'shared'
@@ -2439,18 +2552,64 @@ export default function App() {
                       
                       {/* Navigation Header if not in menu */}
                       {activeAccountView !== 'menu' && (
-                        <div className="flex items-center mb-4">
+                        /*
+                          `relative`, with the title absolutely centred rather
+                          than flexed between the two controls.
+
+                          Flexed, the title centres on the GAP, so it sits ~19px
+                          left on the profile view (where the Edit pill is wider
+                          than the back button) and dead centre on every other
+                          sub-view — the heading visibly jumps as you move
+                          between them. Centred on the row instead, it lands in
+                          the same place on all of them whatever flanks it.
+                        */
+                        <div className="relative flex items-center mb-4">
                           <button
                             onClick={() => setActiveAccountView('menu')}
                             className="p-2 bg-white rounded-xl shadow-sm border border-slate-100 text-slate-600 hover:text-[#1B4D3E] transition-colors cursor-pointer active:scale-95"
                           >
                             <ArrowLeft className="w-5 h-5" />
                           </button>
-                          <h2 className="flex-1 text-center font-black text-lg text-[#1B4D3E] mr-9 drop-shadow-sm">
+                          {/* `pointer-events-none` so the heading never eats a
+                              tap meant for a control it overlaps at a narrow
+                              width; `truncate` is the guard for a long
+                              translation rather than the expected case. */}
+                          <h2 className="absolute left-1/2 -translate-x-1/2 max-w-[58%] truncate pointer-events-none text-center font-black text-lg text-[#1B4D3E] drop-shadow-sm">
                             {/* Falls back to the profile title because the
                                 view below falls back to the profile body. */}
                             {t(ACCOUNT_VIEW_TITLES[activeAccountView] || ACCOUNT_VIEW_TITLES.profile)}
                           </h2>
+
+                          {/*
+                            Editing, promoted out of the card and into the
+                            corner it belongs in.
+
+                            It was a full-width bar at the BOTTOM of the details
+                            card, which put the screen's only action below every
+                            field it acts on — read to the end, then scroll back
+                            to change anything. In the header it is reachable
+                            first, and it stops competing with Delete Account
+                            for weight further down.
+
+                            The label shortens to "Edit"; the full sentence
+                            stays as the accessible name, since a pill in a
+                            corner is not self-describing to a screen reader the
+                            way a bar under the fields was.
+                          */}
+                          <div className="flex-1" />
+
+                          {showProfileEditAction && (
+                            <button
+                              type="button"
+                              onClick={handleStartEditingProfile}
+                              aria-label={t('account.editProfile')}
+                              className="vd-profile-cta shrink-0 flex items-center gap-1.5 pl-3 pr-3.5 py-2 rounded-xl text-white text-[0.78rem] font-black shadow-[0_4px_12px_var(--vd-accent-shadow)] transition-colors duration-500 cursor-pointer active:scale-95"
+                              style={profileSkin.accent}
+                            >
+                              <PencilIcon className="w-3.5 h-3.5" strokeWidth={2.5} />
+                              {t('common.edit')}
+                            </button>
+                          )}
                         </div>
                       )}
 
@@ -2642,12 +2801,18 @@ export default function App() {
                             a dark hairline border — which at 64px on a phone
                             read as grime around the edge rather than depth.
                           */}
-                          <div className="rounded-[2rem] bg-gradient-to-b from-emerald-50/90 to-white border border-emerald-100/70 px-5 pt-6 pb-5 mb-4 flex flex-col items-center animate-scale-in shrink-0">
+                          <div
+                            /* Transitioned for the same reason the picker's own
+                               preview band is: saving a new avatar changes this
+                               ground too, and a hard cut reads as the screen
+                               reloading rather than as the choice landing. */
+                            className="rounded-[2rem] border px-5 pt-6 pb-5 mb-4 flex flex-col items-center animate-scale-in shrink-0 transition-[background,border-color] duration-500"
+                            style={profileSkin.hero}
+                          >
                             <div className="relative w-20 h-20 sm:w-28 sm:h-28">
                               <ProfileAvatar
                                 name={user.name}
                                 avatar={user.avatar}
-                                photo={avatarPhoto}
                                 className="w-full h-full rounded-full ring-4 ring-white shadow-[0_10px_28px_rgba(15,60,45,0.18)] text-2xl sm:text-4xl"
                                 emojiClassName="text-3xl sm:text-5xl"
                               />
@@ -2659,7 +2824,8 @@ export default function App() {
                                 type="button"
                                 onClick={() => setIsAvatarPickerOpen(true)}
                                 aria-label={t('avatar.change')}
-                                className="absolute -bottom-1 -right-1 w-8 h-8 sm:w-9 sm:h-9 bg-[#1B4D3E] rounded-full ring-4 ring-white text-white flex items-center justify-center shadow-[0_4px_10px_rgba(27,77,62,0.35)] hover:bg-[#123B2F] transition-colors cursor-pointer active:scale-95"
+                                className="vd-profile-cta absolute -bottom-1 -right-1 w-8 h-8 sm:w-9 sm:h-9 rounded-full ring-4 ring-white text-white flex items-center justify-center shadow-[0_4px_10px_var(--vd-accent-shadow)] transition-colors duration-500 cursor-pointer active:scale-95"
+                                style={profileSkin.accent}
                               >
                                 <CameraIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" strokeWidth={2.25} />
                               </button>
@@ -2671,9 +2837,19 @@ export default function App() {
                       )}
 
                       {isEditingProfile ? (
-                        <form onSubmit={handleSaveProfile} className="bg-white rounded-[2rem] border border-slate-100 shadow-[0_8px_24px_rgba(15,60,45,0.06)] p-5 space-y-4 text-left text-sm relative z-10">
+                        <form
+                          onSubmit={handleSaveProfile}
+                          /* Dressed exactly like the card it replaces, or
+                             tapping Edit would drop the theme for as long as
+                             the form is open and read as a different screen. */
+                          className="bg-white rounded-[2rem] border shadow-[0_8px_24px_rgba(15,60,45,0.06)] p-5 space-y-4 text-left text-sm relative z-10 transition-colors duration-500"
+                          style={profileSkin.card}
+                        >
                           <h4 className="font-black text-[#123B2F] text-sm flex items-center gap-2.5">
-                            <span className="w-9 h-9 rounded-xl bg-emerald-50 text-[#1B4D3E] flex items-center justify-center">
+                            <span
+                              className="w-9 h-9 rounded-xl text-[#1B4D3E] flex items-center justify-center transition-colors duration-500"
+                              style={profileSkin.chip}
+                            >
                               <PencilIcon className="w-4 h-4" strokeWidth={2.5} />
                             </span>
                             {t('account.editProfile')}
@@ -2733,19 +2909,24 @@ export default function App() {
                             </button>
                             <button
                               type="submit"
-                              className="flex-1 bg-[#1B4D3E] text-white font-black py-3 rounded-2xl text-center cursor-pointer transition-all active:scale-[0.98] hover:bg-[#123B2F] shadow-[0_6px_18px_rgba(27,77,62,0.25)]"
+                              className="vd-profile-cta flex-1 text-white font-black py-3 rounded-2xl text-center cursor-pointer transition-all duration-500 active:scale-[0.98] shadow-[0_6px_18px_var(--vd-accent-shadow)]"
+                              style={profileSkin.accent}
                             >
                               {t('common.save')}
                             </button>
                           </div>
                         </form>
                       ) : (
-                        <div className="bg-white rounded-[2rem] border border-slate-100 shadow-[0_8px_24px_rgba(15,60,45,0.06)] text-left text-sm overflow-hidden relative z-10">
+                        <div
+                          className="bg-white rounded-[2rem] border shadow-[0_8px_24px_rgba(15,60,45,0.06)] text-left text-sm overflow-hidden relative z-10 transition-colors duration-500"
+                          style={profileSkin.card}
+                        >
                           <ProfileField
                             icon={UserIcon}
                             label={t('profile.name')}
                             value={user.name}
                             placeholder={t('profile.notAdded')}
+                            chip={profileSkin.chip}
                           />
                           {/*
                             An account is created from a phone number alone, so
@@ -2758,6 +2939,7 @@ export default function App() {
                             label={t('profile.email')}
                             value={user.email}
                             placeholder={t('profile.notAdded')}
+                            chip={profileSkin.chip}
                           />
                           <ProfileField
                             icon={PhoneIcon}
@@ -2767,17 +2949,8 @@ export default function App() {
                             // The credential of record, and the only field here
                             // that is ever proved. Worth saying so.
                             verified={Boolean(user.phone && user.phoneVerified)}
+                            chip={profileSkin.chip}
                           />
-
-                          <div className="p-3">
-                            <button
-                              type="button"
-                              onClick={handleStartEditingProfile}
-                              className="w-full py-3 bg-[#1B4D3E] text-white font-black rounded-2xl transition-all text-center cursor-pointer active:scale-[0.99] shadow-[0_6px_18px_rgba(27,77,62,0.25)] hover:bg-[#123B2F] flex items-center justify-center gap-2 text-[0.82rem]"
-                            >
-                              <PencilIcon className="w-4 h-4" strokeWidth={2.5} /> {t('account.editProfile')}
-                            </button>
-                          </div>
                         </div>
                       )}
 
@@ -3143,7 +3316,6 @@ export default function App() {
       {isAvatarPickerOpen && user && (
         <AvatarPicker
           user={user}
-          currentPhoto={avatarPhoto}
           onSave={handleSaveAvatar}
           onClose={() => setIsAvatarPickerOpen(false)}
         />

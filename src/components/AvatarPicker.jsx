@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Camera, Check, RefreshCw, Sparkles } from 'lucide-react';
+import { X, Check, RefreshCw, Sparkles } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useToast } from './Toast';
 import {
@@ -13,10 +13,14 @@ import {
   avatarIsEditable,
 } from '../data/avatars';
 import AvatarArt, { hasAvatarArt } from './AvatarArt';
-import { toAvatarJpeg } from '../services/imageCapture';
 
 /**
- * Choosing a profile picture: one of the built-in avatars, or a photo.
+ * Choosing a profile picture: one of the built-in avatars.
+ *
+ * UPLOADING A PHOTO WAS REMOVED, HERE AND ON THE SERVER. There was a third tab
+ * with a file input behind it; the whole path is gone — see the note on
+ * `PUT /:id/avatar` in server/routes/users.js for what that deletion took with
+ * it. Adding a tab back here is the easy half of bringing all of it back.
  *
  * Nothing here writes until Save. Tapping a tile used to be the write, which
  * stopped working the moment the people arrived: picking a face and then a skin
@@ -24,56 +28,52 @@ import { toAvatarJpeg } from '../services/imageCapture';
  * first closed the sheet before the second could be made. So the whole sheet is
  * a draft and the single write at the end is what was assembled.
  *
- * The three ways of answering are TABS rather than one long column, and that is
- * a correctness fix as much as a visual one: stacked, the fourteen tiles and
- * two swatch rows pushed Save off the bottom of a phone screen, so the one
- * control the sheet now depends on was the one thing you could not see. Each
- * tab is about a screenful, and Save sits under all of them.
+ * The two ways of answering are TABS rather than one long column, and that is a
+ * correctness fix as much as a visual one: stacked, the fourteen tiles and two
+ * swatch rows pushed Save off the bottom of a phone screen, so the one control
+ * the sheet depends on was the one thing you could not see. Each tab is about a
+ * screenful, and Save sits under both of them.
  *
- * Both kinds of picture still go through the same endpoint, because they are
- * two answers to one question — saving either replaces whatever was there. The
- * caller adopts the user record the server returns rather than guessing at the
- * new state, so a refused write leaves the screen showing what is stored.
+ * The caller adopts the user record the server returns rather than guessing at
+ * the new state, so a refused write leaves the screen showing what is stored.
  */
-export default function AvatarPicker({ user, currentPhoto, onSave, onClose }) {
+export default function AvatarPicker({ user, onSave, onClose }) {
   const { t } = useLanguage();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   /**
-   * The pending picture. `kind` is which of the two mutually exclusive answers
-   * is being given, so switching from a photo to an avatar and back is a local
-   * change of mind rather than a pair of writes that each undo the other.
+   * The pending picture. A null `preset` is an account still on its initials —
+   * the sheet opened, nothing has been picked yet, and Save has nothing to do.
+   * The tone and hair carry defaults regardless, so switching to a face never
+   * shows one drawn in whatever the last person avatar happened to be wearing.
    */
   const [draft, setDraft] = useState(() => ({
-    kind: currentPhoto ? 'photo' : user.avatar?.preset ? 'preset' : 'none',
     preset: user.avatar?.preset || null,
     skinTone: user.avatar?.skinTone || DEFAULT_SKIN_TONE,
     hair: user.avatar?.hair || DEFAULT_HAIR_COLOR,
-    image: currentPhoto || null,
   }));
 
   /** Opens on whatever is already being worn, rather than on a fixed tab. */
-  const [tab, setTab] = useState(() => {
-    if (currentPhoto) return 'photo';
-    return avatarIsEditable(user.avatar?.preset) ? 'people' : 'produce';
-  });
+  const [tab, setTab] = useState(() =>
+    avatarIsEditable(user.avatar?.preset) ? 'people' : 'produce'
+  );
 
   const edit = (patch) => {
     setDraft((prev) => ({ ...prev, ...patch }));
     setDirty(true);
   };
 
-  const previewPreset = draft.kind === 'preset' ? avatarPreset(draft.preset) : null;
-  const isEditable = draft.kind === 'preset' && avatarIsEditable(draft.preset);
+  const previewPreset = avatarPreset(draft.preset);
+  const isEditable = avatarIsEditable(draft.preset);
 
   /**
    * Remounts the preview on every change of choice, which is what replays the
    * pop. Keyed on the whole answer and not just the preset, so changing a skin
    * tone gets the same acknowledgement as changing the face.
    */
-  const previewKey = `${draft.kind}:${draft.preset}:${draft.skinTone}:${draft.hair}`;
+  const previewKey = `${draft.preset}:${draft.skinTone}:${draft.hair}`;
 
   /**
    * Somewhere to start for anyone who does not want to assemble a face.
@@ -88,7 +88,6 @@ export default function AvatarPicker({ user, currentPhoto, onSave, onClose }) {
     const preset = pick(all);
 
     edit({
-      kind: 'preset',
       preset: preset.key,
       skinTone: pick(SKIN_TONES).key,
       hair: pick(HAIR_COLORS).key,
@@ -96,45 +95,23 @@ export default function AvatarPicker({ user, currentPhoto, onSave, onClose }) {
     setTab(avatarIsEditable(preset.key) ? 'people' : 'produce');
   };
 
-  const handleFile = async (event) => {
-    const file = event.target.files?.[0];
-    // Let the same file be chosen again after a failure.
-    event.target.value = '';
-    if (!file) return;
-
-    setBusy(true);
-    try {
-      // A camera original is several megabytes and the limit is 40 KB, so this
-      // has to happen before anything is held, let alone sent.
-      edit({ kind: 'photo', image: await toAvatarJpeg(file) });
-    } catch (err) {
-      toast.error(err.message || t('avatar.failed'));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handleSave = async () => {
     if (busy) return;
 
     // Nothing to write — the sheet was opened and closed again.
-    if (draft.kind === 'none' || (draft.kind === 'photo' && draft.image === currentPhoto)) {
+    if (!draft.preset) {
       onClose();
       return;
     }
 
     setBusy(true);
     try {
-      await onSave(
-        draft.kind === 'photo'
-          ? { image: draft.image }
-          : {
-              preset: draft.preset,
-              // Sent only for a picture that has them. A tomato carrying a skin
-              // tone would be a stored value nothing can ever render.
-              ...(isEditable ? { skinTone: draft.skinTone, hair: draft.hair } : {}),
-            }
-      );
+      await onSave({
+        preset: draft.preset,
+        // Sent only for a picture that has them. A tomato carrying a skin tone
+        // would be a stored value nothing can ever render.
+        ...(isEditable ? { skinTone: draft.skinTone, hair: draft.hair } : {}),
+      });
       onClose();
     } catch (err) {
       toast.error(err.message || t('avatar.failed'));
@@ -144,11 +121,11 @@ export default function AvatarPicker({ user, currentPhoto, onSave, onClose }) {
   };
 
   const tile = (preset, { large = false } = {}) => {
-    const isCurrent = draft.kind === 'preset' && draft.preset === preset.key;
+    const isCurrent = draft.preset === preset.key;
     return (
       <button
         key={preset.key}
-        onClick={() => edit({ kind: 'preset', preset: preset.key })}
+        onClick={() => edit({ preset: preset.key })}
         disabled={busy}
         aria-label={preset.key}
         aria-pressed={isCurrent}
@@ -207,7 +184,6 @@ export default function AvatarPicker({ user, currentPhoto, onSave, onClose }) {
   const TABS = [
     { id: 'people', label: t('avatar.people') },
     { id: 'produce', label: t('avatar.produce') },
-    { id: 'photo', label: t('avatar.photo') },
   ];
 
   return (
@@ -247,9 +223,7 @@ export default function AvatarPicker({ user, currentPhoto, onSave, onClose }) {
                 key={previewKey}
                 className="vd-avatar-pop relative w-24 h-24 rounded-full overflow-hidden ring-4 ring-white shadow-[0_10px_28px_rgba(15,60,45,0.22)]"
               >
-                {draft.kind === 'photo' && draft.image ? (
-                  <img src={draft.image} alt="" className="w-full h-full object-cover bg-emerald-50" />
-                ) : previewPreset ? (
+                {previewPreset ? (
                   <div
                     className="w-full h-full flex items-center justify-center overflow-hidden"
                     style={{ background: `linear-gradient(145deg, ${previewPreset.from} 0%, ${previewPreset.to} 100%)` }}
@@ -334,18 +308,6 @@ export default function AvatarPicker({ user, currentPhoto, onSave, onClose }) {
             </div>
           )}
 
-          {tab === 'photo' && (
-            <label className={`block ${busy ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`}>
-              <input type="file" accept="image/*" onChange={handleFile} className="hidden" disabled={busy} />
-              <span className="flex flex-col items-center justify-center gap-2 w-full bg-slate-50/70 border-2 border-dashed border-slate-300 rounded-2xl py-9 active:scale-[0.99] transition hover:border-emerald-400 hover:bg-emerald-50/40">
-                <span className="w-11 h-11 rounded-full bg-white shadow-sm flex items-center justify-center">
-                  <Camera className="w-5 h-5 text-[#1B4D3E]" />
-                </span>
-                <span className="text-sm font-black text-[#1B4D3E]">{t('avatar.upload')}</span>
-                <span className="text-[0.68rem] font-semibold text-slate-400">{t('avatar.photoHint')}</span>
-              </span>
-            </label>
-          )}
         </div>
 
         {/*

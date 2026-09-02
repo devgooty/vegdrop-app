@@ -698,19 +698,6 @@ const config = Object.freeze({
     retentionDays: int('MARKET_FRESH_PHOTO_RETENTION_DAYS', 7),
   }),
 
-  /**
-   * Uploaded profile photographs.
-   *
-   * Far smaller than a produce photo because it renders in a 112px circle and
-   * never larger — there is nothing to inspect in it. The client downscales to
-   * a square before sending, but the client cannot be trusted, so the route
-   * enforces the same figure on arrival.
-   */
-  avatar: Object.freeze({
-    /** Decoded bytes. ~40 KB is a clean 320px square at JPEG quality 0.8. */
-    maxBytes: int('USER_AVATAR_MAX_BYTES', 40_000),
-  }),
-
   cookies: Object.freeze({
     refreshName: 'vb_rt',
     secure: isProduction,

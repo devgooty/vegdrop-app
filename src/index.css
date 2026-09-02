@@ -1829,3 +1829,24 @@
     display: none;
   }
 }
+
+/*
+  The account screen's primary actions, dressed from the chosen avatar.
+
+  The colours arrive as custom properties from `profileTheme` in App.jsx —
+  inline styles cannot express a hover state, which is the whole reason this
+  rule exists rather than a `backgroundColor` on each button. Every value is
+  the brand green rotated to the avatar's hue at the same saturation and
+  lightness, so white text clears it at every setting.
+
+  The fallback in each `var()` is the brand green itself: a button that somehow
+  renders before the properties are set is the colour it always was, never
+  transparent.
+*/
+.vd-profile-cta {
+  background-color: var(--vd-accent, #1B4D3E);
+}
+
+.vd-profile-cta:hover {
+  background-color: var(--vd-accent-hover, #123B2F);
+}

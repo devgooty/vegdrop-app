@@ -5,24 +5,19 @@ import AvatarArt, { hasAvatarArt } from './AvatarArt';
 /**
  * How an account is pictured, in one place.
  *
- * Three states in a fixed order — uploaded photo, built-in avatar, initial —
- * and the last is a fallback rather than a fourth option: an account that has
- * chosen nothing, and one carrying a preset key this build does not recognise,
- * both land there. Keeping the order here means the account screen and the
- * picker cannot disagree about what someone's avatar currently is.
+ * Two states — a built-in avatar, or the initial — and the second is a fallback
+ * rather than a second option: an account that has chosen nothing, and one
+ * carrying a preset key this build does not recognise, both land there. Keeping
+ * the order here means the account screen and the picker cannot disagree about
+ * what someone's avatar currently is.
+ *
+ * There was a third state above these, an uploaded photograph, and it is gone
+ * along with the rest of that feature. Nothing here takes a `photo` any more,
+ * which is what makes the initials reachable by exactly two routes instead of
+ * three.
  */
-export default function ProfileAvatar({ name, avatar, photo, className = '', emojiClassName = '' }) {
+export default function ProfileAvatar({ name, avatar, className = '', emojiClassName = '' }) {
   const preset = avatarPreset(avatar?.preset);
-
-  if (photo) {
-    return (
-      <img
-        src={photo}
-        alt=""
-        className={`object-cover bg-emerald-50 ${className}`}
-      />
-    );
-  }
 
   if (preset) {
     return (

@@ -52,19 +52,12 @@ export async function deleteUser(userId) {
 }
 
 /**
- * The uploaded profile photo's bytes.
+ * Set the picture: a `preset` slug, plus `skinTone` and `hair` for the avatars
+ * that have them.
  *
- * A separate call because the profile read deliberately carries only a pointer
- * to it — see `toPublicJSON` in server/models/User.js.
- */
-export async function fetchUserAvatar(userId) {
-  const result = await api.get(`/users/${userId}/avatar`);
-  return result.data.image;
-}
-
-/**
- * Set the picture. Exactly one of `preset` or `image` — the server refuses
- * both, because they are two ways of answering the same question.
+ * There is no companion read. The profile response carries the whole answer,
+ * because the answer is three short strings the client draws from — the second
+ * request that used to fetch an uploaded photo's bytes went with the upload.
  */
 export async function setUserAvatar(userId, choice) {
   const result = await api.put(`/users/${userId}/avatar`, choice);

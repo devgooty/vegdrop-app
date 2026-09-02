@@ -28,6 +28,7 @@ const notify = require('../services/notify');
 const {
   migrateUserContactIndexes,
   migrateDroppedEmailVerification,
+  migrateRemovedAvatarPhotos,
   migrateProductCatalogItem,
 } = require('../db/migrations');
 
@@ -390,4 +391,93 @@ test('an already-linked listing is left exactly as it was', async () => {
   const after = await Product.collection.findOne({ _id: listingId });
   assert.equal(String(after.catalogItem), String(realId));
   assert.notEqual(String(after.catalogItem), String(decoyId));
+});
+
+
+/* ── migrateRemovedAvatarPhotos ───────────────────────────────────────────────
+   Profile photo uploads were removed. The bytes lived in their own
+   `useravatars` collection and the user record pointed at them with
+   `avatar.photoUpdatedAt`.
+
+   These tests have to write through the RAW collection and driver, for the same
+   reason the email one does: neither the field nor the model exists any more, so
+   the pre-migration state cannot be produced through Mongoose at all. That is
+   also what makes this the only place the migration can be exercised — a fresh
+   test database has no photos to drop and no timestamps to clear, so a suite
+   that only ever sees new data would pass whether or not this code worked. */
+
+/** The state a database that predates the removal is actually in. */
+async function installUploadedPhoto(userId) {
+  await User.collection.updateOne(
+    { _id: userId },
+    { $set: { 'avatar.photoUpdatedAt': new Date() } }
+  );
+  await User.db.collection('useravatars').insertOne({
+    user: userId,
+    image: 'AAAA',
+    mimeType: 'image/jpeg',
+    bytes: 3,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+}
+
+test('deletes the stored photographs and the field pointing at them', async () => {
+  const { user } = await createUser({ role: 'customer', phone: '9000000051' });
+  await installUploadedPhoto(user._id);
+
+  const { cleared, photosDropped } = await migrateRemovedAvatarPhotos();
+
+  assert.equal(cleared, 1);
+  assert.equal(photosDropped, 1);
+
+  /**
+   * The load-bearing half. Nothing reads these bytes any more, so leaving them
+   * would break nothing — they would simply be photographs of people's faces
+   * that their owners can no longer see, edit or delete, because every screen
+   * and endpoint that reached them is gone.
+   */
+  const collections = await User.db.listCollections();
+  assert.ok(
+    !collections.some((c) => c.name === 'useravatars'),
+    'the photo collection must be gone, not merely empty'
+  );
+
+  const after = await User.collection.findOne({ _id: user._id });
+  assert.equal(after.avatar.photoUpdatedAt, undefined);
+});
+
+test('the rest of the avatar survives the photo being removed', async () => {
+  const { user } = await createUser({ role: 'customer', phone: '9000000052' });
+  await User.collection.updateOne(
+    { _id: user._id },
+    { $set: { 'avatar.preset': 'female', 'avatar.skinTone': 'deep', 'avatar.hair': 'auburn' } }
+  );
+  await installUploadedPhoto(user._id);
+
+  await migrateRemovedAvatarPhotos();
+
+  // A $unset aimed at one subfield must not take the subdocument with it.
+  const after = await User.collection.findOne({ _id: user._id });
+  assert.equal(after.avatar.preset, 'female');
+  assert.equal(after.avatar.skinTone, 'deep');
+  assert.equal(after.avatar.hair, 'auburn');
+});
+
+test('removing avatar photos is idempotent and survives a missing collection', async () => {
+  const { user } = await createUser({ role: 'customer', phone: '9000000053' });
+  await installUploadedPhoto(user._id);
+
+  const first = await migrateRemovedAvatarPhotos();
+  assert.equal(first.photosDropped, 1);
+
+  /**
+   * Runs on every boot, including boots of a database already migrated and
+   * including two instances starting at once — where the second one finds the
+   * collection already dropped and must treat NamespaceNotFound as done, not as
+   * a failure that marks the boot unhealthy.
+   */
+  const second = await migrateRemovedAvatarPhotos();
+  assert.equal(second.cleared, 0);
+  assert.equal(second.photosDropped, 0);
 });

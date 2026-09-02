@@ -236,12 +236,16 @@ function createApp() {
    *
    * Keeping the default tight matters. Every other endpoint takes small JSON,
    * and one route needing more is not a reason to let all of them accept a
-   * megabyte.
+   * megabyte. `PUT /api/users/:id/avatar` was the second entry here until
+   * profile photo uploads were removed; it now sends three short slugs, so it
+   * takes the ordinary parser like everything else. An exemption that outlives
+   * its reason is a raised ceiling nobody remembers granting.
+   *
+   * A path listed here and NOT parsed by its own route reaches the handler with
+   * `req.body` undefined and fails validation as "expected object, received
+   * undefined" — which is what removing that entry's parser looked like.
    */
-  const LARGE_BODY_PATHS = [
-    /^\/api\/stalls\/me\/photos\//,
-    /^\/api\/users\/[0-9a-fA-F]{24}\/avatar$/,
-  ];
+  const LARGE_BODY_PATHS = [/^\/api\/stalls\/me\/photos\//];
 
   app.use((req, res, next) => {
     if (LARGE_BODY_PATHS.some((pattern) => pattern.test(req.path))) return next();
