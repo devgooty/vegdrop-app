@@ -1305,7 +1305,6 @@ const STRINGS = {
   // --- Basket (CartModal.jsx) -------------------------------------------------
   'cart.title': { en: 'Your Basket ({count})', hi: 'आपकी टोकरी ({count})', te: 'మీ బుట్ట ({count})' },
   'cart.empty': { en: 'Your basket is empty.', hi: 'आपकी टोकरी खाली है।', te: 'మీ బుట్ట ఖాళీగా ఉంది.' },
-  'cart.closeBasket': { en: 'Close basket', hi: 'टोकरी बंद करें', te: 'బుట్ట మూసివేయి' },
   'cart.subtotal': { en: 'Subtotal', hi: 'उप-योग', te: 'ఉప మొత్తం' },
   'cart.deliveryFee': { en: 'Delivery Fee', hi: 'डिलीवरी शुल्क', te: 'డెలివరీ ఛార్జీ' },
   'cart.free': { en: 'FREE', hi: 'मुफ़्त', te: 'ఉచితం' },
@@ -1333,6 +1332,23 @@ const STRINGS = {
   },
   'cart.paidVia': { en: 'Paid via {method}', hi: '{method} से भुगतान', te: '{method} ద్వారా చెల్లించారు' },
   'cart.removeItem': { en: 'Remove entirely', hi: 'पूरी तरह हटाएँ', te: 'పూర్తిగా తొలగించు' },
+  'cart.each': { en: '₹{price} each', hi: '₹{price} प्रति', te: 'ఒక్కొక్కటి ₹{price}' },
+  'cart.billDetails': { en: 'Bill details', hi: 'बिल विवरण', te: 'బిల్లు వివరాలు' },
+  'cart.freeDeliveryProgress': {
+    en: 'Add ₹{amount} more for free delivery',
+    hi: 'मुफ़्त डिलीवरी के लिए ₹{amount} और जोड़ें',
+    te: 'ఉచిత డెలివరీ కోసం మరో ₹{amount} జోడించండి',
+  },
+  'cart.freeDeliveryEarned': {
+    en: 'Free delivery unlocked',
+    hi: 'मुफ़्त डिलीवरी मिल गई',
+    te: 'ఉచిత డెలివరీ లభించింది',
+  },
+  'cart.emptySub': {
+    en: 'Add some fresh produce and it will show up here.',
+    hi: 'कुछ ताज़ा सामान जोड़ें, वह यहाँ दिखेगा।',
+    te: 'కొన్ని తాజా సరుకులు జోడించండి, ఇక్కడ కనిపిస్తాయి.',
+  },
 
   // --- Search (SearchResultsView / SearchSuggestions) -------------------------
   'search.resultsFor': { en: 'Results for “{query}”', hi: '“{query}” के परिणाम', te: '“{query}” ఫలితాలు' },
