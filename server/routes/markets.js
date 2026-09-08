@@ -394,7 +394,7 @@ router.get(
 );
 
 /**
- * The photograph itself — actual image bytes, not JSON.
+ * The photograph itself — Cloudinary URL redirect, or legacy inline bytes.
  *
  * Served as its own resource rather than inlined in the catalog above so the
  * browser caches and lazy-loads it like any other image, and so a catalog of
@@ -426,23 +426,25 @@ router.get(
     // whatever the page already had, and a stale photo must not be served.
     if (!photo) throw new ApiError(404, 'No recent photo for that product.', 'NOT_FOUND');
 
-    const buffer = Buffer.from(photo.image, 'base64');
-
     /**
      * `/api` is Cache-Control: no-store by default because nearly every
      * response is identity-scoped, and this opts out explicitly — the same way
-     * the catalog above does. Long-lived because the content at this URL only
-     * changes when a shopkeeper takes a new photograph, and `must-revalidate`
-     * keeps a client from showing yesterday's after the freshness window.
+     * the catalog above does.
      */
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=3600');
-    res.set('Content-Type', photo.mimeType);
-    res.set('Content-Length', String(buffer.length));
-    // The bytes came from a shopkeeper's phone; refuse to let a browser guess
-    // any other type for them.
-    res.set('X-Content-Type-Options', 'nosniff');
     res.set('Last-Modified', new Date(photo.takenAt).toUTCString());
 
+    if (photo.url) {
+      return res.redirect(302, photo.url);
+    }
+
+    // Legacy rows still holding base64 until the TTL index removes them.
+    if (!photo.image) throw new ApiError(404, 'No recent photo for that product.', 'NOT_FOUND');
+
+    const buffer = Buffer.from(photo.image, 'base64');
+    res.set('Content-Type', photo.mimeType);
+    res.set('Content-Length', String(buffer.length));
+    res.set('X-Content-Type-Options', 'nosniff');
     return res.send(buffer);
   }
 );

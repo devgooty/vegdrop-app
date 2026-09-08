@@ -153,6 +153,7 @@ function forRider(order, { market, stalls, scope = 'assigned' } = {}) {
     deliveryLat: order.deliveryLocation?.coordinates?.[1] ?? null,
     deliveryLng: order.deliveryLocation?.coordinates?.[0] ?? null,
     dropoffDistanceMeters: metresBetween(marketPoint, order.deliveryLocation),
+    deliveryProofUrl: order.deliveryProof?.url || null,
   };
 }
 

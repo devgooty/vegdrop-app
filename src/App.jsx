@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Header from './components/Header';
 import HomeHeroBanner, { DEFAULT_HERO_ACCENT } from './components/HomeHeroBanner';
 import Categories from './components/Categories';
@@ -14,6 +14,7 @@ import SearchResultsView from './components/SearchResultsView';
 import SearchDiscovery from './components/SearchDiscovery';
 import ProductDetailView from './components/ProductDetailView';
 import CustomerOrders from './components/CustomerOrders';
+import CookingAssistant from './components/CookingAssistant';
 import LoginPage from './components/LoginPage';
 import FlyToCartOverlay from './components/FlyToCartOverlay';
 import SplashScreen from './components/SplashScreen';
@@ -28,8 +29,8 @@ import { avatarPreset } from './data/avatars';
 import AvatarPicker from './components/AvatarPicker';
 import RateAppModal from './components/RateAppModal';
 import PageTransition from './components/PageTransition';
-import OTPBoxGroup from './components/OTPBoxGroup';
 import ReverseOtpPanel from './components/ReverseOtpPanel';
+import OTPBoxGroup from './components/OTPBoxGroup';
 import MarketPicker from './components/MarketPicker';
 import NearbyShops from './components/NearbyShops';
 import LocationPrimer from './components/LocationPrimer';
@@ -57,25 +58,20 @@ import {
 import useLocalStorage from './hooks/useLocalStorage';
 import useSessionUser from './hooks/useSessionUser';
 import { initialCategories } from './data/mockData';
-import { fetchProducts, updateStock } from './services/products';
+import { fetchProducts } from './services/products';
 import {
-  fetchOrders, createOrder, updateOrderStatus, cancelOrder,
+  fetchOrders, createOrder, cancelOrder,
   acceptPartialOrder, retryPartialOrder,
 } from './services/orders';
 import { fetchWallet, topUpWallet } from './services/wallet';
-import { fetchUsers, updateUser, updateUserRole, deleteUser, setUserAvatar } from './services/users';
+import { updateUser, deleteUser, setUserAvatar } from './services/users';
 import { ApiRequestError, NetworkError } from './services/apiClient';
 import { RUPEES_PER_BATCH, TOKENS_PER_BATCH } from './services/rewards';
 
 /**
- * Admin panels are code-split: only `developer` and `market_owner` sessions ever
- * render them, so shipping them to every customer is dead weight in the initial
- * download. ShopkeeperPanel and DeliveryPanel were also imported here but never
- * rendered — they live in their own hash-routed apps — so they are gone
- * entirely, which also removes Leaflet from the customer bundle.
+ * ShopkeeperPanel and DeliveryPanel live in their own hash-routed apps — not
+ * here — which also keeps Leaflet out of the customer bundle.
  */
-
-const MarketOwnerPanel = lazy(() => import('./components/MarketOwnerPanel'));
 
 /**
  * The tabs that render the header — the delivery-location bar, search box and
@@ -351,7 +347,6 @@ export default function App() {
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [scheduledOrders, setScheduledOrders] = useState([]);
-  const [registeredUsers, setRegisteredUsers] = useState([]);
   const [searchVal, setSearchVal] = useState('');
   /**
    * The *submitted* search, which is a different thing from `searchVal`, the
@@ -382,27 +377,17 @@ export default function App() {
    * carries a `role`, and web storage is editable from devtools, so a persisted
    * session would let anyone hand themselves a privileged panel.
    *
-   * Every role may render this app — `developer` and `market_owner` get their
-   * panels as tabs here — so nothing is gated on role. What IS handled is the
-   * identity changing underneath: the refresh cookie is shared with the
-   * shopkeeper and delivery apps, so signing into one of those in another tab
-   * silently replaced the session here. This screen then went on showing one
-   * person's cart, orders and wallet while authenticated as somebody else.
+   * Only customers belong here. Other roles have their own hash-routed apps;
+   * the redirect effect below sends any that arrive anyway straight across.
    */
   const { user, setUser, isRestoringSession } = useSessionUser({
+    allowedRoles: ['customer'],
     onIdentityLost: (next) => {
-      // Everything below is per-account. Leaving any of it on screen after the
-      // session moved to another person is exactly the leak to avoid.
       clearCart();
       setOrders([]);
       setScheduledOrders([]);
-      setRegisteredUsers([]);
       setWalletBalance(0);
       setWalletTransactions([]);
-      // Gone entirely: 'login' renders the sign-in screen, because `activeTab`
-      // only reaches it while there is no user. Replaced by someone else: they
-      // ARE signed in, so drop them on a clean home rather than a login screen
-      // they would fall straight through.
       setActiveTab(next ? 'home' : 'login');
     },
   });
@@ -522,15 +507,7 @@ export default function App() {
    * from, so the address leg has no reverse equivalent.
    */
   const [profileReverse, setProfileReverse] = useState(false);
-  /**
-   * The challenge currently being answered, as `{ kind: 'email'|'phone', ... }`.
-   *
-   * Both contact changes are OTP-verified against the NEW destination, so one
-   * piece of state drives one modal. `kind` decides which verify call to make
-   * and what the modal says — the two outcomes differ enough to be worth saying
-   * plainly (a phone change signs every other device out; an email change does
-   * not).
-   */
+  /** Phone being proved via reverse OTP when moving the account to a new number. */
   const [profileChallenge, setProfileChallenge] = useState(null);
   /**
    * A phone change queued behind an email change, when the user edited both.
@@ -571,9 +548,6 @@ export default function App() {
    */
   const [heroAccent, setHeroAccent] = useState(DEFAULT_HERO_ACCENT);
 
-  // Delivery Notifications: fired when shopkeeper accepts an order
-  const [deliveryNotifications, setDeliveryNotifications] = useState([]);
-
   /**
    * A session that belongs to another app goes to that app. Any tab, always.
    *
@@ -606,6 +580,14 @@ export default function App() {
     }
     if (user.role === 'delivery') {
       window.location.hash = '#/delivery';
+      return;
+    }
+    if (user.role === 'developer') {
+      window.location.hash = '#/developer';
+      return;
+    }
+    if (user.role === 'market_owner') {
+      window.location.hash = '#/market-owner';
     }
   }, [user]);
 
@@ -613,9 +595,9 @@ export default function App() {
     if (!user || (activeTab !== 'login' && activeTab !== 'signup')) return;
     // Those two are leaving for another app entirely; picking a tab for them
     // here would fight the redirect above for one render.
-    if (user.role === 'shopkeeper' || user.role === 'delivery') return;
+    if (user.role === 'shopkeeper' || user.role === 'delivery' || user.role === 'developer' || user.role === 'market_owner') return;
 
-    setActiveTab(user.role && user.role !== 'customer' ? user.role : 'home');
+    setActiveTab('home');
   }, [user, activeTab, setActiveTab]);
 
   /**
@@ -706,20 +688,6 @@ export default function App() {
                 setWalletTransactions(w.transactions);
               })
               .catch((err) => console.warn('wallet unavailable:', err.message)),
-
-            // Developer-only, and only DeveloperPanel renders it. A market owner
-            // used to be asked for this too, which was a request for the whole
-            // user table — phone numbers included — on behalf of a panel they
-            // never see. The server refuses them now; do not ask.
-            ...(['developer'].includes(user.role)
-              ? [
-                  fetchUsers({ limit: 200 })
-                    .then((list) => {
-                      if (!cancelled) setRegisteredUsers(list);
-                    })
-                    .catch(() => {}),
-                ]
-              : []),
           ]
         : [];
 
@@ -822,49 +790,6 @@ export default function App() {
       toast.error('Sync failed: ' + e.message);
     }
   }, [toast]);
-
-  /**
-   * Grant an EXISTING account a role. There is no client-side account
-   * creation any more — accounts only come from the verified sign-up flow —
-   * so this looks the person up by the phone or email they already signed up
-   * with, rather than minting a new record the way the old stub's name/UI
-   * implied.
-   *
-   * `registeredUsers` is the admin-only user list already fetched into this
-   * component; searching it locally avoids a lookup endpoint that would let
-   * an admin panel enumerate accounts by guessing phone numbers.
-   */
-  const handleRegisterUser = useCallback(async ({ identifier, role }) => {
-    const needle = identifier.trim().toLowerCase();
-    const digits = needle.replace(/\D/g, '');
-
-    const target = registeredUsers.find((u) => {
-      if (u.email && u.email.toLowerCase() === needle) return true;
-      if (digits.length >= 10 && u.phone && u.phone.replace(/\D/g, '').endsWith(digits.slice(-10))) return true;
-      return false;
-    });
-
-    if (!target) {
-      toast.error('No account found with that phone or email. They need to sign up in the app first.');
-      return false;
-    }
-
-    try {
-      const updated = await updateUserRole(target.id, role);
-      setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
-      toast.success(`${updated.name} is now ${role.replace('_', ' ')}. They must sign in again.`);
-      return true;
-    } catch (err) {
-      const message =
-        err instanceof NetworkError
-          ? 'Could not reach the server. Check your connection and try again.'
-          : err instanceof ApiRequestError
-          ? err.message
-          : 'Could not update that role. Please try again.';
-      toast.error(message);
-      return false;
-    }
-  }, [registeredUsers, toast]);
 
   /**
    * Create a standing order on the server.
@@ -997,11 +922,15 @@ export default function App() {
       window.location.hash = '#/delivery';
       return;
     }
-    if (userData.role && userData.role !== 'customer') {
-      setActiveTab(userData.role);
-    } else {
-      setActiveTab('home');
+    if (userData.role === 'developer') {
+      window.location.hash = '#/developer';
+      return;
     }
+    if (userData.role === 'market_owner') {
+      window.location.hash = '#/market-owner';
+      return;
+    }
+    setActiveTab('home');
     toast.success(t('toast.welcomeBack', { name: userData.name }));
   }, [setActiveTab, toast, t]);
 
@@ -1073,7 +1002,7 @@ export default function App() {
     clearCart();
     setActiveTab('login');
     toast.warning(t('toast.accountDeleted'));
-  }, [user, clearCart, setActiveTab, setRegisteredUsers, toast, t]);
+  }, [user, clearCart, setActiveTab, toast, t]);
 
   /**
    * The one write behind the picture sheet.
@@ -1089,9 +1018,8 @@ export default function App() {
   const handleSaveAvatar = useCallback(async (choice) => {
     const updated = await setUserAvatar(user.id, choice);
     setUser(updated);
-    setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
     toast.success(t('avatar.updated'));
-  }, [user, setUser, setRegisteredUsers, toast, t]);
+  }, [user, setUser, toast, t]);
 
   /**
    * The account screen's colours, read off whichever avatar is being worn.
@@ -1204,7 +1132,6 @@ export default function App() {
       if (Object.keys(patch).length > 0) {
         const updated = await updateUser(user.id, patch);
         setUser(updated);
-        setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
       }
 
       if (phoneChanged) {
@@ -1237,7 +1164,7 @@ export default function App() {
       // saving one cannot depend on a mail server being reachable.
       toast.error(err.message || t('toast.profileUpdateFailed'));
     }
-  }, [user, editName, editEmail, editPhone, setUser, setRegisteredUsers, toast, t]);
+  }, [user, editName, editEmail, editPhone, setUser, toast, t]);
 
   const handleVerifyProfileOTP = useCallback(async (e) => {
     e.preventDefault();
@@ -1260,9 +1187,7 @@ export default function App() {
       // The server is the only writer; adopt exactly what it returns rather
       // than optimistically assuming the edit applied.
       const updated = await verifyPhoneChange({ challengeId: profileChallenge.challengeId, code });
-
       setUser(updated);
-      setRegisteredUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
     } catch (err) {
       setProfileOtpError(err.message || 'Could not verify that code.');
       return;
@@ -1273,75 +1198,7 @@ export default function App() {
     setProfileChallenge(null);
     setPendingPhoneChange(null);
     toast.success(t('toast.phoneUpdated'));
-  }, [profileChallenge, profileMobileOTP, setUser, setRegisteredUsers, toast, t]);
-
-  /**
-   * Stock edits are optimistic, then reconciled against the server's response.
-   * On failure the previous value is restored, so a rejected write (wrong role,
-   * offline) cannot leave the UI showing a change that never happened.
-   */
-  const handleUpdateStock = useCallback(async (productId, newStock) => {
-    const previous = products.find((p) => p.id === productId)?.stock;
-    setProducts((prev) => prev.map((p) => (p.id === productId ? { ...p, stock: newStock } : p)));
-
-    try {
-      const updated = await updateStock(productId, newStock);
-      setProducts((prev) => prev.map((p) => (p.id === productId ? updated : p)));
-      toast.success(`Stock updated to ${updated.stock} units`);
-    } catch (err) {
-      if (previous !== undefined) {
-        setProducts((prev) => prev.map((p) => (p.id === productId ? { ...p, stock: previous } : p)));
-      }
-      toast.error(err.message || 'Could not update stock.');
-    }
-  }, [products, toast]);
-
-  const handleUpdateProductDetails = useCallback((productId, updatedDetails) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === productId ? { ...p, ...updatedDetails } : p))
-    );
-    toast.success('Product details updated');
-  }, [toast]);
-
-  const handleAddProduct = useCallback((newProduct) => {
-    setProducts((prev) => [newProduct, ...prev]);
-    toast.success(`"${newProduct.name}" added to catalog`);
-  }, [toast]);
-
-  /**
-   * The server validates both the transition graph (no Pending → Delivered) and
-   * which roles may drive each move, so a rejection here is expected rather than
-   * exceptional — surface it instead of leaving a stale optimistic status.
-   */
-  const handleUpdateOrderStatus = useCallback(async (orderId, newStatus) => {
-    const target = orders.find((o) => o.id === orderId || o.serverId === orderId);
-    if (!target?.serverId) {
-      toast.error('This order is not available on the server yet.');
-      return;
-    }
-
-    try {
-      const updated = await updateOrderStatus(target.serverId, newStatus);
-      setOrders((prev) => prev.map((o) => (o.serverId === updated.serverId ? updated : o)));
-      const emoji = { Preparing: '👨‍🍳', 'Out for Delivery': '🚚', Delivered: '✅', Cancelled: '❌' }[newStatus] || '📦';
-      toast.success(`Order ${updated.id} → ${newStatus} ${emoji}`);
-    } catch (err) {
-      toast.error(err.message || 'Could not update the order.');
-    }
-  }, [orders, toast]);
-
-  // Called by ShopkeeperPanel when shopkeeper accepts an order → push notification to Delivery
-  const handleOrderAccepted = useCallback((order) => {
-    setDeliveryNotifications((prev) => {
-      // avoid duplicate notifications for same order
-      if (prev.find((n) => n.id === order.id)) return prev;
-      return [{ ...order, notifiedAt: Date.now() }, ...prev];
-    });
-  }, []);
-
-  const clearDeliveryNotification = useCallback((orderId) => {
-    setDeliveryNotifications((prev) => prev.filter((n) => n.id !== orderId));
-  }, []);
+  }, [profileChallenge, profileMobileOTP, setUser, toast, t]);
 
   /** Run a search: leave the box showing it and open the results screen. */
   const handleSubmitSearch = useCallback((query) => {
@@ -2525,20 +2382,18 @@ export default function App() {
                   onAcceptPartial={handleAcceptPartial}
                   onRetryPartial={handleRetryPartial}
                 />
-
-              ) : activeTab === 'market_owner' && (user?.role === 'market_owner' || user?.role === 'developer') ? (
-                <Suspense fallback={<HomeSkeleton />}>
-                  {/* Reads its own data now, scoped to the markets this account
-                      owns. The products/orders/categories it used to take were
-                      the whole customer-side state, which is a different market
-                      entirely once there is more than one.
-
-                      `onExit` is not decoration: this tab hides the header AND
-                      the bottom navigation, so until the panel offered its own
-                      way out, opening it left no route back to the app short of
-                      reloading the page. */}
-                  <MarketOwnerPanel onExit={() => setActiveTab('account')} />
-                </Suspense>
+              ) : activeTab === 'assistant' ? (
+                <CookingAssistant
+                  user={user}
+                  marketId={selectedMarket?.id || selectedMarket?._id || null}
+                  shopId={selectedShop?.id || selectedShop?._id || null}
+                  address={savedCustomerAddress()}
+                  deliveryLat={savedCustomerCoords()?.lat}
+                  deliveryLng={savedCustomerCoords()?.lng}
+                  onOrderPlaced={() => {
+                    fetchOrders({ limit: 100 }).then(setOrders).catch(() => {});
+                  }}
+                />
               ) : (
                 /* ACCOUNT & ROLE SWITCHER TAB.
 
@@ -2956,21 +2811,19 @@ export default function App() {
 
                       {/* Moving the account to a new number. The code goes to the
                           NEW number, because that is what has to be proven. */}
-                      {showProfileOTP && (
+                      {showProfileOTP && profileChallenge?.kind === 'phone' && (
                         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
                           <div className="bg-white rounded-3xl w-full max-w-sm p-5 shadow-2xl border border-gray-100 relative overflow-hidden space-y-3.5 text-left text-xs animate-scale-in max-h-[90vh] overflow-y-auto">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center font-bold text-lg border border-amber-200">
-                                {profileChallenge?.kind === 'email' ? '✉️' : '🔐'}
+                                🔐
                               </div>
                               <div>
                                 <h4 className="font-extrabold text-gray-900 text-sm">
-                                  {profileChallenge?.kind === 'email' ? 'Verify New Email' : 'Verify New Number'}
+                                  Verify New Number
                                 </h4>
                                 <p className="text-[11.5px] text-amber-700 font-semibold">
-                                  {profileChallenge?.kind === 'email'
-                                    ? 'Login codes will be copied here.'
-                                    : 'This is your sign-in credential.'}
+                                  This is your sign-in credential.
                                 </p>
                               </div>
                             </div>
@@ -2992,9 +2845,6 @@ export default function App() {
                                     purpose="phone_change"
                                     onVerified={({ user: updated }) => {
                                       setUser(updated);
-                                      setRegisteredUsers((prev) =>
-                                        prev.map((u) => (u.id === updated.id ? updated : u))
-                                      );
                                       setIsEditingProfile(false);
                                       setShowProfileOTP(false);
                                       setProfileChallenge(null);
@@ -3015,7 +2865,7 @@ export default function App() {
                               ) : (
                                 <div className="space-y-2 border-t border-gray-100 pt-3">
                                   <label className="block font-bold text-gray-700 mb-2 text-[11.5px] uppercase tracking-wider text-center">
-                                    {profileChallenge?.kind === 'email' ? 'Email OTP' : 'WhatsApp OTP'}
+                                    WhatsApp OTP
                                   </label>
                                   <OTPBoxGroup value={profileMobileOTP} onChange={setProfileMobileOTP} />
                                 </div>
@@ -3065,79 +2915,6 @@ export default function App() {
                       {/* End of Profile View */}
                       </>
                     )}
-
-                      {user.role && user.role !== 'customer' && (
-                        <div className="mt-4 pt-3 border-t border-gray-200 space-y-2">
-                          <span className="text-xs font-bold text-gray-700 block text-left">
-                            Open Role Panel (Separate App):
-                          </span>
-                          {/*
-                            Only `developer` gets the cross-app links, and that
-                            is not a narrowing of who deserves them — it is the
-                            only role that can legitimately be reading this.
-                            `APP_ROLE_SCOPE.customer` on the server is
-                            ['customer', 'market_owner', 'developer'], so a
-                            shopkeeper or rider cannot sign in here at all, and
-                            the effect near the top of this file sends one that
-                            arrives by any other route back to its own app.
-
-                            Guarding these on `=== 'shopkeeper'` / `=== 'delivery'`
-                            meant that when that redirect broke, the storefront
-                            did not merely tolerate the wrong session — it
-                            advertised it, showing a rider a Delivery App button
-                            on a screen no rider should have reached.
-                          */}
-                          <div className="grid grid-cols-2 gap-1.5 text-xs font-bold">
-                            {/* Shopkeeper */}
-                            {user.role === 'developer' && (
-                              <a
-                                href="#/shopkeeper"
-                                className="p-2 bg-emerald-50 text-emerald-900 rounded-xl border border-emerald-200 hover:bg-emerald-100 transition-colors text-center flex items-center justify-center gap-1"
-                              >
-                                🏪 Shopkeeper App
-                              </a>
-                            )}
-
-                            {/* Delivery */}
-                            {user.role === 'developer' && (
-                              <a
-                                href="#/delivery"
-                                className="p-2 bg-purple-50 text-purple-900 rounded-xl border border-purple-200 hover:bg-purple-100 transition-colors text-center flex items-center justify-center gap-1"
-                              >
-                                🚚 Delivery App
-                              </a>
-                            )}
-
-                            {/* Developer Console (separate app) */}
-                            {user.role === 'developer' && (
-                              <>
-                                <a
-                                  href="#/developer"
-                                  className="p-2 bg-slate-900 text-cyan-300 rounded-xl border border-slate-700 hover:bg-slate-800 transition-colors text-center flex items-center justify-center gap-1"
-                                >
-                                  💻 Developer Console
-                                </a>
-                                <button
-                                  onClick={() => setActiveTab('market_owner')}
-                                  className="p-2 bg-amber-50 text-amber-900 rounded-xl border border-amber-200 hover:bg-amber-100 transition-colors"
-                                >
-                                  📊 Market Owner
-                                </button>
-                              </>
-                            )}
-
-                            {/* Market Owner */}
-                            {user.role === 'market_owner' && (
-                              <button
-                                onClick={() => setActiveTab('market_owner')}
-                                className="p-2 bg-amber-50 text-amber-900 rounded-xl border border-amber-200 hover:bg-amber-100 transition-colors col-span-2"
-                              >
-                                📊 Owner Dashboard
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )}
 
                       {/*
                         Signing out closes the account tab, and belongs to no
@@ -3228,7 +3005,7 @@ export default function App() {
       )}
 
       {/* 5. FIXED BOTTOM NAVIGATION BAR */}
-      {activeTab !== 'developer' && activeTab !== 'market_owner' && !searchScreenOpen && (
+      {activeTab !== 'login' && activeTab !== 'signup' && !searchScreenOpen && (
         <BottomNav
           activeTab={activeTab}
           setActiveTab={(tab) => {

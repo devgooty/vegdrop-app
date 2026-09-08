@@ -58,3 +58,4 @@ server/bot/.auth*/
 *.sw?
 .vercel
 .env*
+oci/

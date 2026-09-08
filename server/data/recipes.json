@@ -1,0 +1,208 @@
+[
+  {
+    "id": "potato-tomato-curry",
+    "name": "Potato–Tomato Curry",
+    "difficulty": "easy",
+    "minutes": 25,
+    "vegetables": ["potato", "tomato", "onion"],
+    "ingredients": [
+      { "name": "potato", "qtyPerServing": 0.25, "unit": "kg" },
+      { "name": "tomato", "qtyPerServing": 0.15, "unit": "kg" },
+      { "name": "onion", "qtyPerServing": 0.1, "unit": "kg" }
+    ],
+    "steps": [
+      "Heat oil, fry chopped onion until soft.",
+      "Add tomato and cook until mushy.",
+      "Add potato cubes, turmeric, chilli, salt and a splash of water.",
+      "Cover and simmer until potato is soft. Finish with coriander."
+    ]
+  },
+  {
+    "id": "mixed-veg-curry",
+    "name": "Mixed Vegetable Curry",
+    "difficulty": "easy",
+    "minutes": 35,
+    "vegetables": ["potato", "carrot", "beans", "tomato", "onion"],
+    "ingredients": [
+      { "name": "potato", "qtyPerServing": 0.15, "unit": "kg" },
+      { "name": "carrot", "qtyPerServing": 0.1, "unit": "kg" },
+      { "name": "beans", "qtyPerServing": 0.1, "unit": "kg" },
+      { "name": "tomato", "qtyPerServing": 0.1, "unit": "kg" },
+      { "name": "onion", "qtyPerServing": 0.1, "unit": "kg" }
+    ],
+    "steps": [
+      "Sauté onion, then tomato and spices.",
+      "Add chopped potato, carrot and beans with water.",
+      "Simmer until vegetables are tender. Adjust salt."
+    ]
+  },
+  {
+    "id": "potato-carrot-fry",
+    "name": "Potato–Carrot Fry",
+    "difficulty": "easy",
+    "minutes": 20,
+    "vegetables": ["potato", "carrot", "onion"],
+    "ingredients": [
+      { "name": "potato", "qtyPerServing": 0.2, "unit": "kg" },
+      { "name": "carrot", "qtyPerServing": 0.15, "unit": "kg" },
+      { "name": "onion", "qtyPerServing": 0.05, "unit": "kg" }
+    ],
+    "steps": [
+      "Heat oil with mustard and curry leaves.",
+      "Add onion, then potato and carrot strips.",
+      "Add chilli powder and salt; fry on medium heat until cooked."
+    ]
+  },
+  {
+    "id": "tomato-onion-curry",
+    "name": "Tomato–Onion Curry",
+    "difficulty": "easy",
+    "minutes": 20,
+    "vegetables": ["tomato", "onion"],
+    "ingredients": [
+      { "name": "tomato", "qtyPerServing": 0.25, "unit": "kg" },
+      { "name": "onion", "qtyPerServing": 0.15, "unit": "kg" }
+    ],
+    "steps": [
+      "Fry onion until golden.",
+      "Add chopped tomato, turmeric, chilli and salt.",
+      "Cook until thick and oily. Serve with rice or roti."
+    ]
+  },
+  {
+    "id": "aloo-gobi-style",
+    "name": "Potato–Cauliflower Curry",
+    "difficulty": "medium",
+    "minutes": 30,
+    "vegetables": ["potato", "cauliflower", "onion", "tomato"],
+    "ingredients": [
+      { "name": "potato", "qtyPerServing": 0.2, "unit": "kg" },
+      { "name": "cauliflower", "qtyPerServing": 0.2, "unit": "kg" },
+      { "name": "onion", "qtyPerServing": 0.1, "unit": "kg" },
+      { "name": "tomato", "qtyPerServing": 0.1, "unit": "kg" }
+    ],
+    "steps": [
+      "Sauté onion and tomato with spices.",
+      "Add potato and cauliflower florets.",
+      "Cover-cook until soft; keep semi-dry."
+    ]
+  },
+  {
+    "id": "brinjal-curry",
+    "name": "Brinjal Curry",
+    "difficulty": "easy",
+    "minutes": 25,
+    "vegetables": ["brinjal", "onion", "tomato"],
+    "ingredients": [
+      { "name": "brinjal", "qtyPerServing": 0.25, "unit": "kg" },
+      { "name": "onion", "qtyPerServing": 0.1, "unit": "kg" },
+      { "name": "tomato", "qtyPerServing": 0.1, "unit": "kg" }
+    ],
+    "steps": [
+      "Fry onion, add tomato and spice paste.",
+      "Add brinjal pieces and little water.",
+      "Cook until soft and well coated."
+    ]
+  },
+  {
+    "id": "cabbage-fry",
+    "name": "Cabbage Fry",
+    "difficulty": "easy",
+    "minutes": 18,
+    "vegetables": ["cabbage", "onion"],
+    "ingredients": [
+      { "name": "cabbage", "qtyPerServing": 0.25, "unit": "kg" },
+      { "name": "onion", "qtyPerServing": 0.08, "unit": "kg" }
+    ],
+    "steps": [
+      "Temper mustard and chilli; add onion.",
+      "Add shredded cabbage and salt.",
+      "Stir-fry until just soft — do not overcook."
+    ]
+  },
+  {
+    "id": "spinach-dal-style",
+    "name": "Spinach (Palak) Stir",
+    "difficulty": "easy",
+    "minutes": 15,
+    "vegetables": ["spinach", "onion", "garlic"],
+    "ingredients": [
+      { "name": "spinach", "qtyPerServing": 0.2, "unit": "kg" },
+      { "name": "onion", "qtyPerServing": 0.08, "unit": "kg" },
+      { "name": "garlic", "qtyPerServing": 0.02, "unit": "kg" }
+    ],
+    "steps": [
+      "Sauté garlic and onion.",
+      "Add washed spinach and salt.",
+      "Cook until wilted; finish with a squeeze of lemon if you like."
+    ]
+  },
+  {
+    "id": "okra-fry",
+    "name": "Okra (Bendi) Fry",
+    "difficulty": "easy",
+    "minutes": 22,
+    "vegetables": ["okra", "onion"],
+    "ingredients": [
+      { "name": "okra", "qtyPerServing": 0.25, "unit": "kg" },
+      { "name": "onion", "qtyPerServing": 0.1, "unit": "kg" }
+    ],
+    "steps": [
+      "Pat okra dry and cut into pieces.",
+      "Fry onion, then okra with chilli and salt on medium heat.",
+      "Cook until sticky moisture goes and okra is crisp-tender."
+    ]
+  },
+  {
+    "id": "sambar-veg-base",
+    "name": "Sambar-Style Mixed Veg",
+    "difficulty": "medium",
+    "minutes": 40,
+    "vegetables": ["drumstick", "carrot", "tomato", "onion", "brinjal"],
+    "ingredients": [
+      { "name": "carrot", "qtyPerServing": 0.1, "unit": "kg" },
+      { "name": "tomato", "qtyPerServing": 0.15, "unit": "kg" },
+      { "name": "onion", "qtyPerServing": 0.1, "unit": "kg" },
+      { "name": "brinjal", "qtyPerServing": 0.1, "unit": "kg" }
+    ],
+    "steps": [
+      "Cook dal separately if using; keep aside.",
+      "Boil vegetables with tamarind water and sambar powder.",
+      "Combine with dal, temper with mustard and curry leaves."
+    ]
+  },
+  {
+    "id": "ridge-gourd-curry",
+    "name": "Ridge Gourd Curry",
+    "difficulty": "easy",
+    "minutes": 20,
+    "vegetables": ["ridge gourd", "onion", "tomato"],
+    "ingredients": [
+      { "name": "ridge gourd", "qtyPerServing": 0.3, "unit": "kg" },
+      { "name": "onion", "qtyPerServing": 0.08, "unit": "kg" },
+      { "name": "tomato", "qtyPerServing": 0.1, "unit": "kg" }
+    ],
+    "steps": [
+      "Peel and chop ridge gourd.",
+      "Sauté onion and tomato; add gourd and spices.",
+      "Cook covered until soft."
+    ]
+  },
+  {
+    "id": "beans-carrot-poriyal",
+    "name": "Beans–Carrot Poriyal",
+    "difficulty": "easy",
+    "minutes": 18,
+    "vegetables": ["beans", "carrot", "onion"],
+    "ingredients": [
+      { "name": "beans", "qtyPerServing": 0.15, "unit": "kg" },
+      { "name": "carrot", "qtyPerServing": 0.15, "unit": "kg" },
+      { "name": "onion", "qtyPerServing": 0.05, "unit": "kg" }
+    ],
+    "steps": [
+      "Temper mustard; add onion.",
+      "Add chopped beans and carrot with salt.",
+      "Cook until tender; add grated coconut if available."
+    ]
+  }
+]

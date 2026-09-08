@@ -27,6 +27,65 @@ const {
 
 const router = express.Router();
 
+/** Reverse OTP is the only sign-in path when either inbound channel is live. */
+function reverseOtpEnabled() {
+  return config.reverseOtp.whatsapp.configured || config.reverseOtp.sms.configured;
+}
+
+/** Shape returned when outbound delivery is off and the client should use reverse OTP. */
+function undeliveredChallenge(destination) {
+  return {
+    challengeId: null,
+    channel: null,
+    destination: otp.maskDestination(destination),
+    expiresAt: null,
+    delivered: false,
+  };
+}
+
+/**
+ * Issue an outbound login code when the phone transport can reach the user.
+ *
+ * When reverse OTP is configured, outbound is skipped entirely — the WhatsApp
+ * template may be missing or unapproved, and the client proves the number by
+ * messaging us instead.
+ */
+async function issueLoginChallenge({ purpose, destination, user, payload }) {
+  let challenge = null;
+
+  /**
+   * Under test the null transport still issues a challenge with a devCode even
+   * though it does not reach a recipient — the suite depends on that. In
+   * production with reverse OTP live, outbound is never attempted.
+   */
+  const shouldAttempt =
+    config.isTest || (notify.reachesRecipient('sms') && !reverseOtpEnabled());
+
+  if (shouldAttempt) {
+    try {
+      challenge = await otp.issueChallenge({ purpose, destination, user, payload });
+    } catch (err) {
+      if (err?.code !== 'OTP_DELIVERY_FAILED') throw err;
+      console.warn('[auth] login phone code undeliverable', {
+        to: otp.maskDestination(destination),
+        message: err?.message,
+      });
+    }
+  } else if (!reverseOtpEnabled()) {
+    console.warn('[auth] login phone code skipped: transport cannot reach the recipient');
+  }
+
+  if (!challenge && !reverseOtpEnabled()) {
+    throw new ApiError(
+      503,
+      'We cannot verify a number right now. Please try again shortly.',
+      'OTP_DELIVERY_FAILED'
+    );
+  }
+
+  return challenge ? challenge : undeliveredChallenge(destination);
+}
+
 /**
  * Authentication — passwordless, one factor: a code sent over WhatsApp.
  *
@@ -233,11 +292,16 @@ router.post(
       });
     }
 
-    const challenge = await otp.issueChallenge({
+    // Reverse OTP is live in production — never attempt outbound WhatsApp here.
+    // Old clients still call this route on Continue; they must get 202, not 503.
+    if (reverseOtpEnabled() && !config.isTest) {
+      return res.status(202).json({ ...undeliveredChallenge(destination), next: 'verify' });
+    }
+
+    const challenge = await issueLoginChallenge({
       purpose: 'login',
       destination,
       user,
-      // Held server-side for the life of the challenge; never returned.
       payload: user ? null : { name: name || null },
     });
 
@@ -403,14 +467,10 @@ async function startRegistrationChallenge({ phone, name, purpose, role }) {
 
   let phoneChallenge = null;
 
-  /**
-   * Skipped outright when the phone transport cannot reach the user.
-   *
-   * The dev stub prints codes to stdout and reports success, so issuing a
-   * challenge against it would tell the client a code was sent and put a code
-   * input in front of someone who never received one.
-   */
-  if (notify.reachesRecipient('sms')) {
+  const shouldAttempt =
+    config.isTest || (notify.reachesRecipient('sms') && !reverseOtpEnabled());
+
+  if (shouldAttempt) {
     try {
       phoneChallenge = await otp.issueChallenge({ purpose, destination: phone, payload });
     } catch (err) {
@@ -419,7 +479,7 @@ async function startRegistrationChallenge({ phone, name, purpose, role }) {
         message: err?.message,
       });
     }
-  } else {
+  } else if (!reverseOtpEnabled()) {
     console.warn('[auth] registration phone code skipped: transport cannot reach the recipient');
   }
 
@@ -431,7 +491,7 @@ async function startRegistrationChallenge({ phone, name, purpose, role }) {
    * and returning a challenge-shaped response would leave the user on a screen
    * that can never advance. Fail loudly at the start instead.
    */
-  if (!phoneChallenge && !config.reverseOtp.whatsapp.configured && !config.reverseOtp.sms.configured) {
+  if (!phoneChallenge && !reverseOtpEnabled()) {
     throw new ApiError(
       503,
       'We cannot verify a number right now. Please try again shortly.',
@@ -938,6 +998,11 @@ router.post(
 
     // Addressed to the NEW number: the point is to prove the account holder can
     // receive codes there, since that is what sign-in will depend on afterwards.
+    // Prove the new number by reverse OTP — outbound is not used when it is live.
+    if (reverseOtpEnabled() && !config.isTest) {
+      return res.status(202).json({ ...undeliveredChallenge(phone), next: 'verify' });
+    }
+
     const challenge = await otp.issueChallenge({
       purpose: 'phone_change',
       destination: phone,

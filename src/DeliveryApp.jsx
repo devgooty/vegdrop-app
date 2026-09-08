@@ -9,7 +9,7 @@ import { acceptPickup, declinePickup } from './services/rider';
 import { ApiRequestError } from './services/apiClient';
 import useSessionUser from './hooks/useSessionUser';
 
-const DELIVERY_ROLES = ['delivery', 'developer'];
+const DELIVERY_ROLES = ['delivery'];
 
 export default function DeliveryApp() {
   const toast = useToast();

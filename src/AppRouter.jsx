@@ -15,12 +15,14 @@ const App = lazy(() => import('./App'));
 const ShopkeeperApp = lazy(() => import('./ShopkeeperApp'));
 const DeliveryApp = lazy(() => import('./DeliveryApp'));
 const DeveloperApp = lazy(() => import('./DeveloperApp'));
+const MarketOwnerApp = lazy(() => import('./MarketOwnerApp'));
 
 function getRoute() {
   const hash = window.location.hash.replace('#', '') || '/';
   if (hash.startsWith('/shopkeeper')) return 'shopkeeper';
   if (hash.startsWith('/delivery')) return 'delivery';
   if (hash.startsWith('/developer')) return 'developer';
+  if (hash.startsWith('/market-owner')) return 'market_owner';
   return 'customer';
 }
 
@@ -44,6 +46,8 @@ export default function AppRouter() {
       ? DeliveryApp
       : route === 'developer'
       ? DeveloperApp
+      : route === 'market_owner'
+      ? MarketOwnerApp
       : App;
 
   return (

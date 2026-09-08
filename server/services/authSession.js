@@ -33,16 +33,15 @@ function placeholderName(phone) {
  * also shops here, and the customer app must never hand a stranger's session
  * to their shopkeeper identity by accident.
  *
- * `market_owner` and `developer` are never self-registered — they only ever
- * arrive by promoting one of these three accounts via PATCH /api/users/:id/role
- * — and neither has a dedicated app of its own; both sign in through the
- * customer app, where `App.jsx` renders their extra panels inline. So they are
- * folded into the customer scope rather than given their own.
+ * `market_owner` and `developer` sign in through the customer login box but
+ * are redirected to their own apps (`#/market-owner`, `#/developer`) by the
+ * client. Shopkeeper and delivery each have a dedicated app and scope.
  */
 const APP_ROLE_SCOPE = Object.freeze({
   customer: ['customer', 'market_owner', 'developer'],
-  shopkeeper: ['shopkeeper', 'developer'],
-  delivery: ['delivery', 'developer'],
+  shopkeeper: ['shopkeeper'],
+  delivery: ['delivery'],
+  developer: ['developer'],
 });
 
 /**

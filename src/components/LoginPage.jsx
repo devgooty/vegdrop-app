@@ -1,9 +1,7 @@
 import React, { useState, useRef, useLayoutEffect } from 'react';
-import { ArrowRight, ArrowLeft, Loader2, Check, Info, Send } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Loader2, Check, Info } from 'lucide-react';
 import {
   lookupIdentifier,
-  startIdentifierAuth,
-  verifyPhoneAuth,
   startRegistration,
   verifyRegistration,
   startVendorRegistration,
@@ -19,7 +17,6 @@ import { marketVegetables } from '../data/mockData';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LANGUAGES } from '../i18n/translations';
 
-import OTPBoxGroup from './OTPBoxGroup';
 import ReverseOtpPanel from './ReverseOtpPanel';
 
 /**
@@ -30,18 +27,18 @@ import ReverseOtpPanel from './ReverseOtpPanel';
  * One box first: a mobile number. The server is asked whether it has an
  * account, and the flow forks:
  *
- *   existing → reverse OTP by default (type an outbound code as the fallback)
+ *   existing → reverse OTP (send us a code from that number)
  *   new      → a name, then the same reverse OTP to prove the same number
  *
  * No email address is collected anywhere here. An account is created without
  * one; anyone who wants stall notices adds it from their profile later.
  *
- * Two things about that fork matter if you change it. The lookup call reveals
- * whether an identifier is registered, which the rest of this flow is careful
- * never to disclose — a deliberate trade for this UX, priced by the tightest
- * rate limit on the server, so never call it while the user is typing. And
- * reverse OTP must not be gated on a successful outbound send: that send
- * failing is the reason the reverse path exists.
+ * Outbound OTP is intentionally not offered: production WhatsApp templates
+ * are unreliable, and reverse OTP is the path that still works when nothing
+ * can be delivered. The lookup call reveals whether an identifier is
+ * registered, which the rest of this flow is careful never to disclose — a
+ * deliberate trade for this UX, priced by the tightest rate limit on the
+ * server, so never call it while the user is typing.
  *
  * DESIGN
  *
@@ -130,7 +127,7 @@ const VEG_ROW_B = marketVegetables.slice(Math.ceil(marketVegetables.length / 2))
 /**
  * How each app signs a NEW account up.
  *
- * Every role registers through the same dual-OTP flow — this app has no
+ * Every role registers through the same reverse-OTP flow — this app has no
  * passwords, so there is no extra step to insert for a privileged one. The only
  * thing that varies is which endpoint is called, and that is what selects the
  * role, on the server, in routes/auth.js. Nothing here chooses it: this table
@@ -171,6 +168,9 @@ const SIGN_UP = {
     titleKey: 'login.deliveryTitle',
     subKey: 'login.deliverySub',
     codesSubKey: 'login.deliveryCodesSub',
+  },
+  developer: {
+    headingKey: 'login.developerHeading',
   },
 };
 
@@ -220,34 +220,11 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
 
-  const [code, setCode] = useState('');
-  const [phoneCode, setPhoneCode] = useState('');
-
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Server-issued challenges. Holding an id is not enough to authenticate — the
-  // code itself is verified on the server.
-  const [challenge, setChallenge] = useState(null);
-  const [registration, setRegistration] = useState(null);
-
-  /**
-   * Reverse OTP — "I'll send the code instead".
-   *
-   * BOTH DEFAULT ON. Sending us a message is the ordinary way to verify a
-   * number here. It costs nothing, cannot fail to deliver because nothing is
-   * delivered, and is the path that still works when WhatsApp cannot reach the
-   * user — which is why neither sign-in nor registration may call `/otp/start`
-   * (or `/register/start`) before showing this panel. Those sends used to gate
-   * the screen: a delivery failure threw, and reverse OTP — the thing that
-   * exists for that failure — never appeared.
-   *
-   * The outbound code is still there behind "Type a code instead". If reverse
-   * OTP is not configured at all, the panel calls `onUnavailable` and we switch
-   * to that path ourselves rather than leaving a dead-end error on screen.
-   */
-  const [reverseLogin, setReverseLogin] = useState(true);
-  const [reversePhoneLeg, setReversePhoneLeg] = useState(true);
+  /** Token from reverse OTP — the only way a number is proved here. */
+  const [reversePhoneToken, setReversePhoneToken] = useState(null);
 
   /**
    * The number a reverse sign-in would be raised against.
@@ -272,12 +249,8 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
   const resetToStart = () => {
     setError('');
-    setChallenge(null);
-    setRegistration(null);
-    setCode('');
-    setPhoneCode('');
-    setReverseLogin(true);
-    setReversePhoneLeg(true);
+    setReversePhoneToken(null);
+    setLoginPhone(null);
     setStep(STEP.IDENTIFIER);
   };
 
@@ -305,17 +278,16 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     }
 
     try {
-      const { exists, type } = await lookupIdentifier({ identifier: typed, app: appType });
+      const { exists } = await lookupIdentifier({ identifier: typed, app: appType });
 
       if (exists) {
-        // Reverse OTP is the default path and does not need an outbound send.
-        // Starting one here made a WhatsApp failure (the case reverse OTP
-        // exists for) block the screen that would have recovered from it.
-        setChallenge(null);
-        setCode('');
         setLoginPhone(typed.replace(/\D/g, '').slice(-10));
-        setReverseLogin(true);
         setStep(STEP.LOGIN_CODE);
+        return;
+      }
+
+      if (appType === 'developer') {
+        setError(t('login.errNoDeveloperAccount'));
         return;
       }
 
@@ -329,86 +301,8 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     }
   };
 
-  /** Send an outbound code, used only when the user asks to type one instead. */
-  const startOutboundLogin = async () => {
-    const issued = await startIdentifierAuth({ identifier: identifier.trim(), app: appType });
-    setChallenge(issued);
-    setCode('');
-    return issued;
-  };
-
-  const switchToTypedLogin = async () => {
-    setError('');
-    setReverseLogin(false);
-    setIsSubmitting(true);
-    try {
-      if (!challenge?.challengeId) await startOutboundLogin();
-    } catch (err) {
-      setError(describeError(err, t('login.errSendCodes')));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  /** Existing account: one code, whichever channel it arrived on. */
-  const handleVerifyLogin = async (e) => {
-    e.preventDefault();
-    if (isSubmitting) return;
-
-    if (!code || code.trim().length < 6) {
-      setError(t('login.errAllSix'));
-      return;
-    }
-    if (!challenge?.challengeId) {
-      setError(t('login.errExpired'));
-      return;
-    }
-
-    setError('');
-    setIsSubmitting(true);
-
-    try {
-      // The authenticated user comes back from the server, including their role.
-      // Nothing about the session is constructed here.
-      const user = await verifyPhoneAuth({ challengeId: challenge.challengeId, code: code.trim() });
-      onLogin(user);
-    } catch (err) {
-      setError(describeError(err, t('login.errBadCode')));
-
-      if (err instanceof ApiRequestError && ['OTP_EXPIRED', 'OTP_ATTEMPTS_EXCEEDED'].includes(err.code)) {
-        resetToStart();
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  /** Send an outbound registration code, used only when typing one instead. */
-  const startOutboundRegistration = async () => {
-    const issued = await signUp.start({
-      phone: phone.trim(),
-      name: name.trim() || undefined,
-    });
-    setRegistration(issued);
-    setPhoneCode('');
-    return issued;
-  };
-
-  const switchToTypedRegistration = async () => {
-    setError('');
-    setReversePhoneLeg(false);
-    setIsSubmitting(true);
-    try {
-      if (!registration?.phone?.challengeId) await startOutboundRegistration();
-    } catch (err) {
-      setError(describeError(err, t('login.errSendCodes')));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  /** New account: name, then prove the number. Reverse OTP is the default. */
-  const handleStartRegistration = async (e) => {
+  /** New account: collect name, then prove the number by reverse OTP. */
+  const handleStartRegistration = (e) => {
     e.preventDefault();
     if (isSubmitting) return;
 
@@ -419,23 +313,17 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
     }
 
     setError('');
-    setRegistration(null);
-    setPhoneCode('');
-    setReversePhoneLeg(true);
+    setReversePhoneToken(null);
     setStep(STEP.REGISTER_CODES);
   };
 
-  /** New account: typed outbound code. Reverse OTP completes itself. */
+  /** New account: spend the reverse-OTP token to create the account. */
   const handleVerifyRegistration = async (e) => {
     e.preventDefault();
     if (isSubmitting) return;
 
-    if (!registration?.phone?.delivered || !registration.phone.challengeId) {
+    if (!reversePhoneToken) {
       setError(t('login.errReversePending'));
-      return;
-    }
-    if (!phoneCode || phoneCode.trim().length < 6) {
-      setError(t('login.errSixWhatsapp'));
       return;
     }
 
@@ -444,16 +332,12 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
     try {
       const user = await signUp.verify({
-        phoneChallengeId: registration.phone.challengeId,
-        phoneCode: phoneCode.trim(),
+        phoneToken: reversePhoneToken,
+        name: name.trim() || undefined,
       });
       onLogin(user);
     } catch (err) {
       setError(describeError(err, t('login.errCheckCodes')));
-
-      if (err instanceof ApiRequestError && ['OTP_EXPIRED', 'OTP_ATTEMPTS_EXCEEDED'].includes(err.code)) {
-        resetToStart();
-      }
     } finally {
       setIsSubmitting(false);
     }
@@ -467,10 +351,11 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
   } else if (step === STEP.REGISTER_CODES) {
     if (signUp.codesSubKey) sub = t(signUp.codesSubKey);
   }
-  if (step === STEP.LOGIN_CODE && reverseLogin) {
+  // Reverse OTP is the only path — always use the "send us a code" copy.
+  if (step === STEP.LOGIN_CODE) {
     title = t('login.sendUsCode');
     sub = t('login.sendUsCodeSub');
-  } else if (step === STEP.REGISTER_CODES && reversePhoneLeg) {
+  } else if (step === STEP.REGISTER_CODES) {
     title = t('login.sendUsCode');
     sub = t('login.sendUsCodeSubRegister');
   }
@@ -665,17 +550,16 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
               </form>
             )}
 
-            {/* STEP 2A — sign in. Reverse OTP is the default; the typed code
-                is behind "Type a code instead". */}
+            {/* STEP 2A — sign in via reverse OTP */}
             {step === STEP.LOGIN_CODE && (
               <div className="si-step space-y-4">
                 <div className="flex items-center justify-between gap-3 rounded-xl bg-[#F4F7F5] px-3.5 py-3">
                   <div className="min-w-0">
                     <span className="block text-[12.5px] font-bold text-[#5B6B62]">
-                      {t(reverseLogin ? 'login.yourNumber' : 'login.sentTo')}
+                      {t('login.yourNumber')}
                     </span>
                     <span className="si-num block truncate text-[14.5px] text-[#0F1F17]">
-                      {reverseLogin ? `+91 ${loginPhone || identifier}` : (challenge?.destination || identifier)}
+                      {loginPhone ? `+91 ${loginPhone}` : identifier}
                     </span>
                   </div>
                   <button type="button" onClick={resetToStart} className={`${quietButton} shrink-0 flex items-center gap-1`}>
@@ -684,58 +568,21 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
                   </button>
                 </div>
 
-                {reverseLogin ? (
-                  <ReverseOtpPanel
-                    phone={loginPhone}
-                    purpose="login"
-                    app={appType}
-                    onVerified={({ user: signedIn }) => onLogin(signedIn)}
-                    onUnavailable={switchToTypedLogin}
-                  />
-                ) : (
-                  <form onSubmit={handleVerifyLogin} className="space-y-4">
-                    <div>
-                      <label className={labelClass}>{t('login.sixDigitCode')}</label>
-                      <OTPBoxGroup tone="brand" value={code} onChange={setCode} />
-                    </div>
+                <ReverseOtpPanel
+                  phone={loginPhone}
+                  purpose="login"
+                  app={appType}
+                  onVerified={({ user: signedIn }) => onLogin(signedIn)}
+                />
 
-                    {error && <Notice tone="error">{error}</Notice>}
-
-                    <button type="submit" disabled={isSubmitting} className={primaryButton}>
-                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                      <span>{t(isSubmitting ? 'login.checking' : 'login.verifyAndSignIn')}</span>
-                    </button>
-                  </form>
-                )}
-
-                {loginPhone && (
-                  <div className="text-center">
-                    <button
-                      type="button"
-                      disabled={isSubmitting}
-                      onClick={() => {
-                        if (reverseLogin) switchToTypedLogin();
-                        else {
-                          setError('');
-                          setReverseLogin(true);
-                        }
-                      }}
-                      className={`${quietButton} inline-flex items-center gap-1.5`}
-                    >
-                      {!reverseLogin && <Send className="h-3 w-3" />}
-                      {t(reverseLogin ? 'login.typeCodeInstead' : 'login.sendCodeInstead')}
-                    </button>
-                  </div>
-                )}
-
-                {reverseLogin && error && <Notice tone="error">{error}</Notice>}
+                {error && <Notice tone="error">{error}</Notice>}
               </div>
             )}
 
             {/* STEP 2B — register, name then number */}
             {step === STEP.REGISTER && (
               <form onSubmit={handleStartRegistration} className="si-step space-y-4">
-                <Notice tone="info">{t('login.twoWays')}</Notice>
+                <Notice tone="info">{t('login.reverseOnly')}</Notice>
 
                 <div>
                   <label htmlFor="phone" className={labelClass}>{t('login.whatsappNumber')}</label>
@@ -806,7 +653,7 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
                 <button type="submit" disabled={isSubmitting} className={primaryButton}>
                   {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                  <span>{t(isSubmitting ? 'login.sending' : 'login.sendMyCodes')}</span>
+                  <span>{t('login.continue')}</span>
                   {!isSubmitting && <ArrowRight className="w-4 h-4" />}
                 </button>
 
@@ -818,78 +665,34 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
             {/* STEP 3 — prove the number, then the account exists */}
             {step === STEP.REGISTER_CODES && (
-              <div className="si-step space-y-4">
-                {reversePhoneLeg ? (
-                  <div>
-                    <label className={labelClass}>{t('login.reversePhoneLabel')}</label>
+              <form onSubmit={handleVerifyRegistration} className="si-step space-y-4">
+                <div>
+                  <label className={labelClass}>{t('login.reversePhoneLabel')}</label>
+                  {reversePhoneToken ? (
+                    <Notice tone="info">{t('login.reverseVerified')}</Notice>
+                  ) : (
                     <ReverseOtpPanel
                       phone={phone.trim()}
                       purpose={signUp.reversePurpose}
                       app={appType}
                       name={name.trim() || undefined}
-                      // Handed to the verify call rather than spent here:
-                      // that endpoint is what creates the account, and it needs
-                      // the token unredeemed.
                       completeHere={false}
-                      onVerified={async ({ token }) => {
-                        const user = await signUp.verify({
-                          phoneToken: token,
-                          name: name.trim() || undefined,
-                        });
-                        onLogin(user);
-                      }}
-                      onUnavailable={switchToTypedRegistration}
+                      onVerified={({ token }) => setReversePhoneToken(token)}
                     />
-                  </div>
-                ) : (
-                  <form onSubmit={handleVerifyRegistration} className="space-y-4">
-                    {registration?.phone?.delivered ? (
-                      <div>
-                        <label className={labelClass}>
-                          {t('login.whatsappLabel')}{' '}
-                          <span className="si-num font-medium text-[#5B6B62]">{registration.phone.destination}</span>
-                        </label>
-                        <OTPBoxGroup tone="brand" value={phoneCode} onChange={setPhoneCode} />
-                      </div>
-                    ) : (
-                      <Notice tone="info">{t('login.whatsappDown')}</Notice>
-                    )}
-
-                    {error && <Notice tone="error">{error}</Notice>}
-
-                    {registration?.phone?.delivered && (
-                      <button type="submit" disabled={isSubmitting} className={primaryButton}>
-                        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                        <span>{t(isSubmitting ? 'login.checking' : 'login.createAccount')}</span>
-                      </button>
-                    )}
-                  </form>
-                )}
-
-                <div className="text-center">
-                  <button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={() => {
-                      if (reversePhoneLeg) switchToTypedRegistration();
-                      else {
-                        setError('');
-                        setReversePhoneLeg(true);
-                      }
-                    }}
-                    className={`${quietButton} inline-flex items-center gap-1.5`}
-                  >
-                    {!reversePhoneLeg && <Send className="h-3 w-3" />}
-                    {t(reversePhoneLeg ? 'login.typeCodeInstead' : 'login.sendCodeInstead')}
-                  </button>
+                  )}
                 </div>
 
-                {reversePhoneLeg && error && <Notice tone="error">{error}</Notice>}
+                {error && <Notice tone="error">{error}</Notice>}
+
+                <button type="submit" disabled={isSubmitting || !reversePhoneToken} className={primaryButton}>
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  <span>{t(isSubmitting ? 'login.checking' : 'login.createAccount')}</span>
+                </button>
 
                 <div className="text-center">
                   <button type="button" onClick={resetToStart} className={quietButton}>{t('login.startOver')}</button>
                 </div>
-              </div>
+              </form>
             )}
           </section>
 

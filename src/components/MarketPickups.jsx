@@ -1,10 +1,12 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Store, MapPin, Navigation, Check, Package, Clock, X, PackageCheck, Phone,
-  Banknote, Boxes, User, ChevronDown, ChevronUp,
+  Banknote, Boxes, User, ChevronDown, ChevronUp, Camera, Loader2,
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { acceptPickup, declinePickup, collectFromStall, markDelivered } from '../services/rider';
+import { uploadDeliveryProof } from '../services/orders';
+import { toUploadableJpeg } from '../services/imageCapture';
 import useRiderJobs from '../hooks/useRiderJobs';
 
 /**
@@ -224,6 +226,9 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
   const remaining = order.pickups.filter((p) => !p.collected);
   const readyToLeave = order.status === 'dispatched';
   const [showRound, setShowRound] = useState(true);
+  const [proofUrl, setProofUrl] = useState(order.deliveryProofUrl || null);
+  const [proofError, setProofError] = useState('');
+  const [uploadingProof, setUploadingProof] = useState(false);
 
   const market =
     order.marketLat != null ? { lat: order.marketLat, lng: order.marketLng } : null;
@@ -232,6 +237,23 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
 
   // Which end the rider is heading for right now — the same rule the map uses.
   const destination = readyToLeave ? customer : market;
+
+  const handleProofPick = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || uploadingProof) return;
+    setProofError('');
+    setUploadingProof(true);
+    try {
+      const dataUri = await toUploadableJpeg(file);
+      const result = await uploadDeliveryProof(order.id, dataUri);
+      setProofUrl(result.url);
+    } catch (err) {
+      setProofError(err?.message || 'Could not upload that photo.');
+    } finally {
+      setUploadingProof(false);
+    }
+  };
 
   return (
     <article className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
@@ -358,6 +380,27 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
               })}
             </ul>
           )}
+        </div>
+      )}
+
+      {readyToLeave && (
+        <div className="px-4 py-3 border-b border-gray-100 space-y-2">
+          {proofUrl ? (
+            <img src={proofUrl} alt="" className="w-full h-28 object-cover rounded-xl border border-emerald-200" />
+          ) : null}
+          <label className="inline-flex items-center gap-2 text-[12px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl cursor-pointer">
+            {uploadingProof ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+            <span>{uploadingProof ? 'Uploading…' : proofUrl ? 'Retake delivery photo' : 'Photo of delivery (optional)'}</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/*"
+              capture="environment"
+              className="hidden"
+              disabled={uploadingProof}
+              onChange={handleProofPick}
+            />
+          </label>
+          {proofError && <p className="text-[11px] font-bold text-red-600">{proofError}</p>}
         </div>
       )}
 

@@ -1,7 +1,6 @@
 'use strict';
 
 const express = require('express');
-const config = require('../config/env');
 const Order = require('../models/Order');
 const Stall = require('../models/Stall');
 const StallInventory = require('../models/StallInventory');
@@ -14,6 +13,8 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { stallActionLimiter } = require('../middleware/rateLimit');
 const sourcing = require('../services/sourcing');
 const settlement = require('../services/settlement');
+const { requirePhotoDataUri } = require('../services/imagePayload');
+const media = require('../services/cloudinary');
 
 const router = express.Router();
 
@@ -331,20 +332,6 @@ router.get('/me/stock', ...stallGate, async (req, res) => {
  */
 const photoBody = express.json({ limit: '1mb' });
 
-/** `data:image/jpeg;base64,…` → the parts, or null if it is not one. */
-function parseDataUri(value) {
-  const match = /^data:(image\/(?:jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(value);
-  if (!match) return null;
-
-  const [, mimeType, base64] = match;
-  const buffer = Buffer.from(base64, 'base64');
-  // Round-trip check: a truncated or padded string decodes without complaint
-  // and would be stored as an image that never renders.
-  if (buffer.length === 0 || buffer.toString('base64') !== base64) return null;
-
-  return { mimeType, base64, bytes: buffer.length };
-}
-
 /**
  * Post today's photo of one product.
  *
@@ -352,9 +339,9 @@ function parseDataUri(value) {
  * behaves exactly as before. What it buys is that the customer sees the actual
  * produce rather than a stock photograph of the idea of it.
  *
- * The format allow-list is jpeg and webp, and the exclusions matter more than
- * the inclusions. SVG is a script container and this file is served back to
- * customers; PNG is lossless and would blow the size cap on any real photo.
+ * Bytes go to Cloudinary; Mongo keeps the URL. The format allow-list is jpeg and
+ * webp — SVG is a script container and this file is shown to customers; PNG is
+ * lossless and would blow the size cap on any real photo.
  */
 router.put(
   '/me/photos/:productId',
@@ -368,22 +355,7 @@ router.put(
   async (req, res) => {
     const { productId } = req.valid.params;
 
-    const parsed = parseDataUri(req.valid.body.image);
-    if (!parsed) {
-      throw new ApiError(
-        400,
-        'Send a JPEG or WebP photo as a data URI.',
-        'UNSUPPORTED_IMAGE'
-      );
-    }
-
-    if (parsed.bytes > config.freshPhoto.maxBytes) {
-      throw new ApiError(
-        413,
-        `That photo is ${Math.round(parsed.bytes / 1024)} KB. The limit is ${Math.round(config.freshPhoto.maxBytes / 1024)} KB.`,
-        'PHOTO_TOO_LARGE'
-      );
-    }
+    const parsed = requirePhotoDataUri(req.valid.body.image);
 
     /**
      * The market must actually sell this product.
@@ -401,6 +373,16 @@ router.put(
       throw new ApiError(400, 'This market is not selling that product.', 'PRODUCT_UNAVAILABLE');
     }
 
+    const previous = await StallPhoto.findOne({ stall: req.stall._id, product: productId })
+      .select('publicId')
+      .lean();
+
+    const uploaded = await media.uploadImage({
+      folder: `vegdrop/stalls/${req.stall._id.toHexString()}`,
+      dataUri: parsed.dataUri,
+      publicId: `${productId}`,
+    });
+
     // Upsert on {stall, product}: today's photo replaces yesterday's rather
     // than accumulating a gallery nobody prunes.
     const photo = await StallPhoto.findOneAndUpdate(
@@ -408,17 +390,23 @@ router.put(
       {
         $set: {
           market: req.stall.market,
-          image: parsed.base64,
+          url: uploaded.url,
+          publicId: uploaded.publicId,
           mimeType: parsed.mimeType,
           bytes: parsed.bytes,
           takenAt: new Date(),
         },
+        $unset: { image: 1 },
       },
       { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
     );
 
+    if (previous?.publicId && previous.publicId !== uploaded.publicId) {
+      await media.destroyImage(previous.publicId);
+    }
+
     return res.json({
-      data: { productId, takenAt: photo.takenAt, bytes: photo.bytes },
+      data: { productId, takenAt: photo.takenAt, bytes: photo.bytes, url: photo.url },
     });
   }
 );
@@ -429,12 +417,14 @@ router.delete(
   validate({ params: z.object({ productId: fields.objectId }).strict() }),
   async (req, res) => {
     // Scoped to this stall, so the id in the URL cannot reach anyone else's.
-    const result = await StallPhoto.deleteOne({
+    const existing = await StallPhoto.findOneAndDelete({
       stall: req.stall._id,
       product: req.valid.params.productId,
     });
 
-    return res.json({ data: { removed: result.deletedCount > 0 } });
+    if (existing?.publicId) await media.destroyImage(existing.publicId);
+
+    return res.json({ data: { removed: Boolean(existing) } });
   }
 );
 

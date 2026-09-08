@@ -17,8 +17,11 @@ const checkout = require('../services/checkout');
 const settlement = require('../services/settlement');
 const dispatch = require('../services/dispatch');
 const { CANCELLABLE_BY_CUSTOMER, CANCELLABLE_BY_STAFF, transitionTo } = require('../utils/orderStatus');
+const { requirePhotoDataUri } = require('../services/imagePayload');
+const media = require('../services/cloudinary');
 
 const router = express.Router();
+const photoBody = express.json({ limit: '1mb' });
 
 /**
  * Which roles may drive which status transition. Enforced in addition to the
@@ -846,6 +849,70 @@ router.post(
     );
     if (!order) throw new ApiError(409, 'That order is no longer available to claim.', 'ALREADY_CLAIMED');
     return res.json({ data: order.toJSON() });
+  }
+);
+
+/**
+ * Proof-of-delivery photo — assigned rider only.
+ *
+ * Allowed while the order is out for delivery (shop/legacy) or has left the
+ * market (fulfillment dispatched). Customers never upload; they may see
+ * `deliveryProof.url` on the order payload once set.
+ */
+router.put(
+  '/:id/delivery-proof',
+  requireAuth,
+  requireRole('delivery'),
+  photoBody,
+  validate({
+    params: z.object({ id: fields.objectId }).strict(),
+    body: z.object({ image: z.string().min(32).max(2_000_000) }).strict(),
+  }),
+  async (req, res) => {
+    const order = await Order.findOne({
+      _id: req.valid.params.id,
+      assignedTo: req.user._id,
+    });
+    if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+
+    const outForDelivery =
+      order.status === 'Out for Delivery' ||
+      order.fulfillment?.status === 'dispatched' ||
+      order.fulfillment?.status === 'collecting';
+    if (!outForDelivery) {
+      throw new ApiError(
+        409,
+        'Take a delivery photo only once the order is on the way to the customer.',
+        'NOT_OUT_FOR_DELIVERY'
+      );
+    }
+
+    const parsed = requirePhotoDataUri(req.valid.body.image);
+    const previousPublicId = order.deliveryProof?.publicId || null;
+
+    const uploaded = await media.uploadImage({
+      folder: `vegdrop/delivery/${order._id.toHexString()}`,
+      dataUri: parsed.dataUri,
+      publicId: 'proof',
+    });
+
+    order.deliveryProof = {
+      url: uploaded.url,
+      publicId: uploaded.publicId,
+      takenAt: new Date(),
+    };
+    await order.save();
+
+    if (previousPublicId && previousPublicId !== uploaded.publicId) {
+      await media.destroyImage(previousPublicId);
+    }
+
+    return res.json({
+      data: {
+        url: order.deliveryProof.url,
+        takenAt: order.deliveryProof.takenAt,
+      },
+    });
   }
 );
 

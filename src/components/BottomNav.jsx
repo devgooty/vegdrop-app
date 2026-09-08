@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, ShoppingBasket, UserCheck, Package, TrendingUp } from 'lucide-react';
+import { Home, ShoppingBasket, UserCheck, Package, TrendingUp, ChefHat } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
 export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCart, cartOpen, cartBump, userRole }) {
@@ -88,6 +88,21 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
           <TrendingUp className={`w-5 h-5 transition-transform duration-300 ${routeActive('prices') ? 'scale-110' : ''}`} />
           <span className="text-[11.5px] font-semibold mt-0.5">{t('nav.prices')}</span>
         </button>
+
+        {/* Cook Tab - Only for customers or guests */}
+        {(!userRole || userRole === 'customer') && (
+          <button
+            onClick={() => setActiveTab('assistant')}
+            className={`flex flex-col items-center py-1.5 px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
+              routeActive('assistant')
+                ? 'text-[#1B4D3E] font-bold bg-[#1B4D3E]/10 shadow-[inset_0_2px_4px_rgba(27,77,62,0.1)]'
+                : 'text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5'
+            }`}
+          >
+            <ChefHat className={`w-5 h-5 transition-transform duration-300 ${routeActive('assistant') ? 'scale-110' : ''}`} />
+            <span className="text-[11.5px] font-semibold mt-0.5">{t('nav.cook')}</span>
+          </button>
+        )}
 
         {/* Cart Button */}
         <button

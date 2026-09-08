@@ -179,7 +179,7 @@ test('only a stall holder can read a stock list', async () => {
 // Photographs — what is accepted
 // ---------------------------------------------------------------------------
 
-test('a JPEG is stored, and reported back with its size', async () => {
+test('a JPEG is stored on Cloudinary, and reported back with its size', async () => {
   const market = await seedMarket();
   const tomato = await seedPricedProduct(market);
   const shop = await seedStall(market);
@@ -192,10 +192,13 @@ test('a JPEG is stored, and reported back with its size', async () => {
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.ok(res.body.data.takenAt);
   assert.ok(res.body.data.bytes > 0);
+  assert.match(res.body.data.url, /^https:\/\//);
 
   const stored = await StallPhoto.findOne({ stall: shop.stall._id, product: tomato._id }).lean();
   assert.equal(stored.mimeType, 'image/jpeg');
-  assert.equal(stored.image, TINY_JPEG, 'the data: prefix is stripped, the payload is not');
+  assert.ok(stored.url, 'Cloudinary URL is what Mongo keeps');
+  assert.ok(stored.publicId);
+  assert.ok(!stored.image, 'bytes are not kept in Mongo');
   assert.equal(String(stored.market), market._id.toHexString(), 'denormalised for the catalog lookup');
 });
 
@@ -397,25 +400,32 @@ test('a photo past the freshness window is not offered as today', async () => {
   assert.equal(bytes.status, 404, 'and the image itself stops being served');
 });
 
-test('the photo route serves real bytes with the right type', async () => {
+test('the photo route redirects to Cloudinary for a fresh upload', async () => {
   const market = await seedMarket();
   const tomato = await seedPricedProduct(market);
   const shop = await seedStall(market);
 
-  await api()
+  const put = await api()
     .put(`/api/stalls/me/photos/${tomato._id.toHexString()}`)
     .set(auth(shop.accessToken))
     .send({ image: jpegUri() });
+
+  assert.equal(put.status, 200);
+  assert.ok(put.body.data.url, 'response carries the Cloudinary URL');
+  assert.match(put.body.data.url, /^https:\/\//);
+
+  const stored = await StallPhoto.findOne({ stall: shop.stall._id, product: tomato._id }).lean();
+  assert.ok(stored.url);
+  assert.ok(stored.publicId);
+  assert.ok(!stored.image, 'bytes are not kept in Mongo');
 
   const res = await api().get(
     `/api/markets/${market._id.toHexString()}/products/${tomato._id.toHexString()}/fresh-photo`
   );
 
-  assert.equal(res.status, 200);
-  assert.equal(res.headers['content-type'], 'image/jpeg');
-  assert.equal(res.headers['x-content-type-options'], 'nosniff');
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.location, stored.url);
   assert.match(res.headers['cache-control'], /public/, '/api is no-store by default; this opts out');
-  assert.deepEqual(res.body, Buffer.from(TINY_JPEG, 'base64'), 'the actual image comes back');
 });
 
 test('a product nobody photographed serves a 404, not an empty image', async () => {

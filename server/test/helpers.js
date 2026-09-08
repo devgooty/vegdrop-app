@@ -36,6 +36,11 @@ delete process.env.RAZORPAYX_KEY_ID;
 delete process.env.RAZORPAYX_KEY_SECRET;
 delete process.env.RAZORPAYX_ACCOUNT_NUMBER;
 
+// Image uploads use a local mock under NODE_ENV=test; never hit a real cloud.
+delete process.env.CLOUDINARY_CLOUD_NAME;
+delete process.env.CLOUDINARY_API_KEY;
+delete process.env.CLOUDINARY_API_SECRET;
+
 process.env.KYC_ENCRYPTION_KEY = 'test-kyc-encryption-key-long-enough-000000000';
 
 const { MongoMemoryReplSet } = require('mongodb-memory-server');

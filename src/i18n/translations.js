@@ -29,6 +29,7 @@ const STRINGS = {
   // --- Customer bottom nav (BottomNav.jsx) ----------------------------------
   'nav.home': { en: 'Home', hi: 'होम', te: 'హోమ్' },
   'nav.prices': { en: 'Prices', hi: 'भाव', te: 'ధరలు' },
+  'nav.cook': { en: 'Cook', hi: 'रसोई', te: 'వంట' },
   'nav.cart': { en: 'Cart', hi: 'कार्ट', te: 'కార్ట్' },
   'nav.orders': { en: 'Orders', hi: 'ऑर्डर', te: 'ఆర్డర్లు' },
   'nav.account': { en: 'Account', hi: 'खाता', te: 'ఖాతా' },
@@ -776,9 +777,9 @@ const STRINGS = {
     user at all. Naming only the phone is true of both ways in.
   */
   'login.enterCodeSub': {
-    en: 'Six digits, sent to your phone.',
-    hi: 'छह अंक, आपके फ़ोन पर भेजे गए।',
-    te: 'ఆరు అంకెలు, మీ ఫోన్‌కు పంపాం.',
+    en: 'Send us the code below from your phone.',
+    hi: 'नीचे दिया कोड अपने फ़ोन से हमें भेजें।',
+    te: 'కింద ఉన్న కోడ్‌ను మీ ఫోన్ నుండి మాకు పంపండి.',
   },
   'login.createAccount': { en: 'Create account', hi: 'खाता बनाएँ', te: 'ఖాతా సృష్టించండి' },
   /*
@@ -791,12 +792,11 @@ const STRINGS = {
     hi: 'आप यहाँ नए हैं। बस अपना नाम और नंबर।',
     te: 'మీరు ఇక్కడ కొత్త. మీ పేరు, నంబర్ చాలు.',
   },
-  'login.checkMessages': { en: 'Check your messages', hi: 'अपने संदेश देखें', te: 'మీ సందేశాలు చూడండి' },
-  // One code now, not one per contact.
+  'login.checkMessages': { en: 'Confirm your number', hi: 'अपना नंबर पक्का करें', te: 'మీ నంబర్‌ను నిర్ధారించండి' },
   'login.checkMessagesSub': {
-    en: 'Type the code we sent you below.',
-    hi: 'हमने जो कोड भेजा है उसे नीचे लिखें।',
-    te: 'మేము పంపిన కోడ్‌ను కింద టైప్ చేయండి.',
+    en: 'Send us the code below from your phone.',
+    hi: 'नीचे दिया कोड अपने फ़ोन से हमें भेजें।',
+    te: 'కింద ఉన్న కోడ్‌ను మీ ఫోన్ నుండి మాకు పంపండి.',
   },
   'login.shopkeeperHeading': { en: 'Shopkeeper', hi: 'दुकानदार', te: 'దుకాణదారు' },
   'login.shopkeeperTitle': { en: 'Register your stall', hi: 'अपनी दुकान रजिस्टर करें', te: 'మీ దుకాణాన్ని నమోదు చేయండి' },
@@ -839,6 +839,13 @@ const STRINGS = {
     hi: 'हम साबित करेंगे कि यह नंबर आपका है। साइन अप बस इतना ही है।',
     te: 'ఈ నంబర్ మీదేనని నిరూపిస్తాం. సైన్ అప్ అంతే.',
   },
+  'login.reverseOnly': {
+    en: 'Confirm your number by sending us a quick WhatsApp or SMS message.',
+    hi: 'WhatsApp या SMS से एक छोटा संदेश भेजकर अपना नंबर पक्का करें।',
+    te: 'WhatsApp లేదా SMS ద్వారా చిన్న సందేశం పంపి మీ నంబర్‌ను నిర్ధారించండి.',
+  },
+  'login.yourNumber': { en: 'Your number', hi: 'आपका नंबर', te: 'మీ నంబర్' },
+  'login.continue': { en: 'Continue', hi: 'आगे बढ़ें', te: 'కొనసాగండి' },
   'login.whatsappNumber': { en: 'WhatsApp number', hi: 'WhatsApp नंबर', te: 'WhatsApp నంబర్' },
   'login.emailAddress': { en: 'Email address', hi: 'ईमेल पता', te: 'ఇమెయిల్ చిరునామా' },
   'login.yourName': { en: 'Your name', hi: 'आपका नाम', te: 'మీ పేరు' },
@@ -901,10 +908,25 @@ const STRINGS = {
     hi: 'वह कोड काम नहीं आया। फिर कोशिश करें।',
     te: 'ఆ కోడ్ పని చేయలేదు. మళ్లీ ప్రయత్నించండి.',
   },
+  'login.errNoDeveloperAccount': {
+    en: 'No developer account for this number. Ask an admin to grant access.',
+    hi: 'इस नंबर पर डेवलपर खाता नहीं है। एक एडमिन से पहुँच माँगें।',
+    te: 'ఈ నంబర్‌కు developer account లేదు. admin access కోసం అడగండి.',
+  },
+  'login.developerHeading': {
+    en: 'Developer',
+    hi: 'डेवलपर',
+    te: 'Developer',
+  },
   'login.errSendCodes': {
     en: 'Could not send the codes. Please try again.',
     hi: 'कोड नहीं भेजे जा सके। कृपया फिर कोशिश करें।',
     te: 'కోడ్‌లను పంపలేకపోయాం. దయచేసి మళ్లీ ప్రయత్నించండి.',
+  },
+  'login.errOutboundUnavailable': {
+    en: 'We could not send a code to your phone right now. Send us the code from WhatsApp instead.',
+    hi: 'अभी आपके फ़ोन पर कोड नहीं भेजा जा सका। कृपया WhatsApp से हमें कोड भेजें।',
+    te: 'ఇప్పుడు మీ ఫోన్‌కు కోడ్ పంపలేకపోయాం. దయచేసి WhatsApp నుండి మాకు కోడ్ పంపండి.',
   },
   'login.errSixEmail': {
     en: 'Enter all six digits from your email.',

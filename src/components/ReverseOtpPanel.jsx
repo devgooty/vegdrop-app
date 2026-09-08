@@ -57,7 +57,7 @@ function describeError(err) {
   if (err instanceof NetworkError) return 'No connection. Check your network and try again.';
   if (err instanceof ApiRequestError) {
     if (err.code === 'REVERSE_OTP_NOT_CONFIGURED') {
-      return 'This option is not available right now. Please use the code we send you instead.';
+      return 'This option is not available right now. Please try again later.';
     }
     return err.message;
   }

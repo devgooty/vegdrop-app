@@ -45,6 +45,10 @@ export function toUiOrder(order) {
     riderName: order.riderName || null,
     riderPhone: order.riderPhone || null,
 
+    /** Door photo from the rider, when they took one. View-only for customers. */
+    deliveryProofUrl: order.deliveryProof?.url || null,
+    deliveryProofAt: order.deliveryProof?.takenAt || null,
+
     /**
      * Market fulfillment, when the order has it.
      *
@@ -230,6 +234,16 @@ export async function retryPartialOrder(orderId) {
 export async function updateOrderStatus(orderId, status) {
   const result = await api.patch(`/orders/${orderId}/status`, { status });
   return toUiOrder(result.data);
+}
+
+/**
+ * Assigned rider uploads a door photo. Optional; customers only ever see the URL.
+ * @param {string} orderId
+ * @param {string} dataUri JPEG/WebP from imageCapture
+ */
+export async function uploadDeliveryProof(orderId, dataUri) {
+  const result = await api.put(`/orders/${orderId}/delivery-proof`, { image: dataUri });
+  return result.data;
 }
 
 /** Delivery agents claim an unassigned order; first writer wins. */

@@ -24,6 +24,10 @@ const config = require('../config/env');
  * Kept in its own collection, the sourcing engine cannot touch it by accident —
  * which is a structural guarantee rather than a comment asking future callers
  * to remember.
+ *
+ * Bytes live on Cloudinary (`url` / `publicId`). The optional `image` field is
+ * legacy base64 from before object storage; the serve route still understands
+ * it until the TTL index removes those rows.
  */
 const stallPhotoSchema = new mongoose.Schema(
   {
@@ -32,17 +36,17 @@ const stallPhotoSchema = new mongoose.Schema(
     market: { type: mongoose.Schema.Types.ObjectId, ref: 'Market', required: true },
     product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
 
+    /** Cloudinary delivery URL (f_auto,q_auto). Required for new uploads. */
+    url: { type: String, default: null, maxlength: 2000 },
+
+    /** Cloudinary public_id — needed to destroy on replace/delete. */
+    publicId: { type: String, default: null, maxlength: 500 },
+
     /**
-     * Base64 payload only — the `data:image/jpeg;base64,` prefix is stripped on
-     * the way in and rebuilt on the way out.
-     *
-     * Storing the bytes in Mongo rather than object storage is a deliberate
-     * starting point: it needs no third-party account and no credentials, and
-     * the images are capped small enough that a document stays far inside the
-     * 16 MB limit. Moving to S3 later changes the upload and serve routes only,
-     * because everything else already refers to the photo by URL.
+     * Legacy base64 payload only — the `data:image/jpeg;base64,` prefix was
+     * stripped on the way in. New uploads leave this null.
      */
-    image: { type: String, required: true },
+    image: { type: String, default: null },
 
     /**
      * Restricted at the route to jpeg and webp. Never SVG — an SVG is a script
@@ -50,7 +54,7 @@ const stallPhotoSchema = new mongoose.Schema(
      */
     mimeType: { type: String, required: true, enum: ['image/jpeg', 'image/webp'] },
 
-    /** Decoded size, so the cap can be reported without re-decoding. */
+    /** Decoded / uploaded size, so the cap can be reported without re-decoding. */
     bytes: { type: Number, required: true, min: 1 },
 
     takenAt: { type: Date, required: true, default: Date.now },
@@ -72,10 +76,10 @@ stallPhotoSchema.index({ market: 1, product: 1, takenAt: -1 });
  * Photos delete themselves.
  *
  * A photograph nobody has refreshed for a week is not evidence of anything, and
- * this is the one collection here that grows in megabytes rather than bytes.
- * Note that the display window (`freshForHours`, a day) is much shorter than
- * this: a stale photo stops being SHOWN long before it is removed, so a
- * shopkeeper who re-photographs on day three overwrites rather than re-creates.
+ * this is the one collection here that grows with media metadata. Note that the
+ * display window (`freshForHours`, a day) is much shorter than this: a stale
+ * photo stops being SHOWN long before it is removed. Cloudinary assets are
+ * destroyed on replace/delete; TTL expiry may leave orphans until a sweeper.
  */
 stallPhotoSchema.index(
   { takenAt: 1 },
@@ -84,11 +88,6 @@ stallPhotoSchema.index(
 
 stallPhotoSchema.virtual('id').get(function getId() {
   return this._id.toHexString();
-});
-
-/** `data:image/jpeg;base64,…`, the form an <img src> wants. */
-stallPhotoSchema.virtual('dataUri').get(function dataUri() {
-  return `data:${this.mimeType};base64,${this.image}`;
 });
 
 module.exports = mongoose.model('StallPhoto', stallPhotoSchema);

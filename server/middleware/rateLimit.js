@@ -261,6 +261,15 @@ const riderBankDetailsLimiter = rateLimit({
   handler: jsonLimitHandler('Too many attempts. Please wait before trying again.', 'RATE_LIMITED'),
 });
 
+/** Cooking assistant chat — per user, keeps LLM/tool spend bounded. */
+const agentChatLimiter = rateLimit({
+  ...base,
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  keyGenerator: (req) => `agent:${req.user?._id || ipKeyGenerator(req.ip)}`,
+  handler: jsonLimitHandler('Too many assistant messages. Please wait a few minutes.', 'AGENT_RATE_LIMITED'),
+});
+
 module.exports = {
   globalLimiter,
   otpRequestLimiter,
@@ -276,4 +285,5 @@ module.exports = {
   stallActionLimiter,
   riderBankDetailsLimiter,
   pickupVerifyLimiter,
+  agentChatLimiter,
 };

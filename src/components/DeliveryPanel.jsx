@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import {
   Truck, CheckCircle2, MapPin, Phone, PackageCheck, Bell, Bike,
   LogOut, User, Home, Map as MapIcon, Wallet, Info, Clock, AlertTriangle,
-  Landmark, CreditCard, Lock, Loader2, Pencil, KeyRound, X,
+  Landmark, CreditCard, Lock, Loader2, Pencil, KeyRound, X, Camera,
 } from 'lucide-react';
 import MarketPickups from './MarketPickups';
 import LanguagePicker from './LanguagePicker';
@@ -11,6 +11,8 @@ import {
   fetchRiderBankDetails, saveRiderBankDetails,
   describeLegalNameProblem, describeBankNameProblem, describeIfscProblem, describeAccountProblem,
 } from '../services/rider';
+import { uploadDeliveryProof } from '../services/orders';
+import { toUploadableJpeg } from '../services/imageCapture';
 import { ApiRequestError, NetworkError } from '../services/apiClient';
 import { useLanguage } from '../i18n/LanguageContext';
 import useRiderJobs from '../hooks/useRiderJobs';
@@ -481,6 +483,9 @@ function OrdersTab({ isOnline, agentCoords, legacyJobs, onUpdateOrderStatus, onA
  */
 function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
   const [acting, setActing] = useState(false);
+  const [proofUrl, setProofUrl] = useState(order.deliveryProofUrl || null);
+  const [proofError, setProofError] = useState('');
+  const [uploadingProof, setUploadingProof] = useState(false);
   const isShopOrder = Boolean(order.shopName);
   const awaitingAccept = isShopOrder && order.status === 'Preparing' && order.assignedTo && !order.riderAccepted;
   const awaitingHandoff = isShopOrder && order.status === 'Preparing' && order.riderAccepted;
@@ -492,6 +497,23 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
       await action();
     } finally {
       setActing(false);
+    }
+  };
+
+  const handleProofPick = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || uploadingProof) return;
+    setProofError('');
+    setUploadingProof(true);
+    try {
+      const dataUri = await toUploadableJpeg(file);
+      const result = await uploadDeliveryProof(order.serverId || order.id, dataUri);
+      setProofUrl(result.url);
+    } catch (err) {
+      setProofError(err?.message || 'Could not upload that photo.');
+    } finally {
+      setUploadingProof(false);
     }
   };
 
@@ -593,6 +615,26 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
                   The shop has not handed this over yet.
                 </p>
               )
+            )}
+            {readyToDeliver && (
+              <div className="space-y-2">
+                {proofUrl ? (
+                  <img src={proofUrl} alt="" className="w-full h-28 object-cover rounded-xl border border-emerald-200" />
+                ) : null}
+                <label className="inline-flex items-center gap-2 text-[12px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl cursor-pointer">
+                  {uploadingProof ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+                  <span>{uploadingProof ? 'Uploading…' : proofUrl ? 'Retake delivery photo' : 'Photo of delivery (optional)'}</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/*"
+                    capture="environment"
+                    className="hidden"
+                    disabled={uploadingProof}
+                    onChange={handleProofPick}
+                  />
+                </label>
+                {proofError && <p className="text-[11px] font-bold text-red-600">{proofError}</p>}
+              </div>
             )}
           </div>
 

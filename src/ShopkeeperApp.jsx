@@ -27,7 +27,7 @@ const JoinMarket = lazy(() => import('./components/JoinMarket'));
 // Only ever opened by an unverified vendor, so it stays out of the main bundle.
 const VendorKycModal = lazy(() => import('./components/VendorKycModal'));
 
-const SHOPKEEPER_ROLES = ['shopkeeper', 'developer'];
+const SHOPKEEPER_ROLES = ['shopkeeper'];
 
 export default function ShopkeeperApp() {
   const toast = useToast();

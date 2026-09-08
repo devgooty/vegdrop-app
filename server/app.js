@@ -30,6 +30,8 @@ const stallRoutes = require('./routes/stalls');
 const riderRoutes = require('./routes/rider');
 const shopRoutes = require('./routes/shops');
 const developerRoutes = require('./routes/developer');
+const mediaRoutes = require('./routes/media');
+const agentRoutes = require('./routes/agent');
 
 const WHATSAPP_WEBHOOK_PATH = '/api/whatsapp';
 /**
@@ -245,7 +247,11 @@ function createApp() {
    * `req.body` undefined and fails validation as "expected object, received
    * undefined" — which is what removing that entry's parser looked like.
    */
-  const LARGE_BODY_PATHS = [/^\/api\/stalls\/me\/photos\//];
+  const LARGE_BODY_PATHS = [
+    /^\/api\/stalls\/me\/photos\//,
+    /^\/api\/media\//,
+    /^\/api\/orders\/[^/]+\/delivery-proof$/,
+  ];
 
   app.use((req, res, next) => {
     if (LARGE_BODY_PATHS.some((pattern) => pattern.test(req.path))) return next();
@@ -339,6 +345,8 @@ function createApp() {
   // Shopkeepers who trade from their own premises rather than a market stall.
   app.use('/api/shops', shopRoutes);
   app.use('/api/developer', developerRoutes);
+  app.use('/api/media', mediaRoutes);
+  app.use('/api/agent', agentRoutes);
 
   /**
    * The client, served from this same origin.

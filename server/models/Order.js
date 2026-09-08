@@ -177,6 +177,18 @@ const orderSchema = new mongoose.Schema(
     pickupCode: { type: String, default: null, maxlength: 6 },
 
     /**
+     * Photo taken at the door by the assigned rider.
+     *
+     * Bytes on Cloudinary; optional. Customers may view the URL; only the
+     * delivery role may write it.
+     */
+    deliveryProof: {
+      url: { type: String, default: null, maxlength: 2000 },
+      publicId: { type: String, default: null, maxlength: 500 },
+      takenAt: { type: Date, default: null },
+    },
+
+    /**
      * The standing order that produced this, if any.
      *
      * Null for an order somebody placed by hand, which is the overwhelming

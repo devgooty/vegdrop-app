@@ -374,6 +374,26 @@ const payoutAccountNumber = process.env.RAZORPAYX_ACCOUNT_NUMBER || '';
 const payoutConfigured = Boolean(payoutKeyId && payoutKeySecret && payoutAccountNumber);
 
 /**
+ * Cloudinary hosts every user-uploaded image (stall produce, shop listings,
+ * delivery proof). Not a boot-time fatal: checkout and sign-in work without it;
+ * upload routes refuse with MEDIA_UNCONFIGURED when unset in production.
+ */
+const cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME || '';
+const cloudinaryApiKey = process.env.CLOUDINARY_API_KEY || '';
+const cloudinaryApiSecret = process.env.CLOUDINARY_API_SECRET || '';
+const cloudinaryConfigured = Boolean(
+  cloudinaryCloudName && cloudinaryApiKey && cloudinaryApiSecret
+);
+
+/**
+ * Cooking assistant (optional). Not boot-fatal — chat falls back to a local
+ * recipe matcher when unset. OpenAI is used only when a key is present.
+ */
+const agentApiKey = process.env.OPENAI_API_KEY || '';
+const agentModel = process.env.AGENT_MODEL || 'gpt-4o-mini';
+const agentConfigured = Boolean(agentApiKey);
+
+/**
  * The stall cascade's clocks, resolved before the config object so the ceiling
  * can be derived from the rounds it has to contain.
  *
@@ -540,6 +560,22 @@ const config = Object.freeze({
     allowMock: !isProduction && !payoutConfigured,
   }),
 
+  cloudinary: Object.freeze({
+    cloudName: cloudinaryCloudName,
+    apiKey: cloudinaryApiKey,
+    apiSecret: cloudinaryApiSecret,
+    configured: cloudinaryConfigured,
+    // Dev/test without credentials still exercise upload routes; production never
+    // pretends an image was stored when it was not.
+    allowMock: !isProduction && !cloudinaryConfigured,
+  }),
+
+  agent: Object.freeze({
+    apiKey: agentApiKey,
+    model: agentModel,
+    configured: agentConfigured,
+  }),
+
   /**
    * Market sourcing and rider dispatch.
    *
@@ -674,10 +710,8 @@ const config = Object.freeze({
   /**
    * Photographs of the actual produce, taken by the stall holding it.
    *
-   * Stored inline rather than in object storage, so the cap is doing real work:
-   * it bounds a Mongo document, an API response, and a customer's mobile data
-   * all at once. The client downscales before uploading, but the client cannot
-   * be trusted, so the same limit is enforced at the route.
+   * Bytes live on Cloudinary; Mongo keeps only the URL. The cap still applies
+   * to the upload body — the client downscales first, but cannot be trusted.
    */
   freshPhoto: Object.freeze({
     /** Decoded bytes. ~120 KB is a legible 800px photo at JPEG quality 0.6. */

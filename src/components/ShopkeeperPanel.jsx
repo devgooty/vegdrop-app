@@ -9,6 +9,8 @@ import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../se
 import { fetchShopEarnings, withdrawShopEarnings, fetchNearbyRider, updateMyShop } from '../services/shops';
 import { fetchProducts } from '../services/products';
 import { fetchRiderLocation } from '../services/orders';
+import { uploadProductImage } from '../services/media';
+import { toUploadableJpeg } from '../services/imageCapture';
 import { ApiRequestError } from '../services/apiClient';
 import { useLanguage } from '../i18n/LanguageContext';
 import OTPBoxGroup from './OTPBoxGroup';
@@ -325,6 +327,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
   const [productFormError, setProductFormError] = useState('');
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [imagePreviewError, setImagePreviewError] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   /**
    * The shared catalog, for the "which item is this?" picker.
@@ -477,6 +480,25 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
   )
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
+
+  const handleProductImagePick = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || isUploadingImage) return;
+
+    setProductFormError('');
+    setIsUploadingImage(true);
+    try {
+      const dataUri = await toUploadableJpeg(file);
+      const { url } = await uploadProductImage(dataUri);
+      setProductForm((prev) => ({ ...prev, image: url }));
+      setImagePreviewError(false);
+    } catch (err) {
+      setProductFormError(err?.message || 'Could not upload that photo.');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
 
   // Handlers
   const handleAddProduct = async () => {
@@ -705,13 +727,27 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                     <Camera className="w-5 h-5 text-gray-300" />
                   </div>
                 )}
-                <input
-                  type="url"
-                  value={productForm.image}
-                  onChange={e => { setProductForm({...productForm, image: e.target.value}); setImagePreviewError(false); }}
-                  className="flex-1 bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold text-sm"
-                  placeholder="https://example.com/tomato.jpg"
-                />
+                <div className="flex-1 min-w-0 space-y-2">
+                  <label className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer hover:bg-emerald-100">
+                    {isUploadingImage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+                    <span>{isUploadingImage ? 'Uploading…' : 'Take / upload photo'}</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/*"
+                      capture="environment"
+                      className="hidden"
+                      disabled={isUploadingImage || !canUpdateStock}
+                      onChange={handleProductImagePick}
+                    />
+                  </label>
+                  <input
+                    type="url"
+                    value={productForm.image}
+                    onChange={e => { setProductForm({...productForm, image: e.target.value}); setImagePreviewError(false); }}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold text-sm"
+                    placeholder="Or paste a Cloudinary URL"
+                  />
+                </div>
               </div>
             </div>
             <div>
