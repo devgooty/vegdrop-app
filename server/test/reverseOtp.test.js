@@ -27,6 +27,7 @@ const crypto = require('node:crypto');
 
 const { startTestServer, stopTestServer, resetDatabase, api, createUser, auth } = require('./helpers');
 const ReverseOtpChallenge = require('../models/ReverseOtpChallenge');
+const PhoneHandoverSession = require('../models/PhoneHandoverSession');
 const User = require('../models/User');
 
 test.before(startTestServer);
@@ -733,5 +734,162 @@ test('a registration cannot supply both phone legs at once', async () => {
 
   // Ambiguous about which leg proved the number, and would leave the reverse
   // token unspent and still redeemable elsewhere.
+  assert.equal(res.status, 400);
+});
+
+// ---------------------------------------------------------------------------
+// Cross-device handover (QR / pair before reverse code)
+// ---------------------------------------------------------------------------
+
+async function startHandover({ phone = '9876543210', purpose = 'login', app = 'customer', name } = {}) {
+  const res = await api()
+    .post('/api/auth/reverse/handover/start')
+    .send({
+      phone,
+      purpose,
+      app,
+      clientOrigin: 'http://localhost:3000',
+      ...(name ? { name } : {}),
+    });
+  if (res.status !== 201) {
+    throw new Error(`handover/start failed: ${res.status} ${JSON.stringify(res.body)}`);
+  }
+  return res.body;
+}
+
+function scanHandover(sessionId) {
+  return api().post('/api/auth/reverse/handover/scan').send({ sessionId });
+}
+
+function pairHandover({ sessionId, claimToken, pairNumber }) {
+  return api().post('/api/auth/reverse/handover/pair').send({ sessionId, claimToken, pairNumber });
+}
+
+async function loadHandoverRow(sessionId) {
+  return PhoneHandoverSession.findOne({ sessionId }).lean();
+}
+
+test('handover start returns QR and claim token but no reverse code', async () => {
+  const body = await startHandover();
+  assert.ok(body.sessionId);
+  assert.ok(body.claimToken);
+  assert.ok(body.signinUrl.includes('/verify-phone.html#'));
+  assert.ok(body.qrSvg.includes('<svg'));
+  assert.equal(body.code, undefined);
+  assert.equal(await ReverseOtpChallenge.countDocuments(), 0);
+});
+
+test('scan wins once; second scan is refused; no reverse code until pair', async () => {
+  const started = await startHandover();
+  const first = await scanHandover(started.sessionId);
+  assert.equal(first.status, 200);
+  assert.match(first.body.pairNumber, /^\d{4}$/);
+  assert.ok(first.body.phoneToken);
+  assert.equal(first.body.code, undefined);
+
+  const second = await scanHandover(started.sessionId);
+  assert.equal(second.status, 409);
+
+  assert.equal(await ReverseOtpChallenge.countDocuments(), 0);
+});
+
+test('pair checks claim token before digits (no pair oracle)', async () => {
+  const started = await startHandover();
+  const scanned = await scanHandover(started.sessionId);
+  const session = await loadHandoverRow(started.sessionId);
+
+  const wrongClaim = await pairHandover({
+    sessionId: started.sessionId,
+    claimToken: '0'.repeat(48),
+    pairNumber: session.pairNumber,
+  });
+  assert.equal(wrongClaim.status, 403);
+
+  // Same wrong claim + wrong digits still 403 — not 400 — so digits are not probed.
+  const wrongBoth = await pairHandover({
+    sessionId: started.sessionId,
+    claimToken: '1'.repeat(48),
+    pairNumber: '0000',
+  });
+  assert.equal(wrongBoth.status, 403);
+
+  assert.equal(await ReverseOtpChallenge.countDocuments(), 0);
+  assert.equal(scanned.body.pairNumber, session.pairNumber);
+});
+
+test('wrong pair is capped; stolen QR stays inert until correct pair', async () => {
+  const started = await startHandover();
+  await scanHandover(started.sessionId);
+  const session = await loadHandoverRow(started.sessionId);
+  const wrong = session.pairNumber === '0000' ? '1111' : '0000';
+
+  for (let i = 0; i < 2; i += 1) {
+    const res = await pairHandover({
+      sessionId: started.sessionId,
+      claimToken: started.claimToken,
+      pairNumber: wrong,
+    });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, 'HANDOVER_PAIR_MISMATCH');
+    assert.ok(res.body.error.details.attemptsLeft >= 1);
+  }
+
+  const locked = await pairHandover({
+    sessionId: started.sessionId,
+    claimToken: started.claimToken,
+    pairNumber: wrong,
+  });
+  assert.equal(locked.status, 429);
+  assert.equal(await ReverseOtpChallenge.countDocuments(), 0);
+});
+
+test('correct pair mints reverse OTP; phone status gets channels; SMS stays low assurance', async () => {
+  await createUser({ phone: '9876543210', role: 'customer', name: 'Asha' });
+  const started = await startHandover();
+  const scanned = await scanHandover(started.sessionId);
+  const session = await loadHandoverRow(started.sessionId);
+
+  const browserBefore = await api()
+    .get(`/api/auth/reverse/handover/status?sessionId=${started.sessionId}`)
+    .set('X-Handover-Claim-Token', started.claimToken);
+  assert.equal(browserBefore.status, 200);
+  assert.equal(browserBefore.body.state, 'scanned');
+  assert.equal(browserBefore.body.pairNumber, undefined);
+
+  const paired = await pairHandover({
+    sessionId: started.sessionId,
+    claimToken: started.claimToken,
+    pairNumber: session.pairNumber,
+  });
+  assert.equal(paired.status, 200);
+  assert.ok(paired.body.token);
+  assert.ok(paired.body.code);
+  assert.ok(paired.body.channels.whatsapp || paired.body.channels.sms);
+  if (paired.body.channels.sms) {
+    assert.equal(paired.body.channels.sms.assurance, 'low');
+  }
+
+  const phoneView = await api()
+    .get(`/api/auth/reverse/handover/phone-status?sessionId=${started.sessionId}`)
+    .set('X-Handover-Phone-Token', scanned.body.phoneToken);
+  assert.equal(phoneView.status, 200);
+  assert.equal(phoneView.body.state, 'paired');
+  assert.equal(phoneView.body.code, paired.body.code);
+  if (phoneView.body.channels.sms) {
+    assert.equal(phoneView.body.channels.sms.assurance, 'low');
+  }
+
+  await relaySms({ from: '9876543210', text: paired.body.code });
+  const st = await status(paired.body.token);
+  assert.equal(st.body.state, 'verified');
+
+  const done = await api().post('/api/auth/reverse/complete').send({ token: paired.body.token });
+  assert.equal(done.status, 200);
+  assert.equal(done.body.user.phone, '9876543210');
+});
+
+test('browser status without claim token is refused', async () => {
+  const started = await startHandover();
+  const res = await api().get(`/api/auth/reverse/handover/status?sessionId=${started.sessionId}`);
   assert.equal(res.status, 400);
 });

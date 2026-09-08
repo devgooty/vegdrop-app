@@ -43,7 +43,11 @@ const base = {
  * per token by `reverseOtpStatusLimiter` below, which bounds it far more
  * precisely than an IP count ever could.
  */
-const GLOBAL_LIMIT_EXEMPT = new Set(['/auth/reverse/status']);
+const GLOBAL_LIMIT_EXEMPT = new Set([
+  '/auth/reverse/status',
+  '/auth/reverse/handover/status',
+  '/auth/reverse/handover/phone-status',
+]);
 
 /** Broad protection for the whole API surface. */
 const globalLimiter = rateLimit({
@@ -155,6 +159,39 @@ const reverseOtpStatusLimiter = rateLimit({
     const fromQuery = typeof req.query?.token === 'string' ? req.query.token.slice(0, 80) : '';
     const token = fromHeader || fromQuery;
     return token ? `rotstat:${token}` : `rotstat:${ipKeyGenerator(req.ip)}`;
+  },
+  handler: jsonLimitHandler('Checking too often. Please wait a moment.', 'RATE_LIMITED'),
+});
+
+/** Opening the phone helper / scanning a QR — bound per IP. */
+const handoverScanLimiter = rateLimit({
+  ...base,
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  handler: jsonLimitHandler('Too many scans. Try again in a few minutes.', 'RATE_LIMITED'),
+});
+
+/** Pairing attempts — claim token first on the route; this bounds volume. */
+const handoverPairLimiter = rateLimit({
+  ...base,
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  handler: jsonLimitHandler('Too many attempts. Please wait a moment.', 'RATE_LIMITED'),
+});
+
+/**
+ * Handover status polls. Keyed on claim/phone token headers so two customers
+ * on one office Wi-Fi do not share one poll budget (same CGNAT bug as reverse
+ * OTP status).
+ */
+const handoverPollLimiter = rateLimit({
+  ...base,
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  keyGenerator: (req) => {
+    const claim = String(req.get?.('x-handover-claim-token') || '').trim().slice(0, 80);
+    const phoneTok = String(req.get?.('x-handover-phone-token') || '').trim().slice(0, 80);
+    return `hopoll:${claim || phoneTok || ipKeyGenerator(req.ip)}`;
   },
   handler: jsonLimitHandler('Checking too often. Please wait a moment.', 'RATE_LIMITED'),
 });
@@ -280,6 +317,9 @@ module.exports = {
   otpVerifyLimiter,
   reverseOtpStartLimiter,
   reverseOtpStatusLimiter,
+  handoverScanLimiter,
+  handoverPairLimiter,
+  handoverPollLimiter,
   smsGatewayLimiter,
   lookupLimiter,
   paymentLimiter,

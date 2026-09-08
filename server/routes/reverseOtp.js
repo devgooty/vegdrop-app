@@ -1,7 +1,6 @@
 'use strict';
 
 const express = require('express');
-const config = require('../config/env');
 const User = require('../models/User');
 const { SELF_SERVICE_ROLES } = require('../models/User');
 const { ApiError } = require('../middleware/errors');
@@ -9,8 +8,8 @@ const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
 const { reverseOtpStartLimiter, reverseOtpStatusLimiter } = require('../middleware/rateLimit');
 const reverseOtp = require('../services/reverseOtp');
+const { channelsForCode } = require('../services/reverseOtpChannels');
 const tokens = require('../services/tokens');
-const smsGatewayHealth = require('../services/smsGatewayHealth');
 const {
   placeholderName,
   APP_ROLE_SCOPE,
@@ -18,6 +17,7 @@ const {
   findByIdentifier,
   establishSession,
 } = require('../services/authSession');
+const handoverRoutes = require('./phoneHandover');
 
 const router = express.Router();
 
@@ -28,6 +28,7 @@ const router = express.Router();
  *   GET  /auth/reverse/status?token=                                  -> state
  *   POST /auth/reverse/complete       { token }                       -> session
  *   POST /auth/reverse/complete/phone { token }                       -> session (auth'd)
+ *   /auth/reverse/handover/*          cross-device pairing (see phoneHandover.js)
  *
  * WHY STATUS AND COMPLETE ARE SEPARATE
  *
@@ -54,73 +55,7 @@ const PURPOSES = ['login', 'registration', 'vendor_registration', 'delivery_regi
  */
 const COMPLETABLE_PURPOSES = ['login'];
 
-/**
- * The text the user's messaging app is prefilled with.
- *
- * The code is the only part that matters; the prose is there so the message
- * makes sense to a human scrolling their own sent items later, and so it is
- * obvious what they are about to send before they send it.
- */
-function messageFor(code) {
-  return `Verify my number for VegDrop: ${code}`;
-}
-
-/**
- * Which channels to offer, with links already built.
- *
- * Only channels that are actually configured appear. Rendering a button that
- * opens a chat with nobody would produce a message that is never received and a
- * screen that waits forever — worse than not offering the option.
- */
-async function buildChannels(code) {
-  const text = messageFor(code);
-  const encoded = encodeURIComponent(text);
-  const channels = { whatsapp: null, sms: null };
-
-  if (config.reverseOtp.whatsapp.configured) {
-    channels.whatsapp = {
-      to: config.reverseOtp.whatsapp.inboxNumber,
-      // wa.me wants digits only — no +, no spaces, no dashes.
-      link: `https://wa.me/${config.reverseOtp.whatsapp.inboxNumber}?text=${encoded}`,
-      message: text,
-      assurance: 'high',
-    };
-  }
-
-  if (config.reverseOtp.sms.configured) {
-    const to = config.reverseOtp.sms.inboxNumber;
-    const relay = await smsGatewayHealth.getRelayHealth();
-    channels.sms = {
-      to,
-      /**
-       * RFC 5724 says `?body=`, and every current Android and iOS build honours
-       * it. Some older iOS releases only accepted `&body=`, and the two
-       * separators cannot both live in one href — so both forms are returned and
-       * the client picks. The copy-the-code fallback in the UI is what actually
-       * rescues anything neither form opens.
-       */
-      link: `sms:${to}?body=${encoded}`,
-      linkLegacy: `sms:${to}&body=${encoded}`,
-      message: text,
-      /**
-       * Deliberately flagged lower than WhatsApp. Meta signs its webhooks and
-       * reports the sender from its own records; the SMS relay reports whatever
-       * a handset read out of an SMS header, on a network where sender IDs can
-       * be forged. Same flow, weaker evidence — said out loud rather than left
-       * for someone to discover.
-       */
-      assurance: 'low',
-      /**
-       * `true` / `false` when we have seen a heartbeat (or inbound SMS).
-       * `null` when nothing has ever checked in — do not treat as down; the
-       * operator may not have pointed the forwarder at /gateway/heartbeat yet.
-       */
-      relayHealthy: relay.healthy,
-    };
-  }
-
-  return channels;
-}
+router.use('/handover', handoverRoutes);
 
 // ---------------------------------------------------------------------------
 // Start
@@ -190,7 +125,7 @@ router.post(
       token: challenge.token,
       code: challenge.code,
       expiresAt: challenge.expiresAt,
-      channels: await buildChannels(challenge.code),
+      channels: await channelsForCode(challenge.code),
     });
   }
 );
@@ -232,7 +167,7 @@ router.post(
       token: challenge.token,
       code: challenge.code,
       expiresAt: challenge.expiresAt,
-      channels: await buildChannels(challenge.code),
+      channels: await channelsForCode(challenge.code),
     });
   }
 );

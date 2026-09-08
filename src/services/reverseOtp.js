@@ -113,3 +113,67 @@ export function smsLinkFor(channel) {
   if (!channel) return null;
   return isIOS() && channel.linkLegacy ? channel.linkLegacy : channel.link;
 }
+
+// ---------------------------------------------------------------------------
+// Cross-device handover (SIM on another phone)
+// ---------------------------------------------------------------------------
+
+function handoverPoll(path, sessionId, headerName, token, { signal } = {}) {
+  const q = encodeURIComponent(sessionId);
+  return api.get(`${path}?sessionId=${q}`, {
+    auth: false,
+    signal,
+    headers: { [headerName]: token },
+  });
+}
+
+/** Start a pairing session; reverse code is minted only after /pair. */
+export async function startPhoneHandover({ phone, purpose = 'login', app, name }) {
+  return api.post(
+    '/auth/reverse/handover/start',
+    {
+      phone,
+      purpose,
+      clientOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
+      ...(app ? { app } : {}),
+      ...(name ? { name } : {}),
+    },
+    { auth: false }
+  );
+}
+
+/** Browser poll — claim token in header. */
+export async function getHandoverStatus(sessionId, claimToken, options) {
+  return handoverPoll(
+    '/auth/reverse/handover/status',
+    sessionId,
+    'X-Handover-Claim-Token',
+    claimToken,
+    options
+  );
+}
+
+/** Browser confirms the 4-digit pair shown on the phone. */
+export async function pairPhoneHandover({ sessionId, claimToken, pairNumber }) {
+  return api.post(
+    '/auth/reverse/handover/pair',
+    { sessionId, claimToken, pairNumber },
+    { auth: false }
+  );
+}
+
+/** Phone helper: claim the session (first open wins). */
+export async function scanPhoneHandover(sessionId) {
+  return api.post('/auth/reverse/handover/scan', { sessionId }, { auth: false });
+}
+
+/** Phone helper poll — after pair, returns send links. */
+export async function getHandoverPhoneStatus(sessionId, phoneToken, options) {
+  return handoverPoll(
+    '/auth/reverse/handover/phone-status',
+    sessionId,
+    'X-Handover-Phone-Token',
+    phoneToken,
+    options
+  );
+}

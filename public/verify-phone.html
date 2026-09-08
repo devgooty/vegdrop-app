@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0B7A37" />
+    <title>VegDrop — confirm on this phone</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #0f1f17;
+        --muted: #5b6b62;
+        --green: #0b7a37;
+        --green-dark: #08652c;
+        --line: #dce9e1;
+        --wash: #f4f7f5;
+        --danger: #9b1c1c;
+        --danger-wash: rgba(220, 38, 38, 0.07);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        background:
+          radial-gradient(120% 80% at 50% -10%, #d8f0e2 0%, transparent 55%),
+          linear-gradient(180deg, #eef6f1 0%, #f7faf8 40%, #ffffff 100%);
+        color: var(--ink);
+      }
+      main {
+        max-width: 420px;
+        margin: 0 auto;
+        padding: 28px 20px 48px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.45rem;
+        letter-spacing: -0.02em;
+      }
+      .lead { margin: 0 0 20px; color: var(--muted); line-height: 1.45; }
+      .card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 18px 16px;
+        margin-bottom: 14px;
+      }
+      .pair {
+        font-variant-numeric: tabular-nums;
+        font-size: 2.4rem;
+        font-weight: 800;
+        letter-spacing: 0.35em;
+        text-align: center;
+        color: var(--green);
+        padding: 8px 0 4px;
+      }
+      .pair.code { letter-spacing: 0.18em; font-size: 1.8rem; }
+      .hint { text-align: center; color: var(--muted); font-size: 0.92rem; }
+      .btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        border: 0;
+        border-radius: 14px;
+        padding: 15px 16px;
+        font-size: 1.05rem;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
+        margin-top: 10px;
+      }
+      .btn-primary { background: var(--green); color: #fff; }
+      .btn-primary:active { background: var(--green-dark); }
+      .btn-secondary {
+        background: #fff;
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
+      .status {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        border-radius: 14px;
+        border: 1px solid rgba(22, 163, 74, 0.2);
+        background: rgba(22, 163, 74, 0.07);
+        padding: 12px 14px;
+        line-height: 1.4;
+        font-size: 0.95rem;
+      }
+      .status.error {
+        border-color: rgba(220, 38, 38, 0.3);
+        background: var(--danger-wash);
+        color: var(--danger);
+      }
+      .status.spaced { margin-top: 12px; }
+      .spinner {
+        width: 1rem; height: 1rem; border-radius: 999px;
+        border: 2px solid #c5d8cc; border-top-color: var(--green);
+        animation: spin 0.7s linear infinite; flex-shrink: 0; margin-top: 2px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .brand {
+        font-weight: 800; color: var(--green); letter-spacing: -0.03em;
+        margin-bottom: 18px; font-size: 1.1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand">VegDrop</div>
+      <h1>Confirm on this phone</h1>
+      <p class="lead" id="lead">Checking this sign-in…</p>
+      <div id="root"></div>
+    </main>
+    <script>
+      (function () {
+        var API = '/api';
+        var sessionId = (location.hash || '').replace(/^#/, '').split('&')[0].trim();
+        var root = document.getElementById('root');
+        var lead = document.getElementById('lead');
+        var phoneToken = null;
+        var smsIsIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
+          || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+
+        function el(tag, className, text) {
+          var node = document.createElement(tag);
+          if (className) node.className = className;
+          if (text != null) node.textContent = text;
+          return node;
+        }
+
+        function setStatus(text, isError) {
+          root.replaceChildren();
+          var box = el('div', 'status' + (isError ? ' error' : ''));
+          if (!isError) box.appendChild(el('div', 'spinner'));
+          box.appendChild(el('span', null, text));
+          root.appendChild(box);
+        }
+
+        function statusLine(text, withSpinner) {
+          var box = el('div', 'status spaced');
+          if (withSpinner) box.appendChild(el('div', 'spinner'));
+          box.appendChild(el('span', null, text));
+          return box;
+        }
+
+        async function api(path, opts) {
+          opts = opts || {};
+          var res = await fetch(API + path, {
+            method: opts.method || 'GET',
+            headers: Object.assign(
+              { Accept: 'application/json' },
+              opts.headers || {},
+              opts.body ? { 'Content-Type': 'application/json' } : {}
+            ),
+            body: opts.body ? JSON.stringify(opts.body) : undefined,
+            credentials: 'include',
+          });
+          var body = null;
+          try { body = await res.json(); } catch (e) { body = null; }
+          if (!res.ok) {
+            var err = new Error((body && body.error && body.error.message) || 'Request failed');
+            err.code = body && body.error && body.error.code;
+            err.status = res.status;
+            throw err;
+          }
+          return body;
+        }
+
+        function smsHref(channel) {
+          if (!channel) return null;
+          return smsIsIos && channel.linkLegacy ? channel.linkLegacy : channel.link;
+        }
+
+        function fullMessage(data) {
+          var channels = data.channels || {};
+          return (channels.whatsapp && channels.whatsapp.message)
+            || (channels.sms && channels.sms.message)
+            || data.message
+            || ('Verify my number for VegDrop: ' + data.code);
+        }
+
+        function renderScanned(pairNumber) {
+          lead.textContent = 'Type this number on your computer or tablet to continue.';
+          root.replaceChildren();
+          var card = el('div', 'card');
+          card.appendChild(el('div', 'pair', String(pairNumber)));
+          card.appendChild(el('p', 'hint', 'Keep this page open after you type it.'));
+          root.appendChild(card);
+          root.appendChild(statusLine('Waiting for the other screen to confirm…', true));
+        }
+
+        function renderPaired(data) {
+          lead.textContent = 'Send the message below from this phone (the one with your SIM).';
+          root.replaceChildren();
+
+          var card = el('div', 'card');
+          var hint = el('p', 'hint', 'Your code');
+          hint.style.margin = '0 0 8px';
+          card.appendChild(hint);
+          card.appendChild(el('div', 'pair code', data.code));
+          root.appendChild(card);
+
+          var channels = data.channels || {};
+          if (channels.whatsapp && channels.whatsapp.link) {
+            var wa = el('a', 'btn btn-primary', 'Send on WhatsApp');
+            wa.href = channels.whatsapp.link;
+            wa.target = '_blank';
+            wa.rel = 'noopener';
+            root.appendChild(wa);
+          }
+
+          var href = smsHref(channels.sms);
+          if (href) {
+            var sm = el('a', 'btn btn-secondary', 'Send by SMS');
+            sm.href = href;
+            root.appendChild(sm);
+          }
+
+          var copy = el('button', 'btn btn-secondary', 'Copy full message');
+          copy.type = 'button';
+          copy.addEventListener('click', function () {
+            navigator.clipboard.writeText(fullMessage(data)).then(function () {
+              copy.textContent = 'Copied';
+            }).catch(function () {});
+          });
+          root.appendChild(copy);
+
+          if (channels.sms && channels.sms.assurance === 'low') {
+            root.appendChild(statusLine(
+              'SMS is a little less secure than WhatsApp — send it from your own number.',
+              false
+            ));
+          }
+
+          root.appendChild(statusLine(
+            'After you send, return to the other screen — it will finish sign-in.',
+            true
+          ));
+        }
+
+        async function poll() {
+          try {
+            var status = await api(
+              '/auth/reverse/handover/phone-status?sessionId=' + encodeURIComponent(sessionId),
+              { headers: { 'X-Handover-Phone-Token': phoneToken } }
+            );
+            if (status.state === 'expired' || status.state === 'failed') {
+              setStatus('This sign-in expired. Go back to your computer and start again.', true);
+              return;
+            }
+            if (status.state === 'scanned') {
+              renderScanned(status.pairNumber);
+            } else if (status.state === 'paired') {
+              renderPaired(status);
+              // Reverse verification is watched on the browser — stop here.
+              return;
+            }
+          } catch (e) {
+            if (e.status === 403) {
+              setStatus('This page is not linked to the sign-in on your computer.', true);
+              return;
+            }
+          }
+          setTimeout(poll, 2000);
+        }
+
+        async function boot() {
+          if (!/^[a-f0-9]{32}$/i.test(sessionId)) {
+            lead.textContent = 'Open this page by scanning the QR or using the link from VegDrop.';
+            setStatus('Missing sign-in link.', true);
+            return;
+          }
+          try {
+            var scanned = await api('/auth/reverse/handover/scan', {
+              method: 'POST',
+              body: { sessionId: sessionId },
+            });
+            phoneToken = scanned.phoneToken;
+            renderScanned(scanned.pairNumber);
+            setTimeout(poll, 1500);
+          } catch (e) {
+            lead.textContent = 'Could not open this sign-in.';
+            setStatus(e.message || 'Try refreshing the computer screen and scan again.', true);
+          }
+        }
+
+        boot();
+      })();
+    </script>
+  </body>
+</html>
