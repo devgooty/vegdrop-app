@@ -1,5 +1,5 @@
 import React, { useState, useRef, useLayoutEffect } from 'react';
-import { ArrowRight, ArrowLeft, Loader2, Check, Info } from 'lucide-react';
+import { ArrowRight, Loader2, Check, Info } from 'lucide-react';
 import {
   lookupIdentifier,
   startRegistration,
@@ -504,7 +504,15 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
             {/* h2, not h1: the page heading above the card owns that level, and
                 skipping straight back to h1 here would break the outline. */}
             <div className="si-underline mb-4">
-              <h2 className="text-[1.25rem] font-extrabold text-[#0F1F17]">{title}</h2>
+              <h2
+                className={
+                  step === STEP.LOGIN_CODE
+                    ? 'text-[1.55rem] font-black italic tracking-tight text-[#0B7A37]'
+                    : 'text-[1.25rem] font-extrabold text-[#0F1F17]'
+                }
+              >
+                {title}
+              </h2>
               <p className="mt-1 text-[15px] leading-relaxed text-[#5B6B62]">{sub}</p>
             </div>
 
@@ -553,26 +561,12 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
             {/* STEP 2A — sign in via reverse OTP */}
             {step === STEP.LOGIN_CODE && (
               <div className="si-step space-y-4">
-                <div className="flex items-center justify-between gap-3 rounded-xl bg-[#F4F7F5] px-3.5 py-3">
-                  <div className="min-w-0">
-                    <span className="block text-[12.5px] font-bold text-[#5B6B62]">
-                      {t('login.yourNumber')}
-                    </span>
-                    <span className="si-num block truncate text-[14.5px] text-[#0F1F17]">
-                      {loginPhone ? `+91 ${loginPhone}` : identifier}
-                    </span>
-                  </div>
-                  <button type="button" onClick={resetToStart} className={`${quietButton} shrink-0 flex items-center gap-1`}>
-                    <ArrowLeft className="w-3 h-3" />
-                    {t('common.change')}
-                  </button>
-                </div>
-
                 <ReverseOtpPanel
                   phone={loginPhone}
                   purpose="login"
                   app={appType}
                   onVerified={({ user: signedIn }) => onLogin(signedIn)}
+                  onBack={resetToStart}
                 />
 
                 {error && <Notice tone="error">{error}</Notice>}

@@ -768,18 +768,15 @@ const STRINGS = {
     te: 'WhatsApp తెరిచి పంపండి నొక్కండి — మేము మీ ఖాతాను సృష్టిస్తాం.',
   },
   'login.yourNumber': { en: 'Your number', hi: 'आपका नंबर', te: 'మీ నంబర్' },
-  'login.enterCode': { en: 'Enter your code', hi: 'अपना कोड डालें', te: 'మీ కోడ్ నమోదు చేయండి' },
+  'login.enterCode': { en: 'Verify Login', hi: 'लॉगिन सत्यापित करें', te: 'లాగిన్ ధృవీకరించండి' },
   /*
-    Codes go to the phone and nowhere else. This said "sent to WhatsApp and
-    email" long after the email leg was removed on purpose — once a code
-    reaches a mailbox, whoever reads that mailbox can sign in — and it was also
-    the line standing above the reverse-OTP panel, where nothing is sent to the
-    user at all. Naming only the phone is true of both ways in.
+    Matches the Unique Skins reverse-OTP framing: the customer sends US a code
+    from the phone that holds their SIM — nothing is delivered to them.
   */
   'login.enterCodeSub': {
-    en: 'Send us the code below from your phone.',
-    hi: 'नीचे दिया कोड अपने फ़ोन से हमें भेजें।',
-    te: 'కింద ఉన్న కోడ్‌ను మీ ఫోన్ నుండి మాకు పంపండి.',
+    en: 'Send us the code below from your mobile to log in.',
+    hi: 'लॉगिन के लिए नीचे दिया कोड अपने मोबाइल से हमें भेजें।',
+    te: 'లాగిన్ కోసం కింది కోడ్‌ను మీ మొబైల్ నుండి మాకు పంపండి.',
   },
   'login.createAccount': { en: 'Create account', hi: 'खाता बनाएँ', te: 'ఖాతా సృష్టించండి' },
   /*

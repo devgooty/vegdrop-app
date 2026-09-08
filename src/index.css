@@ -1124,6 +1124,85 @@
   color: #fff;
 }
 
+/* Reverse-OTP verify rail — same journey picture on laptop and phone helper. */
+.vd-vsteps {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+  margin-bottom: 1rem;
+}
+.vd-vsteps::before {
+  content: '';
+  position: absolute;
+  top: 13px;
+  left: 12%;
+  right: 12%;
+  height: 2px;
+  background: #DCE9E1;
+}
+.vd-vsteps .vd-vs {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  text-align: center;
+}
+.vd-vsteps .vd-vs-b {
+  width: 26px;
+  height: 26px;
+  margin: 0 auto 6px;
+  border-radius: 999px;
+  border: 2px solid #DCE9E1;
+  background: #fff;
+  color: #5B6B62;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 22px;
+}
+.vd-vsteps .vd-vs-l {
+  font-size: 9.5px;
+  line-height: 1.25;
+  color: #5B6B62;
+}
+.vd-vsteps .vd-vs-done .vd-vs-b {
+  background: #16A34A;
+  border-color: #16A34A;
+  color: #fff;
+}
+.vd-vsteps .vd-vs-now .vd-vs-b {
+  background: #0B7A37;
+  border-color: #0B7A37;
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(11, 122, 55, 0.14);
+}
+.vd-vsteps .vd-vs-now .vd-vs-l {
+  color: #0F1F17;
+  font-weight: 700;
+}
+
+/* TTL drain under the QR — settles empty; reduced motion keeps full bar. */
+.vd-qr-drain {
+  height: 3px;
+  width: 150px;
+  margin: 14px auto 0;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #DCE9E1;
+}
+.vd-qr-drain > i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 2px;
+  background: #0B7A37;
+  animation: vd-qr-drain-fill 60s linear forwards;
+}
+@keyframes vd-qr-drain-fill {
+  to { width: 0%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vd-qr-drain > i { animation: none; }
+}
+
 /* Step changes slide up rather than fade, so the flow reads as forward motion. */
 @keyframes siStepIn {
   from { opacity: 0; transform: translateY(10px); }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Copy, Check, MessageCircle, MessageSquare, RefreshCw, Info, Smartphone } from 'lucide-react';
+import { Loader2, Copy, Check, MessageCircle, MessageSquare, RefreshCw, Info } from 'lucide-react';
 import {
   startReverseOtp,
   startReverseOtpPhoneChange,
@@ -16,20 +16,14 @@ import { ApiRequestError, NetworkError, refreshSession } from '../services/apiCl
 /**
  * Reverse OTP — "I'll send the code instead".
  *
- * Shows a code and a prefilled message link. The user taps, their messaging app
- * opens with the text ready, they hit send, and this panel notices.
+ * Default path (login / registration): Unique Skins–style QR handover —
+ * Phone → Scan → Enter code → Send. The browsing device shows the QR; the SIM
+ * phone opens the helper, shows a pair number, then sends the reverse code.
  *
- * Cross-device (SIM in another handset): deep links open on THIS device, so the
- * inbox number + full message are shown and copyable — the user sends from the
- * phone that holds +91 {phone}. Prefer the guided handover (QR + 4-digit pair)
- * when the SIM is elsewhere; the copy path remains the manual fallback.
+ * Fallback: "send from this device" mints a reverse challenge on this screen
+ * (deep links / copy). Phone-change always uses that local path.
  */
 
-/**
- * Poll backoff: start at 2s while the user is likely still composing the
- * message, then stretch out so a forgotten tab does not hammer the API for
- * the full ten-minute TTL at the fast rate.
- */
 function pollDelay(elapsedMs) {
   if (elapsedMs < 30_000) return 2000;
   if (elapsedMs < 90_000) return 3000;
@@ -52,7 +46,6 @@ function describeError(err) {
   return 'Something went wrong. Please try again.';
 }
 
-/** Digits-only inbox → display form for humans. */
 function formatInbox(to) {
   const digits = String(to || '').replace(/\D/g, '');
   if (digits.length === 12 && digits.startsWith('91')) {
@@ -62,15 +55,35 @@ function formatInbox(to) {
   return digits ? `+${digits}` : '';
 }
 
-/**
- * @param {string} phone
- * @param {string} [purpose='login']
- * @param {string} [app] which role app asked — scopes the account
- * @param {string} [name] registration display name only
- * @param {(result: {token: string, user: object|null}) => void|Promise<void>} onVerified
- * @param {() => void} [onUnavailable] reverse OTP not configured — fall back to outbound
- * @param {boolean} [completeHere=true] false when a parent (register) must spend the token
- */
+const QR_STEPS = [
+  { n: 1, label: 'Phone' },
+  { n: 2, label: 'Scan' },
+  { n: 3, label: 'Enter code' },
+  { n: 4, label: 'Send' },
+];
+
+const MESSAGE_STEPS = [
+  { n: 1, label: 'Phone' },
+  { n: 2, label: 'Send' },
+];
+
+function VerifyStepper({ currentStep, steps = QR_STEPS }) {
+  return (
+    <div className="vd-vsteps" aria-label="Verification steps">
+      {steps.map((s) => {
+        const state = s.n < currentStep ? 'vd-vs-done' : s.n === currentStep ? 'vd-vs-now' : '';
+        const glyph = s.n < currentStep ? '✓' : String(s.n);
+        return (
+          <div key={s.n} className={`vd-vs ${state}`}>
+            <div className="vd-vs-b">{glyph}</div>
+            <div className="vd-vs-l">{s.label}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ReverseOtpPanel({
   phone,
   purpose = 'login',
@@ -79,26 +92,23 @@ export default function ReverseOtpPanel({
   onVerified,
   onUnavailable,
   completeHere = true,
+  onBack,
 }) {
-  const [mode, setMode] = useState('local'); // 'local' | 'handover'
+  const preferHandover = purpose !== 'phone_change';
+  const [mode, setMode] = useState(preferHandover ? 'handover' : 'local');
   const [challenge, setChallenge] = useState(null);
-  const [state, setState] = useState('starting');
+  const [state, setState] = useState(preferHandover ? 'handover_pending' : 'starting');
   const [expectedPhone, setExpectedPhone] = useState(null);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [copiedWhat, setCopiedWhat] = useState('');
   const [remaining, setRemaining] = useState(0);
-
   const [handover, setHandover] = useState(null);
   const [pairDigits, setPairDigits] = useState('');
   const [pairing, setPairing] = useState(false);
+  /** After a successful pair, keep the QR rail on step 4 even though mode is local. */
+  const [viaHandover, setViaHandover] = useState(false);
 
-  /**
-   * Guards against a double-tap on "start over" (or React Strict Mode's
-   * double-mount in dev) issuing two challenges for one screen. Without it the
-   * second start supersedes the first, the UI still shows the first code, and
-   * the message the user sends never matches what the server is waiting for.
-   */
   const completingRef = useRef(false);
   const startingRef = useRef(false);
   const onUnavailableRef = useRef(onUnavailable);
@@ -114,6 +124,7 @@ export default function ReverseOtpPanel({
     setExpectedPhone(null);
     setHandover(null);
     setPairDigits('');
+    setViaHandover(false);
     completingRef.current = false;
   };
 
@@ -155,15 +166,29 @@ export default function ReverseOtpPanel({
       setHandover(started);
       setState('handover_pending');
     } catch (err) {
-      handleStartError(err);
+      // QR unavailable — fall through to this-device buttons rather than dead-end.
+      try {
+        const started = await startReverseOtp({ phone, purpose, app, name });
+        setMode('local');
+        setChallenge(started);
+        setState('pending');
+        setError('');
+      } catch (fallbackErr) {
+        handleStartError(err.code === 'REVERSE_OTP_NOT_CONFIGURED' ? err : fallbackErr);
+      }
     } finally {
       startingRef.current = false;
     }
   }, [phone, purpose, app, name]);
 
   useEffect(() => {
-    beginLocal();
-  }, [beginLocal]);
+    if (preferHandover) beginHandover();
+    else beginLocal();
+    // Identity of the challenge — remount when phone / purpose / app / name change
+    // via the memoised begin* callbacks. Prefer one of the two, not both as
+    // independent triggers that would restart QR when the unused callback churns.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
+  }, [preferHandover ? beginHandover : beginLocal]);
 
   useEffect(() => {
     const expiresAt = challenge?.expiresAt || handover?.expiresAt;
@@ -173,7 +198,6 @@ export default function ReverseOtpPanel({
     return () => clearInterval(timer);
   }, [challenge?.expiresAt, handover?.expiresAt]);
 
-  // Browser handover poll: wait until the phone has scanned, then ask for digits.
   useEffect(() => {
     if (mode !== 'handover' || !handover?.sessionId || !handover?.claimToken) return undefined;
     if (!['handover_pending', 'handover_scanned'].includes(state)) return undefined;
@@ -195,8 +219,6 @@ export default function ReverseOtpPanel({
           setError(next.state === 'failed' ? 'Too many wrong pair numbers. Start again.' : '');
           return;
         }
-        // scanned / paired / pairNumberNeeded all mean: show the pair-digit form.
-        // Pairing still goes through POST /pair (which mints the reverse challenge).
         if (next.state === 'scanned' || next.state === 'paired' || next.pairNumberNeeded) {
           setState('handover_scanned');
         }
@@ -235,6 +257,7 @@ export default function ReverseOtpPanel({
       });
       setChallenge(started);
       setHandover(null);
+      setViaHandover(true);
       setMode('local');
       setState('pending');
     } catch (err) {
@@ -265,11 +288,6 @@ export default function ReverseOtpPanel({
       setState('verified');
       await onVerifiedRef.current?.({ token: challenge.token, user });
     } catch (err) {
-      /**
-       * A dropped response after the server minted a session is not "token spent,
-       * start over" — the refresh cookie may already be set. Try to recover before
-       * forcing a new challenge.
-       */
       if (err instanceof NetworkError && completeHere && purpose !== 'phone_change') {
         try {
           const user = await refreshSession();
@@ -301,7 +319,6 @@ export default function ReverseOtpPanel({
 
     async function tick() {
       if (cancelled) return;
-
       if (typeof document !== 'undefined' && document.hidden) {
         timer = setTimeout(tick, 1000);
         return;
@@ -310,7 +327,6 @@ export default function ReverseOtpPanel({
       try {
         const next = await getReverseOtpStatus(challenge.token, { signal: controller.signal });
         if (cancelled) return;
-
         setState(next.state);
         if (next.state === 'mismatch') setExpectedPhone(next.expectedPhone || null);
         if (next.state === 'verified') {
@@ -329,7 +345,6 @@ export default function ReverseOtpPanel({
     }
 
     timer = setTimeout(tick, pollDelay(0));
-
     const onVisible = () => {
       if (!document.hidden && !cancelled) {
         clearTimeout(timer);
@@ -357,15 +372,17 @@ export default function ReverseOtpPanel({
         setCopiedWhat('');
       }, 2000);
     } catch {
-      // Code stays on screen.
+      // stays on screen
     }
   };
 
-  if (state === 'starting') {
+  const restart = preferHandover ? beginHandover : beginLocal;
+
+  if (state === 'starting' || (mode === 'handover' && !handover && state === 'handover_pending' && !error)) {
     return (
       <div className="flex items-center justify-center gap-2 rounded-xl bg-[#F4F7F5] px-3.5 py-6 text-[14.5px] text-[#5B6B62]">
         <Loader2 className="h-4 w-4 animate-spin" />
-        <span>Getting your code…</span>
+        <span>Setting up…</span>
       </div>
     );
   }
@@ -374,111 +391,150 @@ export default function ReverseOtpPanel({
     return (
       <div className="space-y-3">
         <PanelNotice tone="error">{error || 'Something went wrong.'}</PanelNotice>
-        <button type="button" onClick={beginLocal} className={SECONDARY_BUTTON}>
+        <button type="button" onClick={restart} className={OUTLINE_BUTTON}>
           <RefreshCw className="h-4 w-4" />
-          <span>Try again</span>
+          <span>Get a new code</span>
         </button>
+        {onBack ? (
+          <button type="button" onClick={onBack} className={BACK_LINK}>
+            ← Back
+          </button>
+        ) : null}
       </div>
     );
   }
 
-  // --- Handover UI (before reverse code exists) --------------------------------
+  // --- Handover: Scan / Enter code -------------------------------------------
   if (mode === 'handover' && handover && !challenge) {
     const expired =
       state === 'expired' || (handover.expiresAt && new Date(handover.expiresAt).getTime() <= Date.now());
+    const step = state === 'handover_scanned' ? 3 : 2;
+    const waShare = handover.signinUrl
+      ? `https://wa.me/?text=${encodeURIComponent(
+          `Please open this link to verify my mobile number for VegDrop: ${handover.signinUrl}`
+        )}`
+      : null;
 
     if (expired) {
       return (
-        <div className="space-y-3">
+        <div className="space-y-3 text-center">
+          <VerifyStepper currentStep={2} />
           <PanelNotice tone="info">That link has expired. Tap below for a fresh one.</PanelNotice>
-          <button type="button" onClick={beginHandover} className={SECONDARY_BUTTON}>
+          <button type="button" onClick={beginHandover} className={OUTLINE_BUTTON}>
             <RefreshCw className="h-4 w-4" />
-            <span>Start again</span>
+            <span>Get a new code</span>
           </button>
-          <button type="button" onClick={beginLocal} className="w-full text-[14px] font-bold text-[#0B7A37] underline">
-            Use this device instead
+          <button type="button" onClick={beginLocal} className={TEXT_LINK}>
+            or send from this device instead
           </button>
         </div>
       );
     }
 
     return (
-      <div className="space-y-4">
-        <PanelNotice tone="info">
-          Open this on the phone that has <span className="si-num font-bold">+91 {phone}</span>. Scan the
-          QR or open the link, then type the 4-digit number it shows here.
-        </PanelNotice>
+      <div className="space-y-3 text-center">
+        <VerifyStepper currentStep={step} />
 
-        {handover.qrSvg ? (
+        {step === 2 && handover.qrSvg ? (
           <div
-            className="mx-auto flex max-w-[230px] justify-center rounded-xl border border-[#DCE9E1] bg-white p-3 [&_svg]:h-auto [&_svg]:w-full"
-            // Server-generated SVG from our own encoder — not user HTML.
+            className="mx-auto inline-block max-w-[200px] rounded-[10px] border border-[#DCE9E1] bg-white p-2 [&_svg]:h-auto [&_svg]:w-full"
             dangerouslySetInnerHTML={{ __html: handover.qrSvg }}
           />
         ) : null}
 
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={() => copyText(handover.signinUrl, 'link')}
-            className={SECONDARY_BUTTON}
-          >
-            {copied && copiedWhat === 'link' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            <span>{copied && copiedWhat === 'link' ? 'Link copied' : 'Copy phone link'}</span>
-          </button>
-        </div>
+        {step === 2 && (
+          <>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {waShare ? (
+                <a href={waShare} target="_blank" rel="noopener noreferrer" className={OUTLINE_BUTTON_COMPACT}>
+                  Send link on WhatsApp
+                </a>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => copyText(handover.signinUrl, 'link')}
+                className={OUTLINE_BUTTON_COMPACT}
+              >
+                {copied && copiedWhat === 'link' ? 'Link copied' : 'Copy link'}
+              </button>
+            </div>
+            <p className="text-[11.5px] leading-relaxed text-[#5B6B62]">
+              {copied && copiedWhat === 'link'
+                ? 'Link copied. Open it on the phone that has your SIM.'
+                : 'Scan the code above, or send the link if that phone is not with you.'}
+            </p>
+            <div className="vd-qr-drain" aria-hidden="true">
+              <i />
+            </div>
+            <p className="text-[11.5px] text-[#5B6B62]">New code shortly</p>
+            <p className="text-[13px] text-[#5B6B62]/80">
+              Scan this from the phone that has your SIM, or send it the link.
+            </p>
+          </>
+        )}
 
-        {state === 'handover_scanned' ? (
-          <div className="space-y-3">
-            <label className="block text-[13px] font-bold uppercase tracking-wide text-[#5B6B62]">
-              Pairing number from your phone
-            </label>
+        {step === 3 ? (
+          <div className="space-y-3 text-left">
+            <p className="text-center text-[13px] text-[#0F1F17]">Type the number shown on your phone:</p>
             <input
               inputMode="numeric"
               autoComplete="one-time-code"
               maxLength={4}
               value={pairDigits}
               onChange={(e) => setPairDigits(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              className="si-num w-full rounded-xl border border-[#DCE9E1] bg-white px-3.5 py-3 text-center text-[28px] font-bold tracking-[0.35em] text-[#0F1F17] outline-none focus:border-[#16A34A] focus:ring-[3px] focus:ring-[#16A34A]/25"
+              className="si-num mx-auto block w-[130px] rounded-lg border border-[#C9D4CD] bg-white px-2 py-1.5 text-center text-[24px] font-bold tracking-[8px] text-[#0F1F17] outline-none focus:border-[#0B7A37] focus:ring-[3px] focus:ring-[#16A34A]/25"
               placeholder="••••"
             />
             <button type="button" onClick={submitPair} disabled={pairing} className={PRIMARY_BUTTON}>
               {pairing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              <span>{pairing ? 'Confirming…' : 'Confirm pairing'}</span>
+              <span>{pairing ? 'Confirming…' : 'Confirm'}</span>
             </button>
+            <p className="text-center text-[13px] text-[#5B6B62]">
+              Keep this screen open — your phone will show what to send next.
+            </p>
           </div>
-        ) : (
-          <p className="flex items-center gap-2 text-[14px] text-[#5B6B62]">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            <span>Waiting for your phone to open the link…</span>
-            <span className="si-num ml-auto tabular-nums font-bold text-[#0F1F17]">
-              {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}
-            </span>
-          </p>
-        )}
+        ) : null}
 
         {error && <PanelNotice tone="error">{error}</PanelNotice>}
 
-        <button type="button" onClick={beginLocal} className="w-full text-[14px] font-bold text-[#5B6B62] underline">
-          Cancel — use this device
+        {step === 2 ? (
+          <button type="button" onClick={beginHandover} className={OUTLINE_BUTTON}>
+            <RefreshCw className="h-4 w-4" />
+            <span>Get a new code</span>
+          </button>
+        ) : null}
+
+        <button type="button" onClick={beginLocal} className={TEXT_LINK}>
+          or send from this device instead
         </button>
+
+        {onBack ? (
+          <button type="button" onClick={onBack} className={BACK_LINK}>
+            ← Back
+          </button>
+        ) : null}
       </div>
     );
   }
 
+  // --- Local / post-pair Send step -------------------------------------------
   const expired =
     state === 'expired' || (challenge && new Date(challenge.expiresAt).getTime() <= Date.now());
   const whatsapp = challenge?.channels?.whatsapp;
   const sms = challenge?.channels?.sms;
   const smsHref = smsLinkFor(sms);
   const primaryChannel = whatsapp || sms;
-  const fullMessage = primaryChannel?.message || (challenge?.code ? `Verify my number for VegDrop: ${challenge.code}` : '');
+  const fullMessage =
+    primaryChannel?.message || (challenge?.code ? `Verify my number for VegDrop: ${challenge.code}` : '');
+  const railStep = viaHandover ? 4 : 2;
+  const railSteps = viaHandover ? QR_STEPS : MESSAGE_STEPS;
 
   if (expired && state !== 'verified') {
     return (
-      <div className="space-y-3">
+      <div className="space-y-3 text-center">
+        <VerifyStepper currentStep={railStep} steps={railSteps} />
         <PanelNotice tone="info">That code has expired. Tap below for a fresh one.</PanelNotice>
-        <button type="button" onClick={beginLocal} className={SECONDARY_BUTTON}>
+        <button type="button" onClick={restart} className={OUTLINE_BUTTON}>
           <RefreshCw className="h-4 w-4" />
           <span>Get a new code</span>
         </button>
@@ -487,85 +543,86 @@ export default function ReverseOtpPanel({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-[#DCE9E1] bg-[#F4F7F5] px-3.5 py-4 text-center">
-        <span className="block text-[12.5px] font-bold uppercase tracking-wide text-[#5B6B62]">
-          Send us this code
-        </span>
-        <span className="si-num mt-1.5 block text-[29.5px] font-bold tracking-[0.18em] text-[#0B7A37]">
+    <div className="space-y-3 text-center">
+      <VerifyStepper currentStep={railStep} steps={railSteps} />
+
+      <div className="rounded-[10px] border border-[#DCE9E1] bg-white px-3.5 py-4">
+        <span className="si-num block text-[26px] font-black tracking-[0.12em] text-[#0B7A37]">
           {challenge.code}
         </span>
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
-          <button
-            type="button"
-            onClick={() => copyText(challenge.code, 'code')}
-            className="inline-flex items-center gap-1.5 text-[13.5px] font-bold text-[#0B7A37] underline underline-offset-4 hover:text-[#08652C]"
-          >
-            {copied && copiedWhat === 'code' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            <span>{copied && copiedWhat === 'code' ? 'Copied' : 'Copy code'}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => copyText(fullMessage, 'message')}
-            className="inline-flex items-center gap-1.5 text-[13.5px] font-bold text-[#0B7A37] underline underline-offset-4 hover:text-[#08652C]"
-          >
-            {copied && copiedWhat === 'message' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            <span>{copied && copiedWhat === 'message' ? 'Copied' : 'Copy full message'}</span>
-          </button>
-        </div>
+        <p className="mt-2 text-[12px] text-[#5B6B62]">
+          Send it from <span className="si-num font-bold text-[#0F1F17]">+91 {phone}</span>
+          {whatsapp ? (
+            <>
+              {' '}
+              to WhatsApp <span className="si-num font-bold">{formatInbox(whatsapp.to)}</span>
+            </>
+          ) : null}
+          .
+        </p>
       </div>
-
-      <PanelNotice tone="info">
-        Send from <span className="si-num font-bold text-[#0F1F17]">+91 {phone}</span>
-        {whatsapp ? (
-          <>
-            {' '}
-            to WhatsApp <span className="si-num font-bold">{formatInbox(whatsapp.to)}</span>
-          </>
-        ) : null}
-        {sms ? (
-          <>
-            {whatsapp ? ' (or SMS ' : ' to SMS '}
-            <span className="si-num font-bold">{formatInbox(sms.to)}</span>
-            {whatsapp ? ')' : ''}
-          </>
-        ) : null}
-        . If this SIM is in another phone, open WhatsApp/SMS there — or use the guided option below.
-      </PanelNotice>
 
       <div className="space-y-2">
         {whatsapp && (
-          <a href={whatsapp.link} target="_blank" rel="noopener noreferrer" className={PRIMARY_BUTTON}>
+          <a href={whatsapp.link} target="_blank" rel="noopener noreferrer" className={OUTLINE_BUTTON}>
             <MessageCircle className="h-4 w-4" />
-            <span>Send on WhatsApp</span>
+            <span>Open WhatsApp &amp; send</span>
           </a>
         )}
         {sms && (
-          <a href={smsHref} className={SECONDARY_BUTTON}>
+          <a href={smsHref} className={OUTLINE_BUTTON}>
             <MessageSquare className="h-4 w-4" />
-            <span>Send by SMS</span>
+            <span>Send as SMS instead</span>
           </a>
-        )}
-        {purpose !== 'phone_change' && (
-          <button type="button" onClick={beginHandover} className={SECONDARY_BUTTON}>
-            <Smartphone className="h-4 w-4" />
-            <span>SIM in another phone</span>
-          </button>
         )}
       </div>
 
+      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[12.5px]">
+        <button
+          type="button"
+          onClick={() => copyText(challenge.code, 'code')}
+          className="inline-flex items-center gap-1 font-bold text-[#0B7A37] underline underline-offset-4"
+        >
+          {copied && copiedWhat === 'code' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied && copiedWhat === 'code' ? 'Copied' : 'Copy code'}
+        </button>
+        <button
+          type="button"
+          onClick={() => copyText(fullMessage, 'message')}
+          className="inline-flex items-center gap-1 font-bold text-[#0B7A37] underline underline-offset-4"
+        >
+          {copied && copiedWhat === 'message' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied && copiedWhat === 'message' ? 'Copied' : 'Copy full message'}
+        </button>
+      </div>
+
       {sms && (
-        <PanelNotice tone="info">
-          SMS is a little less secure than WhatsApp — send it from your own number
-          {sms.relayHealthy === false
-            ? '. Our SMS inbox looks offline right now; prefer WhatsApp if you can, or wait a minute and try again.'
-            : '.'}
-        </PanelNotice>
+        <p className="text-[11.5px] leading-relaxed text-[#5B6B62]">
+          SMS is a little less secure than WhatsApp
+          {sms.relayHealthy === false ? ' — our SMS inbox looks offline; prefer WhatsApp if you can.' : '.'}
+        </p>
       )}
 
       <StatusLine state={state} expectedPhone={expectedPhone} code={challenge.code} remaining={remaining} />
 
       {error && <PanelNotice tone="error">{error}</PanelNotice>}
+
+      {!viaHandover && purpose !== 'phone_change' ? (
+        <button type="button" onClick={beginHandover} className={TEXT_LINK}>
+          SIM in another phone? Verify from that device
+        </button>
+      ) : null}
+
+      <button type="button" onClick={restart} className={OUTLINE_BUTTON}>
+        <RefreshCw className="h-4 w-4" />
+        <span>Get a new code</span>
+      </button>
+
+      {onBack ? (
+        <button type="button" onClick={onBack} className={BACK_LINK}>
+          ← Back
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -573,7 +630,7 @@ export default function ReverseOtpPanel({
 function StatusLine({ state, expectedPhone, code, remaining }) {
   if (state === 'verified') {
     return (
-      <p className="flex items-center gap-2 text-[14px] font-bold text-[#0B7A37]">
+      <p className="flex items-center justify-center gap-2 text-[14px] font-bold text-[#0B7A37]">
         <Check className="h-4 w-4" />
         <span>Number confirmed.</span>
       </p>
@@ -584,8 +641,7 @@ function StatusLine({ state, expectedPhone, code, remaining }) {
     return (
       <PanelNotice tone="error">
         That message came from a different number. Send it again from{' '}
-        <span className="si-num font-bold">{expectedPhone || 'your own number'}</span>
-        . Dual-SIM? Switch to the SIM that matches this login.
+        <span className="si-num font-bold">{expectedPhone || 'your own number'}</span>.
       </PanelNotice>
     );
   }
@@ -603,11 +659,9 @@ function StatusLine({ state, expectedPhone, code, remaining }) {
   const secs = String(remaining % 60).padStart(2, '0');
 
   return (
-    <p className="flex items-center justify-between gap-2 text-[14px] text-[#5B6B62]">
-      <span className="flex items-center gap-2">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        <span>Waiting for your message…</span>
-      </span>
+    <p className="flex items-center justify-center gap-2 text-[13px] text-[#5B6B62]">
+      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      <span>Waiting for your message…</span>
       <span className="si-num tabular-nums font-bold text-[#0F1F17]">
         {mins}:{secs}
       </span>
@@ -618,8 +672,8 @@ function StatusLine({ state, expectedPhone, code, remaining }) {
 function PanelNotice({ tone = 'info', children }) {
   const styles =
     tone === 'error'
-      ? 'bg-[#DC2626]/[0.07] border-[#DC2626]/30 text-[#9B1C1C]'
-      : 'bg-[#16A34A]/[0.07] border-[#16A34A]/20 text-[#0F1F17]/80';
+      ? 'bg-[#DC2626]/[0.07] border-[#DC2626]/30 text-[#9B1C1C] text-left'
+      : 'bg-[#16A34A]/[0.07] border-[#16A34A]/20 text-[#0F1F17]/80 text-left';
 
   return (
     <p
@@ -633,12 +687,19 @@ function PanelNotice({ tone = 'info', children }) {
 }
 
 const PRIMARY_BUTTON =
-  'w-full bg-[#0B7A37] hover:bg-[#08652C] text-white text-[16.5px] font-bold py-4 rounded-xl ' +
-  'shadow-[0_8px_18px_-8px_rgba(11,122,55,0.75)] active:translate-y-[1px] transition-all ' +
-  'flex items-center justify-center gap-2 ' +
+  'w-full bg-[#0B7A37] hover:bg-[#08652C] text-white text-[16px] font-bold py-3.5 rounded-xl ' +
+  'active:translate-y-[1px] transition-all flex items-center justify-center gap-2 ' +
   'focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#16A34A]/35';
 
-const SECONDARY_BUTTON =
-  'w-full bg-white border border-[#DCE9E1] hover:border-[#16A34A] text-[#0F1F17] text-[16.5px] font-bold ' +
-  'py-4 rounded-xl active:translate-y-[1px] transition-all flex items-center justify-center gap-2 ' +
-  'focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#16A34A]/35';
+const OUTLINE_BUTTON =
+  'w-full bg-white border border-[#0B7A37] text-[#0B7A37] text-[15px] font-bold ' +
+  'py-3 rounded-xl active:translate-y-[1px] transition-all flex items-center justify-center gap-2 ' +
+  'hover:bg-[#F4F7F5] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#16A34A]/35';
+
+const OUTLINE_BUTTON_COMPACT =
+  'inline-flex items-center justify-center bg-white border border-[#0B7A37] text-[#0B7A37] ' +
+  'text-[12.5px] font-bold px-3.5 py-2 rounded-lg hover:bg-[#F4F7F5]';
+
+const TEXT_LINK = 'block w-full text-[12px] font-semibold text-[#0B7A37] underline underline-offset-4';
+
+const BACK_LINK = 'block w-full pt-1 text-[13px] font-medium text-[#5B6B62] hover:text-[#0F1F17]';

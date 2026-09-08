@@ -105,6 +105,27 @@
         font-weight: 800; color: var(--green); letter-spacing: -0.03em;
         margin-bottom: 18px; font-size: 1.1rem;
       }
+      .vsteps {
+        display: flex; justify-content: space-between; position: relative;
+        margin: 0 0 18px;
+      }
+      .vsteps::before {
+        content: ''; position: absolute; top: 13px; left: 12%; right: 12%;
+        height: 2px; background: var(--line);
+      }
+      .vs { position: relative; z-index: 1; flex: 1; text-align: center; }
+      .vs-b {
+        width: 26px; height: 26px; margin: 0 auto 6px; border-radius: 999px;
+        border: 2px solid var(--line); background: #fff; color: var(--muted);
+        font-size: 12px; font-weight: 700; line-height: 22px;
+      }
+      .vs-l { font-size: 9.5px; color: var(--muted); line-height: 1.25; }
+      .vs-done .vs-b { background: #16a34a; border-color: #16a34a; color: #fff; }
+      .vs-now .vs-b {
+        background: var(--green); border-color: var(--green); color: #fff;
+        box-shadow: 0 0 0 4px rgba(11, 122, 55, 0.14);
+      }
+      .vs-now .vs-l { color: var(--ink); font-weight: 700; }
     </style>
   </head>
   <body>
@@ -182,9 +203,28 @@
             || ('Verify my number for VegDrop: ' + data.code);
         }
 
+        function renderStepper(currentStep) {
+          var steps = [
+            { n: 1, label: 'Phone' },
+            { n: 2, label: 'Scan' },
+            { n: 3, label: 'Enter code' },
+            { n: 4, label: 'Send' },
+          ];
+          var wrap = el('div', 'vsteps');
+          steps.forEach(function (s) {
+            var state = s.n < currentStep ? 'vs-done' : s.n === currentStep ? 'vs-now' : '';
+            var col = el('div', 'vs ' + state);
+            col.appendChild(el('div', 'vs-b', s.n < currentStep ? '✓' : String(s.n)));
+            col.appendChild(el('div', 'vs-l', s.label));
+            wrap.appendChild(col);
+          });
+          return wrap;
+        }
+
         function renderScanned(pairNumber) {
           lead.textContent = 'Type this number on your computer or tablet to continue.';
           root.replaceChildren();
+          root.appendChild(renderStepper(3));
           var card = el('div', 'card');
           card.appendChild(el('div', 'pair', String(pairNumber)));
           card.appendChild(el('p', 'hint', 'Keep this page open after you type it.'));
@@ -195,6 +235,7 @@
         function renderPaired(data) {
           lead.textContent = 'Send the message below from this phone (the one with your SIM).';
           root.replaceChildren();
+          root.appendChild(renderStepper(4));
 
           var card = el('div', 'card');
           var hint = el('p', 'hint', 'Your code');
