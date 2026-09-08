@@ -106,26 +106,65 @@
         margin-bottom: 18px; font-size: 1.1rem;
       }
       .vsteps {
-        display: flex; justify-content: space-between; position: relative;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        align-items: start;
+        position: relative;
+        list-style: none;
         margin: 0 0 18px;
+        padding: 0;
       }
       .vsteps::before {
-        content: ''; position: absolute; top: 13px; left: 12%; right: 12%;
-        height: 2px; background: var(--line);
+        content: '';
+        position: absolute;
+        top: 11px;
+        left: calc(12.5% + 6px);
+        right: calc(12.5% + 6px);
+        height: 1.5px;
+        background: var(--line);
       }
-      .vs { position: relative; z-index: 1; flex: 1; text-align: center; }
+      .vs {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        text-align: center;
+      }
       .vs-b {
-        width: 26px; height: 26px; margin: 0 auto 6px; border-radius: 999px;
-        border: 2px solid var(--line); background: #fff; color: var(--muted);
-        font-size: 12px; font-weight: 700; line-height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 999px;
+        border: 1.5px solid var(--line);
+        background: #fff;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1;
       }
-      .vs-l { font-size: 9.5px; color: var(--muted); line-height: 1.25; }
+      .vs-l {
+        display: block;
+        width: 100%;
+        max-width: 4.5rem;
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 1.15;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       .vs-done .vs-b { background: #16a34a; border-color: #16a34a; color: #fff; }
+      .vs-done .vs-l { color: #5B6B62; }
       .vs-now .vs-b {
         background: var(--green); border-color: var(--green); color: #fff;
-        box-shadow: 0 0 0 4px rgba(11, 122, 55, 0.14);
       }
-      .vs-now .vs-l { color: var(--ink); font-weight: 700; }
+      .vs-now .vs-l { color: var(--green); font-weight: 600; }
     </style>
   </head>
   <body>
@@ -207,15 +246,16 @@
           var steps = [
             { n: 1, label: 'Phone' },
             { n: 2, label: 'Scan' },
-            { n: 3, label: 'Enter code' },
+            { n: 3, label: 'Pair' },
             { n: 4, label: 'Send' },
           ];
-          var wrap = el('div', 'vsteps');
+          var wrap = el('ol', 'vsteps');
+          wrap.setAttribute('aria-label', 'Verification steps');
           steps.forEach(function (s) {
-            var state = s.n < currentStep ? 'vs-done' : s.n === currentStep ? 'vs-now' : '';
-            var col = el('div', 'vs ' + state);
-            col.appendChild(el('div', 'vs-b', s.n < currentStep ? '✓' : String(s.n)));
-            col.appendChild(el('div', 'vs-l', s.label));
+            var state = s.n < currentStep ? 'vs-done' : s.n === currentStep ? 'vs-now' : 'vs-todo';
+            var col = el('li', 'vs ' + state);
+            col.appendChild(el('span', 'vs-b', s.n < currentStep ? '✓' : String(s.n)));
+            col.appendChild(el('span', 'vs-l', s.label));
             wrap.appendChild(col);
           });
           return wrap;

@@ -44,13 +44,21 @@ function secondsLeft(expiresAt) {
   return Math.max(0, Math.round((new Date(expiresAt).getTime() - Date.now()) / 1000));
 }
 
-/** "1 min 30 sec" — readable under the QR drain bar. */
+/** Digits-only inbox → display form for humans. */
+function formatPhoneHint(phone) {
+  const digits = String(phone || '').replace(/\D/g, '').slice(-10);
+  if (digits.length !== 10) return digits ? `+${digits}` : '';
+  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+}
+
+/** "1 min 30 sec" under the QR drain — normal UI type, not monospace. */
 function formatCountdown(totalSeconds) {
   const s = Math.max(0, Math.floor(totalSeconds));
   const mins = Math.floor(s / 60);
   const secs = s % 60;
   if (mins <= 0) return `${secs} sec`;
-  return `${mins} min ${String(secs).padStart(2, '0')} sec`;
+  if (secs === 0) return `${mins} min`;
+  return `${mins} min ${secs} sec`;
 }
 
 function describeError(err) {
@@ -76,7 +84,7 @@ function formatInbox(to) {
 const QR_STEPS = [
   { n: 1, label: 'Phone' },
   { n: 2, label: 'Scan' },
-  { n: 3, label: 'Enter code' },
+  { n: 3, label: 'Pair' },
   { n: 4, label: 'Send' },
 ];
 
@@ -87,18 +95,20 @@ const MESSAGE_STEPS = [
 
 function VerifyStepper({ currentStep, steps = QR_STEPS }) {
   return (
-    <div className="vd-vsteps" aria-label="Verification steps">
+    <ol className="vd-vsteps" aria-label="Verification steps">
       {steps.map((s) => {
-        const state = s.n < currentStep ? 'vd-vs-done' : s.n === currentStep ? 'vd-vs-now' : '';
+        const state = s.n < currentStep ? 'vd-vs-done' : s.n === currentStep ? 'vd-vs-now' : 'vd-vs-todo';
         const glyph = s.n < currentStep ? '✓' : String(s.n);
         return (
-          <div key={s.n} className={`vd-vs ${state}`}>
-            <div className="vd-vs-b">{glyph}</div>
-            <div className="vd-vs-l">{s.label}</div>
-          </div>
+          <li key={s.n} className={`vd-vs ${state}`}>
+            <span className="vd-vs-b" aria-hidden="true">
+              {glyph}
+            </span>
+            <span className="vd-vs-l">{s.label}</span>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }
 
@@ -445,7 +455,7 @@ export default function ReverseOtpPanel({
     );
   }
 
-  // --- Handover: Scan / Enter code -------------------------------------------
+  // --- Handover: Scan / Pair -------------------------------------------------
   if (mode === 'handover' && handover && !challenge) {
     const expired =
       state === 'expired' ||
@@ -489,7 +499,8 @@ export default function ReverseOtpPanel({
             ) : null}
 
             <p className="vd-verify-hint">
-              Scan with the phone that has <span className="si-num font-semibold text-[#0F1F17]">+91 {phone}</span>
+              Scan with the phone that has{' '}
+              <span className="vd-verify-phone">{formatPhoneHint(phone)}</span>
             </p>
 
             <div className="vd-verify-actions">
@@ -511,12 +522,8 @@ export default function ReverseOtpPanel({
                   }}
                 />
               </div>
-              <p className="vd-verify-timer-label si-num">{formatCountdown(remaining)}</p>
+              <p className="vd-verify-timer-label">{formatCountdown(remaining)}</p>
             </div>
-            <button type="button" onClick={beginHandover} className={SOFT_LINK}>
-              <RefreshCw className="h-3 w-3" />
-              Get a new code
-            </button>
           </>
         ) : null}
 
@@ -537,7 +544,7 @@ export default function ReverseOtpPanel({
               {pairing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               <span>{pairing ? 'Confirming…' : 'Continue'}</span>
             </button>
-            <p className="vd-verify-timer-label si-num">{formatCountdown(remaining)}</p>
+            <p className="vd-verify-timer-label">{formatCountdown(remaining)}</p>
           </>
         ) : null}
 
@@ -551,6 +558,12 @@ export default function ReverseOtpPanel({
           <button type="button" onClick={beginLocal} className={TEXT_LINK}>
             Verify from this device
           </button>
+          {step === 2 ? (
+            <button type="button" onClick={beginHandover} className={SOFT_LINK}>
+              <RefreshCw className="h-3 w-3" />
+              Get a new code
+            </button>
+          ) : null}
           {onBack ? (
             <button type="button" onClick={onBack} className={BACK_LINK}>
               ← Back
@@ -594,11 +607,11 @@ export default function ReverseOtpPanel({
       </div>
 
       <p className="vd-verify-hint">
-        Send from <span className="si-num font-semibold text-[#0F1F17]">+91 {phone}</span>
+        Send from <span className="vd-verify-phone">{formatPhoneHint(phone)}</span>
         {whatsapp ? (
           <>
             {' '}
-            to <span className="si-num font-semibold text-[#0F1F17]">{formatInbox(whatsapp.to)}</span>
+            to <span className="vd-verify-phone">{formatInbox(whatsapp.to)}</span>
           </>
         ) : null}
       </p>
@@ -691,9 +704,7 @@ function StatusLine({ state, expectedPhone, code, remaining }) {
     <p className="vd-verify-wait">
       <Loader2 className="h-3.5 w-3.5 animate-spin" />
       Waiting for your message
-      <span className="si-num tabular-nums font-semibold text-[#0F1F17]">
-        {formatCountdown(remaining)}
-      </span>
+      <span className="vd-verify-timer-label">{formatCountdown(remaining)}</span>
     </p>
   );
 }

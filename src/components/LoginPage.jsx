@@ -503,17 +503,23 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
 
             {/* h2, not h1: the page heading above the card owns that level, and
                 skipping straight back to h1 here would break the outline. */}
-            <div className="si-underline mb-4">
+            <div className={`si-underline mb-4${step === STEP.LOGIN_CODE ? ' si-underline-center' : ''}`}>
               <h2
                 className={
                   step === STEP.LOGIN_CODE
-                    ? 'text-[1.55rem] font-black italic tracking-tight text-[#0B7A37]'
+                    ? 'text-[1.45rem] font-black italic tracking-tight text-[#0B7A37]'
                     : 'text-[1.25rem] font-extrabold text-[#0F1F17]'
                 }
               >
                 {title}
               </h2>
-              <p className="mt-1 text-[15px] leading-relaxed text-[#5B6B62]">{sub}</p>
+              <p
+                className={`mt-1 text-[14.5px] leading-relaxed text-[#5B6B62]${
+                  step === STEP.LOGIN_CODE ? ' mx-auto max-w-[20rem]' : ''
+                }`}
+              >
+                {sub}
+              </p>
             </div>
 
             {/* STEP 1 — the mobile number */}
