@@ -63,6 +63,11 @@ async function listMatchingRecipesTool({ vegetables, servings }) {
   return { servings: servings || 2, matches };
 }
 
+async function findRecipesByNameTool({ dishName, servings }) {
+  const matches = recipes.findRecipesByDishName(dishName || '', { limit: 5 });
+  return { servings: servings || 2, matches };
+}
+
 async function getRecipeTool({ recipeId, servings }) {
   const detail = recipes.getRecipe(recipeId, servings);
   if (!detail) throw new ApiError(404, 'Recipe not found.', 'RECIPE_NOT_FOUND');
@@ -240,6 +245,22 @@ const TOOL_DEFS = [
   {
     type: 'function',
     function: {
+      name: 'find_recipes_by_name',
+      description:
+        'Find a dish by name when the user asks for a specific curry (e.g. cabbage fry, aloo gobi, sambar). Prefer this over vegetable matching when they name a dish.',
+      parameters: {
+        type: 'object',
+        properties: {
+          dishName: { type: 'string' },
+          servings: { type: 'number' },
+        },
+        required: ['dishName'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_recipe',
       description: 'Get full steps and scaled ingredients for one recipe.',
       parameters: {
@@ -313,6 +334,8 @@ async function executeTool(user, name, args) {
   switch (name) {
     case 'list_matching_recipes':
       return listMatchingRecipesTool(args);
+    case 'find_recipes_by_name':
+      return findRecipesByNameTool(args);
     case 'get_recipe':
       return getRecipeTool(args);
     case 'search_catalog':
@@ -334,5 +357,6 @@ module.exports = {
   confirmOrderTool,
   getOrderStatusTool,
   listMatchingRecipesTool,
+  findRecipesByNameTool,
   getRecipeTool,
 };

@@ -107,15 +107,44 @@ async function runLocalTurn(user, messages, context = {}) {
     }
   }
 
+  // Dish name → recipe (e.g. "cabbage fry", "aloo gobi", "I want sambar")
+  const byName = recipes.findRecipesByDishName(text, { limit: 5 });
+  if (byName.length) {
+    session.lastMatches = byName;
+    if (byName.length === 1 || byName[0].matchScore >= 90) {
+      const detail = await tools.getRecipeTool({ recipeId: byName[0].id, servings: session.servings });
+      session.lastRecipeId = detail.id;
+      return {
+        reply:
+          `**${detail.name}** (${detail.minutes} min, ${detail.servings} servings)\n\n` +
+          `You'll need: ${detail.vegetables.join(', ')}\n\n` +
+          detail.steps.map((s, i) => `${i + 1}. ${s}`).join('\n') +
+          `\n\nSay **order missing ingredients** for a cart, or name another dish.`,
+        cards: [{ type: 'recipe', ...detail }],
+        proposedOrder: null,
+      };
+    }
+    const list = byName
+      .map((m) => `${m.index}. **${m.name}** (${m.minutes} min)`)
+      .join('\n');
+    return {
+      reply:
+        `I found ${byName.length} dishes matching that name:\n\n${list}\n\n` +
+        `Reply with a number for steps, or say **order missing ingredients**.`,
+      cards: byName.map((m) => ({ type: 'recipe_match', ...m })),
+      proposedOrder: null,
+    };
+  }
+
   // Vegetable → recipes
   const veggies = recipes.extractVegetables(text);
-  if (veggies.length || /\b(cook|curry|recipe|make|dish|possibilit)/i.test(lower)) {
+  if (veggies.length || /\b(cook|curry|recipe|make|dish|possibilit)\b/i.test(lower)) {
     if (veggies.length) session.vegetables = [...new Set([...session.vegetables, ...veggies])];
     const use = veggies.length ? veggies : session.vegetables;
     if (!use.length) {
       return {
         reply:
-          "Tell me which vegetables you have — for example: *potato, tomato, onion, carrot* — and I'll list curries you can make.",
+          "Name a dish (e.g. *cabbage fry*, *aloo gobi*) or tell me which vegetables you have — *potato, tomato, onion* — and I'll list options.",
         cards: [],
         proposedOrder: null,
       };
@@ -129,7 +158,7 @@ async function runLocalTurn(user, messages, context = {}) {
 
     if (!matches.length) {
       return {
-        reply: `I couldn't match a dish to ${use.join(', ')} yet. Try adding onion or tomato, or ask for a specific curry name.`,
+        reply: `I couldn't match a dish to ${use.join(', ')} yet. Try a dish name like *tomato curry* or *cabbage fry*, or add onion/tomato.`,
         cards: [],
         proposedOrder: null,
       };
@@ -155,11 +184,12 @@ async function runLocalTurn(user, messages, context = {}) {
   return {
     reply:
       "I'm your VegDrop cooking helper 🥕\n\n" +
-      "• Tell me veggies you have → I'll suggest curries\n" +
+      "• Name a dish → *cabbage fry*, *aloo gobi*, *sambar*\n" +
+      "• Or list veggies you have → I'll suggest curries\n" +
       "• Pick a number → cooking steps\n" +
       "• Say **order missing ingredients** → cart preview\n" +
       "• Say **confirm** → place the order\n\n" +
-      'Try: *I have potato, tomato and onion*',
+      'Try: *Make cabbage fry* or *I have potato, tomato and onion*',
     cards: [],
     proposedOrder: null,
   };
@@ -234,6 +264,10 @@ async function runOpenAiTurn(user, messages, context = {}) {
           cards.push({ type: 'proposal', ...result });
         }
         if (name === 'list_matching_recipes' && result?.matches) {
+          proposals.getSession(user._id).lastMatches = result.matches;
+          for (const m of result.matches) cards.push({ type: 'recipe_match', ...m });
+        }
+        if (name === 'find_recipes_by_name' && result?.matches) {
           proposals.getSession(user._id).lastMatches = result.matches;
           for (const m of result.matches) cards.push({ type: 'recipe_match', ...m });
         }

@@ -3,7 +3,7 @@
 /**
  * Seed recipes for the cooking assistant.
  *
- * Matching is by vegetable tag overlap against names the user typed — not by
+ * Matching is by vegetable tags and/or dish name against free text — not by
  * training a model. Catalog linking happens later in search_catalog.
  */
 
@@ -34,12 +34,48 @@ const ALIASES = Object.freeze({
   drumstick: 'drumstick',
 });
 
+/** Common dish nicknames → recipe id. Longer keys win (sorted at lookup). */
+const DISH_ALIASES = Object.freeze({
+  'aloo gobi': 'aloo-gobi-style',
+  'aloo gobhi': 'aloo-gobi-style',
+  'potato cauliflower': 'aloo-gobi-style',
+  'potato tomato curry': 'potato-tomato-curry',
+  'aloo tamatar': 'potato-tomato-curry',
+  'mixed veg': 'mixed-veg-curry',
+  'mixed vegetable': 'mixed-veg-curry',
+  'potato carrot fry': 'potato-carrot-fry',
+  'tomato onion': 'tomato-onion-curry',
+  'tomato curry': 'tomato-onion-curry',
+  'brinjal curry': 'brinjal-curry',
+  'baingan curry': 'brinjal-curry',
+  'cabbage fry': 'cabbage-fry',
+  'palak': 'spinach-dal-style',
+  'spinach': 'spinach-dal-style',
+  'bendi fry': 'okra-fry',
+  'okra fry': 'okra-fry',
+  'lady finger fry': 'okra-fry',
+  sambar: 'sambar-veg-base',
+  'ridge gourd': 'ridge-gourd-curry',
+  beerakaya: 'ridge-gourd-curry',
+  poriyal: 'beans-carrot-poriyal',
+  'beans carrot': 'beans-carrot-poriyal',
+});
+
 function normalizeVeg(raw) {
   const s = String(raw || '')
     .toLowerCase()
     .trim()
     .replace(/\s+/g, ' ');
   return ALIASES[s] || s;
+}
+
+function normalizeDishQuery(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/[–—]/g, '-')
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Pull known vegetable tokens from free text. */
@@ -85,6 +121,60 @@ function listMatchingRecipes(vegetables, { limit = 5 } = {}) {
   }));
 }
 
+/**
+ * Find dishes by name / nickname ("cabbage fry", "aloo gobi", "sambar").
+ * Returns the same card shape as listMatchingRecipes (covered/missing empty).
+ */
+function findRecipesByDishName(query, { limit = 5 } = {}) {
+  const q = normalizeDishQuery(query);
+  if (!q || q.length < 3) return [];
+
+  const aliasHits = [];
+  for (const [alias, recipeId] of Object.entries(DISH_ALIASES).sort(
+    (a, b) => b[0].length - a[0].length
+  )) {
+    if (!q.includes(alias) && !alias.includes(q)) continue;
+    const recipe = RECIPES.find((r) => r.id === recipeId);
+    if (recipe) aliasHits.push({ recipe, score: alias === q ? 1 : 0.95 });
+  }
+
+  const scored = RECIPES.map((recipe) => {
+    const name = normalizeDishQuery(recipe.name);
+    const id = normalizeDishQuery(recipe.id.replace(/-/g, ' '));
+    let score = 0;
+    if (name === q || id === q) score = 1;
+    else if (name.includes(q) || id.includes(q) || q.includes(name)) score = 0.9;
+    else {
+      const tokens = q.split(' ').filter((t) => t.length > 2);
+      if (tokens.length) {
+        const hit = tokens.filter((t) => name.includes(t) || id.includes(t)).length;
+        score = hit / tokens.length;
+      }
+    }
+    return { recipe, score };
+  }).filter((row) => row.score >= 0.5);
+
+  const byId = new Map();
+  for (const row of [...aliasHits, ...scored]) {
+    const prev = byId.get(row.recipe.id);
+    if (!prev || row.score > prev.score) byId.set(row.recipe.id, row);
+  }
+
+  return [...byId.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((row, index) => ({
+      index: index + 1,
+      id: row.recipe.id,
+      name: row.recipe.name,
+      difficulty: row.recipe.difficulty,
+      minutes: row.recipe.minutes,
+      matchScore: Math.round(row.score * 100),
+      covered: row.recipe.vegetables.map(normalizeVeg),
+      missing: [],
+    }));
+}
+
 function getRecipe(recipeId, servings = 2) {
   const recipe = RECIPES.find((r) => r.id === recipeId);
   if (!recipe) return null;
@@ -110,5 +200,6 @@ module.exports = {
   normalizeVeg,
   extractVegetables,
   listMatchingRecipes,
+  findRecipesByDishName,
   getRecipe,
 };

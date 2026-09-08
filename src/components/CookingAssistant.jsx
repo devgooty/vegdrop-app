@@ -22,7 +22,7 @@ export default function CookingAssistant({
     {
       role: 'assistant',
       content:
-        "Hi! Tell me which vegetables you have — e.g. potato, tomato, onion — and I'll suggest curries. Then we can order missing items.",
+        "Hi! Name a dish (cabbage fry, aloo gobi, sambar…) or tell me which vegetables you have — I'll suggest curries and help order missing items.",
     },
   ]);
   const [input, setInput] = useState('');
@@ -225,7 +225,7 @@ export default function CookingAssistant({
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="I have potato, tomato, onion…"
+          placeholder="Cabbage fry… or I have potato, tomato…"
           disabled={busy}
           className="flex-1 bg-white border border-[#DCD5C6] rounded-xl px-3.5 py-3 text-[13px] outline-none focus:border-[#1B4D3E]"
         />

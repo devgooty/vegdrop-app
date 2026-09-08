@@ -68,6 +68,35 @@ test('recipe matcher finds dishes from vegetable names', () => {
   assert.ok(matches.some((m) => /potato/i.test(m.name) || /tomato/i.test(m.name)));
 });
 
+test('recipe matcher finds dishes by dish name', () => {
+  const { findRecipesByDishName } = require('../services/agent/recipes');
+  const byAlias = findRecipesByDishName('aloo gobi');
+  assert.ok(byAlias.length >= 1);
+  assert.match(byAlias[0].name, /potato|cauliflower/i);
+
+  const byTitle = findRecipesByDishName('cabbage fry');
+  assert.equal(byTitle[0].id, 'cabbage-fry');
+});
+
+test('a customer can chat with a dish name without placing an order', async () => {
+  const customer = await authenticatedUser('customer');
+
+  const res = await api()
+    .post('/api/agent/chat')
+    .set(auth(customer.accessToken))
+    .send({
+      messages: [{ role: 'user', content: 'Make cabbage fry for 2 people' }],
+    });
+
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.match(res.body.data.reply, /cabbage/i);
+  assert.ok(
+    res.body.data.cards?.some((c) => c.type === 'recipe' || c.type === 'recipe_match'),
+    'expected a recipe card'
+  );
+  assert.equal(await Order.countDocuments({}), 0);
+});
+
 test('a customer can chat for recipe matches without placing an order', async () => {
   const customer = await authenticatedUser('customer');
   await seedTomatoPotato();
