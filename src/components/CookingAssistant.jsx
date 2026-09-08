@@ -6,9 +6,25 @@ import { ApiRequestError, NetworkError } from '../services/apiClient';
 /**
  * Customer cooking assistant.
  *
- * Talk about vegetables → dish ideas → optional cart preview → confirm order.
+ * Talk about vegetables / dish names → steps → optional cart preview → confirm.
  * Orders only go through after an explicit Confirm (button or "confirm" in chat).
  */
+
+/** Turn `**bold**` markers from the agent into real emphasis — no markdown lib. */
+function formatChatText(text) {
+  const parts = String(text || '').split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (/^\*\*[^*]+\*\*$/.test(part)) {
+      return (
+        <strong key={i} className="font-extrabold">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    return <React.Fragment key={i}>{part}</React.Fragment>;
+  });
+}
+
 export default function CookingAssistant({
   user,
   marketId,
@@ -109,35 +125,36 @@ export default function CookingAssistant({
   };
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-8.5rem)] max-h-[720px] animate-fade-in">
-      <div className="px-4 pt-3 pb-2 border-b border-[#E8E2D6] bg-[#FAF7F2]/90">
+    <div className="flex flex-col flex-1 min-h-0 h-full bg-[#FAF7F2] animate-fade-in">
+      <div className="shrink-0 px-4 pt-3 pb-2 border-b border-[#E8E2D6] bg-[#FAF7F2]/95">
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-xl bg-[#1B4D3E] text-white flex items-center justify-center">
-            <ChefHat className="w-4.5 h-4.5" />
+            <ChefHat className="w-4 h-4" />
           </div>
           <div>
             <h2 className="text-[15px] font-black text-[#1B4D3E]">Cooking helper</h2>
-            <p className="text-[11px] text-[#8A7E6B] font-semibold">Recipes → cart preview → confirm</p>
+            <p className="text-[11px] text-[#8A7E6B] font-semibold">Dish or veggies → steps → order</p>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-        {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div
-              className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap ${
-                m.role === 'user'
-                  ? 'bg-[#1B4D3E] text-white rounded-br-md'
-                  : 'bg-white border border-[#E8E2D6] text-[#1F2937] rounded-bl-md shadow-sm'
-              }`}
-            >
-              {m.content}
-              {m.cards?.filter((c) => c.type === 'recipe_match').length > 0 && (
-                <ul className="mt-2 space-y-1.5">
-                  {m.cards
-                    .filter((c) => c.type === 'recipe_match')
-                    .map((c) => (
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3 space-y-3">
+        {messages.map((m, i) => {
+          const matches = m.cards?.filter((c) => c.type === 'recipe_match') || [];
+          const recipes = m.cards?.filter((c) => c.type === 'recipe') || [];
+          return (
+            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap ${
+                  m.role === 'user'
+                    ? 'bg-[#1B4D3E] text-white rounded-br-md'
+                    : 'bg-white border border-[#E8E2D6] text-[#1F2937] rounded-bl-md shadow-sm'
+                }`}
+              >
+                {formatChatText(m.content)}
+                {matches.length > 0 && (
+                  <ul className="mt-2 space-y-1.5">
+                    {matches.map((c) => (
                       <li key={c.id}>
                         <button
                           type="button"
@@ -147,16 +164,41 @@ export default function CookingAssistant({
                         >
                           {c.index}. {c.name}
                           <span className="block font-semibold text-emerald-700/80 text-[11px]">
-                            {c.minutes} min · {c.matchScore}% match
+                            {c.minutes} min
+                            {c.matchScore != null ? ` · ${c.matchScore}% match` : ''}
                           </span>
                         </button>
                       </li>
                     ))}
-                </ul>
-              )}
+                  </ul>
+                )}
+                {recipes.map((r) => (
+                  <div
+                    key={r.id}
+                    className="mt-2 rounded-xl border border-emerald-100 bg-emerald-50/70 px-2.5 py-2 text-[12px] text-emerald-950"
+                  >
+                    <p className="font-black">
+                      {r.name}
+                      {r.minutes != null ? ` · ${r.minutes} min` : ''}
+                    </p>
+                    {Array.isArray(r.vegetables) && r.vegetables.length > 0 && (
+                      <p className="mt-1 font-semibold text-emerald-800/80">
+                        Need: {r.vegetables.join(', ')}
+                      </p>
+                    )}
+                    {Array.isArray(r.steps) && r.steps.length > 0 && (
+                      <ol className="mt-1.5 space-y-1 list-decimal list-inside font-medium">
+                        {r.steps.map((step, si) => (
+                          <li key={si}>{step}</li>
+                        ))}
+                      </ol>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {proposedOrder && (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3 space-y-2 shadow-sm">
@@ -216,7 +258,7 @@ export default function CookingAssistant({
       </div>
 
       <form
-        className="p-3 border-t border-[#E8E2D6] bg-[#FAF7F2] flex gap-2"
+        className="shrink-0 p-3 border-t border-[#E8E2D6] bg-[#FAF7F2] flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           send(input);
@@ -227,12 +269,12 @@ export default function CookingAssistant({
           onChange={(e) => setInput(e.target.value)}
           placeholder="Cabbage fry… or I have potato, tomato…"
           disabled={busy}
-          className="flex-1 bg-white border border-[#DCD5C6] rounded-xl px-3.5 py-3 text-[13px] outline-none focus:border-[#1B4D3E]"
+          className="flex-1 min-w-0 bg-white border border-[#DCD5C6] rounded-xl px-3.5 py-3 text-[13px] outline-none focus:border-[#1B4D3E]"
         />
         <button
           type="submit"
           disabled={busy || !input.trim()}
-          className="w-11 h-11 rounded-xl bg-[#1B4D3E] text-white flex items-center justify-center disabled:opacity-50"
+          className="w-11 h-11 shrink-0 rounded-xl bg-[#1B4D3E] text-white flex items-center justify-center disabled:opacity-50"
           aria-label="Send"
         >
           <Send className="w-4 h-4" />

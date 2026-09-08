@@ -101,7 +101,7 @@ router.get('/webhook', (req, res) => {
   return res.status(200).type('text/plain').send(String(challenge ?? ''));
 });
 
-router.post('/webhook', (req, res) => {
+router.post('/webhook', async (req, res) => {
   if (!config.whatsapp.appSecret) {
     console.warn('[whatsapp] webhook POST received but WHATSAPP_APP_SECRET is unset; refusing to trust it.');
     return res.sendStatus(503);
@@ -113,18 +113,10 @@ router.post('/webhook', (req, res) => {
     return res.sendStatus(403);
   }
 
-  /**
-   * Acknowledge immediately, then process.
-   *
-   * Meta retries any non-2xx with backoff and will disable a webhook that keeps
-   * failing. Nothing below can fail in a way a retry would fix, so there is no
-   * reason to make Meta wait on it.
-   */
-  res.sendStatus(200);
+  const entries = Array.isArray(req.body?.entry) ? req.body.entry : [];
+  const inboundTexts = [];
 
   try {
-    const entries = Array.isArray(req.body?.entry) ? req.body.entry : [];
-
     for (const entry of entries) {
       const changes = Array.isArray(entry?.changes) ? entry.changes : [];
 
@@ -140,7 +132,6 @@ router.post('/webhook', (req, res) => {
 
           if (FAILURE_STATUSES.has(status?.status)) {
             const firstError = Array.isArray(status?.errors) ? status.errors[0] : null;
-            // The actionable one: a code was accepted but never arrived.
             console.error('[whatsapp] delivery failed', {
               ...line,
               errorCode: firstError?.code ?? null,
@@ -153,23 +144,10 @@ router.post('/webhook', (req, res) => {
         }
 
         /**
-         * Inbound messages.
-         *
-         * These are how reverse OTP works: the user messages US the code we
-         * showed them, and Meta's signature above is what makes the sender it
-         * reports trustworthy enough to verify a number against.
-         *
-         * STILL NEVER ANSWERED. Two reasons now. A user replying to a code is
-         * usually a support question and this integration has no template
-         * approved for anything but the code itself — and a reply inside the
-         * 24-hour service window can be billable, which would turn a flow whose
-         * whole point is costing nothing into a paid one.
-         *
-         * The message body is never logged. It is user content, and during a
-         * verification it contains a live code.
+         * Inbound messages — reverse OTP. Never answered (no template, no billable
+         * service-window reply). Body never logged (live codes).
          */
         for (const inbound of Array.isArray(value.messages) ? value.messages : []) {
-          // Only text can carry a code; images, audio and reactions cannot.
           if (inbound?.type !== 'text') {
             console.info('[whatsapp] inbound message ignored', {
               from: maskPhone(inbound?.from),
@@ -177,41 +155,48 @@ router.post('/webhook', (req, res) => {
             });
             continue;
           }
-
-          /**
-           * This route is mounted ABOVE the database gate on purpose (see
-           * app.js) so Meta never receives a 503 and never disables the
-           * subscription. Matching needs the database, so it is skipped rather
-           * than attempted when Mongo is down — the webhook still answers 200
-           * and the property that put it up there survives.
-           */
-          if (!isConnected()) {
-            console.warn('[whatsapp] inbound text skipped: database unavailable.');
-            continue;
-          }
-
-          /**
-           * Fire and forget. The 200 went out above, so a rejection here has
-           * nowhere to go — it must not reach the error handler, and Meta must
-           * not be made to wait on a database write it cannot act on.
-           */
-          reverseOtp
-            .matchInbound({
-              from: inbound.from,
-              // Cloud API shape for a text message: `{ text: { body } }`.
-              text: inbound.text?.body ?? '',
-              channel: 'whatsapp',
-            })
-            .catch((err) => {
-              console.error('[whatsapp] reverse otp matching failed', { message: err?.message });
-            });
+          inboundTexts.push(inbound);
         }
       }
     }
   } catch (err) {
-    // The response is already sent; never let this reach the error handler.
-    console.error('[whatsapp] failed to process webhook payload', { message: err?.message });
+    console.error('[whatsapp] failed to parse webhook payload', { message: err?.message });
+    return res.sendStatus(500);
   }
+
+  if (inboundTexts.length === 0) {
+    // Delivery receipts only — nothing to match. ACK immediately.
+    return res.sendStatus(200);
+  }
+
+  /**
+   * Match BEFORE acknowledging.
+   *
+   * Acknowledging first then matching meant a Mongo blip dropped the proof
+   * forever (Meta will not retry a 200). Prefer a 503/500 so Meta backs off and
+   * retries — the reverse-OTP code stays live for REVERSE_OTP_TTL_SECONDS.
+   *
+   * Status-only posts still ACK above without needing the database.
+   */
+  if (!isConnected()) {
+    console.warn('[whatsapp] inbound text deferred: database unavailable.');
+    return res.sendStatus(503);
+  }
+
+  try {
+    for (const inbound of inboundTexts) {
+      await reverseOtp.matchInbound({
+        from: inbound.from,
+        text: inbound.text?.body ?? '',
+        channel: 'whatsapp',
+      });
+    }
+  } catch (err) {
+    console.error('[whatsapp] reverse otp matching failed', { message: err?.message });
+    return res.sendStatus(500);
+  }
+
+  return res.sendStatus(200);
 });
 
 module.exports = router;

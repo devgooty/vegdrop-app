@@ -8,7 +8,7 @@ import {
   completeReverseOtpPhoneChange,
   smsLinkFor,
 } from '../services/reverseOtp';
-import { ApiRequestError, NetworkError } from '../services/apiClient';
+import { ApiRequestError, NetworkError, refreshSession } from '../services/apiClient';
 
 /**
  * Reverse OTP — "I'll send the code instead".
@@ -16,32 +16,11 @@ import { ApiRequestError, NetworkError } from '../services/apiClient';
  * Shows a code and a prefilled message link. The user taps, their messaging app
  * opens with the text ready, they hit send, and this panel notices.
  *
- * WHY THE CODE IS ON SCREEN
- *
- * It has to be: the user is the one sending it. The secret is not the code, it
- * is that the message arrives from the number being claimed. So this panel
- * displays the code prominently rather than hiding it, and offers a copy button
- * — a user whose link does not open still has a way through.
- *
- * POLLING
- *
- * Backs off — fast while the user is likely still in the messaging app, slower
- * once they clearly are not — and pauses entirely while the tab is hidden, which
- * is most of the time here, since the user is in WhatsApp. Both matter: at a
- * flat 2s this would spend a third of the API's per-IP budget on one sign-in,
- * and on a shared connection that locks out everyone else.
- *
- * This component never decides a verification succeeded. It reports what the
- * server says and calls `complete` when told the number was proved.
+ * Cross-device (SIM in another handset): deep links open on THIS device, so the
+ * inbox number + full message are shown and copyable — the user sends from the
+ * phone that holds +91 {phone}.
  */
 
-/**
- * How long to wait before the next poll, given how long we have been waiting.
- *
- * Quick at first because the round trip through a messaging app is short when it
- * works; slower afterwards because someone who has not sent it in ninety seconds
- * is reading, not sending.
- */
 function pollDelay(elapsedMs) {
   if (elapsedMs < 30_000) return 2000;
   if (elapsedMs < 90_000) return 3000;
@@ -64,25 +43,16 @@ function describeError(err) {
   return 'Something went wrong. Please try again.';
 }
 
-/**
- * @param {object}   props
- * @param {string}   props.phone      the number being claimed, 10 digits
- * @param {string}   props.purpose    login | registration | vendor_registration |
- *                                    delivery_registration | phone_change
- * @param {string}   [props.app]      customer | shopkeeper | delivery
- * @param {string}   [props.name]     used only if this number becomes a new account
- * @param {Function} props.onVerified called with `{ token, user }`. `user` is the
- *                                    signed-in account for flows this panel
- *                                    completes, and null for registration, whose
- *                                    caller spends the token on `/register/verify`
- *                                    (that endpoint is what creates the account).
- * @param {Function} [props.onUnavailable] called instead of showing a dead-end
- *                                    error when reverse OTP is not configured.
- *                                    The parent should switch to the outbound
- *                                    code — this is the fallback, not a failure.
- * @param {boolean}  [props.completeHere=true] whether this panel spends the
- *                                    token itself. False for registration.
- */
+/** Digits-only inbox → display form for humans. */
+function formatInbox(to) {
+  const digits = String(to || '').replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`;
+  }
+  if (digits.length === 10) return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+  return digits ? `+${digits}` : '';
+}
+
 export default function ReverseOtpPanel({
   phone,
   purpose = 'login',
@@ -97,28 +67,10 @@ export default function ReverseOtpPanel({
   const [expectedPhone, setExpectedPhone] = useState(null);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [copiedWhat, setCopiedWhat] = useState('');
   const [remaining, setRemaining] = useState(0);
 
-  // Guards the one-shot completion. A poll landing while `complete` is in flight
-  // must not fire a second one — the server would refuse it, but the panel would
-  // show an error over a sign-in that actually worked.
   const completingRef = useRef(false);
-
-  /**
-   * Whether a `start` call is already in flight.
-   *
-   * Two must never overlap. Issuing a challenge supersedes this number's
-   * previous one, so of two concurrent starts the one the SERVER handles second
-   * kills the other — and the client cannot tell which that was. The panel would
-   * then display a code whose row is already dead: the countdown runs normally
-   * and every poll answers `expired`, with nothing on screen explaining why.
-   *
-   * Ordering the responses on the client does not fix it, because the damage is
-   * decided server-side. The only reliable answer is to never issue two at once.
-   * Both triggers are real: StrictMode double-invokes the mount effect in
-   * development, and a double tap on "get a new code" does the same in
-   * production.
-   */
   const startingRef = useRef(false);
   const onUnavailableRef = useRef(onUnavailable);
   onUnavailableRef.current = onUnavailable;
@@ -158,8 +110,6 @@ export default function ReverseOtpPanel({
     begin();
   }, [begin]);
 
-  // The countdown. Its own ticker so the poll cadence and the clock stay
-  // independent — the clock must keep moving between polls.
   useEffect(() => {
     if (!challenge?.expiresAt) return undefined;
     setRemaining(secondsLeft(challenge.expiresAt));
@@ -167,16 +117,12 @@ export default function ReverseOtpPanel({
     return () => clearInterval(timer);
   }, [challenge?.expiresAt]);
 
-  /** Spend a verified token. Runs at most once per challenge. */
   const finish = useCallback(async () => {
     if (completingRef.current) return;
     completingRef.current = true;
 
     try {
       if (!completeHere) {
-        // Registration: the caller spends this token on /register/verify, which
-        // is what creates the account. Await it so a failed create surfaces here
-        // rather than leaving "Number confirmed" over an account that was not.
         await onVerifiedRef.current?.({ token: challenge.token, user: null });
         setState('verified');
         return;
@@ -189,16 +135,30 @@ export default function ReverseOtpPanel({
       setState('verified');
       await onVerifiedRef.current?.({ token: challenge.token, user });
     } catch (err) {
+      /**
+       * A dropped response after the server minted a session is not "token spent,
+       * start over" — the refresh cookie may already be set. Try to recover before
+       * forcing a new challenge.
+       */
+      if (err instanceof NetworkError && completeHere && purpose !== 'phone_change') {
+        try {
+          const user = await refreshSession();
+          if (user) {
+            setState('verified');
+            await onVerifiedRef.current?.({ token: challenge.token, user });
+            return;
+          }
+        } catch {
+          // fall through
+        }
+      }
+
       setError(describeError(err));
       setState('failed');
-      // The token is spent either way, so there is nothing left to poll for.
-      // Let the user raise a fresh one rather than stranding them.
       completingRef.current = false;
     }
   }, [challenge, completeHere, purpose]);
 
-  // Polling. Chained timeouts rather than setInterval, so a slow response can
-  // never stack requests on top of each other.
   useEffect(() => {
     if (!challenge?.token) return undefined;
     if (['verified', 'expired', 'failed'].includes(state)) return undefined;
@@ -211,8 +171,6 @@ export default function ReverseOtpPanel({
     async function tick() {
       if (cancelled) return;
 
-      // Pause while the tab is hidden — which is exactly when the user is over
-      // in WhatsApp. The visibility listener below polls the moment they return.
       if (typeof document !== 'undefined' && document.hidden) {
         timer = setTimeout(tick, 1000);
         return;
@@ -229,12 +187,8 @@ export default function ReverseOtpPanel({
           return;
         }
       } catch (err) {
-        // A dropped poll is not a failed verification — the code is still live
-        // and the next tick will pick it up. Only a definitive server answer
-        // changes state.
         if (cancelled) return;
         if (err instanceof ApiRequestError && err.status === 429) {
-          // Backed off too far; slow down rather than hammering.
           timer = setTimeout(tick, 10_000);
           return;
         }
@@ -261,15 +215,18 @@ export default function ReverseOtpPanel({
     };
   }, [challenge?.token, state, finish]);
 
-  const copyCode = async () => {
-    if (!challenge?.code) return;
+  const copyText = async (text, label) => {
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(challenge.code);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopiedWhat(label);
+      setTimeout(() => {
+        setCopied(false);
+        setCopiedWhat('');
+      }, 2000);
     } catch {
-      // Clipboard access can be refused (insecure context, permissions). The
-      // code is on screen regardless, so this is not worth an error message.
+      // Code stays on screen.
     }
   };
 
@@ -282,15 +239,6 @@ export default function ReverseOtpPanel({
     );
   }
 
-  /**
-   * Anything that has stopped and cannot recover on its own gets the same
-   * treatment: say what happened, and offer a fresh code.
-   *
-   * `failed` belongs here whether or not a challenge exists. It used to fall
-   * through to the main panel when one did, which left the screen showing a
-   * code, an error, and "waiting for your message…" all at once — while polling
-   * had already stopped, so nothing that screen promised was still happening.
-   */
   if (state === 'failed') {
     return (
       <div className="space-y-3">
@@ -303,18 +251,13 @@ export default function ReverseOtpPanel({
     );
   }
 
-  /**
-   * Decided from the challenge's own timestamp, not the countdown.
-   *
-   * `remaining` starts at 0 and is only filled in by an effect, which runs after
-   * paint — so keying expiry off it rendered "that code has expired" for a frame
-   * every single time a code was issued.
-   */
   const expired =
     state === 'expired' || (challenge && new Date(challenge.expiresAt).getTime() <= Date.now());
   const whatsapp = challenge?.channels?.whatsapp;
   const sms = challenge?.channels?.sms;
   const smsHref = smsLinkFor(sms);
+  const primaryChannel = whatsapp || sms;
+  const fullMessage = primaryChannel?.message || (challenge?.code ? `Verify my number for VegDrop: ${challenge.code}` : '');
 
   if (expired && state !== 'verified') {
     return (
@@ -337,20 +280,44 @@ export default function ReverseOtpPanel({
         <span className="si-num mt-1.5 block text-[29.5px] font-bold tracking-[0.18em] text-[#0B7A37]">
           {challenge.code}
         </span>
-        <button
-          type="button"
-          onClick={copyCode}
-          className="mt-2 inline-flex items-center gap-1.5 text-[13.5px] font-bold text-[#0B7A37] underline underline-offset-4 hover:text-[#08652C]"
-        >
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          <span>{copied ? 'Copied' : 'Copy code'}</span>
-        </button>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+          <button
+            type="button"
+            onClick={() => copyText(challenge.code, 'code')}
+            className="inline-flex items-center gap-1.5 text-[13.5px] font-bold text-[#0B7A37] underline underline-offset-4 hover:text-[#08652C]"
+          >
+            {copied && copiedWhat === 'code' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            <span>{copied && copiedWhat === 'code' ? 'Copied' : 'Copy code'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => copyText(fullMessage, 'message')}
+            className="inline-flex items-center gap-1.5 text-[13.5px] font-bold text-[#0B7A37] underline underline-offset-4 hover:text-[#08652C]"
+          >
+            {copied && copiedWhat === 'message' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            <span>{copied && copiedWhat === 'message' ? 'Copied' : 'Copy full message'}</span>
+          </button>
+        </div>
       </div>
 
-      <p className="text-[14px] leading-relaxed text-[#5B6B62]">
-        Tap a button below — your messaging app opens with the message ready. Just
-        hit send, from <span className="si-num font-bold text-[#0F1F17]">+91 {phone}</span>.
-      </p>
+      <PanelNotice tone="info">
+        Send from <span className="si-num font-bold text-[#0F1F17]">+91 {phone}</span>
+        {whatsapp ? (
+          <>
+            {' '}
+            to WhatsApp <span className="si-num font-bold">{formatInbox(whatsapp.to)}</span>
+          </>
+        ) : null}
+        {sms ? (
+          <>
+            {whatsapp ? ' (or SMS ' : ' to SMS '}
+            <span className="si-num font-bold">{formatInbox(sms.to)}</span>
+            {whatsapp ? ')' : ''}
+          </>
+        ) : null}
+        . If this SIM is in another phone, open WhatsApp/SMS there — do not rely on the buttons below
+        opening the right account on this device.
+      </PanelNotice>
 
       <div className="space-y-2">
         {whatsapp && (
@@ -367,11 +334,12 @@ export default function ReverseOtpPanel({
         )}
       </div>
 
-      {/* Says out loud that the two channels are not equally strong, rather than
-          leaving the weaker one to look identical to the stronger. */}
-      {sms && !whatsapp && (
+      {sms && (
         <PanelNotice tone="info">
-          SMS is a little less secure than WhatsApp — make sure you send it from your own number.
+          SMS is a little less secure than WhatsApp — send it from your own number
+          {sms.relayHealthy === false
+            ? '. Our SMS inbox looks offline right now; prefer WhatsApp if you can, or wait a minute and try again.'
+            : '.'}
         </PanelNotice>
       )}
 
@@ -382,13 +350,6 @@ export default function ReverseOtpPanel({
   );
 }
 
-/**
- * What is happening, in the user's terms.
- *
- * Every failure state says what to DO next. Silence is the failure mode this
- * whole feature has to avoid — a user staring at "waiting" with no idea their
- * message went to the wrong place learns nothing and gives up.
- */
 function StatusLine({ state, expectedPhone, code, remaining }) {
   if (state === 'verified') {
     return (
@@ -403,7 +364,8 @@ function StatusLine({ state, expectedPhone, code, remaining }) {
     return (
       <PanelNotice tone="error">
         That message came from a different number. Send it again from{' '}
-        <span className="si-num font-bold">{expectedPhone || 'your own number'}</span>.
+        <span className="si-num font-bold">{expectedPhone || 'your own number'}</span>
+        . Dual-SIM? Switch to the SIM that matches this login.
       </PanelNotice>
     );
   }
@@ -450,9 +412,6 @@ function PanelNotice({ tone = 'info', children }) {
   );
 }
 
-// Matches the sign-in screen's buttons — see LoginPage.jsx, where the same
-// contrast reasoning applies: #0B7A37 rather than the lighter brand green,
-// because white bold text needs 4.5:1 and #16A34A only reaches 3.3.
 const PRIMARY_BUTTON =
   'w-full bg-[#0B7A37] hover:bg-[#08652C] text-white text-[16.5px] font-bold py-4 rounded-xl ' +
   'shadow-[0_8px_18px_-8px_rgba(11,122,55,0.75)] active:translate-y-[1px] transition-all ' +

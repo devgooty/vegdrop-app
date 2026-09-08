@@ -88,11 +88,17 @@ never sent one.
   receives no broadcasts at all until someone opens it by hand, and Xiaomi, Oppo,
   Vivo and Realme builds force-stop background apps aggressively.
 - **Allow autostart** where the OEM has that setting, so a reboot re-arms it.
-- **Turn on the app's heartbeat** and point it at a dead-man's-switch monitor
-  (healthchecks.io, Uptime Kuma). That converts silent death into an alert, and
-  is the only thing here that actually tells you the relay is down.
+- **POST a heartbeat** to `https://<your-host>/api/gateway/heartbeat` with header
+  `X-Gateway-Secret: <SMS_GATEWAY_SECRET>` on a short timer (e.g. every 1–2
+  minutes). VegDrop records that pulse and `/auth/reverse/start` reports
+  `channels.sms.relayHealthy` so the sign-in screen can warn when the relay looks
+  dead. Inbound SMS posts also refresh the pulse. You can still point an external
+  dead-man's-switch (healthchecks.io, Uptime Kuma) at the same URL.
 - Keep the SIM in credit. Inbound SMS is free, but an unpaid SIM gets
   deactivated.
+
+Optional: `SMS_GATEWAY_STALE_SECONDS` (default `300`) — heartbeats older than this
+mark the relay unhealthy.
 
 ## What this channel is worth
 

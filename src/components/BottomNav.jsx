@@ -63,44 +63,43 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
           hidden ? 'translate-y-[calc(100%+2rem)]' : 'translate-y-0'
         }`}
       >
-        {/* Home Tab */}
         <button
           onClick={() => setActiveTab('home')}
-          className={`flex flex-col items-center py-1.5 px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
+          className={`flex flex-col items-center py-1.5 px-1.5 sm:px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
             routeActive('home')
               ? 'text-[#1B4D3E] font-bold bg-[#1B4D3E]/10 shadow-[inset_0_2px_4px_rgba(27,77,62,0.1)]'
               : 'text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5'
           }`}
         >
           <Home className={`w-5 h-5 transition-transform duration-300 ${routeActive('home') ? 'scale-110' : ''}`} />
-          <span className="text-[11.5px] font-semibold mt-0.5">{t('nav.home')}</span>
+          <span className="text-[10.5px] sm:text-[11.5px] font-semibold mt-0.5 whitespace-nowrap">{t('nav.home')}</span>
         </button>
 
         {/* Prices Tab */}
         <button
           onClick={() => setActiveTab('prices')}
-          className={`flex flex-col items-center py-1.5 px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
+          className={`flex flex-col items-center py-1.5 px-1.5 sm:px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
             routeActive('prices')
               ? 'text-[#1B4D3E] font-bold bg-[#1B4D3E]/10 shadow-[inset_0_2px_4px_rgba(27,77,62,0.1)]'
               : 'text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5'
           }`}
         >
           <TrendingUp className={`w-5 h-5 transition-transform duration-300 ${routeActive('prices') ? 'scale-110' : ''}`} />
-          <span className="text-[11.5px] font-semibold mt-0.5">{t('nav.prices')}</span>
+          <span className="text-[10.5px] sm:text-[11.5px] font-semibold mt-0.5 whitespace-nowrap">{t('nav.prices')}</span>
         </button>
 
         {/* Cook Tab - Only for customers or guests */}
         {(!userRole || userRole === 'customer') && (
           <button
             onClick={() => setActiveTab('assistant')}
-            className={`flex flex-col items-center py-1.5 px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
+            className={`flex flex-col items-center py-1.5 px-1.5 sm:px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
               routeActive('assistant')
                 ? 'text-[#1B4D3E] font-bold bg-[#1B4D3E]/10 shadow-[inset_0_2px_4px_rgba(27,77,62,0.1)]'
                 : 'text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5'
             }`}
           >
             <ChefHat className={`w-5 h-5 transition-transform duration-300 ${routeActive('assistant') ? 'scale-110' : ''}`} />
-            <span className="text-[11.5px] font-semibold mt-0.5">{t('nav.cook')}</span>
+            <span className="text-[10.5px] sm:text-[11.5px] font-semibold mt-0.5 whitespace-nowrap">{t('nav.cook')}</span>
           </button>
         )}
 
@@ -108,7 +107,7 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
         <button
           id="bottom-cart-button"
           onClick={onOpenCart}
-          className={`flex flex-col items-center py-1.5 px-2.5 rounded-full relative transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
+          className={`flex flex-col items-center py-1.5 px-1.5 sm:px-2.5 rounded-full relative transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
             cartOpen || cartBump
               ? 'text-[#1B4D3E] font-bold bg-[#1B4D3E]/10 shadow-[inset_0_2px_4px_rgba(27,77,62,0.1)]'
               : 'text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5'
@@ -126,35 +125,35 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
               </span>
             )}
           </div>
-          <span className="text-[11.5px] font-semibold mt-0.5">{t('nav.cart')}</span>
+          <span className="text-[10.5px] sm:text-[11.5px] font-semibold mt-0.5 whitespace-nowrap">{t('nav.cart')}</span>
         </button>
 
         {/* Orders Tab - Only for customers or guests */}
         {(!userRole || userRole === 'customer') && (
           <button
             onClick={() => setActiveTab('orders')}
-            className={`flex flex-col items-center py-1.5 px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
+            className={`flex flex-col items-center py-1.5 px-1.5 sm:px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
               routeActive('orders')
                 ? 'text-[#1B4D3E] font-bold bg-[#1B4D3E]/10 shadow-[inset_0_2px_4px_rgba(27,77,62,0.1)]'
                 : 'text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5'
             }`}
           >
             <Package className={`w-5 h-5 transition-transform duration-300 ${routeActive('orders') ? 'scale-110' : ''}`} />
-            <span className="text-[11.5px] font-semibold mt-0.5">{t('nav.orders')}</span>
+            <span className="text-[10.5px] sm:text-[11.5px] font-semibold mt-0.5 whitespace-nowrap">{t('nav.orders')}</span>
           </button>
         )}
 
         {/* Account Tab */}
         <button
           onClick={() => setActiveTab('account')}
-          className={`flex flex-col items-center py-1.5 px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
+          className={`flex flex-col items-center py-1.5 px-1.5 sm:px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
             routeActive('account')
               ? 'text-[#1B4D3E] font-bold bg-[#1B4D3E]/10 shadow-[inset_0_2px_4px_rgba(27,77,62,0.1)]'
               : 'text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5'
           }`}
         >
           <UserCheck className={`w-5 h-5 transition-transform duration-300 ${routeActive('account') ? 'scale-110' : ''}`} />
-          <span className="text-[11.5px] font-semibold mt-0.5">{t('nav.account')}</span>
+          <span className="text-[10.5px] sm:text-[11.5px] font-semibold mt-0.5 whitespace-nowrap">{t('nav.account')}</span>
         </button>
       </div>
     </nav>

@@ -6,6 +6,7 @@ const config = require('../config/env');
 const { validate, z, fields } = require('../middleware/validate');
 const { smsGatewayLimiter } = require('../middleware/rateLimit');
 const reverseOtp = require('../services/reverseOtp');
+const smsGatewayHealth = require('../services/smsGatewayHealth');
 
 const router = express.Router();
 
@@ -30,12 +31,6 @@ const router = express.Router();
  * channel — rather than being left to assume the two are equivalent.
  */
 
-/**
- * Constant-time comparison of the shared secret.
- *
- * Length is checked first because `timingSafeEqual` throws on a mismatch, and
- * comparing lengths leaks only the length — which an attacker supplied anyway.
- */
 function secretIsValid(req) {
   const configured = config.reverseOtp.sms.gatewaySecret;
   if (!configured) return false;
@@ -49,6 +44,38 @@ function secretIsValid(req) {
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
+function refuseUnlessConfigured(res) {
+  if (config.reverseOtp.sms.configured) return false;
+  res.status(503).json({
+    error: { code: 'GATEWAY_NOT_CONFIGURED', message: 'SMS gateway is not configured.' },
+  });
+  return true;
+}
+
+function refuseUnlessSecret(req, res) {
+  if (secretIsValid(req)) return false;
+  console.warn('[sms-gateway] rejected: bad or missing shared secret.');
+  res.sendStatus(403);
+  return true;
+}
+
+/**
+ * Dead-man's switch for the forwarder.
+ *
+ * Point the Android app's periodic heartbeat here. /auth/reverse/start then
+ * knows whether SMS is likely to arrive, instead of leaving the user on
+ * "Waiting for your message…" while the phone has been force-stopped for hours.
+ */
+router.post('/heartbeat', smsGatewayLimiter, async (req, res) => {
+  if (refuseUnlessConfigured(res)) return;
+  if (refuseUnlessSecret(req, res)) return;
+
+  const beat = await smsGatewayHealth.recordHeartbeat();
+  return res.status(204).end();
+  // beat kept for clarity if we later return lastSeenAt; 204 has no body.
+  void beat;
+});
+
 router.post(
   '/reverse-otp-sms',
   smsGatewayLimiter,
@@ -61,19 +88,8 @@ router.post(
       .strict(),
   }),
   async (req, res) => {
-    if (!config.reverseOtp.sms.configured) {
-      // Fail closed. An unconfigured relay must never be treated as an allowed
-      // one — that would let anybody who found this URL assert that any number
-      // sent us anything.
-      return res.status(503).json({
-        error: { code: 'GATEWAY_NOT_CONFIGURED', message: 'SMS gateway is not configured.' },
-      });
-    }
-
-    if (!secretIsValid(req)) {
-      console.warn('[sms-gateway] rejected: bad or missing shared secret.');
-      return res.sendStatus(403);
-    }
+    if (refuseUnlessConfigured(res)) return;
+    if (refuseUnlessSecret(req, res)) return;
 
     const { from, text } = req.valid.body;
 
@@ -89,6 +105,9 @@ router.post(
      * contains a live code.
      */
     try {
+      // A successful forward also counts as liveness — some forwarders only
+      // POST on inbound SMS and have no separate heartbeat timer.
+      await smsGatewayHealth.recordHeartbeat();
       await reverseOtp.matchInbound({ from, text, channel: 'sms' });
     } catch (err) {
       console.error('[sms-gateway] failed to process inbound message', { message: err?.message });

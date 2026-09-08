@@ -2117,7 +2117,12 @@ export default function App() {
       className={`max-w-md mx-auto bg-gray-50 flex flex-col relative shadow-xl border-x border-gray-200/60 ${
         searchScreenOpen
           ? 'h-dvh overflow-hidden justify-start'
-          : 'min-h-screen justify-between pb-[calc(4rem+env(safe-area-inset-bottom,0px))]'
+          : activeTab === 'assistant'
+            ? /* Lock the viewport like search, and reserve room for the floating
+                 pill (taller than the old 4rem bar) so the chat composer is not
+                 trapped under it. */
+              'h-dvh overflow-hidden justify-start pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]'
+            : 'min-h-screen justify-between pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]'
       }`}
       style={{ '--vd-hero-accent': heroAccent.header }}
     >
@@ -2212,7 +2217,11 @@ export default function App() {
           )}
 
           {/* MAIN CONTENT AREA */}
-          <main className={`flex-1 relative ${searchScreenOpen ? 'min-h-0 overflow-hidden' : ''}`}>
+          <main
+            className={`flex-1 relative ${
+              searchScreenOpen || activeTab === 'assistant' ? 'min-h-0 overflow-hidden' : ''
+            }`}
+          >
 
             {/*
               The moment between tapping the search box and searching anything.
@@ -2272,7 +2281,10 @@ export default function App() {
               </div>
             )}
 
-            <PageTransition transitionKey={activeTab}>
+            <PageTransition
+              transitionKey={activeTab}
+              className={activeTab === 'assistant' ? 'h-full min-h-0 flex flex-col' : ''}
+            >
               {activeTab === 'home' ? (
                 isAppLoading ? (
                   <HomeSkeleton />

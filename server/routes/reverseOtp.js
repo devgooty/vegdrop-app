@@ -10,6 +10,7 @@ const { requireAuth } = require('../middleware/auth');
 const { reverseOtpStartLimiter, reverseOtpStatusLimiter } = require('../middleware/rateLimit');
 const reverseOtp = require('../services/reverseOtp');
 const tokens = require('../services/tokens');
+const smsGatewayHealth = require('../services/smsGatewayHealth');
 const {
   placeholderName,
   APP_ROLE_SCOPE,
@@ -71,7 +72,7 @@ function messageFor(code) {
  * opens a chat with nobody would produce a message that is never received and a
  * screen that waits forever — worse than not offering the option.
  */
-function buildChannels(code) {
+async function buildChannels(code) {
   const text = messageFor(code);
   const encoded = encodeURIComponent(text);
   const channels = { whatsapp: null, sms: null };
@@ -88,6 +89,7 @@ function buildChannels(code) {
 
   if (config.reverseOtp.sms.configured) {
     const to = config.reverseOtp.sms.inboxNumber;
+    const relay = await smsGatewayHealth.getRelayHealth();
     channels.sms = {
       to,
       /**
@@ -108,6 +110,12 @@ function buildChannels(code) {
        * for someone to discover.
        */
       assurance: 'low',
+      /**
+       * `true` / `false` when we have seen a heartbeat (or inbound SMS).
+       * `null` when nothing has ever checked in — do not treat as down; the
+       * operator may not have pointed the forwarder at /gateway/heartbeat yet.
+       */
+      relayHealthy: relay.healthy,
     };
   }
 
@@ -182,7 +190,7 @@ router.post(
       token: challenge.token,
       code: challenge.code,
       expiresAt: challenge.expiresAt,
-      channels: buildChannels(challenge.code),
+      channels: await buildChannels(challenge.code),
     });
   }
 );
@@ -224,7 +232,7 @@ router.post(
       token: challenge.token,
       code: challenge.code,
       expiresAt: challenge.expiresAt,
-      channels: buildChannels(challenge.code),
+      channels: await buildChannels(challenge.code),
     });
   }
 );
@@ -236,9 +244,23 @@ router.post(
 router.get(
   '/status',
   reverseOtpStatusLimiter,
-  validate({ query: z.object({ token: fields.nonEmptyString(80) }).strict() }),
+  validate({
+    query: z
+      .object({
+        // Deprecated: tokens in query strings land in access logs and Referer.
+        // Prefer X-Reverse-Otp-Token. Still accepted so older clients do not die
+        // mid-rollout.
+        token: fields.nonEmptyString(80).optional(),
+      })
+      .strict(),
+  }),
   async (req, res) => {
-    const status = await reverseOtp.getStatus(req.valid.query.token);
+    const headerToken = String(req.get('x-reverse-otp-token') || '').trim();
+    const token = headerToken || req.valid.query.token;
+    if (!token) {
+      throw new ApiError(400, 'Missing verification token.', 'VALIDATION_ERROR');
+    }
+    const status = await reverseOtp.getStatus(token);
     return res.json(status);
   }
 );
@@ -251,27 +273,33 @@ router.post(
   '/complete',
   validate({ body: z.object({ token: fields.nonEmptyString(80) }).strict() }),
   async (req, res) => {
-    const challenge = await reverseOtp.consumeVerified(req.valid.body.token, {
-      purpose: COMPLETABLE_PURPOSES,
-    });
+    const token = req.valid.body.token;
 
     /**
-     * Covers every way this can legitimately fail — no such token, not yet
-     * verified, already spent, expired, or raised for a flow that finishes
-     * elsewhere. One answer for all of them: the client polls status for the
-     * real state, and a caller who does not hold the token learns nothing.
+     * Inspect before spending — same reasoning as /complete/phone and
+     * registration: validating after consume burns a good token on every
+     * refusal (inactive account, missing user row).
      */
-    if (!challenge) {
+    const pending = await reverseOtp.findRedeemable(token, { purpose: COMPLETABLE_PURPOSES });
+    if (!pending) {
       throw new ApiError(400, 'This verification is no longer valid.', 'REVERSE_OTP_INVALID');
     }
 
     // Returning account: the challenge was bound to it when it was issued.
-    if (challenge.user) {
-      const user = await User.findById(challenge.user);
+    if (pending.user) {
+      const user = await User.findById(pending.user);
       if (!user) throw new ApiError(401, 'Unable to complete sign-in.', 'INVALID_CREDENTIALS');
 
       if (user.status !== 'active') {
         throw new ApiError(403, 'This account is not active. Contact support.', 'ACCOUNT_INACTIVE');
+      }
+
+      const challenge = await reverseOtp.consumeVerified(token, {
+        purpose: COMPLETABLE_PURPOSES,
+        user: pending.user,
+      });
+      if (!challenge) {
+        throw new ApiError(400, 'This verification is no longer valid.', 'REVERSE_OTP_INVALID');
       }
 
       user.lastLoginAt = new Date();
@@ -290,15 +318,14 @@ router.post(
      * their own registration routes, which hardcode the role; see the long
      * comment at /otp/start.
      */
-    if (!appMayCreateAccount(challenge.app)) {
+    if (!appMayCreateAccount(pending.app)) {
       throw new ApiError(401, 'Unable to complete sign-in.', 'INVALID_CREDENTIALS');
     }
 
-    // First sign-in for this number. The phone comes from the stored challenge,
-    // never from the request, so holding a token cannot point it at a number its
-    // holder does not control.
-    const phone = challenge.phone;
-    const { name } = challenge.payload || {};
+    // First sign-in for this number. Create the account BEFORE consuming the
+    // token so a non-duplicate create failure does not burn the proof.
+    const phone = pending.phone;
+    const { name } = pending.payload || {};
 
     let user;
     try {
@@ -317,6 +344,15 @@ router.post(
       if (err?.code !== 11000) throw err;
       user = await User.findOne({ phone, role: SELF_SERVICE_ROLES[0] });
       if (!user) throw err;
+    }
+
+    const challenge = await reverseOtp.consumeVerified(token, {
+      purpose: COMPLETABLE_PURPOSES,
+      phone,
+    });
+    if (!challenge) {
+      // Account exists; token raced. Still sign them in — the number was proved.
+      // A second concurrent completer may have consumed first.
     }
 
     return res.status(201).json(await establishSession(user, req, res));

@@ -47,9 +47,16 @@ export async function startReverseOtpPhoneChange({ phone }) {
  * `bad_code` (a message arrived but carried no code we know), `expired`.
  *
  * A plain read — polling it never signs anyone in.
+ *
+ * The token travels in `X-Reverse-Otp-Token`, not the query string: access logs
+ * and Referer headers otherwise keep a live binder around after the tab closes.
  */
 export async function getReverseOtpStatus(token, { signal } = {}) {
-  return api.get(`/auth/reverse/status?token=${encodeURIComponent(token)}`, { auth: false, signal });
+  return api.get('/auth/reverse/status', {
+    auth: false,
+    signal,
+    headers: { 'X-Reverse-Otp-Token': token },
+  });
 }
 
 /**

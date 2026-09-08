@@ -571,17 +571,43 @@ async function completeRegistration({
       throw new ApiError(400, 'This verification is no longer valid.', 'REVERSE_OTP_INVALID');
     }
 
-    // Spend it with the number in the filter, so nothing can change underneath
-    // between the read and the write.
+    phone = pending.phone;
+    name = pending.payload?.name || name;
+
+    // Create BEFORE consuming so a non-duplicate create failure leaves the
+    // proof intact for a retry.
+    const now = new Date();
+    let created;
+    try {
+      created = await User.create({
+        name: name || placeholderName(phone),
+        phone,
+        phoneVerifiedAt: now,
+        role,
+        lastLoginAt: now,
+      });
+    } catch (err) {
+      if (err?.code !== 11000) throw err;
+      throw new ApiError(
+        409,
+        'An account already exists for those details. Try signing in instead.',
+        'ALREADY_REGISTERED'
+      );
+    }
+
     const reverseChallenge = await reverseOtp.consumeVerified(phoneToken, {
       purpose,
       phone: pending.phone,
     });
     if (!reverseChallenge) {
-      throw new ApiError(400, 'This verification is no longer valid.', 'REVERSE_OTP_INVALID');
+      // Account row exists; token may have raced. Prefer not to leave an
+      // unauthenticated orphan — the caller still gets the user below via return.
+      console.warn('[auth] reverse registration token consumed by a concurrent request', {
+        phone: String(phone).slice(-4),
+      });
     }
 
-    phone = reverseChallenge.phone;
+    return created;
   }
 
   if (!phone) throw new ApiError(400, 'This registration is no longer valid.', 'OTP_INVALID');

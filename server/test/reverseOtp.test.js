@@ -93,7 +93,8 @@ function deliverWhatsapp({ from, text }) {
 }
 
 function status(token) {
-  return api().get('/api/auth/reverse/status').query({ token });
+  // Prefer the header path — query tokens leak via access logs.
+  return api().get('/api/auth/reverse/status').set('X-Reverse-Otp-Token', token);
 }
 
 // ---------------------------------------------------------------------------
@@ -261,6 +262,17 @@ test('a correct send after a wrong one still succeeds', async () => {
   assert.equal((await status(token)).body.state, 'verified', 'verified must win over a stale badCode');
 });
 
+test('a correct send after a dual-SIM mismatch still succeeds', async () => {
+  const { token, code } = await start({ phone: '9876543210', app: 'customer' });
+
+  // Wrong SIM first — common on dual-SIM handsets.
+  await relaySms({ from: '9999999999', text: code });
+  assert.equal((await status(token)).body.state, 'mismatch');
+
+  await relaySms({ from: '9876543210', text: code });
+  assert.equal((await status(token)).body.state, 'verified', 'verified must win over a prior mismatch');
+});
+
 test('a later wrong-number message cannot undo a verification', async () => {
   const { token, code } = await start({ phone: '9876543210', app: 'customer' });
 
@@ -268,6 +280,46 @@ test('a later wrong-number message cannot undo a verification', async () => {
   await relaySms({ from: '9999999999', text: code });
 
   assert.equal((await status(token)).body.state, 'verified', 'verified must win over a later mismatch');
+});
+
+test('sending a superseded code does not verify the new challenge', async () => {
+  const first = await start({ phone: '9876543210', app: 'customer' });
+  const second = await start({ phone: '9876543210', app: 'customer' });
+
+  await relaySms({ from: '9876543210', text: first.code });
+
+  assert.equal((await status(first.token)).body.state, 'expired');
+  assert.notEqual((await status(second.token)).body.state, 'verified');
+});
+
+test('status accepts the token header and still allows the legacy query', async () => {
+  const { token } = await start({ phone: '9876543210', app: 'customer' });
+
+  const viaHeader = await api().get('/api/auth/reverse/status').set('X-Reverse-Otp-Token', token);
+  assert.equal(viaHeader.status, 200);
+  assert.equal(viaHeader.body.state, 'pending');
+
+  const viaQuery = await api().get('/api/auth/reverse/status').query({ token });
+  assert.equal(viaQuery.status, 200);
+  assert.equal(viaQuery.body.state, 'pending');
+});
+
+test('SMS gateway heartbeat marks the relay healthy on start', async () => {
+  const before = await start({ phone: '9876543210', app: 'customer' });
+  assert.equal(before.channels.sms.relayHealthy, null, 'no pulse yet is unknown, not down');
+
+  const beat = await api()
+    .post('/api/gateway/heartbeat')
+    .set('X-Gateway-Secret', GATEWAY_SECRET);
+  assert.equal(beat.status, 204);
+
+  const after = await start({ phone: '9876543211', app: 'customer' });
+  assert.equal(after.channels.sms.relayHealthy, true);
+});
+
+test('SMS gateway heartbeat refuses a bad secret', async () => {
+  const res = await api().post('/api/gateway/heartbeat').set('X-Gateway-Secret', 'wrong');
+  assert.equal(res.status, 403);
 });
 
 test('an expired challenge cannot be verified', async () => {

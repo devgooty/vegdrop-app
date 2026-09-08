@@ -153,9 +153,9 @@ export function refreshSession() {
  * @throws {ApiRequestError} when the server returns a non-2xx response
  * @throws {NetworkError}    when the request never reached the server
  */
-export async function apiFetch(path, { method = 'GET', body, auth = true, signal } = {}) {
+export async function apiFetch(path, { method = 'GET', body, auth = true, signal, headers: extraHeaders } = {}) {
   const send = async () => {
-    const headers = { Accept: 'application/json' };
+    const headers = { Accept: 'application/json', ...(extraHeaders || {}) };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`;
 

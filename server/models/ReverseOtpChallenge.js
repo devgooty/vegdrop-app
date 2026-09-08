@@ -36,9 +36,9 @@ const mongoose = require('mongoose');
 const reverseOtpChallengeSchema = new mongoose.Schema(
   {
     /**
-     * The polling handle, handed to the client. Opaque and unguessable so it can
-     * be passed in a query string: it reveals nothing about the phone number it
-     * stands for, which a phone-keyed status endpoint would.
+     * The polling handle, handed to the client. Opaque and unguessable. Prefer
+     * the `X-Reverse-Otp-Token` header over a query string so access logs and
+     * Referer headers do not retain a live binder.
      */
     token: { type: String, required: true, unique: true, index: true },
 

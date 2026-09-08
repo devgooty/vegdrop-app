@@ -117,6 +117,7 @@ const whatsappInboundConfigured = Boolean(whatsappInboxNumber && optional('WHATS
 const smsGatewayInboxNumber = optional('SMS_GATEWAY_INBOX_NUMBER', '').replace(/\D/g, '');
 const smsGatewaySecret = optional('SMS_GATEWAY_SECRET', '');
 const smsGatewayConfigured = Boolean(smsGatewayInboxNumber && smsGatewaySecret);
+const smsGatewayStaleSeconds = int('SMS_GATEWAY_STALE_SECONDS', 5 * 60);
 
 /**
  * SMTP, for copying a login code to a verified email address.
@@ -498,6 +499,8 @@ const config = Object.freeze({
       configured: smsGatewayConfigured,
       inboxNumber: smsGatewayInboxNumber,
       gatewaySecret: smsGatewaySecret,
+      /** Heartbeats older than this mark the SMS relay unhealthy on /start. */
+      staleSeconds: smsGatewayStaleSeconds,
     }),
   }),
 

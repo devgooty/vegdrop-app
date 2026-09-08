@@ -150,7 +150,10 @@ const reverseOtpStatusLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 300,
   keyGenerator: (req) => {
-    const token = typeof req.query?.token === 'string' ? req.query.token.slice(0, 80) : null;
+    const header = typeof req.get?.('x-reverse-otp-token') === 'string' ? req.get('x-reverse-otp-token') : '';
+    const fromHeader = header.trim().slice(0, 80);
+    const fromQuery = typeof req.query?.token === 'string' ? req.query.token.slice(0, 80) : '';
+    const token = fromHeader || fromQuery;
     return token ? `rotstat:${token}` : `rotstat:${ipKeyGenerator(req.ip)}`;
   },
   handler: jsonLimitHandler('Checking too often. Please wait a moment.', 'RATE_LIMITED'),

@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
  * Smooth fade/slide transition wrapper for tab/view changes.
  * Wraps any content and animates it in when the `transitionKey` changes.
  */
-export default function PageTransition({ children, transitionKey }) {
+export default function PageTransition({ children, transitionKey, className = '' }) {
   const [displayKey, setDisplayKey] = useState(transitionKey);
   const [phase, setPhase] = useState('in'); // 'in' | 'out'
 
@@ -25,7 +25,7 @@ export default function PageTransition({ children, transitionKey }) {
         phase === 'out'
           ? 'opacity-0 translate-y-2 scale-[0.99]'
           : 'opacity-100 translate-y-0 scale-100'
-      }`}
+      } ${className}`}
     >
       {children}
     </div>
