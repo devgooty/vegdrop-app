@@ -351,12 +351,12 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
   } else if (step === STEP.REGISTER_CODES) {
     if (signUp.codesSubKey) sub = t(signUp.codesSubKey);
   }
-  // Reverse OTP is the only path — always use the "send us a code" copy.
+  // Reverse OTP — short verify framing; the panel owns the rest.
   if (step === STEP.LOGIN_CODE) {
-    title = t('login.sendUsCode');
-    sub = t('login.sendUsCodeSub');
+    title = t('login.enterCode');
+    sub = t('login.enterCodeSub');
   } else if (step === STEP.REGISTER_CODES) {
-    title = t('login.sendUsCode');
+    title = t('login.enterCode');
     sub = t('login.sendUsCodeSubRegister');
   }
 

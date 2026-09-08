@@ -1129,16 +1129,16 @@
   display: flex;
   justify-content: space-between;
   position: relative;
-  margin-bottom: 1rem;
+  margin: 0 0 1.25rem;
 }
 .vd-vsteps::before {
   content: '';
   position: absolute;
   top: 13px;
-  left: 12%;
-  right: 12%;
+  left: 10%;
+  right: 10%;
   height: 2px;
-  background: #DCE9E1;
+  background: #E4EEE8;
 }
 .vd-vsteps .vd-vs {
   position: relative;
@@ -1149,19 +1149,19 @@
 .vd-vsteps .vd-vs-b {
   width: 26px;
   height: 26px;
-  margin: 0 auto 6px;
+  margin: 0 auto 5px;
   border-radius: 999px;
-  border: 2px solid #DCE9E1;
+  border: 2px solid #E4EEE8;
   background: #fff;
-  color: #5B6B62;
-  font-size: 12px;
+  color: #8A9A90;
+  font-size: 11px;
   font-weight: 700;
   line-height: 22px;
 }
 .vd-vsteps .vd-vs-l {
-  font-size: 9.5px;
-  line-height: 1.25;
-  color: #5B6B62;
+  font-size: 10px;
+  line-height: 1.2;
+  color: #8A9A90;
 }
 .vd-vsteps .vd-vs-done .vd-vs-b {
   background: #16A34A;
@@ -1172,35 +1172,245 @@
   background: #0B7A37;
   border-color: #0B7A37;
   color: #fff;
-  box-shadow: 0 0 0 4px rgba(11, 122, 55, 0.14);
+  box-shadow: 0 0 0 3px rgba(11, 122, 55, 0.12);
 }
 .vd-vsteps .vd-vs-now .vd-vs-l {
   color: #0F1F17;
   font-weight: 700;
 }
 
-/* TTL drain under the QR — settles empty; reduced motion keeps full bar. */
+/* Clean verify panel layout */
+.vd-verify {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.85rem;
+}
+.vd-verify-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem 1rem;
+  color: #5B6B62;
+  font-size: 14.5px;
+}
+.vd-verify-qr {
+  width: min(100%, 200px);
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid #E4EEE8;
+  background: #fff;
+}
+.vd-verify-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.vd-verify-code {
+  width: 100%;
+  padding: 1.1rem 1rem;
+  border-radius: 14px;
+  background: #F4F7F5;
+}
+.vd-verify-code .si-num {
+  display: block;
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: #0B7A37;
+}
+.vd-verify-hint {
+  margin: 0;
+  max-width: 22rem;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: #5B6B62;
+}
+.vd-verify-expired-msg {
+  font-size: 15px;
+  font-weight: 700;
+  color: #9B1C1C;
+}
+.vd-verify-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #8A9A90;
+}
+.vd-verify-actions,
+.vd-verify-stack {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.vd-verify-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.vd-verify-pin {
+  width: 9.5rem;
+  padding: 0.65rem 0.5rem;
+  border: 1.5px solid #DCE9E1;
+  border-radius: 12px;
+  background: #fff;
+  text-align: center;
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  color: #0F1F17;
+  outline: none;
+}
+.vd-verify-pin:focus {
+  border-color: #0B7A37;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18);
+}
+.vd-verify-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 140ms ease, border-color 140ms ease, transform 100ms ease;
+}
+.vd-verify-btn:active { transform: translateY(1px); }
+.vd-verify-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+.vd-verify-btn-primary {
+  border: 0;
+  background: #0B7A37;
+  color: #fff;
+}
+.vd-verify-btn-primary:hover { background: #08652C; }
+.vd-verify-btn-ghost {
+  border: 1px solid #DCE9E1;
+  background: #fff;
+  color: #0F1F17;
+  font-size: 13.5px;
+  padding: 0.7rem 0.9rem;
+  width: auto;
+  min-width: 9.5rem;
+  flex: 1 1 auto;
+}
+.vd-verify-btn-ghost:hover {
+  border-color: #0B7A37;
+  color: #0B7A37;
+}
+.vd-verify-stack .vd-verify-btn-ghost { width: 100%; }
+.vd-verify-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  margin-top: 0.35rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #EEF3F0;
+}
+.vd-verify-text-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0B7A37;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.vd-verify-soft-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #5B6B62;
+  cursor: pointer;
+}
+.vd-verify-soft-link:hover { color: #0B7A37; }
+.vd-verify-back {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #8A9A90;
+  cursor: pointer;
+}
+.vd-verify-back:hover { color: #0F1F17; }
+.vd-verify-wait,
+.vd-verify-ok {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 13px;
+  color: #5B6B62;
+}
+.vd-verify-ok {
+  font-weight: 700;
+  color: #0B7A37;
+}
+.vd-verify-error {
+  margin: 0;
+  width: 100%;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  background: rgba(220, 38, 38, 0.06);
+  color: #9B1C1C;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+/* Live TTL under the QR — width set in JS from remaining / total. */
+.vd-verify-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+}
+.vd-verify-timer-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0F1F17;
+  letter-spacing: 0.02em;
+}
 .vd-qr-drain {
-  height: 3px;
-  width: 150px;
-  margin: 14px auto 0;
+  height: 4px;
+  width: min(100%, 180px);
   overflow: hidden;
-  border-radius: 2px;
-  background: #DCE9E1;
+  border-radius: 999px;
+  background: #E4EEE8;
 }
 .vd-qr-drain > i {
   display: block;
   height: 100%;
-  width: 100%;
-  border-radius: 2px;
+  border-radius: 999px;
   background: #0B7A37;
-  animation: vd-qr-drain-fill 60s linear forwards;
-}
-@keyframes vd-qr-drain-fill {
-  to { width: 0%; }
+  transition: width 1s linear;
 }
 @media (prefers-reduced-motion: reduce) {
-  .vd-qr-drain > i { animation: none; }
+  .vd-qr-drain > i { transition: none; }
 }
 
 /* Step changes slide up rather than fade, so the flow reads as forward motion. */

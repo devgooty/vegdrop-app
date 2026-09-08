@@ -774,9 +774,9 @@ const STRINGS = {
     from the phone that holds their SIM — nothing is delivered to them.
   */
   'login.enterCodeSub': {
-    en: 'Send us the code below from your mobile to log in.',
-    hi: 'लॉगिन के लिए नीचे दिया कोड अपने मोबाइल से हमें भेजें।',
-    te: 'లాగిన్ కోసం కింది కోడ్‌ను మీ మొబైల్ నుండి మాకు పంపండి.',
+    en: 'Send a code from your mobile to finish.',
+    hi: 'पूरा करने के लिए अपने मोबाइल से कोड भेजें।',
+    te: 'పూర్తి చేయడానికి మీ మొబైల్ నుండి కోడ్ పంపండి.',
   },
   'login.createAccount': { en: 'Create account', hi: 'खाता बनाएँ', te: 'ఖాతా సృష్టించండి' },
   /*
