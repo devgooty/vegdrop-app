@@ -201,27 +201,55 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
    * `position: fixed` pinned to a negative `top` rather than `overflow: hidden`,
    * and the forced re-measure before restoring the offset, for the reasons
    * spelled out at length on the same effect in CartModal.
+   *
+   * `overscroll-behavior` is the other half, and locking without it is why the
+   * picker still bounced back to the home page on a phone after the portal
+   * landed. Pinning the body stops the document SCROLLING; it does not stop the
+   * browser's own over-scroll gesture. Nothing in this overlay is a scroll
+   * container except the two strips below, so a vertical drag anywhere else —
+   * the map's dead space, the address block, the gap beside the confirm button —
+   * finds no scrollable ancestor and is handed to the root scroller as
+   * over-scroll. At scroll offset zero on Android Chrome that IS pull-to-refresh:
+   * the page reloads, the app boots at its default screen, and the shopper is
+   * looking at the home page with the picker gone. It reads exactly like the
+   * collapse the portal fixed, which is what made it look already solved.
+   *
+   * Set on `documentElement`, not on this overlay: the property only governs
+   * elements that actually scroll, so putting it on a non-scrolling div does
+   * nothing at all. The root scroller is the one being over-scrolled, so it is
+   * the one that has to refuse.
+   *
+   * Nothing reproduces this on a desktop browser, and synthetic TouchEvents will
+   * not either — pull-to-refresh and rubber-band are native compositor gestures.
+   * Verify it on a real handset, not in device emulation.
    */
   useEffect(() => {
     const { body } = document;
+    const root = document.documentElement;
     const scrollY = window.scrollY;
     const previous = {
       position: body.style.position,
       top: body.style.top,
       width: body.style.width,
       overflow: body.style.overflow,
+      overscroll: body.style.overscrollBehavior,
+      rootOverscroll: root.style.overscrollBehavior,
     };
 
     body.style.position = 'fixed';
     body.style.top = `-${scrollY}px`;
     body.style.width = '100%';
     body.style.overflow = 'hidden';
+    body.style.overscrollBehavior = 'none';
+    root.style.overscrollBehavior = 'none';
 
     return () => {
       body.style.position = previous.position;
       body.style.top = previous.top;
       body.style.width = previous.width;
       body.style.overflow = previous.overflow;
+      body.style.overscrollBehavior = previous.overscroll;
+      root.style.overscrollBehavior = previous.rootOverscroll;
       void body.offsetHeight;
       window.scrollTo(0, scrollY);
     };
@@ -360,7 +388,11 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
         </div>
 
         {/* NEARBY MARKETS & SHOPS */}
-        <div className="flex-1 overflow-y-auto px-5 pb-3 min-h-0">
+        {/* `overscroll-contain`: reaching the end of this list must not hand
+            the rest of the gesture to the document behind, which is the
+            over-scroll that pull-to-refresh is triggered by. Same reason it is
+            on the strip below, and on the three other scrollers in the app. */}
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 pb-3 min-h-0">
           <div className="flex items-center gap-2 mb-2">
             <Store className="w-4 h-4 text-[#1B4D3E]" />
             <p className="text-[13.5px] font-extrabold text-gray-800 uppercase tracking-wider">{t('map.nearbyTitle')}</p>
@@ -388,7 +420,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
           )}
 
           {nearbyPlaces.length > 0 && (
-            <div className="flex gap-2.5 overflow-x-auto no-scrollbar pb-2">
+            <div className="flex gap-2.5 overflow-x-auto overscroll-contain no-scrollbar pb-2">
               {nearbyPlaces.map(place => (
                 <div key={place.id} className="flex-shrink-0 w-28 bg-[#F6F3EC] border border-[#E5DFD1] rounded-2xl p-2.5 flex flex-col gap-1">
                   <div className="text-lg leading-none">{place.type.split(' ')[0]}</div>
