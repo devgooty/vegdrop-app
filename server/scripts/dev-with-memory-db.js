@@ -237,18 +237,24 @@ async function main() {
   const server = app.listen(config.port, () => {
     console.info(`\n[dev] API listening on http://localhost:${config.port}`);
     console.info('[dev] Open the app at http://localhost:3000 (run `npm run dev` in another terminal)\n');
-    console.info('  Customer   →  http://localhost:3000/');
-    console.info('  Shopkeeper →  http://localhost:3000/#/shopkeeper');
-    console.info('  Delivery   →  http://localhost:3000/#/delivery\n');
+    console.info('  Customer     →  http://localhost:3000/');
+    console.info('  Shopkeeper   →  http://localhost:3000/#/shopkeeper');
+    console.info('  Delivery     →  http://localhost:3000/#/delivery');
+    console.info('  Market owner →  http://localhost:3000/#/market-owner\n');
     if (config.devLoginEnabled) {
       console.info('[dev] Skip the code entirely — open one of these in any browser:\n');
       for (const account of SEED_ACCOUNTS) {
-        // Each role app is its own entry in AppRouter. market_owner has none of
-        // its own — it signs in through the customer app, which renders its
-        // suite inline — so it lands on the root.
+        // Each role app is its own entry in AppRouter, so each deep link names
+        // the hash route that mounts it. `market_owner` used to be the
+        // exception — it had no app of its own and signed in through the
+        // customer app, which rendered its panels inline — and it is not any
+        // more: MarketOwnerApp is mounted at #/market-owner. Landing it on the
+        // root still worked, but only by way of that inline fallback, which is
+        // not the screen anyone is trying to open.
         const hash = account.role === 'shopkeeper' ? '/%23/shopkeeper'
           : account.role === 'delivery' ? '/%23/delivery'
           : account.role === 'developer' ? '/%23/developer'
+          : account.role === 'market_owner' ? '/%23/market-owner'
           : '';
         console.info(
           `  ${account.role.padEnd(13)} http://localhost:3000/api/auth/dev/login?phone=${account.phone}${hash ? `&next=${hash}` : ''}`

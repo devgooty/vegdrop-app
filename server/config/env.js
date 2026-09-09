@@ -735,6 +735,82 @@ const config = Object.freeze({
     retentionDays: int('MARKET_FRESH_PHOTO_RETENTION_DAYS', 7),
   }),
 
+  /**
+   * What counts as one trading day. See utils/marketDay.js for why this is an
+   * offset and not the server's own clock.
+   */
+  marketDay: Object.freeze({
+    /** +05:30, IST. India observes no daylight saving, so this is exact. */
+    timezoneOffsetMinutes: int('MARKET_DAY_TZ_OFFSET_MINUTES', 330),
+  }),
+
+  /**
+   * Limits on a walked market boundary. See services/geoFence.js.
+   *
+   * The area bounds are the load-bearing pair. Without a floor, an owner who
+   * taps "finish" after three steps gets a boundary the size of a table, and
+   * every shopkeeper is then refused for standing outside it. Without a
+   * ceiling, one node taken at the wrong end of the city silently stretches the
+   * fence over a whole district and the check stops meaning anything.
+   */
+  marketBoundary: Object.freeze({
+    /** A polygon needs three corners. Below that there is no enclosed area. */
+    minNodes: 3,
+
+    /**
+     * Enough to trace a large market kerb by kerb, and low enough that the
+     * O(n²) self-intersection scan stays trivial.
+     */
+    maxNodes: int('MARKET_BOUNDARY_MAX_NODES', 200),
+
+    /**
+     * A node taken with worse precision than this is refused at capture.
+     *
+     * Distinct from the presence ceiling below and deliberately tighter: this
+     * number is baked into the fence permanently, whereas a presence fix is
+     * judged once. A sloppy corner is wrong for every shopkeeper who ever
+     * applies.
+     */
+    maxNodeAccuracyMeters: int('MARKET_BOUNDARY_MAX_NODE_ACCURACY_M', 40),
+
+    /** ~10 m square. Smaller than any real market, larger than GPS jitter. */
+    minAreaSqMeters: int('MARKET_BOUNDARY_MIN_AREA_SQM', 100),
+
+    /** 2 km². Larger than India's biggest wholesale markets, by some margin. */
+    maxAreaSqMeters: int('MARKET_BOUNDARY_MAX_AREA_SQM', 2_000_000),
+  }),
+
+  /**
+   * How a claim of "I am standing in this market" is judged.
+   * See the honesty note in services/geoFence.js on what this can prove.
+   */
+  presence: Object.freeze({
+    /**
+     * Worst fix precision still accepted. A consumer phone under a market roof
+     * commonly reports 30-60 m; beyond 100 m the reading cannot distinguish a
+     * market from the street behind it, which is the whole question.
+     */
+    maxAccuracyMeters: int('PRESENCE_MAX_ACCURACY_M', 100),
+
+    /**
+     * How old a fix may be. Short on purpose: the client is required to take a
+     * live reading, and a generous window here would let a phone replay one
+     * taken at the market hours earlier.
+     */
+    maxFixAgeSeconds: int('PRESENCE_MAX_FIX_AGE_S', 120),
+
+    /** Slack outside the polygon, widened further by the fix's own error. */
+    boundaryToleranceMeters: int('PRESENCE_BOUNDARY_TOLERANCE_M', 75),
+
+    /**
+     * Used for markets with no walked boundary, which is every market created
+     * before this feature. Generous, because a single centre point says nothing
+     * about a market's extent and refusing those applicants would be punishing
+     * them for when their market was registered.
+     */
+    fallbackRadiusMeters: int('PRESENCE_FALLBACK_RADIUS_M', 300),
+  }),
+
   cookies: Object.freeze({
     refreshName: 'vb_rt',
     secure: isProduction,

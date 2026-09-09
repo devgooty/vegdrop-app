@@ -24,6 +24,11 @@ import {
   ChevronLeft,
   Save,
   MapPin,
+  Footprints,
+  CalendarCheck,
+  TrendingDown,
+  CircleCheck,
+  Sparkles,
 } from 'lucide-react';
 
 import {
@@ -33,16 +38,19 @@ import {
   fetchMarketStalls,
   fetchMarketPrices,
   saveMarketPrices,
+  confirmMarketPrices,
   approveStallRequest,
   rejectStallRequest,
   updateMarketStall,
   updateMarket,
   createMarket,
+  saveMarketBoundary,
   currentPosition,
 } from '../services/markets';
 import { fetchProducts } from '../services/products';
 import { formatPaise } from '../services/stalls';
 import { useToast } from './Toast';
+import BoundaryWalk from './BoundaryWalk';
 
 /**
  * The market owner's dashboard.
@@ -240,6 +248,21 @@ export default function MarketOwnerPanel({ onExit }) {
               contactPhone: updated.contactPhone || '',
               lat: updated.lat ?? m.lat,
               lng: updated.lng ?? m.lng,
+              /**
+               * Kept only when the response actually carried one.
+               *
+               * This merge is an allow-list, which is why the boundary has to
+               * be named here at all — without it, saving a boundary updated
+               * the server and the card went on showing the old outline,
+               * because nothing copied the new one across.
+               *
+               * `??` rather than a plain assignment because the two writers
+               * differ: the boundary PUT returns a boundary, and an ordinary
+               * settings PATCH may not. Overwriting unconditionally would blank
+               * a perfectly good fence every time somebody changed the market's
+               * phone number.
+               */
+              boundary: updated.boundary ?? m.boundary,
             }
           : m
       )
@@ -775,6 +798,8 @@ function RequestsTab({ marketId, requests, decided, onRefresh, refreshing, onRep
                   </span>
                 </div>
 
+                <PresenceEvidence presence={r.presence} />
+
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -879,6 +904,58 @@ function RequestsTab({ marketId, requests, decided, onRefresh, refreshing, onRep
  * blocked outright by some browsers — so the one irreversible action in this
  * panel was the least explained thing in it.
  */
+/**
+ * What the applicant's phone reported, shown beside their request.
+ *
+ * This is the whole reason the reading is collected. The server already refuses
+ * an application from outside a fenced market, so a row that reaches this queue
+ * has passed — but "passed" spans a range, and the owner is the one deciding
+ * whether to let a stranger into their market. Standing 2 m inside with a ±6 m
+ * fix and squeaking in 60 m outside with a ±90 m one are different facts, and
+ * flattening both to a green tick throws away the part worth reading.
+ *
+ * Silent when there is nothing to report rather than showing "not checked":
+ * most markets have no boundary yet, and a warning on every request in those
+ * markets would be noise the owner cannot act on.
+ */
+function PresenceEvidence({ presence }) {
+  if (!presence) return null;
+
+  const inside = presence.inside === true;
+  const accuracy = Math.round(presence.accuracyMeters);
+  const off = presence.metersOutside;
+
+  return (
+    <div
+      className={`rounded-lg px-2.5 py-1.5 border flex items-start gap-1.5 ${
+        inside ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'
+      }`}
+    >
+      <MapPin
+        className={`w-3.5 h-3.5 mt-px shrink-0 ${inside ? 'text-emerald-700' : 'text-amber-700'}`}
+      />
+      <span
+        className={`text-[11.5px] font-semibold leading-snug ${
+          inside ? 'text-emerald-800' : 'text-amber-900'
+        }`}
+      >
+        {inside ? (
+          <>
+            Applied from inside the market
+            {off !== null && off < 0 ? `, ${Math.abs(off)} m from the edge` : ''}
+          </>
+        ) : (
+          <>
+            Applied from about {off} m outside
+            {presence.basis === 'radius' ? ' the market area' : ' the boundary'}
+          </>
+        )}
+        <span className="font-normal opacity-70"> · phone reported ±{accuracy} m</span>
+      </span>
+    </div>
+  );
+}
+
 function ApproveDialog({ request, busy, onCancel, onSubmit }) {
   const proposed = request.proposedStallNumber === 'TBD' ? '' : request.proposedStallNumber || '';
   const [stallNumber, setStallNumber] = useState(proposed);
@@ -1253,13 +1330,40 @@ function RenumberDialog({ stall, busy, onCancel, onSubmit }) {
  * whole batch: saving per keystroke would write a price for every intermediate
  * number typed, and "9" is a real price on the way to "95".
  */
+/**
+ * The daily price round.
+ *
+ * A vegetable market reprices every morning, and the sheet is the market
+ * owner's first job of the day — so this screen is built around the DAY rather
+ * than around the list. What it has to answer, in order: how much of today is
+ * left, what has moved since yesterday, and how do I sign off the rest without
+ * retyping numbers that have not changed.
+ *
+ * THE TWO VERBS, AND WHY THERE ARE TWO
+ *
+ * Saving sets a new price. Confirming says yesterday's price still stands.
+ * They are different acts and they write different things — a confirm records
+ * the owner's attention (`confirmedAt`) and deliberately writes NO history,
+ * because a price that did not change must not appear on the customer's price
+ * chart as though it had. Collapsing them into one button would mean either
+ * fabricating history or having no way to clear a line that genuinely held.
+ * See models/MarketPrice.js.
+ *
+ * NOT POLLED, DELIBERATELY
+ *
+ * `POLLED_TABS` excludes this tab and must go on excluding it: a background
+ * refresh landing mid-edit would replace a half-typed sheet with the server's
+ * copy and discard the owner's morning.
+ */
 function PricesTab({ marketId, onReport, toast }) {
   const [rows, setRows] = useState([]);
   const [edits, setEdits] = useState({}); // productId -> { price?, isAvailable? }
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [query, setQuery] = useState('');
   const [adding, setAdding] = useState(false);
+  const [lens, setLens] = useState('todo');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1297,11 +1401,65 @@ function PricesTab({ marketId, onReport, toast }) {
     setEdits((prev) => ({ ...prev, [productId]: { ...prev[productId], ...change } }));
   }
 
+  /**
+   * Nudge a price by a whole rupee.
+   *
+   * Vegetable prices move in rupees, and the alternative on a phone is
+   * summoning a numeric keyboard, selecting the existing value and retyping it
+   * — four gestures to change ₹38 to ₹40.
+   *
+   * The new value is derived INSIDE the updater, from `prev`, rather than from
+   * `current(row)` in the handler body. Raising a price by ₹5 means tapping +
+   * five times in quick succession, and React batches those: every handler in
+   * one batch closes over the same `edits`, so each would compute 42 + 1 and
+   * five taps would land on 43. Reading `prev` makes each tap see the one
+   * before it and compound properly.
+   */
+  function nudge(row, delta) {
+    const productId = row.product?.id;
+
+    setEdits((prev) => {
+      const pending = prev[productId]?.price;
+      const from = Number.parseFloat(pending !== undefined ? pending : String(row.price));
+      const base = Number.isFinite(from) ? from : row.price;
+      const next = Math.max(0, Math.round((base + delta) * 100) / 100);
+      return { ...prev, [productId]: { ...prev[productId], price: String(next) } };
+    });
+  }
+
+  /**
+   * A line is "done today" if it was priced today OR confirmed today.
+   *
+   * An unsaved edit counts too. Without that the counter ticks down only on
+   * save, so an owner working through the sheet watches a number that does not
+   * move and cannot tell how far they have got.
+   */
+  const isDone = useCallback(
+    (row) => Boolean(row.changedToday || row.confirmedToday || edits[row.product?.id]),
+    [edits]
+  );
+
+  const todo = useMemo(() => rows.filter((r) => !isDone(r)), [rows, isDone]);
+
+  const moved = useMemo(
+    () =>
+      rows.filter(
+        (r) => r.previousPricePaise !== null && r.previousPricePaise !== r.pricePaise
+      ),
+    [rows]
+  );
+
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return rows;
-    return rows.filter((r) => (r.product?.name || '').toLowerCase().includes(needle));
-  }, [rows, query]);
+    let list = rows;
+
+    if (lens === 'todo') list = rows.filter((r) => !isDone(r));
+    else if (lens === 'moved') list = moved;
+    else if (lens === 'off') list = rows.filter((r) => !current(r).isAvailable);
+
+    if (!needle) return list;
+    return list.filter((r) => (r.product?.name || '').toLowerCase().includes(needle));
+  }, [rows, query, lens, isDone, moved, current]);
 
   /**
    * Memoised because the add dialog searches on it.
@@ -1347,6 +1505,32 @@ function PricesTab({ marketId, onReport, toast }) {
     }
   }
 
+  /**
+   * Sign off every line still outstanding, at the price it already carries.
+   *
+   * Sends only the outstanding ids, never the whole sheet: a line the owner has
+   * already dealt with this morning does not need re-confirming, and a line
+   * they are still thinking about — one with an unsaved edit — must not be
+   * signed off behind them. `todo` is exactly that set.
+   */
+  async function confirmRest() {
+    if (todo.length === 0) return;
+
+    setConfirming(true);
+    try {
+      const ids = todo.map((r) => r.product?.id).filter(Boolean);
+      await confirmMarketPrices(marketId, ids);
+      toast.success(
+        `${ids.length} line${ids.length === 1 ? '' : 's'} confirmed at yesterday's price.`
+      );
+      await load();
+    } catch (err) {
+      onReport(err, 'Could not confirm those prices.');
+    } finally {
+      setConfirming(false);
+    }
+  }
+
   if (loading) {
     return (
       <Card icon={<Tags className="w-5 h-5 text-amber-600" />} title="Price sheet">
@@ -1358,8 +1542,22 @@ function PricesTab({ marketId, onReport, toast }) {
     );
   }
 
+  const done = rows.length - todo.length;
+  const allDone = rows.length > 0 && todo.length === 0;
+
   return (
     <>
+      {rows.length > 0 && (
+        <DailyRound
+          done={done}
+          total={rows.length}
+          movedCount={moved.length}
+          allDone={allDone}
+          busy={confirming || saving}
+          onConfirmRest={confirmRest}
+        />
+      )}
+
       <Card
         icon={<Tags className="w-5 h-5 text-amber-600" />}
         title={`Price sheet${rows.length ? ` (${rows.length})` : ''}`}
@@ -1374,95 +1572,72 @@ function PricesTab({ marketId, onReport, toast }) {
           </button>
         }
       >
-        <p className="text-[12.5px] text-gray-500 -mt-1">
-          What this market charges today. Switching a line off hides it from customers without
-          losing the price you set.
-        </p>
-
-        {rows.length > 6 && (
-          <label className="relative block">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <span className="sr-only">Search the price sheet</span>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Find a line…"
-              className="w-full border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-            />
-          </label>
-        )}
-
         {rows.length === 0 ? (
           <Empty>
             This market sells nothing yet. Add a line and it appears in the customer's catalog at
             the price you set.
           </Empty>
-        ) : visible.length === 0 ? (
-          <Empty>Nothing on the sheet matches “{query}”.</Empty>
         ) : (
-          <div className="space-y-1.5">
-            {visible.map((row) => {
-              const productId = row.product?.id;
-              const state = current(row);
-              const changed = Boolean(edits[productId]);
+          <>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Lens id="todo" lens={lens} onPick={setLens} count={todo.length}>
+                To do
+              </Lens>
+              <Lens id="moved" lens={lens} onPick={setLens} count={moved.length}>
+                Moved
+              </Lens>
+              <Lens id="all" lens={lens} onPick={setLens} count={rows.length}>
+                All
+              </Lens>
+              <Lens
+                id="off"
+                lens={lens}
+                onPick={setLens}
+                count={rows.filter((r) => !current(r).isAvailable).length}
+              >
+                Off sale
+              </Lens>
+            </div>
 
-              return (
-                <div
-                  key={row.id}
-                  className={`flex items-center gap-2 p-2 rounded-xl border ${
-                    changed ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100'
-                  } ${state.isAvailable ? '' : 'opacity-60'}`}
-                >
-                  {row.product?.image && (
-                    <img
-                      src={row.product.image}
-                      alt=""
-                      className="w-9 h-9 rounded-lg object-cover shrink-0 bg-white"
-                      loading="lazy"
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <span className="font-bold text-xs text-gray-900 block truncate">
-                      {row.product?.name || 'Unknown product'}
-                    </span>
-                    <span className="text-[11.5px] text-gray-500">{row.product?.weight || ''}</span>
-                  </div>
+            {rows.length > 6 && (
+              <label className="relative block">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <span className="sr-only">Search the price sheet</span>
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Find a line…"
+                  className="w-full border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </label>
+            )}
 
-                  <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-xs font-bold text-gray-400">₹</span>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      step="0.01"
-                      value={state.price}
-                      onChange={(e) => edit(productId, { price: e.target.value })}
-                      aria-label={`Price for ${row.product?.name || 'this line'}`}
-                      className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm font-bold text-right focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    />
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => edit(productId, { isAvailable: !state.isAvailable })}
-                    aria-pressed={state.isAvailable}
-                    title={state.isAvailable ? 'Selling — tap to hide' : 'Hidden — tap to sell'}
-                    className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center border transition-colors cursor-pointer ${
-                      state.isAvailable
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                        : 'bg-white border-gray-300 text-gray-400'
-                    }`}
-                  >
-                    {state.isAvailable ? (
-                      <Check className="w-4 h-4" />
-                    ) : (
-                      <PackageX className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+            {visible.length === 0 ? (
+              <Empty>
+                {query
+                  ? `Nothing matches “${query}”.`
+                  : lens === 'todo'
+                    ? 'Every line has been dealt with today. Good morning’s work.'
+                    : lens === 'moved'
+                      ? 'No price has moved since yesterday.'
+                      : 'Nothing here.'}
+              </Empty>
+            ) : (
+              <div className="space-y-1.5">
+                {visible.map((row) => (
+                  <PriceRow
+                    key={row.id}
+                    row={row}
+                    state={current(row)}
+                    edited={Boolean(edits[row.product?.id])}
+                    done={isDone(row)}
+                    onEdit={edit}
+                    onNudge={nudge}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </Card>
 
@@ -1508,6 +1683,229 @@ function PricesTab({ marketId, onReport, toast }) {
       )}
     </>
   );
+}
+
+/**
+ * The header that makes this a daily job rather than a list.
+ *
+ * Leads with what is LEFT rather than what is done, because the outstanding
+ * count is the thing the owner is working towards zero. The bulk confirm sits
+ * here and nowhere else: it is the day's closing action, and putting it beside
+ * the rows would invite tapping it while still halfway down the sheet.
+ */
+function DailyRound({ done, total, movedCount, allDone, busy, onConfirmRest }) {
+  const left = total - done;
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+
+  return (
+    <section
+      className={`rounded-2xl p-4 border shadow-sm space-y-3 ${
+        allDone ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-amber-200'
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+            allDone ? 'bg-emerald-100' : 'bg-amber-100'
+          }`}
+        >
+          {allDone ? (
+            <CircleCheck className="w-5 h-5 text-emerald-700" />
+          ) : (
+            <CalendarCheck className="w-5 h-5 text-amber-700" />
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <h3 className="font-extrabold text-gray-900 text-[15px]">
+            {allDone ? "Today's prices are set" : "Today's price round"}
+          </h3>
+          <p className="text-[12.5px] text-gray-500 leading-snug">
+            {allDone
+              ? `All ${total} lines dealt with${movedCount > 0 ? `, ${movedCount} moved since yesterday` : ' — nothing moved since yesterday'}.`
+              : `${left} of ${total} line${total === 1 ? '' : 's'} still carry yesterday's price.`}
+          </p>
+        </div>
+      </div>
+
+      {/* A bar rather than a bare fraction: the owner glances at this between
+          crates, and a filled proportion is legible at arm's length in a way
+          "31/40" is not. */}
+      <div
+        className="h-2 rounded-full bg-gray-100 overflow-hidden"
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Lines dealt with today"
+      >
+        <div
+          className={`h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none ${
+            allDone ? 'bg-emerald-600' : 'bg-amber-600'
+          }`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      {!allDone && (
+        <button
+          type="button"
+          onClick={onConfirmRest}
+          disabled={busy}
+          className="w-full bg-amber-900 text-white text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 hover:bg-amber-800 disabled:opacity-50 cursor-pointer"
+        >
+          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+          The remaining {left} are unchanged today
+        </button>
+      )}
+    </section>
+  );
+}
+
+/** One filter chip. The count is the point — an empty lens says so before it is opened. */
+function Lens({ id, lens, onPick, count, children }) {
+  const active = lens === id;
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(id)}
+      aria-pressed={active}
+      className={`px-2.5 py-1.5 rounded-full text-[12px] font-bold border transition-colors cursor-pointer ${
+        active
+          ? 'bg-amber-900 text-white border-amber-900'
+          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+      }`}
+    >
+      {children}
+      <span className={active ? 'text-amber-200 ml-1' : 'text-gray-400 ml-1'}>{count}</span>
+    </button>
+  );
+}
+
+function PriceRow({ row, state, edited, done, onEdit, onNudge }) {
+  const productId = row.product?.id;
+  const delta = deltaFrom(row);
+
+  return (
+    <div
+      className={`flex items-center gap-2 p-2 rounded-xl border ${
+        edited
+          ? 'bg-amber-50 border-amber-200'
+          : done
+            ? 'bg-white border-gray-100'
+            : 'bg-amber-50/40 border-amber-100'
+      } ${state.isAvailable ? '' : 'opacity-60'}`}
+    >
+      {row.product?.image && (
+        <img
+          src={row.product.image}
+          alt=""
+          className="w-9 h-9 rounded-lg object-cover shrink-0 bg-white"
+          loading="lazy"
+        />
+      )}
+
+      <div className="min-w-0 flex-1">
+        <span className="font-bold text-xs text-gray-900 block truncate">
+          {row.product?.name || 'Unknown product'}
+        </span>
+        <span className="text-[11.5px] text-gray-500 flex items-center gap-1.5">
+          {row.product?.weight || ''}
+          {delta && (
+            <span
+              className={`font-bold inline-flex items-center gap-0.5 ${
+                delta.up ? 'text-red-600' : 'text-emerald-700'
+              }`}
+            >
+              {delta.up ? (
+                <TrendingUp className="w-3 h-3" />
+              ) : (
+                <TrendingDown className="w-3 h-3" />
+              )}
+              {delta.label}
+            </span>
+          )}
+          {row.previousPricePaise === null && (
+            <span className="text-amber-700 font-bold inline-flex items-center gap-0.5">
+              <Sparkles className="w-3 h-3" />
+              new
+            </span>
+          )}
+        </span>
+      </div>
+
+      {/* Whole-rupee nudges. Hidden below `sm` only in the sense that they stay
+          small — they are the primary gesture on a phone, not a desktop nicety,
+          so they are not hidden at all. */}
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={() => onNudge(row, -1)}
+          aria-label={`Reduce ${row.product?.name || 'this line'} by one rupee`}
+          className="w-7 h-8 rounded-lg border border-gray-300 text-gray-600 text-sm font-bold flex items-center justify-center hover:bg-gray-50 cursor-pointer"
+        >
+          −
+        </button>
+
+        <div className="flex items-center gap-0.5">
+          <span className="text-xs font-bold text-gray-400">₹</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            value={state.price}
+            onChange={(e) => onEdit(productId, { price: e.target.value })}
+            aria-label={`Price for ${row.product?.name || 'this line'}`}
+            className="w-16 border border-gray-300 rounded-lg px-1.5 py-1.5 text-sm font-bold text-right focus:outline-none focus:ring-2 focus:ring-amber-500"
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onNudge(row, 1)}
+          aria-label={`Raise ${row.product?.name || 'this line'} by one rupee`}
+          className="w-7 h-8 rounded-lg border border-gray-300 text-gray-600 text-sm font-bold flex items-center justify-center hover:bg-gray-50 cursor-pointer"
+        >
+          +
+        </button>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onEdit(productId, { isAvailable: !state.isAvailable })}
+        aria-pressed={state.isAvailable}
+        title={state.isAvailable ? 'Selling — tap to hide' : 'Hidden — tap to sell'}
+        className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center border transition-colors cursor-pointer ${
+          state.isAvailable
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+            : 'bg-white border-gray-300 text-gray-400'
+        }`}
+      >
+        {state.isAvailable ? <Check className="w-4 h-4" /> : <PackageX className="w-4 h-4" />}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * How far a line has moved since the close of yesterday.
+ *
+ * Returns null when there is nothing honest to say — no prior price (the line
+ * is new today) or no movement. A zero delta is deliberately NOT rendered: a
+ * row of "▲ 0%" against every unchanged line is noise that buries the handful
+ * that did move, which is the only reason this column exists.
+ */
+function deltaFrom(row) {
+  if (row.previousPricePaise === null || row.previousPricePaise === row.pricePaise) return null;
+
+  const diff = row.pricePaise - row.previousPricePaise;
+  const pct = row.previousPricePaise === 0 ? null : Math.round((diff / row.previousPricePaise) * 100);
+
+  return {
+    up: diff > 0,
+    label: `₹${Math.abs(diff / 100).toFixed(2).replace(/\.00$/, '')}${pct === null ? '' : ` (${Math.abs(pct)}%)`}`,
+  };
 }
 
 /**
@@ -1818,6 +2216,8 @@ function SettingsTab({ market, onSaved, onReport, toast }) {
         </form>
       </Card>
 
+      <BoundaryCard market={market} onSaved={onSaved} onReport={onReport} toast={toast} />
+
       {confirmOff && (
         <Dialog title="Take this market off the app?" onClose={() => setConfirmOff(false)}>
           <div className="space-y-3">
@@ -1864,6 +2264,169 @@ function SettingsTab({ market, onSaved, onReport, toast }) {
  * to end up in the Indian Ocean, which is typing latitude into the longitude
  * field. There is no manual coordinate entry here on purpose.
  */
+/**
+ * The market's fence, in Settings — walk it, see it, redraw it.
+ *
+ * Its own card rather than a field in the settings form, because it is the one
+ * setting on this screen that cannot be typed and does not save with the
+ * others: it is the output of physically walking the market, and it commits
+ * through its own endpoint the moment the walk is closed. Sitting it inside the
+ * form would put a Save button next to something already saved.
+ */
+function BoundaryCard({ market, onSaved, onReport, toast }) {
+  const [walking, setWalking] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const boundary = market.boundary || null;
+  const nodes = boundary?.nodes || [];
+
+  async function commit(walked) {
+    setWalking(false);
+    setSaving(true);
+    try {
+      const result = await saveMarketBoundary(market.id, walked);
+      // Merged into the market the dashboard already holds rather than
+      // refetching: the response carries the stored boundary, and a reload here
+      // would flash the whole settings screen for a change to one card.
+      onSaved({ ...market, boundary: result.boundary });
+      toast.success(
+        `Boundary saved — ${walked.length} corners, about ${formatArea(result.areaSqMeters)}.`
+      );
+    } catch (err) {
+      onReport(err, 'Could not save that boundary.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <Card icon={<Footprints className="w-5 h-5 text-amber-600" />} title="Market boundary">
+        <p className="text-[12.5px] text-gray-500 -mt-1 leading-relaxed">
+          The outline of your market, walked corner by corner. A shopkeeper has to be standing
+          inside it to apply for a stall here.
+        </p>
+
+        {boundary ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Pill tone="green">{boundary.nodeCount} corners</Pill>
+              <Pill tone="gray">{formatArea(boundary.areaSqMeters)}</Pill>
+              {boundary.capturedAt && (
+                <span className="text-[11.5px] text-gray-400">
+                  walked {timeAgo(boundary.capturedAt)}
+                </span>
+              )}
+            </div>
+
+            <MiniOutline nodes={nodes} />
+
+            <button
+              type="button"
+              onClick={() => setWalking(true)}
+              disabled={saving}
+              className="w-full bg-white border border-gray-300 text-gray-800 text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Footprints className="w-3.5 h-3.5" />}
+              Walk it again
+            </button>
+            <p className="text-[11.5px] text-gray-400 text-center">
+              Markets extend and stalls move. Re-walking replaces the old outline.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+              <p className="text-[12px] text-amber-900 leading-snug">
+                No boundary walked yet. Until there is one, a shopkeeper applying here is only
+                checked against a rough radius around your pin — which will accept someone standing
+                on the road outside.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setWalking(true)}
+              disabled={saving}
+              className="w-full bg-amber-900 text-white text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 hover:bg-amber-800 disabled:opacity-50 cursor-pointer"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Footprints className="w-3.5 h-3.5" />}
+              Walk the boundary
+            </button>
+          </div>
+        )}
+      </Card>
+
+      {walking && (
+        <BoundaryWalk
+          title={boundary ? 'Re-walk the boundary' : 'Walk your market'}
+          /* No initialNodes: a stored boundary comes back without the per-node
+             accuracy the server demands on write, so its corners cannot be
+             resumed — see the note in BoundaryWalk. The shape being replaced is
+             on the card behind this dialog. */
+          onCancel={() => setWalking(false)}
+          onDone={commit}
+        />
+      )}
+    </>
+  );
+}
+
+/** A read-only thumbnail of a stored boundary. Same projection as the walk screen. */
+function MiniOutline({ nodes }) {
+  const W = 280;
+  const H = 120;
+
+  const shape = useMemo(() => {
+    if (!nodes || nodes.length < 3) return null;
+
+    const originLat = nodes.reduce((s, n) => s + n.lat, 0) / nodes.length;
+    const mLat = 111320;
+    const mLng = mLat * Math.cos((originLat * Math.PI) / 180);
+    const pts = nodes.map((n) => ({ x: n.lng * mLng, y: -n.lat * mLat }));
+
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const span = Math.max(maxX - minX, maxY - minY, 1);
+    const scale = Math.min(W - 24, H - 24) / span;
+
+    return pts
+      .map((p) => {
+        const x = W / 2 + (p.x - (minX + maxX) / 2) * scale;
+        const y = H / 2 + (p.y - (minY + maxY) / 2) * scale;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(' ');
+  }, [nodes]);
+
+  if (!shape) return null;
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-[#FAF7F1] overflow-hidden">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full block" role="img" aria-label="Your market's outline">
+        <polygon
+          points={shape}
+          fill="rgba(11,122,55,0.13)"
+          stroke="#0B7A37"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function formatArea(sqm) {
+  if (!sqm) return '—';
+  return sqm >= 100000
+    ? `${(sqm / 1e6).toFixed(2)} km²`
+    : `${Math.round(sqm).toLocaleString('en-IN')} m²`;
+}
+
 function CreateMarketDialog({ onClose, onCreated, onReport }) {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
@@ -1871,6 +2434,8 @@ function CreateMarketDialog({ onClose, onCreated, onReport }) {
   const [coords, setCoords] = useState(null);
   const [locating, setLocating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [boundary, setBoundary] = useState([]);
+  const [walking, setWalking] = useState(false);
 
   async function locate() {
     setLocating(true);
@@ -1905,6 +2470,7 @@ function CreateMarketDialog({ onClose, onCreated, onReport }) {
         lat: coords.lat,
         lng: coords.lng,
         ...(contactPhone.trim() ? { contactPhone: contactPhone.trim() } : {}),
+        ...(boundary.length >= 3 ? { boundary } : {}),
       });
       onCreated(created);
     } catch (err) {
@@ -1969,6 +2535,55 @@ function CreateMarketDialog({ onClose, onCreated, onReport }) {
           )}
         </div>
 
+        {/* The perimeter. Offered after the pin because the pin is one tap and
+            this is a walk — putting the long task first reads as the price of
+            entry, when in fact a market can be created without it and fenced
+            later from Settings. */}
+        <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 space-y-2">
+          <div className="flex items-start gap-2">
+            <Footprints className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[12.5px] font-bold text-amber-900">Walk the boundary</p>
+              <p className="text-[12px] text-amber-800/80 leading-snug">
+                Drop a point at each corner. Shopkeepers then have to be inside this outline to
+                apply for a stall here.
+              </p>
+            </div>
+          </div>
+
+          {boundary.length > 0 ? (
+            <div className="flex items-center gap-2">
+              <span className="flex-1 text-[12.5px] font-bold text-emerald-700 flex items-center gap-1">
+                <Check className="w-3.5 h-3.5" />
+                {boundary.length} corners walked
+              </span>
+              <button
+                type="button"
+                onClick={() => setWalking(true)}
+                className="text-[12px] font-bold text-amber-800 underline cursor-pointer"
+              >
+                Redo
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setWalking(true)}
+              className="w-full bg-white border border-amber-300 text-amber-900 text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-1.5 hover:bg-amber-100 cursor-pointer"
+            >
+              <Footprints className="w-3.5 h-3.5" />
+              Start the walk
+            </button>
+          )}
+
+          {/* Said plainly rather than hidden, because skipping is a real and
+              reasonable choice — a market can be fenced later, and pretending
+              otherwise would push someone into a bad walk to get past a form. */}
+          <p className="text-[11.5px] text-amber-800/70 leading-snug">
+            Optional now. Without it, being on site is checked against a rough radius instead.
+          </p>
+        </div>
+
         <div className="flex gap-2">
           <button
             type="button"
@@ -1987,6 +2602,18 @@ function CreateMarketDialog({ onClose, onCreated, onReport }) {
           </button>
         </div>
       </form>
+
+      {walking && (
+        <BoundaryWalk
+          title="Walk your market"
+          initialNodes={boundary}
+          onCancel={() => setWalking(false)}
+          onDone={(nodes) => {
+            setBoundary(nodes);
+            setWalking(false);
+          }}
+        />
+      )}
     </Dialog>
   );
 }

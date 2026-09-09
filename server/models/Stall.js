@@ -46,6 +46,45 @@ const stallSchema = new mongoose.Schema(
       index: true,
     },
 
+    /**
+     * Where the applicant's phone said they were standing when they applied.
+     *
+     * Kept so the market owner can see it at approval time. That is the point
+     * of collecting it: the check in services/geoFence.js filters out the
+     * obviously-not-here, but it cannot prove anything against someone willing
+     * to feed the browser false coordinates, and the honest place for a signal
+     * like that is in front of the human who is already making the decision —
+     * not silently gating it.
+     *
+     * Null for an application made to a market with no boundary and no centre,
+     * and for every stall created directly by a market owner via
+     * POST /markets/:id/stalls, where there is no applicant to locate.
+     *
+     * PRIVACY: this is one coordinate pair, captured once, at the market the
+     * person is asking to trade in — their declared place of business. It is
+     * not a track, nothing appends to it, and it is not exposed on any
+     * customer-facing shape; `asRequest` in routes/markets.js hands it only to
+     * the owner of that market.
+     */
+    joinProof: {
+      type: new mongoose.Schema(
+        {
+          lat: { type: Number, required: true, min: -90, max: 90 },
+          lng: { type: Number, required: true, min: -180, max: 180 },
+          /** What the phone claimed about its own precision, in metres. */
+          accuracyMeters: { type: Number, required: true, min: 0 },
+          /** Stamped by the device, checked for staleness against server time. */
+          capturedAt: { type: Date, required: true },
+          /** 'boundary' if judged against a walked polygon, 'radius' if not. */
+          basis: { type: String, enum: ['boundary', 'radius'], required: true },
+          /** Negative means inside — metres from the nearest edge. */
+          metersOutside: { type: Number, default: null },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
+
     requestedAt: { type: Date, default: Date.now },
     reviewedAt: { type: Date, default: null },
     /** Which market owner decided, kept so a disputed rejection has an author. */

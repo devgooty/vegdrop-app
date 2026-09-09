@@ -13,9 +13,15 @@ const User = require('../models/User');
 const Order = require('../models/Order');
 const StallEarning = require('../models/StallEarning');
 const notify = require('../services/notify');
+const geoFence = require('../services/geoFence');
+const { startOfMarketDay } = require('../utils/marketDay');
 const { ApiError } = require('../middleware/errors');
 const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
+const {
+  stallNumberCheckLimiter,
+  geoWriteLimiter,
+} = require('../middleware/rateLimit');
 
 const router = express.Router();
 
@@ -70,6 +76,80 @@ const rupeesToPaise = z
   .transform((rupees) => Math.round(rupees * 100));
 
 /**
+ * One corner of a walked market perimeter.
+ *
+ * `accuracyMeters` is required rather than optional. A node whose precision is
+ * unknown cannot be judged, and permitting it would mean a client that simply
+ * omits the field gets its readings accepted unconditionally — which is the
+ * opposite of what the field is for. Every browser that can report a position
+ * reports its accuracy alongside; there is no honest caller that lacks it.
+ */
+const boundaryNode = z
+  .object({
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180),
+    accuracyMeters: z.number().nonnegative().max(100_000),
+  })
+  .strict();
+
+/**
+ * A live position offered as evidence of standing somewhere.
+ *
+ * `capturedAt` is the device's clock and is treated as a claim, not a fact —
+ * geoFence.checkPresence bounds it in both directions against server time. It
+ * is carried at all because the alternative is stamping arrival time on the
+ * server, which would make a fix taken an hour ago and posted now look fresh.
+ */
+const presenceFix = z
+  .object({
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180),
+    accuracyMeters: z.number().nonnegative().max(100_000),
+    capturedAt: z.coerce.date(),
+  })
+  .strict();
+
+/**
+ * Run a walk through the geometry checks and turn a refusal into a 400.
+ *
+ * Every rejection from `validateBoundary` names the fix, so its message is
+ * passed through verbatim rather than replaced with a generic one — the owner
+ * is standing in a market holding a phone, and "the boundary crosses itself
+ * between points 4 and 9" is the difference between correcting the walk and
+ * abandoning it.
+ */
+function boundaryFrom(nodes) {
+  const worst = config.marketBoundary.maxNodeAccuracyMeters;
+  const sloppy = nodes.findIndex((n) => n.accuracyMeters > worst);
+
+  if (sloppy !== -1) {
+    throw new ApiError(
+      400,
+      `Point ${sloppy + 1} was taken with only ${Math.round(nodes[sloppy].accuracyMeters)} m of ` +
+        `precision. Wait for the signal to settle within ${worst} m and take it again.`,
+      'BOUNDARY_NODE_INACCURATE'
+    );
+  }
+
+  const result = geoFence.validateBoundary(nodes);
+  if (!result.ok) throw new ApiError(400, result.message, result.code);
+  return result;
+}
+
+/** The boundary as the owner's screens want it: {lat, lng} nodes, ring not closed. */
+function boundaryView(market) {
+  const ring = market.boundary?.coordinates?.[0];
+  if (!ring || ring.length < 4) return null;
+
+  return {
+    nodes: ring.slice(0, -1).map(([lng, lat]) => ({ lat, lng })),
+    capturedAt: market.boundaryCapturedAt,
+    nodeCount: market.boundaryNodeCount,
+    areaSqMeters: market.boundaryAreaSqMeters,
+  };
+}
+
+/**
  * Markets near a point, nearest first.
  *
  * This is the first screen after sign-in: which vegetable markets can reach me.
@@ -100,16 +180,14 @@ router.get(
           maxDistance: radius,
           spherical: true,
           /**
-           * Names the index rather than leaving Mongo to infer it.
+           * Mandatory since Market gained a second 2dsphere index.
            *
-           * `$geoNear` picks the collection's only 2dsphere index when there is
-           * one, and refuses to choose when there are two — failing with
-           * IndexNotFound, which reads like a *missing* index and sends you
-           * looking in the wrong place. Written now, ahead of the boundary
-           * index that will make this collection ambiguous, so the deploy that
-           * adds that index cannot break the instance already running.
-           *
-           * Ranking markets always means distance to the pin.
+           * `location` (the pin) and `boundary` (the walked perimeter) are both
+           * geo-indexed, and `$geoNear` refuses to guess between two of them —
+           * it fails outright with IndexNotFound rather than picking one. This
+           * ranks markets by distance to their pin, which is the only one of
+           * the two that means anything for "markets near me". Same trap, and
+           * the same fix, as the $geoNear stages on User.
            */
           key: 'location',
           query: { isActive: true },
@@ -206,6 +284,8 @@ router.get('/mine', requireAuth, requireRole(MARKET_MANAGERS), async (req, res) 
        * GeoJSON pair — which is [lng, lat], in that order.
        */
       serviceRadiusMeters: m.serviceRadiusMeters,
+      /** The owner's own fence, in full — they walked it and they may redraw it. */
+      boundary: boundaryView(m),
       contactPhone: m.contactPhone || '',
       lat: m.location?.coordinates?.[1] ?? null,
       lng: m.location?.coordinates?.[0] ?? null,
@@ -469,7 +549,17 @@ router.get(
   async (req, res) => {
     const market = await Market.findOne({ _id: req.valid.params.id, isActive: true });
     if (!market) throw new ApiError(404, 'Market not found.', 'NOT_FOUND');
-    return res.json({ data: market.toJSON() });
+    /**
+     * The polygon is deliberately NOT emitted here.
+     *
+     * This route is `optionalAuth`, so its response is public. `toJSON()` would
+     * put the market's exact walked footprint in it, which is the disclosure
+     * `publicMarket` declines to make — a fence is only useful while its precise
+     * line is not published to whoever might want to stand just inside it.
+     * Callers that need to know a check exists get the boolean instead.
+     */
+    const { boundary, ...rest } = market.toJSON();
+    return res.json({ data: { ...rest, hasBoundary: Boolean(boundary?.coordinates?.[0]?.length >= 4) } });
   }
 );
 
@@ -492,6 +582,17 @@ router.post(
         serviceRadiusMeters: z.number().int().min(100).max(50000).optional(),
         contactPhone: z.string().trim().max(20).optional(),
         /**
+         * The perimeter, walked corner by corner.
+         *
+         * Optional at the route even though the client always sends one, for
+         * the same reason `Market.boundary` is nullable: a developer opening a
+         * market on someone's behalf from a desk has not walked anything, and
+         * refusing them would make staff-created markets impossible rather than
+         * making boundaries universal. The customer-facing consequence of
+         * having none is documented on the model.
+         */
+        boundary: z.array(boundaryNode).min(3).max(config.marketBoundary.maxNodes).optional(),
+        /**
          * Staff creating a market on someone's behalf. Ignored for a market
          * owner, who always gets themselves — otherwise the field would be a
          * way to plant a market under another operator's account.
@@ -501,19 +602,83 @@ router.post(
       .strict(),
   }),
   async (req, res) => {
-    const { lat, lng, ownerId, ...rest } = req.valid.body;
+    const { lat, lng, ownerId, boundary, ...rest } = req.valid.body;
 
     // Whoever creates a market runs it. Without this the creator could not
     // manage what they had just made: assertManagesMarket compares against
     // `owner`, and a market created with none is developer-only forever.
     const owner = req.user.role === 'market_owner' ? req.user._id : ownerId ?? null;
 
+    // Validated before the insert so a bad walk is a 400 naming the offending
+    // pair of points, rather than the 2dsphere index refusing the document and
+    // surfacing as a 500 with a driver message in it.
+    const walked = boundary ? boundaryFrom(boundary) : null;
+
     const market = await Market.create({
       ...rest,
       owner,
       location: { type: 'Point', coordinates: [lng, lat] },
+      ...(walked
+        ? {
+            boundary: walked.polygon,
+            boundaryCapturedAt: new Date(),
+            boundaryNodeCount: boundary.length,
+            boundaryAreaSqMeters: walked.areaSqMeters,
+          }
+        : {}),
     });
-    return res.status(201).json({ data: market.toJSON() });
+
+    return res.status(201).json({ data: { ...market.toJSON(), boundary: boundaryView(market) } });
+  }
+);
+
+/**
+ * Re-walk the perimeter of a market that already exists.
+ *
+ * Separate from PATCH /:id rather than another field on it, because this is the
+ * one edit on a market that cannot be typed: it is only ever the output of
+ * standing in the place and walking it. Mixing it into the general settings
+ * patch would put a geometry payload behind a form that otherwise carries a
+ * name and a phone number, and would mean every settings save had to decide
+ * whether an absent `boundary` meant "unchanged" or "delete it".
+ *
+ * A market may be re-walked as often as needed — markets extend, and a fence
+ * drawn once and never correctable is one that stops matching the ground.
+ */
+router.put(
+  '/:id/boundary',
+  requireAuth,
+  requireRole(MARKET_MANAGERS),
+  geoWriteLimiter,
+  validate({
+    params: z.object({ id: fields.objectId }).strict(),
+    body: z
+      .object({
+        nodes: z.array(boundaryNode).min(3).max(config.marketBoundary.maxNodes),
+      })
+      .strict(),
+  }),
+  async (req, res) => {
+    // Ownership before geometry: the expensive scan should not run for a caller
+    // who was never allowed to write here, and the 403 should not depend on
+    // whether their walk happened to be valid.
+    const market = await loadManagedMarket(req.valid.params.id, req.user);
+
+    const walked = boundaryFrom(req.valid.body.nodes);
+
+    market.boundary = walked.polygon;
+    market.boundaryCapturedAt = new Date();
+    market.boundaryNodeCount = req.valid.body.nodes.length;
+    market.boundaryAreaSqMeters = walked.areaSqMeters;
+    await market.save();
+
+    return res.json({
+      data: {
+        boundary: boundaryView(market),
+        areaSqMeters: walked.areaSqMeters,
+        perimeterMeters: walked.perimeterMeters,
+      },
+    });
   }
 );
 
@@ -561,7 +726,16 @@ router.patch(
       { returnDocument: 'after', runValidators: true }
     );
     if (!market) throw new ApiError(404, 'Market not found.', 'NOT_FOUND');
-    return res.json({ data: market.toJSON() });
+    /**
+     * `boundary` is projected through the same view as every other market
+     * response on this router.
+     *
+     * `toJSON()` would emit raw GeoJSON while POST / and GET /mine emit
+     * `{nodes, nodeCount, areaSqMeters, capturedAt}`. One field arriving in two
+     * shapes depending on which call produced it is how a client ends up
+     * merging a settings save over its own boundary state and blanking the card.
+     */
+    return res.json({ data: { ...market.toJSON(), boundary: boundaryView(market) } });
   }
 );
 
@@ -579,15 +753,71 @@ router.get(
       .sort({ updatedAt: -1 })
       .lean();
 
+    const dayStart = startOfMarketDay();
+
+    /**
+     * What each line closed at yesterday.
+     *
+     * This is what makes the daily screen readable: a number on its own says
+     * nothing, and "₹40, up from ₹32" is the entire reason an owner opens the
+     * sheet. Computed from the history rather than stored on the row, because
+     * the history is already the append-only record of exactly this and a
+     * denormalised copy would be a second truth to keep in step.
+     *
+     * `$last` after an explicit `$sort` is the documented way to take one
+     * document per group; `$push` + `$slice` reads more naturally and is not
+     * order-guaranteed after `$group`.
+     *
+     * A product with no row here has never been repriced before today — it is
+     * new to the sheet, not unchanged, and the client says so rather than
+     * drawing a zero delta.
+     */
+    const before = await MarketPriceHistory.aggregate([
+      {
+        $match: {
+          market: new mongoose.Types.ObjectId(String(req.valid.params.id)),
+          at: { $lt: dayStart },
+        },
+      },
+      { $sort: { at: 1 } },
+      {
+        $group: {
+          _id: '$product',
+          pricePaise: { $last: '$pricePaise' },
+          isAvailable: { $last: '$isAvailable' },
+          at: { $last: '$at' },
+        },
+      },
+    ]);
+
+    const yesterday = new Map(before.map((row) => [String(row._id), row]));
+
     return res.json({
-      data: prices.map((row) => ({
-        id: String(row._id),
-        product: row.product ? { id: String(row.product._id), ...row.product, _id: undefined } : null,
-        pricePaise: row.pricePaise,
-        price: row.pricePaise / 100,
-        isAvailable: row.isAvailable,
-        updatedAt: row.updatedAt,
-      })),
+      data: prices.map((row) => {
+        const prior = yesterday.get(String(row.product?._id ?? row.product));
+
+        return {
+          id: String(row._id),
+          product: row.product ? { id: String(row.product._id), ...row.product, _id: undefined } : null,
+          pricePaise: row.pricePaise,
+          price: row.pricePaise / 100,
+          isAvailable: row.isAvailable,
+          updatedAt: row.updatedAt,
+          /** When the owner last stood behind this price. See models/MarketPrice.js. */
+          confirmedAt: row.confirmedAt || null,
+          /**
+           * Both halves of "has this been dealt with today" travel together,
+           * because they answer different questions: a line can have been
+           * changed today, or merely confirmed today, and the screen counts
+           * either as done.
+           */
+          changedToday: Boolean(row.updatedAt && row.updatedAt >= dayStart),
+          confirmedToday: Boolean(row.confirmedAt && row.confirmedAt >= dayStart),
+          previousPricePaise: prior ? prior.pricePaise : null,
+          previousAt: prior ? prior.at : null,
+        };
+      }),
+      meta: { dayStart },
     });
   }
 );
@@ -662,6 +892,8 @@ router.put(
       );
     });
 
+    const confirmedAt = new Date();
+
     await MarketPrice.bulkWrite(
       prices.map((row) => ({
         updateOne: {
@@ -671,6 +903,16 @@ router.put(
               pricePaise: row.price,
               isAvailable: row.isAvailable ?? true,
               updatedBy: req.user._id,
+              /**
+               * Stamped on every submitted row, changed or not.
+               *
+               * A save is an act of attention over everything in it, which is
+               * the thing `confirmedAt` records — as distinct from `updatedAt`,
+               * which Mongoose bumps here too but which the history treats as
+               * meaningful only for the `changed` subset above.
+               */
+              confirmedAt,
+              confirmedBy: req.user._id,
             },
           },
           upsert: true,
@@ -701,7 +943,75 @@ router.put(
       });
     }
 
-    return res.json({ data: { updated: prices.length, changed: changed.length } });
+    return res.json({ data: { updated: prices.length, changed: changed.length, confirmedAt } });
+  }
+);
+
+/**
+ * "These prices still stand today."
+ *
+ * The majority action of a daily price round, and the one the sheet could not
+ * express. Most lines do not move day to day; an owner who reads down the list
+ * and finds nothing to change has still done the day's work, and before this
+ * the only way to record that was to retype every number — which would rewrite
+ * `updatedBy` on lines nobody touched and, worse, tell the customer-facing
+ * price chart that a hundred prices had "changed" to the values they already
+ * held. The history exists precisely to not say that.
+ *
+ * So this writes ONE field and no history at all. It is not a cheaper version
+ * of the PUT; it is the other half of the vocabulary.
+ *
+ * Deliberately its own route rather than a flag on the PUT: routed through
+ * that, a line not yet on the sheet would be treated as a first price and get a
+ * history row (see the `changed` filter above), and a large sheet would hit the
+ * 500-row body cap and have to be chunked into several non-atomic calls.
+ * Nothing here is per-row, so neither problem arises.
+ */
+router.post(
+  '/:id/prices/confirm',
+  requireAuth,
+  requireRole(MARKET_MANAGERS),
+  validate({
+    params: z.object({ id: fields.objectId }).strict(),
+    body: z
+      .object({
+        /**
+         * Which lines to confirm. Absent means the whole sheet.
+         *
+         * The subset exists for the realistic middle case: the owner changes a
+         * dozen prices, saves them, then confirms "the rest are unchanged". The
+         * client sends the rest rather than everything, so a line the owner is
+         * still thinking about is not silently signed off.
+         */
+        productIds: z.array(fields.objectId).min(1).max(2000).optional(),
+      })
+      .strict(),
+  }),
+  async (req, res) => {
+    // Ownership first, before any write — the reason is recorded above the
+    // price-sheet PUT and applies identically here.
+    const market = await loadManagedMarket(req.valid.params.id, req.user);
+
+    const confirmedAt = new Date();
+    const filter = { market: market._id };
+    if (req.valid.body.productIds) filter.product = { $in: req.valid.body.productIds };
+
+    /**
+     * `updateMany` with `timestamps: false`.
+     *
+     * Letting Mongoose bump `updatedAt` here would undo the entire distinction
+     * this route exists to draw: `updatedAt` is when the PRICE last moved, and
+     * confirming that a price has NOT moved must not look like it moving. The
+     * customer-facing "last changed" reading and the sheet's own `changedToday`
+     * flag both read that field.
+     */
+    const result = await MarketPrice.updateMany(
+      filter,
+      { $set: { confirmedAt, confirmedBy: req.user._id } },
+      { timestamps: false }
+    );
+
+    return res.json({ data: { confirmed: result.modifiedCount, confirmedAt } });
   }
 );
 
@@ -910,6 +1220,18 @@ function publicMarket(market) {
     name: market.name,
     address: market.address,
     isOpen: market.isOpen,
+    /**
+     * Whether this market has a walked perimeter — not the perimeter itself.
+     *
+     * The shopkeeper's join screen needs to know that standing in the market
+     * will be checked, so it can ask for the location reading up front instead
+     * of letting someone fill in a form and be refused on submit. It does not
+     * need the polygon to do that, and handing the outline of every market to
+     * everyone holding a shopkeeper account is a larger disclosure than the
+     * question requires. The live "am I inside?" answer comes from
+     * POST /:id/presence-check, which runs the same geometry server-side.
+     */
+    hasBoundary: Boolean(market.boundary?.coordinates?.[0]?.length >= 4),
   };
 }
 
@@ -934,6 +1256,28 @@ function asRequest(stall) {
     reviewedAt: stall.reviewedAt,
     rejectionReason: stall.rejectionReason || null,
     /**
+     * What the applicant's phone reported when they applied, or null.
+     *
+     * Shown to the market owner beside the request. This is the only consumer:
+     * `asRequest` is returned from the owner's queue and from the applicant's
+     * own `GET /me/join`, and both are people entitled to this one fact about
+     * this one application. It never reaches a customer-facing shape.
+     *
+     * Reported as a verdict plus a distance rather than as a bare pass/fail,
+     * because "confirmed on site" and "12 m outside the line with a ±30 m fix"
+     * are different things to know about someone you are deciding whether to
+     * let into your market, and flattening them loses the part worth reading.
+     */
+    presence: stall.joinProof
+      ? {
+          basis: stall.joinProof.basis,
+          inside: stall.joinProof.metersOutside !== null ? stall.joinProof.metersOutside <= 0 : null,
+          metersOutside: stall.joinProof.metersOutside,
+          accuracyMeters: stall.joinProof.accuracyMeters,
+          capturedAt: stall.joinProof.capturedAt,
+        }
+      : null,
+    /**
      * `unverifiedPhone` is reported separately, never merged into `phone`.
      *
      * Registration parks a number it could not deliver a code to in
@@ -954,6 +1298,119 @@ function asRequest(stall) {
       : null,
   };
 }
+
+/**
+ * Is this stall number free in this market?
+ *
+ * Exists because the number was previously only checked at the very end, when
+ * the owner accepted: the applicant typed "A-12", waited days, and was then
+ * told by a human that A-12 has been Ravi's pitch for nine years. The partial
+ * unique index deliberately only binds APPROVED stalls (see models/Stall.js),
+ * which is right — two applicants guessing the same wrong number must not
+ * collide before anyone has looked — but it means nothing stops the guess being
+ * wrong, so the applicant has to be told.
+ *
+ * Answers about a single number the caller names. It does not list the market's
+ * stalls, and it is rate limited per caller, because the enumerated version of
+ * this answer is a competitor's tenancy map — see `stallNumberCheckLimiter`.
+ *
+ * `available: false` is not a refusal to apply. The owner can still place the
+ * applicant elsewhere, and an applicant who genuinely trades at A-12 while our
+ * records say otherwise is exactly the conversation the approval step is for.
+ */
+router.get(
+  '/:id/stall-number-check',
+  requireAuth,
+  requireRole('shopkeeper', ...MARKET_MANAGERS),
+  stallNumberCheckLimiter,
+  validate({
+    params: z.object({ id: fields.objectId }).strict(),
+    query: z.object({ stallNumber: fields.nonEmptyString(24) }).strict(),
+  }),
+  async (req, res) => {
+    const market = await Market.findOne({ _id: req.valid.params.id, isActive: true })
+      .select('_id')
+      .lean();
+    if (!market) throw new ApiError(404, 'Market not found.', 'NOT_FOUND');
+
+    const stallNumber = req.valid.query.stallNumber.trim();
+
+    /**
+     * Matched case-insensitively and anchored.
+     *
+     * The index is on the exact string, so this cannot use it — but the query is
+     * bounded to one market's stalls and gated behind the limiter above, and the
+     * alternative is telling an applicant that "a-12" is free when "A-12" is
+     * let. A stall number is read off a painted sign; nobody types it the way
+     * the sign painter did.
+     *
+     * The pattern is escaped: `stallNumber` reaches here as free text, and real
+     * numbers contain `/` and `-` routinely ("Shed 3/4"). Unescaped, a `.` or a
+     * `*` in the input would silently widen the match.
+     */
+    const escaped = stallNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const taken = await Stall.findOne({
+      market: req.valid.params.id,
+      status: 'approved',
+      stallNumber: { $regex: `^${escaped}$`, $options: 'i' },
+    })
+      .select('_id')
+      .lean();
+
+    return res.json({ data: { stallNumber, available: !taken } });
+  }
+);
+
+/**
+ * "Am I standing in this market?", asked before applying rather than on submit.
+ *
+ * A read, deliberately: it writes nothing, takes no stall number, and creates
+ * no request. It exists so the join screen can show a live verdict while the
+ * applicant is still walking — being told "you are 200 m outside" while you can
+ * still walk 200 m is useful, and being told it after filling in a form is a
+ * dead end.
+ *
+ * The same `checkPresence` decides here and at the join, so the screen cannot
+ * promise something the write then refuses. Read the honesty note in
+ * services/geoFence.js for what a pass actually establishes.
+ */
+router.post(
+  '/:id/presence-check',
+  requireAuth,
+  requireRole('shopkeeper', ...MARKET_MANAGERS),
+  geoWriteLimiter,
+  validate({
+    params: z.object({ id: fields.objectId }).strict(),
+    body: z.object({ presence: presenceFix }).strict(),
+  }),
+  async (req, res) => {
+    const market = await Market.findOne({ _id: req.valid.params.id, isActive: true }).lean();
+    if (!market) throw new ApiError(404, 'Market not found.', 'NOT_FOUND');
+
+    const verdict = geoFence.checkPresence(market, req.valid.body.presence);
+
+    /**
+     * A failed check is a 200 with `ok: false`, not a 4xx.
+     *
+     * The request was well-formed and the caller is entitled to the answer; "you
+     * are outside the market" is the answer, not an error. Returning 4xx would
+     * make the client's error path responsible for rendering the one piece of
+     * information the screen exists to show, and would put a stream of
+     * legitimate 403s in the logs while someone walks towards a gate.
+     */
+    return res.json({
+      data: verdict.ok
+        ? {
+            ok: true,
+            basis: verdict.basis,
+            inside: verdict.inside,
+            metersOutside: verdict.metersOutside,
+          }
+        : { ok: false, code: verdict.code, message: verdict.message },
+    });
+  }
+);
 
 /**
  * Ask to trade in a market.
@@ -981,12 +1438,80 @@ router.post(
          */
         stallNumber: fields.nonEmptyString(24).optional(),
         contactPhone: z.string().trim().max(20).optional(),
+        /**
+         * A live fix taken where the applicant is standing.
+         *
+         * Optional in the schema and required in the handler, conditionally on
+         * the market having a boundary. Encoding "required when the market has
+         * a fence" in zod is not possible without knowing the market, which is
+         * loaded below — and a schema that always required it would lock every
+         * shopkeeper out of every market created before this feature.
+         */
+        presence: presenceFix.optional(),
       })
       .strict(),
   }),
   async (req, res) => {
     const market = await Market.findOne({ _id: req.valid.params.id, isActive: true });
     if (!market) throw new ApiError(404, 'Market not found.', 'NOT_FOUND');
+
+    /**
+     * Standing in the market is required exactly where it can be checked.
+     *
+     * A market with a walked boundary demands a fix; one without falls back to
+     * a radius if a fix is offered, and asks for nothing if it is not. The
+     * asymmetry is deliberate and is the difference between a feature that
+     * ships and one that strands every existing market: `boundary` is null on
+     * every row that predates this, and a blanket requirement would mean no
+     * shopkeeper could join any of them until each owner walked a perimeter.
+     *
+     * The check runs BEFORE the duplicate-application read below, so someone
+     * applying from the wrong place is told about the wrong place — not told
+     * they already have an application, having never successfully made one.
+     */
+    let joinProof = null;
+
+    if (market.boundary?.coordinates?.[0]?.length >= 4) {
+      if (!req.valid.body.presence) {
+        throw new ApiError(
+          400,
+          'This market checks that you are on site. Allow location access and apply from inside the market.',
+          'PRESENCE_REQUIRED'
+        );
+      }
+
+      const verdict = geoFence.checkPresence(market, req.valid.body.presence);
+      if (!verdict.ok) throw new ApiError(403, verdict.message, verdict.code);
+
+      joinProof = {
+        lat: req.valid.body.presence.lat,
+        lng: req.valid.body.presence.lng,
+        accuracyMeters: req.valid.body.presence.accuracyMeters,
+        capturedAt: req.valid.body.presence.capturedAt,
+        basis: verdict.basis,
+        metersOutside: verdict.metersOutside,
+      };
+    } else if (req.valid.body.presence) {
+      /**
+       * No fence, but they sent a reading anyway.
+       *
+       * Judged against the fallback radius and recorded either way — including
+       * when it fails. It is not grounds to refuse the application, because the
+       * market never declared a footprint to be outside of, but it is exactly
+       * the kind of thing the owner should see next to the request when they
+       * decide. Silently discarding a failed check would hide it from the only
+       * person positioned to weigh it.
+       */
+      const verdict = geoFence.checkPresence(market, req.valid.body.presence);
+      joinProof = {
+        lat: req.valid.body.presence.lat,
+        lng: req.valid.body.presence.lng,
+        accuracyMeters: req.valid.body.presence.accuracyMeters,
+        capturedAt: req.valid.body.presence.capturedAt,
+        basis: verdict.basis || 'radius',
+        metersOutside: verdict.metersOutside ?? null,
+      };
+    }
 
     /**
      * One live application at a time, checked before writing.
@@ -1026,6 +1551,7 @@ router.post(
         name: req.valid.body.name || req.user.name,
         owner: req.user._id,
         contactPhone: req.valid.body.contactPhone || req.user.phone || '',
+        joinProof,
         status: 'pending',
         // Held inactive until someone accepts. Every sourcing query filters on
         // isActive, so this is what makes a pending stall inert rather than

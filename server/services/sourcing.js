@@ -905,11 +905,9 @@ async function findNextMarket(order) {
         distanceField: 'distanceMeters',
         maxDistance: config.marketplace.searchRadiusMeters,
         spherical: true,
-        // Names the index rather than leaving Mongo to infer it. The moment
-        // Market carries a second 2dsphere index, `$geoNear` stops guessing
-        // between them and fails outright with IndexNotFound — so this is
-        // written now, ahead of that index, to keep the running deploy safe.
-        // A hop travels to the nearest market by its pin.
+        // Mandatory — Market carries two 2dsphere indexes (the pin and the
+        // walked boundary) and $geoNear will not choose between them. A hop
+        // travels to the nearest market by its pin. See models/Market.js.
         key: 'location',
         query: { isActive: true, isOpen: true, _id: { $nin: tried } },
       },

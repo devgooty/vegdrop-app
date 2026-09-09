@@ -145,6 +145,23 @@ export async function saveMarketPrices(marketId, prices) {
   return result.data;
 }
 
+/**
+ * Sign off lines whose price has not moved today.
+ *
+ * The counterpart to saving, not a variant of it. Saving says "this is the new
+ * number"; this says "yesterday's number still stands", which is what most of
+ * a price sheet does on most days. It writes no history — a price that did not
+ * change must not appear on the customer's chart as though it had.
+ *
+ * Omit `productIds` to confirm the whole sheet.
+ */
+export async function confirmMarketPrices(marketId, productIds) {
+  const result = await api.post(`/markets/${marketId}/prices/confirm`, {
+    ...(productIds?.length ? { productIds } : {}),
+  });
+  return result.data;
+}
+
 export async function fetchMarketStalls(marketId) {
   const result = await api.get(`/markets/${marketId}/stalls`);
   return result.data;
@@ -178,7 +195,16 @@ export async function updateMarketStall(marketId, stallId, changes) {
  * `slug` has to be unique across the platform, so a collision comes back as a
  * duplicate-key failure rather than silently attaching to an existing market.
  */
-export async function createMarket({ name, slug, address, lat, lng, serviceRadiusMeters, contactPhone }) {
+export async function createMarket({
+  name,
+  slug,
+  address,
+  lat,
+  lng,
+  serviceRadiusMeters,
+  contactPhone,
+  boundary,
+}) {
   const result = await api.post('/markets', {
     name,
     slug,
@@ -187,7 +213,26 @@ export async function createMarket({ name, slug, address, lat, lng, serviceRadiu
     lng,
     ...(serviceRadiusMeters === undefined ? {} : { serviceRadiusMeters }),
     ...(contactPhone ? { contactPhone } : {}),
+    /**
+     * The walked perimeter. Each node carries its own accuracy, because the
+     * server refuses a sloppy one by index — "point 4 was taken with only 80 m
+     * of precision" — and it can only do that if it is told per point.
+     */
+    ...(boundary?.length ? { boundary } : {}),
   });
+  return result.data;
+}
+
+/**
+ * Redraw a market's boundary.
+ *
+ * Separate from `updateMarket` for the reason given on the route: this payload
+ * is the output of physically walking somewhere, not something typed into a
+ * settings form, and folding it in would make an absent boundary ambiguous
+ * between "unchanged" and "delete it".
+ */
+export async function saveMarketBoundary(marketId, nodes) {
+  const result = await api.put(`/markets/${marketId}/boundary`, { nodes });
   return result.data;
 }
 
@@ -263,12 +308,44 @@ export async function fetchJoinableMarkets() {
   return result.data;
 }
 
-export async function requestToJoinMarket(marketId, { name, stallNumber, contactPhone } = {}) {
+export async function requestToJoinMarket(
+  marketId,
+  { name, stallNumber, contactPhone, presence } = {}
+) {
   const result = await api.post(`/markets/${marketId}/join`, {
     ...(name ? { name } : {}),
     ...(stallNumber ? { stallNumber } : {}),
     ...(contactPhone ? { contactPhone } : {}),
+    ...(presence ? { presence } : {}),
   });
+  return result.data;
+}
+
+/**
+ * Is this stall number free?
+ *
+ * `available: false` is information, not a veto — the owner settles the real
+ * number at approval and may well place the applicant somewhere else. The
+ * screen says so rather than blocking, because an applicant who genuinely
+ * trades at a number our records show as let is exactly the case a human needs
+ * to look at.
+ */
+export async function checkStallNumber(marketId, stallNumber) {
+  const result = await api.get(
+    `/markets/${marketId}/stall-number-check?stallNumber=${encodeURIComponent(stallNumber)}`
+  );
+  return result.data;
+}
+
+/**
+ * "Am I standing in this market?", before committing to an application.
+ *
+ * Resolves for both verdicts — `{ ok: false, message }` is an answer, not a
+ * failure, and the route returns 200 for it deliberately. Only a genuine
+ * transport or auth problem rejects.
+ */
+export async function checkPresenceAtMarket(marketId, presence) {
+  const result = await api.post(`/markets/${marketId}/presence-check`, { presence });
   return result.data;
 }
 

@@ -47,15 +47,19 @@ Copy `.env.example` to `.env`. Notes that are easy to get wrong:
 
 ## Architecture
 
-### Three entry apps behind one hash router
+### Five entry apps behind one hash router
 
-`src/AppRouter.jsx` reads `window.location.hash` and mounts one of three apps:
+`src/AppRouter.jsx` reads `window.location.hash` and mounts one of five apps:
 
-- `src/App.jsx` — customer-facing, and the **only** entry that exposes the `developer` and `market_owner` panels (rendered inline as tabs).
+- `src/App.jsx` — customer-facing. Still renders the `developer` and `market_owner` panels inline as tabs, but is no longer the only way to reach them.
 - `src/ShopkeeperApp.jsx` — `#/shopkeeper`, role-locked to `shopkeeper`/`developer`.
 - `src/DeliveryApp.jsx` — `#/delivery`, role-locked to `delivery`/`developer`.
+- `src/DeveloperApp.jsx` — `#/developer`, role-locked to `developer`.
+- `src/MarketOwnerApp.jsx` — `#/market-owner`, role-locked to `market_owner`, with its own splash edition. `App.jsx` redirects a `market_owner` here on sign-in.
 
-All three are lazily loaded by `AppRouter`, so a customer never downloads the shopkeeper or delivery bundles (or Leaflet, which only the map routes pull in).
+Both admin apps sign in with `appType="customer"`, and that is correct rather than a copy-paste slip: `APP_ROLE_SCOPE.customer` is `['customer', 'market_owner', 'developer']`, so the customer scope is the one that resolves those accounts. Sending `app: 'developer'` from the market owner's login would fail to find the account.
+
+All five are lazily loaded by `AppRouter`, so a customer never downloads the shopkeeper or delivery bundles (or Leaflet, which only the map routes pull in).
 
 Each polls `GET /api/orders` every 5s and pauses while the tab is hidden. The previous localStorage `vegdrop_orders` + `BroadcastChannel` mirror is **deliberately gone**: the server scopes orders by role, but a shared browser-storage key is readable by every app on the origin, so mirroring leaked one role's order list into another's. Don't reintroduce cross-app state sharing through web storage.
 
@@ -300,6 +304,38 @@ What is collected is a legal name, bank name, bank account number, IFSC and a UP
 The bank account number is encrypted with AES-256-GCM (`services/fieldCrypto.js`) and only ever returned masked to the last four digits.
 
 `services/payouts.js` is a provider interface: RazorpayX when `RAZORPAYX_*` is configured, a console-logging mock otherwise. Production boot refuses the mock. Provider failures surface as **502, never the upstream status** — RazorpayX rejecting our request is our integration fault, and reporting it as a 400 would tell the vendor they typed something wrong when they did not.
+
+### Market boundaries and being on site
+
+A market owner registers a market by **walking its perimeter**: standing at each corner and dropping a GPS node. The nodes close into a GeoJSON Polygon on `Market.boundary`, and a shopkeeper applying for a stall has to be standing inside it.
+
+**`location` and `boundary` answer different questions and neither replaces the other.** The pin is what `$geoNear` ranks on for "markets near me" and what a rider's map shows; the polygon is only ever consulted to decide whether somebody is standing in the market.
+
+**Adding the second geo index means every `$geoNear` on `Market` must now name its `key`.** With two 2dsphere indexes on one collection, `$geoNear` refuses to choose and fails with `IndexNotFound` — which reads like a *missing* index and sends you looking in the wrong place. `routes/markets.js` `/nearby` and `services/sourcing.js` both pass `key: 'location'`. This is the same trap already documented on `User`, and it broke twelve tests the first time.
+
+**`services/geoFence.js` does the geometry in a local metre frame, not in degrees.** A degree of longitude at Indian latitudes is ~0.954 of a degree of latitude, so a market that is square on the ground is a rectangle in degree space and its area is out by ~9%. Every planar test — self-intersection, area, containment, distance to an edge — projects first. The ring is also **wound counter-clockwise before storage**: MongoDB can read a clockwise exterior ring as *everywhere on Earth except this market*, which would make every containment test pass.
+
+**What a presence check proves, stated honestly.** Browser geolocation is self-reported and a determined person can feed us any coordinates they like. The check closes the accidental and casual cases — applying from home, guessing at a market never visited, a stale cached fix — and nothing more. It is a filter, not a proof. That is why a passing check is **shown to the market owner beside the request** (`Stall.joinProof` → `asRequest().presence`) rather than being the thing that decides: the owner's approval is still the real gate.
+
+Three independent conditions, all in `config.presence`: the fix is precise enough, recent enough (so a phone cannot replay this morning's), and lands inside the polygon. The tolerance outside the ring **widens by the fix's own reported accuracy** — a ±8 m fix landing 60 m out is somewhere else, a ±90 m fix landing 60 m out is consistent with standing on the line.
+
+**A market with no boundary must go on working.** Every market predating this has `boundary: null`, and `checkPresence` falls back to a radius around the pin. Treating absence as "refuse" would have locked every shopkeeper out of every existing market on deploy. `test/marketBoundary.test.js` pins that case specifically.
+
+**The polygon is not public.** `GET /api/markets/:id` is `optionalAuth`, so it emits `hasBoundary` and strips `boundary`; `publicMarket()` does the same for the list. A fence is only useful while its exact line is not published to whoever might want to stand just inside it. The owner gets the outline back on `GET /markets/mine`, and every market-shaped response on that router projects `boundary` through the same `boundaryView()` — one field arriving in two shapes is how a client ends up blanking its own card on an unrelated save.
+
+**`GET /:id/stall-number-check` is rate limited because the enumerated version of its answer is a competitor's tenancy map.** It answers about one number the caller names, never lists a market's stalls, and matches case-insensitively with the input regex-escaped — real stall numbers contain `/` and `-` routinely ("Shed 3/4"). It reports *taken*, it does not refuse: uniqueness binds approved stalls only, and an applicant who genuinely trades at a number our records show as let is exactly what the approval step is for.
+
+### The daily price round
+
+**`updatedAt` is the price's history; `confirmedAt` is the owner's attention.** They are different facts and the daily screen needs both. Most of a sheet holds steady day to day, so the common morning action is "yesterday's numbers still stand" — and that cannot be recorded by `updatedAt`, which on a normal day says "three weeks ago" for most lines.
+
+Nor can the client just resubmit the sheet to bump it: `PricesTab` deliberately sends only dirty rows, and sending them all would rewrite `updatedBy` on lines nobody touched while telling `MarketPriceHistory` nothing, since the history only records real changes.
+
+So `POST /:id/prices/confirm` writes **one field and no history**, with `timestamps: false` so `updatedAt` does not move. It is not a cheaper `PUT`; it is the other half of the vocabulary. Routing it through the `PUT` instead would emit a history row for every line not yet on the sheet and hit the 500-row body cap on a large market.
+
+**A "day" is IST, not the server's clock.** `utils/marketDay.js` shifts by `config.marketDay.timezoneOffsetMinutes`. A market prices its first crates around 5am IST, which is 23:30 UTC *the previous day* — keyed on UTC midnight, the busiest hour of the morning files under yesterday and the owner opens the app to find work they just did already counted stale.
+
+The sheet also returns `previousPricePaise` — the last history point **strictly before today** — so the screen can show what moved. A line with none is new today, and is labelled that way rather than drawn as a zero delta.
 
 ### Sourcing — which seller fills an order
 

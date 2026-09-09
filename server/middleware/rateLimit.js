@@ -292,6 +292,47 @@ const pickupVerifyLimiter = rateLimit({
   handler: jsonLimitHandler('Too many attempts. Ask the rider to read the code again.', 'PICKUP_CODE_RATE_LIMITED'),
 });
 
+/**
+ * "Is stall A-12 free?", keyed per shopkeeper.
+ *
+ * This one IS close to a security boundary, unlike `stallActionLimiter`. The
+ * endpoint answers a yes/no question about another trader's pitch, so left
+ * unbounded it is an enumerator: walk A-1 … A-99 and you have mapped a
+ * competitor's market — which stalls are let, how many, and therefore roughly
+ * what the place is worth. The limit is set to comfortably cover a person
+ * typing a number and correcting it, and nothing like a sweep.
+ *
+ * Generous window rather than a tight burst limit because the client checks as
+ * the applicant types: a debounced field legitimately produces a handful of
+ * calls for one number.
+ */
+const stallNumberCheckLimiter = rateLimit({
+  ...base,
+  windowMs: 10 * 60 * 1000,
+  limit: 40,
+  keyGenerator: (req) => `stallnum:${req.user?._id || ipKeyGenerator(req.ip)}`,
+  handler: jsonLimitHandler(
+    'Too many stall number checks. Wait a moment and try again.',
+    'RATE_LIMITED'
+  ),
+});
+
+/**
+ * Walking a boundary and applying to a market, keyed per user.
+ *
+ * Both write geometry after running it through an O(n²) self-intersection scan,
+ * and both are things a person does a handful of times in their life. A tight
+ * limit here costs nothing real and stops a scripted client from turning that
+ * scan into CPU load.
+ */
+const geoWriteLimiter = rateLimit({
+  ...base,
+  windowMs: 10 * 60 * 1000,
+  limit: 20,
+  keyGenerator: (req) => `geowrite:${req.user?._id || ipKeyGenerator(req.ip)}`,
+  handler: jsonLimitHandler('Too many attempts. Wait a moment and try again.', 'RATE_LIMITED'),
+});
+
 /** A rider's own settlement details are rarely edited; this only guards retries. */
 const riderBankDetailsLimiter = rateLimit({
   ...base,
@@ -326,6 +367,8 @@ module.exports = {
   kycLimiter,
   riderLocationLimiter,
   stallActionLimiter,
+  stallNumberCheckLimiter,
+  geoWriteLimiter,
   riderBankDetailsLimiter,
   pickupVerifyLimiter,
   agentChatLimiter,
