@@ -30,12 +30,46 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
    * The 80px floor keeps the first screenful whole: nothing collapses before
    * there is anything to have scrolled past, and it swallows the elastic
    * overscroll bounce at the top.
+   *
+   * Home only, which is why this is gated rather than always on. Home is the
+   * long scroll the shopper reads through, so it is the only screen where the
+   * bar is costing room worth reclaiming — and `HEADER_TABS` in App.jsx already
+   * draws the same line for the header above. Everywhere else the bar stays
+   * whole: Prices, Cook and Account are places you go rather than read past,
+   * and a nav that tucked itself away on a screen with nothing much to scroll
+   * would read as the app losing its navigation.
    */
   const [collapsed, setCollapsed] = useState(false);
   const lastScrollY = useRef(0);
   const travel = useRef(0);
 
+  /* The one screen the collapse applies to. Cart is a button, not a route, so
+     it is not a tab this can be compared against. */
+  const collapsible = activeTab === 'home';
+
   useEffect(() => {
+    /*
+      Off every other tab, and reset on the way out — a bar left tucked as the
+      shopper leaves Home would arrive on Account as a lone basket with no way
+      back, since the route tabs are the way back.
+    */
+    if (!collapsible) {
+      travel.current = 0;
+      setCollapsed(false);
+      return undefined;
+    }
+
+    /*
+      Re-seed the accumulator on arrival, do not carry it across.
+
+      Each tab is at its own scroll offset, so the first event after switching
+      back to Home reports the difference between two unrelated screens — a few
+      hundred pixels of "travel" the thumb never made, which lands as an instant
+      collapse (or an instant expand) before the shopper has moved at all.
+    */
+    lastScrollY.current = window.scrollY;
+    travel.current = 0;
+
     const handleScroll = () => {
       const currentY = window.scrollY;
       const delta = currentY - lastScrollY.current;
@@ -57,7 +91,7 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [collapsible]);
 
   /**
    * What hides a route tab, applied to a wrapper rather than the button.
@@ -99,7 +133,7 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
     // the safe-area inset — it carries no background or border of its own, so
     // it never draws a bar across the full width behind the floating pill.
     <nav
-      className="fixed bottom-0 left-0 right-0 max-w-md mx-auto z-30 px-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pointer-events-none flex justify-end"
+      className="fixed bottom-0 left-0 right-0 max-w-md mx-auto z-30 px-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pointer-events-none flex justify-start"
     >
       {/*
         Both widths are LENGTHS. `w-auto` reads as the obvious way to say "only
@@ -107,7 +141,12 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
         its final size on the first frame while the tabs inside took the full
         300ms to go, so every collapse played as the row crushing together
         rather than as tabs tucking away. A fixed collapsed width animates, and
-        lands on the same place `justify-end` above puts it: under the thumb.
+        lands on the same place `justify-start` above puts it: the bottom-left
+        corner, clear of the catalogue the shopper is reading down the middle.
+
+        `justify-start` only decides anything once the pill has closed — the
+        open bar is `w-full` and fills the row regardless, so the two states
+        are not fighting over the same property.
 
         Sized to hold the basket comfortably rather than exactly, so a longer
         word for "Cart" in another language has somewhere to sit.
