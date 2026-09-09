@@ -11,36 +11,49 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
   const routeActive = (tab) => !cartOpen && activeTab === tab;
 
   /**
-   * Out of the way while reading, back the instant a thumb reverses direction.
+   * Out of the way while reading, back when the thumb reverses in earnest.
    *
    * The bar used to leave entirely, sliding below the fold. That reclaimed the
    * most room but took the basket with it, and the basket is the one control a
    * shopper reaches for WHILE reading the catalogue — every other tab is
-   * somewhere they go once they have stopped. So scrolling down now tucks the
-   * four route tabs away and keeps Cart, and the pill shrinks to fit it.
+   * somewhere they go once they have stopped. So scrolling down keeps Cart and
+   * tucks the four route tabs.
    *
-   * Compared against the last position rather than a running total, so a long
-   * scroll down and then a short scroll up shows the bar again immediately —
-   * a threshold measured from where scrolling started would make "up" mean
-   * "up enough to undo the whole down", which is not what a reversal reads as.
-   * The 8px floor near the top keeps the elastic overscroll bounce there from
-   * flickering the bar collapsed and open on every rubber-band wobble.
+   * Movement is ACCUMULATED per direction rather than compared frame to frame.
+   * A per-frame threshold of a few pixels sounds equivalent and is not: real
+   * scrolling arrives as momentum and jitter, so single frames cross ±4px in
+   * the wrong direction constantly, and the bar spent a gesture flapping open
+   * and shut. The accumulator resets when the direction genuinely flips, so
+   * what flips the bar is 48px of sustained travel — a decision the thumb
+   * actually made — and noise inside a stroke never reaches it.
+   *
+   * The 80px floor keeps the first screenful whole: nothing collapses before
+   * there is anything to have scrolled past, and it swallows the elastic
+   * overscroll bounce at the top.
    */
   const [collapsed, setCollapsed] = useState(false);
   const lastScrollY = useRef(0);
+  const travel = useRef(0);
 
   useEffect(() => {
     const handleScroll = () => {
       const currentY = window.scrollY;
       const delta = currentY - lastScrollY.current;
-      if (currentY <= 8) {
-        setCollapsed(false);
-      } else if (delta > 4) {
-        setCollapsed(true);
-      } else if (delta < -4) {
-        setCollapsed(false);
-      }
       lastScrollY.current = currentY;
+      if (!delta) return;
+
+      if (currentY <= 80) {
+        travel.current = 0;
+        setCollapsed(false);
+        return;
+      }
+
+      // Direction changed — start counting this stroke from zero.
+      if (delta > 0 !== travel.current > 0) travel.current = 0;
+      travel.current += delta;
+
+      if (travel.current > 48) setCollapsed(true);
+      else if (travel.current < -48) setCollapsed(false);
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
@@ -55,13 +68,19 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
    * something to bet a layout on. A wrapper owns the width and the button
    * keeps its padding untouched.
    *
-   * `max-width` rather than `hidden`, for the reason the header's address row
-   * gives: a width that animates has to be a length, and the real one here is
-   * whatever the label happens to measure. The cap is far wider than the
-   * widest tab, so it never constrains the open state.
+   * `min-w-0` is load-bearing, not tidying. A flex item defaults to
+   * `min-width: auto`, which resolves to its content width and OUTRANKS
+   * `max-width` — so `max-w-0` alone left every tab stuck at full size while
+   * the pill closed around them, and the whole row crushed into an unreadable
+   * overlapping heap for the length of the animation. That is what this looked
+   * like before, and it is the reason the wrapper exists at all.
+   *
+   * Same duration and easing as the pill's own width below, so the tabs and
+   * the thing containing them travel together instead of one waiting on the
+   * other.
    */
-  const tuck = `inline-flex overflow-hidden transition-all duration-300 ease-out ${
-    collapsed ? 'max-w-0 opacity-0 scale-75 pointer-events-none' : 'max-w-28 opacity-100 scale-100'
+  const tuck = `inline-flex min-w-0 overflow-hidden transition-all duration-300 ease-out ${
+    collapsed ? 'max-w-0 opacity-0 pointer-events-none' : 'max-w-28 opacity-100'
   }`;
 
   /**
@@ -83,13 +102,19 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
       className="fixed bottom-0 left-0 right-0 max-w-md mx-auto z-30 px-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pointer-events-none flex justify-end"
     >
       {/*
-        `w-full` open, natural width collapsed — the pill is what shrinks once
-        its tabs have nothing left to take up, and `justify-end` above drops the
-        remainder on the thumb side rather than leaving it stranded mid-screen.
+        Both widths are LENGTHS. `w-auto` reads as the obvious way to say "only
+        as wide as what is left", and it cannot be animated — the pill jumped to
+        its final size on the first frame while the tabs inside took the full
+        300ms to go, so every collapse played as the row crushing together
+        rather than as tabs tucking away. A fixed collapsed width animates, and
+        lands on the same place `justify-end` above puts it: under the thumb.
+
+        Sized to hold the basket comfortably rather than exactly, so a longer
+        word for "Cart" in another language has somewhere to sit.
       */}
       <div
-        className={`pointer-events-auto bg-[#FAF7F2]/95 backdrop-blur-md border border-[#DCD5C6] rounded-full flex justify-around items-center py-1.5 px-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.14)] transition-all duration-300 ease-out ${
-          collapsed ? 'w-auto' : 'w-full'
+        className={`pointer-events-auto bg-[#FAF7F2]/95 backdrop-blur-md border border-[#DCD5C6] rounded-full flex items-center py-1.5 px-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.14)] transition-all duration-300 ease-out ${
+          collapsed ? 'w-[4.75rem] justify-center' : 'w-full justify-around'
         }`}
       >
         <span className={tuck}>
