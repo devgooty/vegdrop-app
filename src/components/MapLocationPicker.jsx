@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -188,6 +189,44 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
     detectAndFetch();
   }, []);
 
+  /**
+   * Freeze the page underneath while the picker is up.
+   *
+   * Nothing here is scrollable except the nearby-shops strip, so a drag that
+   * starts anywhere else reaches the shop behind and scrolls it — and the
+   * header this picker is opened from collapses its address row once that
+   * happens, taking the picker with it (see the portal below). Locking the
+   * body means the gesture has nowhere to go in the first place.
+   *
+   * `position: fixed` pinned to a negative `top` rather than `overflow: hidden`,
+   * and the forced re-measure before restoring the offset, for the reasons
+   * spelled out at length on the same effect in CartModal.
+   */
+  useEffect(() => {
+    const { body } = document;
+    const scrollY = window.scrollY;
+    const previous = {
+      position: body.style.position,
+      top: body.style.top,
+      width: body.style.width,
+      overflow: body.style.overflow,
+    };
+
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.width = '100%';
+    body.style.overflow = 'hidden';
+
+    return () => {
+      body.style.position = previous.position;
+      body.style.top = previous.top;
+      body.style.width = previous.width;
+      body.style.overflow = previous.overflow;
+      void body.offsetHeight;
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+
   const handleConfirm = () => {
     if (locationDetails && formattedFullAddress) {
       /**
@@ -204,7 +243,27 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
 
   const mapCenter = gpsPos || { lat: defaultPosition[0], lng: defaultPosition[1] };
 
-  return (
+  /*
+    Rendered into `document.body`, not where it is written.
+
+    Both callers mount this inside the sticky header: DeliveryLocationBar lives
+    in the address row, and that row is a `max-h-0 opacity-0 overflow-hidden`
+    box the moment the shopper scrolls. A child of it is clipped to nothing and
+    faded out — so opening the picker and then dragging the map collapsed the
+    whole screen and left the shopper looking at the home page, with the picker
+    still mounted and invisible behind it.
+
+    `position: fixed` did not save it, and could not: the header carries
+    `backdrop-filter` for its frosted tint, and a backdrop-filter other than
+    `none` makes the element a containing block for fixed-position descendants,
+    exactly as `transform` and `filter` do. So `inset-0` resolved against the
+    header's box rather than the viewport. A portal is the fix for both faults
+    at once, because it takes the overlay out of that subtree entirely.
+
+    Anything full-screen opened from inside the header needs this. Do not
+    "simplify" it back to a plain return.
+  */
+  return createPortal(
     <div className="fixed inset-0 bg-[#FFFDF9] z-[1000] flex flex-col animate-fade-in h-[100dvh] w-full">
 
       {/* FLOATING BACK BUTTON */}
@@ -394,6 +453,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
