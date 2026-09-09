@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import {
-  Truck, CheckCircle2, MapPin, Phone, PackageCheck, Bell, Bike,
+  Truck, CheckCircle2, MapPin, Phone, PackageCheck, Bell,
   LogOut, User, Home, Map as MapIcon, Wallet, Info, Clock, AlertTriangle,
   Landmark, CreditCard, Lock, Loader2, Pencil, KeyRound, X, Camera,
 } from 'lucide-react';
 import MarketPickups from './MarketPickups';
 import LanguagePicker from './LanguagePicker';
+import ProfileAvatar from './ProfileAvatar';
+import VegDropMark from './VegDropMark';
 import {
   startLocationReporting, setDutyStatus,
   fetchRiderBankDetails, saveRiderBankDetails,
@@ -199,31 +201,29 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onAcc
   );
 
   return (
-    <div className="min-h-[100dvh] bg-gray-50 flex flex-col font-sans relative max-w-md mx-auto shadow-2xl overflow-hidden border-x border-gray-200">
-      <header className="bg-white px-5 py-4 border-b border-gray-100 shadow-sm sticky top-0 z-40">
-        <div className="flex items-center justify-between">
-          <h1 className="font-black text-xl text-gray-900 tracking-tight">
-            {activeTab === 'home' && t('header.dashboard')}
-            {activeTab === 'orders' && t('header.activeTasks')}
-            {activeTab === 'map' && `🗺 ${t('header.liveRoute')}`}
-            {activeTab === 'earnings' && t('header.deliveries')}
-            {activeTab === 'profile' && t('header.myProfile')}
-          </h1>
-          <div className="flex items-center gap-3">
-            {/* The rider's own mark on the screen they actually work from —
-                the login hero already carries a bike badge, but that's the
-                one screen an on-duty rider never sees again. */}
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
-              <Bike className="w-5 h-5" />
+    <div className="min-h-[100dvh] bg-[#FAF7F2] flex flex-col font-sans relative max-w-md mx-auto shadow-xl border-x border-[#DCD5C6]/60">
+      <header className="vd-glass-header px-4 py-3 pt-safe-3 border-b border-[#DCD5C6] sticky top-0 z-40">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="vd-home-mark">
+              <span className="vd-home-mark-shell" aria-hidden="true" />
+              <VegDropMark className="vd-home-mark-glyph" />
             </span>
-            <div className="relative">
-              <Bell className="w-6 h-6 text-gray-500" />
-              {notifications.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white text-[11.5px] font-black rounded-full flex items-center justify-center animate-bounce">
-                  {notifications.length}
-                </span>
-              )}
-            </div>
+            <h1 className="font-black text-[1.15rem] text-[#1B4D3E] tracking-tight truncate">
+              {activeTab === 'home' && t('header.dashboard')}
+              {activeTab === 'orders' && t('header.activeTasks')}
+              {activeTab === 'map' && t('header.liveRoute')}
+              {activeTab === 'earnings' && t('header.deliveries')}
+              {activeTab === 'profile' && t('header.myProfile')}
+            </h1>
+          </div>
+          <div className="relative shrink-0 p-1.5">
+            <Bell className="w-5 h-5 text-[#8A7E6B]" strokeWidth={2.25} />
+            {notifications.length > 0 && (
+              <span className="skeuo-badge-amber absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 text-white text-[11px] font-extrabold rounded-full flex items-center justify-center ring-2 ring-[#FAF7F2]">
+                {notifications.length}
+              </span>
+            )}
           </div>
         </div>
 
@@ -231,19 +231,19 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onAcc
           <button
             key={notif.id}
             type="button"
-            className="mt-3 w-full bg-emerald-600 text-white px-3 py-2.5 rounded-xl flex items-start gap-2 shadow-md text-left"
+            className="mt-3 w-full skeuo-btn-emerald text-white px-3.5 py-2.5 rounded-2xl flex items-start gap-2 text-left active:scale-[0.99]"
             onClick={() => {
               if (onClearNotification) onClearNotification(notif.id);
               setActiveTab('orders');
             }}
           >
             <Bell className="w-4 h-4 shrink-0 mt-0.5" />
-            <span className="text-sm font-bold">{notif.message || 'New delivery task'}</span>
+            <span className="text-sm font-bold leading-snug">{notif.message || 'New delivery task'}</span>
           </button>
         ))}
       </header>
 
-      <main className="flex-1 p-5 overflow-y-auto pb-28">
+      <main className="flex-1 px-4 pt-4 overflow-y-auto pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]">
         {activeTab === 'home' && (
           <HomeTab
             user={user}
@@ -270,7 +270,12 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onAcc
           />
         )}
 
-        {activeTab === 'map' && <RiderLiveMapTab riderPosition={agentCoords} />}
+        {activeTab === 'map' && (
+          <RiderLiveMapTab
+            riderPosition={agentCoords}
+            onOpenOrders={() => setActiveTab('orders')}
+          />
+        )}
 
         {activeTab === 'earnings' && (
           <DeliveriesTab
@@ -284,12 +289,16 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onAcc
         )}
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 mx-auto w-full max-w-md bg-white border-t border-gray-200 pb-safe pt-2 px-6 flex justify-between items-center shadow-[0_-10px_20px_rgba(0,0,0,0.03)] z-40 rounded-t-3xl">
-        <NavButton icon={Home} label={t('nav.home')} isActive={activeTab === 'home'} onClick={() => setActiveTab('home')} />
-        <NavButton icon={PackageCheck} label={t('nav.orders')} isActive={activeTab === 'orders'} onClick={() => setActiveTab('orders')} />
-        <NavButton icon={MapIcon} label={t('nav.map')} isActive={activeTab === 'map'} onClick={() => setActiveTab('map')} />
-        <NavButton icon={Wallet} label={t('nav.trips')} isActive={activeTab === 'earnings'} onClick={() => setActiveTab('earnings')} />
-        <NavButton icon={User} label={t('nav.profile')} isActive={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
+      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto z-40 pointer-events-none">
+        <div className="px-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
+          <div className="pointer-events-auto bg-[#FAF7F2]/95 backdrop-blur-md border border-[#DCD5C6] rounded-full flex items-center justify-around w-full py-1.5 px-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
+            <NavButton icon={Home} label={t('nav.home')} isActive={activeTab === 'home'} onClick={() => setActiveTab('home')} />
+            <NavButton icon={PackageCheck} label={t('nav.orders')} isActive={activeTab === 'orders'} onClick={() => setActiveTab('orders')} />
+            <NavButton icon={MapIcon} label={t('nav.map')} isActive={activeTab === 'map'} onClick={() => setActiveTab('map')} />
+            <NavButton icon={Wallet} label={t('nav.trips')} isActive={activeTab === 'earnings'} onClick={() => setActiveTab('earnings')} />
+            <NavButton icon={User} label={t('nav.profile')} isActive={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
+          </div>
+        </div>
       </nav>
     </div>
   );
@@ -301,33 +310,56 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onAcc
 
 function HomeTab({ user, isOnline, onSetOnline, isSavingDuty, dutyError, agentCoords, locationError, deliveredToday, deliveredTotal, setActiveTab }) {
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center border-2 border-emerald-500 shrink-0">
-            <User className="w-8 h-8 text-emerald-600" />
+    <div className="space-y-5 animate-fade-in">
+      <section className="rounded-[1.75rem] bg-[#1B4D3E] text-white overflow-hidden shadow-[0_8px_24px_rgba(27,77,62,0.28)]">
+        <div className="px-5 pt-5 pb-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-14 h-14 rounded-2xl bg-[#FFFDF9] p-[3px] shrink-0 shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)]">
+                <ProfileAvatar
+                  name={user?.name}
+                  avatar={user?.avatar}
+                  className="w-full h-full rounded-[0.85rem]"
+                  emojiClassName="text-2xl"
+                />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11.5px] font-bold uppercase tracking-[0.14em] text-[#A8D5B5]">
+                  {isOnline ? 'On duty' : 'Off duty'}
+                </p>
+                <h2 className="text-[1.2rem] font-black truncate leading-tight mt-0.5">
+                  {user ? user.name : 'Delivery Partner'}
+                </h2>
+                {/* A real count. The "4.9 ⭐ (124 trips)" this replaces was typed
+                    into the source and identical for every agent. */}
+                <p className="text-[13.5px] text-white/65 mt-0.5">
+                  {deliveredTotal} {deliveredTotal === 1 ? 'delivery' : 'deliveries'} completed
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              aria-label={isOnline ? 'Go offline' : 'Go online'}
+              onClick={() => onSetOnline(!isOnline)}
+              disabled={isSavingDuty}
+              className={`relative w-14 h-8 rounded-full shrink-0 transition-colors duration-300 disabled:opacity-60 ${
+                isOnline ? 'bg-[#8FCB9B]' : 'bg-white/20'
+              }`}
+            >
+              <div
+                className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-sm transition-transform duration-300 ${
+                  isOnline ? 'translate-x-7' : 'translate-x-1'
+                }`}
+              />
+            </button>
           </div>
-          <div className="min-w-0">
-            <h2 className="text-lg font-black text-gray-900 truncate">
-              {user ? user.name : 'Delivery Partner'}
-            </h2>
-            {/* A real count. The "4.9 ⭐ (124 trips)" this replaces was typed
-                into the source and identical for every agent. */}
-            <p className="text-sm font-bold text-gray-500">
-              {deliveredTotal} {deliveredTotal === 1 ? 'delivery' : 'deliveries'} completed
-            </p>
-          </div>
+          <p className="text-[13.5px] text-white/60 mt-4 leading-relaxed">
+            {isOnline
+              ? 'Nearby markets can see you. New pickups land here first.'
+              : 'Go on duty so the nearest market can offer you a pickup. Your position is only shared while you are online.'}
+          </p>
         </div>
-        <button
-          type="button"
-          aria-label={isOnline ? 'Go offline' : 'Go online'}
-          onClick={() => onSetOnline(!isOnline)}
-          disabled={isSavingDuty}
-          className={`relative w-14 h-8 rounded-full shrink-0 transition-colors duration-300 disabled:opacity-60 ${isOnline ? 'bg-emerald-500' : 'bg-gray-300'}`}
-        >
-          <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-transform duration-300 ${isOnline ? 'translate-x-7' : 'translate-x-1'}`} />
-        </button>
-      </div>
+      </section>
 
       {/*
         Being online but unlocatable is the one state that looks like working
@@ -336,11 +368,11 @@ function HomeTab({ user, isOnline, onSetOnline, isSavingDuty, dutyError, agentCo
         where "nothing right now" would otherwise be read as bad luck.
       */}
       {isOnline && locationError && (
-        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+        <div className="bg-[#FDF3E3] border border-[#E8D4A8] rounded-2xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-[#8A6A1B] shrink-0 mt-0.5" />
           <div className="min-w-0">
-            <h3 className="font-bold text-amber-900 text-sm mb-0.5">No pickups can reach you</h3>
-            <p className="text-xs text-amber-800 leading-relaxed">{locationError}</p>
+            <h3 className="font-bold text-[#5C4A12] text-sm mb-0.5">No pickups can reach you</h3>
+            <p className="text-xs text-[#7A6528] leading-relaxed">{locationError}</p>
           </div>
         </div>
       )}
@@ -351,11 +383,11 @@ function HomeTab({ user, isOnline, onSetOnline, isSavingDuty, dutyError, agentCo
         hear. It used to be caught and dropped, so the tap simply did nothing.
       */}
       {dutyError && (
-        <div className="bg-rose-50 border border-rose-300 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
-          <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+        <div className="bg-[#FCECEC] border border-[#E8C4C4] rounded-2xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-[#9B3A3A] shrink-0 mt-0.5" />
           <div className="min-w-0">
-            <h3 className="font-bold text-rose-900 text-sm mb-0.5">Still on duty</h3>
-            <p className="text-xs text-rose-800 leading-relaxed">{dutyError}</p>
+            <h3 className="font-bold text-[#6B2424] text-sm mb-0.5">Still on duty</h3>
+            <p className="text-xs text-[#8A3A3A] leading-relaxed">{dutyError}</p>
           </div>
         </div>
       )}
@@ -366,51 +398,52 @@ function HomeTab({ user, isOnline, onSetOnline, isSavingDuty, dutyError, agentCo
         it has to be the first thing on the page — not something to scroll to.
         Renders nothing at all when there is neither an offer nor a job in hand.
       */}
-      <div className="-mx-5">
+      <div className="-mx-4">
         <MarketPickups isOnline={isOnline} riderPosition={agentCoords} />
       </div>
 
       {!isOnline ? (
-        <div className="bg-rose-50 border border-rose-100 rounded-2xl p-5 text-center shadow-sm">
-          <Truck className="w-12 h-12 text-rose-300 mx-auto mb-2" />
-          <h3 className="font-bold text-rose-900 mb-1">You are currently offline</h3>
-          <p className="text-xs text-rose-600 mb-4">
-            Go online to start receiving pickups. Your position is shared while you are online —
-            that is how the nearest market finds you.
+        <div className="skeuo-card rounded-[1.5rem] p-6 text-center">
+          <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1B4D3E]/10 text-[#1B4D3E]">
+            <Truck className="w-7 h-7" />
+          </span>
+          <h3 className="font-black text-[#1B4D3E] mb-1">You are off duty</h3>
+          <p className="text-[13.5px] text-[#8A7E6B] mb-4 leading-relaxed">
+            Markets only offer pickups to riders they can see. Clock on when you are ready to ride.
           </p>
           <button
             type="button"
             onClick={() => onSetOnline(true)}
             disabled={isSavingDuty}
-            className="bg-emerald-600 text-white font-black px-6 py-3 rounded-xl w-full shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 disabled:opacity-60"
+            className="skeuo-btn-emerald font-black px-6 py-3 rounded-2xl w-full active:scale-[0.98] transition-transform flex items-center justify-center gap-2 disabled:opacity-60"
           >
             <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
-            {isSavingDuty ? 'GOING ONLINE…' : 'GO ONLINE'}
+            {isSavingDuty ? 'Going on duty…' : 'Go on duty'}
           </button>
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <Stat label="Today" value={deliveredToday} hint="deliveries" />
             <Stat label="All time" value={deliveredTotal} hint="deliveries" />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => setActiveTab('orders')}
-              className="bg-[#1B4D3E] hover:bg-[#143B2B] text-white p-4 rounded-2xl shadow-md flex items-center gap-3 transition-colors text-left"
+              className="skeuo-btn-emerald p-4 rounded-2xl flex items-center gap-3 text-left active:scale-[0.98] transition-transform"
             >
-              <PackageCheck className="w-8 h-8 opacity-80 shrink-0" />
+              <PackageCheck className="w-7 h-7 opacity-90 shrink-0" />
               <span className="font-bold text-sm leading-tight">Active<br />tasks</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('map')}
-              className="bg-white border border-gray-200 text-gray-800 p-4 rounded-2xl shadow-sm flex items-center gap-3 transition-colors text-left"
+              className="skeuo-btn-light p-4 rounded-2xl flex items-center gap-3 text-left active:scale-[0.98] transition-transform"
             >
-              <MapIcon className="w-8 h-8 text-emerald-600 opacity-80 shrink-0" />
-              <span className="font-bold text-sm leading-tight">Live<br />route</span>
+              <MapIcon className="w-7 h-7 text-[#1B4D3E] shrink-0" />
+              <span className="font-bold text-sm leading-tight text-[#1B4D3E]">Live<br />route</span>
             </button>
           </div>
         </>
@@ -426,11 +459,13 @@ function HomeTab({ user, isOnline, onSetOnline, isSavingDuty, dutyError, agentCo
 function OrdersTab({ isOnline, agentCoords, legacyJobs, onUpdateOrderStatus, onAcceptShopOrder, onDeclineShopOrder }) {
   if (!isOnline) {
     return (
-      <div className="text-center py-20 px-4">
-        <Truck className="w-14 h-14 text-gray-300 mx-auto mb-4" />
-        <h3 className="font-bold text-gray-900 mb-2">You are offline</h3>
-        <p className="text-sm text-gray-500">
-          Go online from the Home tab to be offered pickups.
+      <div className="skeuo-card rounded-[1.5rem] text-center py-16 px-5">
+        <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1B4D3E]/10 text-[#1B4D3E]">
+          <Truck className="w-7 h-7" />
+        </span>
+        <h3 className="font-black text-[#1B4D3E] mb-2">You are off duty</h3>
+        <p className="text-sm text-[#8A7E6B] leading-relaxed">
+          Go on duty from Home to be offered pickups.
         </p>
       </div>
     );
@@ -440,13 +475,13 @@ function OrdersTab({ isOnline, agentCoords, legacyJobs, onUpdateOrderStatus, onA
     <div className="space-y-5 animate-fade-in">
       {/* The market flow, which is the real one: offers, the stall round, and
           the live route. MarketPickups renders nothing when there is neither. */}
-      <div className="-mx-5">
-        <MarketPickups isOnline={isOnline} riderPosition={agentCoords} />
+      <div className="-mx-4">
+        <MarketPickups isOnline={isOnline} riderPosition={agentCoords} hideIdleEmpty />
       </div>
 
       {legacyJobs.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-xs font-black text-gray-400 uppercase tracking-wider px-1">
+          <h2 className="text-[11.5px] font-black text-[#8A7E6B] uppercase tracking-wider px-1">
             Direct orders
           </h2>
           {legacyJobs.map((order) => (
@@ -518,17 +553,19 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
   };
 
   return (
-    <article className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
+    <article className="skeuo-card rounded-2xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-[#EAE3D2] flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[15px] font-bold text-gray-900 truncate">
+          <p className="text-[15px] font-bold text-[#2D2A26] truncate">
             {awaitingAccept ? order.shopName : order.customerName}
           </p>
-          <p className="text-[13px] text-gray-500">{order.id}</p>
+          <p className="text-[13px] text-[#8A7E6B]">{order.id}</p>
         </div>
         <span
-          className={`text-[12.5px] font-bold px-2.5 py-1 rounded-full shrink-0 ${
-            readyToDeliver ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+          className={`text-[12px] font-bold px-2.5 py-1 rounded-full shrink-0 ${
+            readyToDeliver
+              ? 'bg-[#1B4D3E]/10 text-[#1B4D3E]'
+              : 'bg-[#FDF3E3] text-[#8A6A1B]'
           }`}
         >
           {awaitingAccept ? 'New pickup' : order.status}
@@ -538,22 +575,22 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
       {awaitingAccept ? (
         <>
           <div className="px-4 py-3 space-y-2">
-            <p className="text-[14px] text-gray-700 leading-snug">
+            <p className="text-[14px] text-[#2D2A26] leading-snug">
               {order.shopName} wants a rider for {order.items?.length || 1} item
               {order.items?.length === 1 ? '' : 's'}.
             </p>
             {order.paymentMethod === 'cod' && (
-              <p className="text-[13.5px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+              <p className="text-[13.5px] font-bold text-[#8A6A1B] bg-[#FDF3E3] border border-[#E8D4A8] rounded-xl px-2.5 py-1.5">
                 Collect ₹{order.totalAmount} in cash on handover
               </p>
             )}
           </div>
-          <div className="p-3 bg-gray-50 flex gap-2">
+          <div className="p-3 bg-[#F4F0E6] flex gap-2">
             <button
               type="button"
               onClick={() => runAction(onDecline)}
               disabled={acting}
-              className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[14px] font-bold disabled:opacity-50"
+              className="skeuo-btn-light px-4 py-3 rounded-xl flex items-center justify-center gap-1.5 text-[14px] font-bold disabled:opacity-50"
             >
               <X className="w-4 h-4" />
               Decline
@@ -562,7 +599,7 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
               type="button"
               onClick={() => runAction(onAccept)}
               disabled={acting}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[15.5px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:opacity-60"
+              className="flex-1 skeuo-btn-emerald text-[15.5px] font-bold py-3 rounded-xl disabled:opacity-60"
             >
               <span className="flex items-center justify-center gap-2">
                 {acting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
@@ -575,42 +612,42 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
         <>
           <div className="px-4 py-3 space-y-2">
             {awaitingHandoff && order.pickupCode && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 flex items-center gap-2.5">
-                <KeyRound className="w-4 h-4 text-emerald-700 shrink-0" />
+              <div className="rounded-xl border border-[#1B4D3E]/20 bg-[#1B4D3E]/8 px-3 py-2.5 flex items-center gap-2.5">
+                <KeyRound className="w-4 h-4 text-[#1B4D3E] shrink-0" />
                 <div>
-                  <p className="text-[12px] font-bold text-emerald-700 uppercase tracking-wide">
+                  <p className="text-[12px] font-bold text-[#1B4D3E] uppercase tracking-wide">
                     Show this to the shop
                   </p>
-                  <p className="text-lg font-black text-emerald-900 tracking-[0.25em]">{order.pickupCode}</p>
+                  <p className="text-lg font-black text-[#143B2B] tracking-[0.25em]">{order.pickupCode}</p>
                 </div>
               </div>
             )}
             <div className="flex items-start gap-2.5">
-              <MapPin className={`w-4 h-4 shrink-0 mt-0.5 ${awaitingHandoff ? 'text-blue-500' : 'text-orange-500'}`} />
+              <MapPin className={`w-4 h-4 shrink-0 mt-0.5 ${awaitingHandoff ? 'text-[#1D4E6B]' : 'text-[#C45C26]'}`} />
               <div>
                 {awaitingHandoff && (
-                  <p className="text-[12px] font-bold text-blue-600 uppercase tracking-wide">
+                  <p className="text-[12px] font-bold text-[#1D4E6B] uppercase tracking-wide">
                     Pick up from {order.shopName}
                   </p>
                 )}
-                <p className="text-[14px] text-gray-700 leading-snug">
+                <p className="text-[14px] text-[#2D2A26] leading-snug">
                   {awaitingHandoff ? order.shopAddress || order.shopName : order.address}
                 </p>
               </div>
             </div>
             {order.paymentMethod === 'cod' && (
-              <p className="text-[13.5px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+              <p className="text-[13.5px] font-bold text-[#8A6A1B] bg-[#FDF3E3] border border-[#E8D4A8] rounded-xl px-2.5 py-1.5">
                 Collect ₹{order.totalAmount} in cash on handover
               </p>
             )}
             {awaitingHandoff ? (
-              <p className="text-[13px] text-gray-500 flex items-center gap-1.5">
+              <p className="text-[13px] text-[#8A7E6B] flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 shrink-0" />
                 Waiting for the shop to confirm the code.
               </p>
             ) : (
               !readyToDeliver && (
-                <p className="text-[13px] text-gray-500 flex items-center gap-1.5">
+                <p className="text-[13px] text-[#8A7E6B] flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5 shrink-0" />
                   The shop has not handed this over yet.
                 </p>
@@ -619,9 +656,9 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
             {readyToDeliver && (
               <div className="space-y-2">
                 {proofUrl ? (
-                  <img src={proofUrl} alt="" className="w-full h-28 object-cover rounded-xl border border-emerald-200" />
+                  <img src={proofUrl} alt="" className="w-full h-28 object-cover rounded-xl border border-[#DCD5C6]" />
                 ) : null}
-                <label className="inline-flex items-center gap-2 text-[12px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl cursor-pointer">
+                <label className="inline-flex items-center gap-2 text-[12px] font-bold text-[#1B4D3E] bg-[#1B4D3E]/8 border border-[#1B4D3E]/15 px-3 py-2 rounded-xl cursor-pointer">
                   {uploadingProof ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
                   <span>{uploadingProof ? 'Uploading…' : proofUrl ? 'Retake delivery photo' : 'Photo of delivery (optional)'}</span>
                   <input
@@ -633,16 +670,16 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
                     onChange={handleProofPick}
                   />
                 </label>
-                {proofError && <p className="text-[11px] font-bold text-red-600">{proofError}</p>}
+                {proofError && <p className="text-[11px] font-bold text-[#9B3A3A]">{proofError}</p>}
               </div>
             )}
           </div>
 
-          <div className="p-3 bg-gray-50 flex gap-2">
+          <div className="p-3 bg-[#F4F0E6] flex gap-2">
             {(awaitingHandoff ? order.shopPhone : order.phone) && (
               <a
                 href={`tel:${awaitingHandoff ? order.shopPhone : order.phone}`}
-                className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center"
+                className="skeuo-btn-light px-4 py-3 rounded-xl flex items-center justify-center"
                 aria-label={awaitingHandoff ? 'Call the shop' : 'Call the customer'}
               >
                 <Phone className="w-4 h-4" />
@@ -658,7 +695,7 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
               )}`}
               target="_blank"
               rel="noreferrer"
-              className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[14px] font-bold"
+              className="skeuo-btn-light px-4 py-3 rounded-xl flex items-center justify-center gap-1.5 text-[14px] font-bold"
             >
               <MapPin className="w-4 h-4" />
               {awaitingHandoff ? 'Navigate to shop' : 'Navigate'}
@@ -667,7 +704,7 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
               type="button"
               onClick={onDeliver}
               disabled={!readyToDeliver}
-              className="flex-1 bg-gray-900 hover:bg-black text-white text-[15.5px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:bg-gray-200 disabled:text-gray-400"
+              className="flex-1 skeuo-btn-emerald text-[15.5px] font-bold py-3 rounded-xl disabled:opacity-40 disabled:shadow-none"
             >
               <span className="flex items-center justify-center gap-2">
                 <PackageCheck className="w-4 h-4" />
@@ -695,21 +732,32 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
  * route, and the previous version filled that gap by tracking `orders[0]` —
  * whichever order happened to be first in a list scoped to the whole role.
  */
-function RiderLiveMapTab({ riderPosition }) {
+function RiderLiveMapTab({ riderPosition, onOpenOrders }) {
   const { activeJob, loaded } = useRiderJobs();
 
   if (!loaded) {
-    return <div className="h-[calc(100dvh-200px)] rounded-2xl bg-gray-100 animate-pulse" aria-hidden="true" />;
+    return <div className="h-[calc(100dvh-200px)] rounded-2xl bg-[#EFECE4] animate-pulse" aria-hidden="true" />;
   }
 
   if (!activeJob) {
     return (
-      <div className="text-center py-20">
-        <MapIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-        <p className="text-gray-500 font-bold">Accept a pickup to see your route.</p>
-        <p className="text-gray-400 text-xs mt-1">
-          Offers arrive on the Home tab as soon as a market has an order ready.
+      <div className="skeuo-card rounded-[1.5rem] text-center py-14 px-5">
+        <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1B4D3E]/10 text-[#1B4D3E]">
+          <MapIcon className="w-7 h-7" />
+        </span>
+        <p className="text-[#1B4D3E] font-black">Accept a pickup to see your route.</p>
+        <p className="text-[#8A7E6B] text-[13.5px] mt-1.5 leading-relaxed">
+          Offers arrive on Home as soon as a market has an order ready.
         </p>
+        {onOpenOrders && (
+          <button
+            type="button"
+            onClick={onOpenOrders}
+            className="mt-5 skeuo-btn-emerald font-bold px-5 py-2.5 rounded-2xl text-sm"
+          >
+            See active tasks
+          </button>
+        )}
       </div>
     );
   }
@@ -718,21 +766,21 @@ function RiderLiveMapTab({ riderPosition }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-xs flex justify-between items-center gap-2">
+      <div className="skeuo-card rounded-2xl px-3.5 py-2.5 text-xs flex justify-between items-center gap-2">
         <div className="min-w-0">
-          <p className="font-bold text-emerald-800 truncate">{heading}</p>
-          <p className="text-emerald-600 truncate">
+          <p className="font-bold text-[#1B4D3E] truncate">{heading}</p>
+          <p className="text-[#8A7E6B] truncate">
             {activeJob.status === 'dispatched'
               ? activeJob.address
               : `${activeJob.marketName} · ${activeJob.stallCount} stall${activeJob.stallCount === 1 ? '' : 's'}`}
           </p>
         </div>
-        <span className="bg-emerald-600 text-white px-2 py-1 rounded-md text-[11.5px] font-black shrink-0">
+        <span className="skeuo-badge-emerald text-white px-2 py-1 rounded-md text-[11.5px] font-black shrink-0">
           {activeJob.orderNumber}
         </span>
       </div>
 
-      <Suspense fallback={<div className="h-[60dvh] rounded-2xl bg-gray-100 animate-pulse" aria-hidden="true" />}>
+      <Suspense fallback={<div className="h-[60dvh] rounded-2xl bg-[#EFECE4] animate-pulse" aria-hidden="true" />}>
         <DeliveryRouteMap
           rider={riderPosition}
           market={activeJob.marketLat != null ? { lat: activeJob.marketLat, lng: activeJob.marketLng } : null}
@@ -766,14 +814,14 @@ function RiderLiveMapTab({ riderPosition }) {
 function DeliveriesTab({ delivered, deliveredToday }) {
   return (
     <div className="space-y-5 animate-fade-in">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3">
         <Stat label="Today" value={deliveredToday} hint="deliveries" />
         <Stat label="All time" value={delivered.length} hint="deliveries" />
       </div>
 
-      <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-start gap-2.5">
-        <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-        <p className="text-[14px] text-blue-900 leading-relaxed">
+      <div className="bg-[#EAF3F8] border border-[#C5D8E4] rounded-2xl p-4 flex items-start gap-2.5">
+        <Info className="w-4 h-4 text-[#1D4E6B] shrink-0 mt-0.5" />
+        <p className="text-[14px] text-[#1D4E6B] leading-relaxed">
           <span className="font-bold block">Payouts are not tracked here yet.</span>
           This app records the deliveries you complete, but the platform has no rider payout
           ledger, so it cannot tell you what you have earned. Check with the market office for
@@ -781,28 +829,28 @@ function DeliveriesTab({ delivered, deliveredToday }) {
         </p>
       </div>
 
-      <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-        <h3 className="font-black text-gray-900 mb-4 border-b pb-2">Completed deliveries</h3>
+      <section className="skeuo-card rounded-2xl p-5">
+        <h3 className="font-black text-[#1B4D3E] mb-4 border-b border-[#EAE3D2] pb-2">Completed deliveries</h3>
         {delivered.length === 0 ? (
-          <p className="text-sm text-gray-500 py-2">
+          <p className="text-sm text-[#8A7E6B] py-2">
             Nothing completed yet. Deliveries you finish appear here.
           </p>
         ) : (
-          <ul className="space-y-4">
+          <ul className="space-y-3">
             {delivered.slice(0, 20).map((order) => (
               <li key={order.serverId || order.id} className="flex justify-between items-center gap-2">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center shrink-0">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  <div className="w-10 h-10 bg-[#1B4D3E]/10 rounded-full flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-5 h-5 text-[#1B4D3E]" />
                   </div>
                   <div className="min-w-0">
-                    <p className="font-bold text-gray-800 text-sm truncate">
+                    <p className="font-bold text-[#2D2A26] text-sm truncate">
                       {order.marketName || order.customerName}
                     </p>
-                    <p className="text-xs text-gray-400">{order.time}</p>
+                    <p className="text-xs text-[#8A7E6B]">{order.time}</p>
                   </div>
                 </div>
-                <span className="text-xs font-bold text-gray-400 shrink-0">{order.id}</span>
+                <span className="text-xs font-bold text-[#8A7E6B] shrink-0">{order.id}</span>
               </li>
             ))}
           </ul>
@@ -818,14 +866,17 @@ function DeliveriesTab({ delivered, deliveredToday }) {
 
 function ProfileTab({ user, deliveredTotal, onLogout }) {
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 text-center">
-        <div className="w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center border-4 border-white shadow-lg mx-auto mb-4">
-          <User className="w-12 h-12 text-emerald-600" />
-        </div>
-        <h2 className="text-2xl font-black text-gray-900">{user ? user.name : 'Delivery Partner'}</h2>
-        <p className="text-gray-500 mb-4">{user?.phone || ''}</p>
-        <div className="inline-flex bg-emerald-50 text-emerald-700 px-4 py-1.5 rounded-full font-bold text-sm border border-emerald-200">
+    <div className="space-y-5 animate-fade-in">
+      <div className="skeuo-card p-6 rounded-[1.75rem] text-center">
+        <ProfileAvatar
+          name={user?.name}
+          avatar={user?.avatar}
+          className="w-24 h-24 rounded-full mx-auto mb-4 ring-4 ring-white shadow-md"
+          emojiClassName="text-4xl"
+        />
+        <h2 className="text-2xl font-black text-[#1B4D3E]">{user ? user.name : 'Delivery Partner'}</h2>
+        <p className="text-[#8A7E6B] mb-4">{user?.phone || ''}</p>
+        <div className="inline-flex bg-[#1B4D3E]/10 text-[#1B4D3E] px-4 py-1.5 rounded-full font-bold text-sm">
           {deliveredTotal} {deliveredTotal === 1 ? 'delivery' : 'deliveries'} completed
         </div>
       </div>
@@ -838,9 +889,9 @@ function ProfileTab({ user, deliveredTotal, onLogout }) {
         <button
           type="button"
           onClick={onLogout}
-          className="w-full bg-rose-50 text-rose-600 font-black py-4 rounded-2xl border border-rose-100 active:scale-95 transition-transform flex items-center justify-center gap-2"
+          className="w-full bg-[#FCECEC] text-[#9B3A3A] font-black py-4 rounded-2xl border border-[#E8C4C4] active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
         >
-          <LogOut className="w-5 h-5" /> SIGN OUT
+          <LogOut className="w-5 h-5" /> Sign out
         </button>
       )}
     </div>
@@ -939,8 +990,8 @@ function BankDetailsCard() {
 
   if (isLoading) {
     return (
-      <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-        <div className="flex items-center justify-center gap-2 py-6 text-gray-500 text-xs font-bold">
+      <section className="skeuo-card rounded-2xl p-5">
+        <div className="flex items-center justify-center gap-2 py-6 text-[#8A7E6B] text-xs font-bold">
           <Loader2 className="w-4 h-4 animate-spin" />
           <span>Loading bank details…</span>
         </div>
@@ -949,17 +1000,17 @@ function BankDetailsCard() {
   }
 
   return (
-    <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-      <div className="flex items-center justify-between border-b pb-2 mb-4">
-        <h3 className="font-black text-gray-900 flex items-center gap-2">
-          <Landmark className="w-4 h-4 text-emerald-700" />
+    <section className="skeuo-card rounded-2xl p-5">
+      <div className="flex items-center justify-between border-b border-[#EAE3D2] pb-2 mb-4">
+        <h3 className="font-black text-[#1B4D3E] flex items-center gap-2">
+          <Landmark className="w-4 h-4" />
           Bank Details
         </h3>
         {!isEditing && (
           <button
             type="button"
             onClick={startEditing}
-            className="text-emerald-700 text-xs font-bold flex items-center gap-1 active:scale-95"
+            className="text-[#1B4D3E] text-xs font-bold flex items-center gap-1 active:scale-95"
           >
             <Pencil className="w-3.5 h-3.5" />
             {details ? 'Edit' : 'Add'}
@@ -981,7 +1032,7 @@ function BankDetailsCard() {
       )}
 
       {!isEditing && !details && (
-        <p className="text-xs text-gray-500 leading-relaxed">
+        <p className="text-xs text-[#8A7E6B] leading-relaxed">
           Add your bank details so the market office knows where to send what you're owed.
         </p>
       )}
@@ -989,7 +1040,7 @@ function BankDetailsCard() {
       {isEditing && (
         <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
           <div>
-            <label className="block font-bold text-gray-800 mb-1">Name on the bank account</label>
+            <label className="block font-bold text-[#2D2A26] mb-1">Name on the bank account</label>
             <div className="relative">
               <input
                 type="text"
@@ -997,16 +1048,16 @@ function BankDetailsCard() {
                 onChange={(e) => setLegalName(e.target.value.slice(0, 120))}
                 placeholder="e.g. Ramesh Kumar"
                 maxLength={120}
-                className="w-full bg-white border border-gray-300 rounded-2xl py-2.5 pl-10 pr-3 text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                className="w-full skeuo-inset-input rounded-2xl py-2.5 pl-10 pr-3 text-xs font-semibold text-[#2D2A26] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30"
                 required
                 disabled={isBusy}
               />
-              <User className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+              <User className="w-4 h-4 text-[#8A7E6B] absolute left-3.5 top-3" />
             </div>
           </div>
 
           <div>
-            <label className="block font-bold text-gray-800 mb-1">Bank Name</label>
+            <label className="block font-bold text-[#2D2A26] mb-1">Bank Name</label>
             <div className="relative">
               <input
                 type="text"
@@ -1014,16 +1065,16 @@ function BankDetailsCard() {
                 onChange={(e) => setBankName(e.target.value.slice(0, 120))}
                 placeholder="e.g. HDFC Bank"
                 maxLength={120}
-                className="w-full bg-white border border-gray-300 rounded-2xl py-2.5 pl-10 pr-3 text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                className="w-full skeuo-inset-input rounded-2xl py-2.5 pl-10 pr-3 text-xs font-semibold text-[#2D2A26] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30"
                 required
                 disabled={isBusy}
               />
-              <CreditCard className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+              <CreditCard className="w-4 h-4 text-[#8A7E6B] absolute left-3.5 top-3" />
             </div>
           </div>
 
           <div>
-            <label className="block font-bold text-gray-800 mb-1">Bank Account Number</label>
+            <label className="block font-bold text-[#2D2A26] mb-1">Bank Account Number</label>
             <div className="relative">
               <input
                 type="text"
@@ -1031,16 +1082,16 @@ function BankDetailsCard() {
                 value={bankAccount}
                 onChange={(e) => setBankAccount(e.target.value.replace(/\D/g, '').slice(0, 18))}
                 placeholder={details ? `Currently ${details.bankAccount}` : '9 to 18 digits'}
-                className="w-full bg-white border border-gray-300 rounded-2xl py-2.5 pl-10 pr-3 text-xs font-mono font-semibold tracking-wider text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                className="w-full skeuo-inset-input rounded-2xl py-2.5 pl-10 pr-3 text-xs font-mono font-semibold tracking-wider text-[#2D2A26] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30"
                 required
                 disabled={isBusy}
               />
-              <Landmark className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+              <Landmark className="w-4 h-4 text-[#8A7E6B] absolute left-3.5 top-3" />
             </div>
           </div>
 
           <div>
-            <label className="block font-bold text-gray-800 mb-1">IFSC Code</label>
+            <label className="block font-bold text-[#2D2A26] mb-1">IFSC Code</label>
             <div className="relative">
               <input
                 type="text"
@@ -1048,23 +1099,23 @@ function BankDetailsCard() {
                 onChange={(e) => setIfsc(e.target.value.toUpperCase().slice(0, 11))}
                 placeholder="HDFC0001234"
                 maxLength={11}
-                className="w-full bg-white border border-gray-300 rounded-2xl py-2.5 pl-10 pr-3 text-xs font-mono font-semibold tracking-wider text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                className="w-full skeuo-inset-input rounded-2xl py-2.5 pl-10 pr-3 text-xs font-mono font-semibold tracking-wider text-[#2D2A26] focus:outline-none focus:ring-2 focus:ring-[#1B4D3E]/30"
                 required
                 disabled={isBusy}
               />
-              <Landmark className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+              <Landmark className="w-4 h-4 text-[#8A7E6B] absolute left-3.5 top-3" />
             </div>
           </div>
 
-          <div className="bg-gray-50 p-3 rounded-2xl border border-gray-200 flex gap-2">
-            <Lock className="w-3.5 h-3.5 text-gray-500 shrink-0 mt-0.5" />
-            <p className="text-[11.5px] text-gray-600 font-semibold leading-relaxed">
+          <div className="bg-[#F4F0E6] p-3 rounded-2xl border border-[#DCD5C6] flex gap-2">
+            <Lock className="w-3.5 h-3.5 text-[#8A7E6B] shrink-0 mt-0.5" />
+            <p className="text-[11.5px] text-[#8A7E6B] font-semibold leading-relaxed">
               Your account number is encrypted and never shown in full again — only the last four
               digits.
             </p>
           </div>
 
-          {error && <p className="text-[12.5px] font-bold text-rose-600">{error}</p>}
+          {error && <p className="text-[12.5px] font-bold text-[#9B3A3A]">{error}</p>}
 
           <div className="flex gap-2">
             {details && (
@@ -1075,7 +1126,7 @@ function BankDetailsCard() {
                   setError('');
                 }}
                 disabled={isBusy}
-                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-xs transition-colors active:scale-95 disabled:opacity-60"
+                className="flex-1 skeuo-btn-light font-bold py-3 rounded-2xl text-xs active:scale-95 disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -1083,7 +1134,7 @@ function BankDetailsCard() {
             <button
               type="submit"
               disabled={isBusy}
-              className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold py-3 rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 text-xs active:scale-98 disabled:opacity-70"
+              className="flex-1 skeuo-btn-emerald font-extrabold py-3 rounded-2xl flex items-center justify-center gap-2 text-xs active:scale-98 disabled:opacity-70"
             >
               {isBusy && <Loader2 className="w-4 h-4 animate-spin" />}
               <span>{isBusy ? 'Saving…' : 'Save'}</span>
@@ -1098,8 +1149,8 @@ function BankDetailsCard() {
 function Row({ label, value }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-[11.5px] text-gray-500 uppercase font-bold tracking-wide">{label}</span>
-      <span className="text-[12.5px] font-mono font-bold text-gray-900 truncate">{value || '—'}</span>
+      <span className="text-[11.5px] text-[#8A7E6B] uppercase font-bold tracking-wide">{label}</span>
+      <span className="text-[12.5px] font-mono font-bold text-[#2D2A26] truncate">{value || '—'}</span>
     </div>
   );
 }
@@ -1110,10 +1161,10 @@ function Row({ label, value }) {
 
 function Stat({ label, value, hint }) {
   return (
-    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
-      <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{label}</span>
-      <span className="text-3xl font-black text-gray-900">{value}</span>
-      <span className="text-[12.5px] text-gray-400 font-semibold">{hint}</span>
+    <div className="skeuo-card p-5 rounded-2xl flex flex-col items-center">
+      <span className="text-[11.5px] font-bold text-[#8A7E6B] uppercase tracking-wider mb-1">{label}</span>
+      <span className="text-3xl font-black text-[#1B4D3E] tabular-nums">{value}</span>
+      <span className="text-[12.5px] text-[#8A7E6B] font-semibold">{hint}</span>
     </div>
   );
 }
@@ -1122,12 +1173,14 @@ const NavButton = ({ icon: Icon, label, isActive, onClick }) => (
   <button
     type="button"
     onClick={onClick}
-    className="flex flex-col items-center gap-1 p-2 active:scale-90 transition-transform"
+    className={`flex flex-col items-center py-1.5 px-1.5 sm:px-2 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
+      isActive
+        ? 'text-[#1B4D3E] font-bold bg-[#1B4D3E]/10 shadow-[inset_0_2px_4px_rgba(27,77,62,0.1)]'
+        : 'text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5'
+    }`}
   >
-    <div className={`p-1.5 rounded-xl transition-colors ${isActive ? 'bg-emerald-100 text-emerald-700' : 'text-gray-400'}`}>
-      <Icon className="w-5 h-5" strokeWidth={isActive ? 2.5 : 2} />
-    </div>
-    <span className={`text-[11.5px] font-bold ${isActive ? 'text-emerald-700' : 'text-gray-400'}`}>{label}</span>
+    <Icon className={`w-5 h-5 transition-transform duration-300 ${isActive ? 'scale-110' : ''}`} strokeWidth={isActive ? 2.5 : 2} />
+    <span className="text-[10.5px] sm:text-[11.5px] font-semibold mt-0.5 whitespace-nowrap">{label}</span>
   </button>
 );
 

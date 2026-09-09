@@ -41,8 +41,10 @@ export default defineConfig(async ({ command, mode }) => {
         '/api': {
           target: `http://localhost:${apiPort}`,
           changeOrigin: true,
-          // Required for the httpOnly refresh cookie to survive the proxy hop.
-          cookieDomainRewrite: 'localhost',
+          // Strip any Domain so the cookie is host-only for whatever origin the
+          // browser used (localhost on laptop, or the LAN IP on phones). Rewriting
+          // to 'localhost' broke phone sessions when opening via 192.168.x.x.
+          cookieDomainRewrite: '',
         },
       },
     },

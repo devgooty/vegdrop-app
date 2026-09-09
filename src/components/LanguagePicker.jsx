@@ -34,7 +34,7 @@ export default function LanguagePicker({ standalone = false }) {
   const current = LANGUAGES.find((lang) => lang.code === language) || LANGUAGES[0];
 
   return (
-    <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <section className="skeuo-card rounded-2xl overflow-hidden">
       {!standalone && (
         <button
           type="button"
@@ -42,19 +42,19 @@ export default function LanguagePicker({ standalone = false }) {
           aria-expanded={expanded}
           className="w-full flex items-center gap-3 p-5 text-left cursor-pointer"
         >
-          <span className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
-            <Languages className="w-4.5 h-4.5 text-emerald-700" />
+          <span className="w-10 h-10 rounded-xl bg-[#1B4D3E]/10 flex items-center justify-center shrink-0">
+            <Languages className="w-4.5 h-4.5 text-[#1B4D3E]" />
           </span>
           <span className="flex-1 min-w-0">
-            <span className="block text-[11.5px] font-bold text-emerald-700 uppercase tracking-wider">
+            <span className="block text-[11.5px] font-bold text-[#1B4D3E] uppercase tracking-wider">
               {t('settings.language')}
             </span>
-            <span className="block text-[15.5px] font-extrabold text-gray-900 truncate">
+            <span className="block text-[15.5px] font-extrabold text-[#2D2A26] truncate">
               {current.nativeName}
             </span>
           </span>
           <ChevronDown
-            className={`w-5 h-5 text-gray-400 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
+            className={`w-5 h-5 text-[#8A7E6B] shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
           />
         </button>
       )}

@@ -37,7 +37,7 @@ const DeliveryRouteMap = lazy(() => import('./DeliveryRouteMap'));
  * around that split rather than working around it: there is no field here that
  * an offer is expected to fill and does not.
  */
-export default function MarketPickups({ isOnline, riderPosition }) {
+export default function MarketPickups({ isOnline, riderPosition, hideIdleEmpty = false }) {
   const toast = useToast();
 
   const { offers, assigned, loaded, refresh } = useRiderJobs();
@@ -63,12 +63,12 @@ export default function MarketPickups({ isOnline, riderPosition }) {
 
   // Nothing to show and nothing pending: stay out of the way entirely.
   if (loaded && offers.length === 0 && assigned.length === 0) {
-    if (!isOnline) return null;
+    if (!isOnline || hideIdleEmpty) return null;
     return (
-      <div className="mx-4 mb-4 rounded-2xl border border-dashed border-gray-300 bg-white px-5 py-6 text-center">
-        <Store className="w-6 h-6 text-gray-400 mx-auto mb-2" />
-        <p className="text-[15px] font-bold text-gray-900">No market pickups right now</p>
-        <p className="text-[13.5px] text-gray-500 mt-1">
+      <div className="mx-4 mb-4 skeuo-card rounded-2xl px-5 py-6 text-center border-dashed">
+        <Store className="w-6 h-6 text-[#1B4D3E] mx-auto mb-2" />
+        <p className="text-[15px] font-bold text-[#1B4D3E]">No market pickups right now</p>
+        <p className="text-[13.5px] text-[#8A7E6B] mt-1 leading-relaxed">
           You will be offered the nearest one as soon as a market has an order ready.
         </p>
       </div>
@@ -121,8 +121,8 @@ function OfferCard({ order, riderPosition, busy, onAccept, onDecline }) {
   });
 
   return (
-    <article className="rounded-2xl border-2 border-emerald-500 bg-white shadow-lg overflow-hidden">
-      <div className="bg-emerald-500 px-4 py-2 flex items-center justify-between">
+    <article className="rounded-2xl border-2 border-[#1B4D3E] bg-[#FFFDF9] shadow-[0_8px_24px_rgba(27,77,62,0.16)] overflow-hidden">
+      <div className="bg-[#1B4D3E] px-4 py-2 flex items-center justify-between">
         <span className="text-[13.5px] font-extrabold text-white uppercase tracking-wide">
           New pickup
         </span>
@@ -134,13 +134,13 @@ function OfferCard({ order, riderPosition, busy, onAccept, onDecline }) {
 
       <div className="p-4 space-y-3">
         <div className="flex items-start gap-2.5">
-          <Store className="w-4.5 h-4.5 text-emerald-600 shrink-0 mt-0.5" />
+          <Store className="w-4.5 h-4.5 text-[#1B4D3E] shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1">
-            <p className="text-[15.5px] font-bold text-gray-900">{order.marketName}</p>
-            <p className="text-[13.5px] text-gray-500">{order.marketAddress}</p>
+            <p className="text-[15.5px] font-bold text-[#2D2A26]">{order.marketName}</p>
+            <p className="text-[13.5px] text-[#8A7E6B]">{order.marketAddress}</p>
           </div>
           {toMarket != null && (
-            <span className="text-[13.5px] font-extrabold text-emerald-700 shrink-0">
+            <span className="text-[13.5px] font-extrabold text-[#1B4D3E] shrink-0">
               {formatDistance(toMarket)}
             </span>
           )}
@@ -158,12 +158,12 @@ function OfferCard({ order, riderPosition, busy, onAccept, onDecline }) {
         </div>
 
         {/* Where it is going, roughly. The exact door arrives on accept. */}
-        <div className="flex items-start gap-2.5 pt-1 border-t border-gray-100">
-          <MapPin className="w-4.5 h-4.5 text-orange-500 shrink-0 mt-1.5" />
-          <p className="text-[14px] text-gray-700 pt-1 leading-snug">
+        <div className="flex items-start gap-2.5 pt-1 border-t border-[#EAE3D2]">
+          <MapPin className="w-4.5 h-4.5 text-[#C45C26] shrink-0 mt-1.5" />
+          <p className="text-[14px] text-[#2D2A26] pt-1 leading-snug">
             {order.dropoffArea || 'Dropoff address shown once you accept'}
             {order.dropoffDistanceMeters != null && (
-              <span className="text-gray-500">
+              <span className="text-[#8A7E6B]">
                 {' '}
                 · {formatDistance(order.dropoffDistanceMeters)} from the market
               </span>
@@ -176,14 +176,14 @@ function OfferCard({ order, riderPosition, busy, onAccept, onDecline }) {
             onClick={onDecline}
             disabled={busy}
             aria-label="Pass this pickup to the next rider"
-            className="px-4 py-3 rounded-xl border border-gray-300 text-gray-600 text-[15px] font-bold disabled:opacity-50"
+            className="skeuo-btn-light px-4 py-3 rounded-xl text-[15px] font-bold disabled:opacity-50"
           >
             <X className="w-4 h-4" />
           </button>
           <button
             onClick={onAccept}
             disabled={busy}
-            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[15.5px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:opacity-50"
+            className="flex-1 skeuo-btn-emerald text-[15.5px] font-bold py-3 rounded-xl disabled:opacity-50"
           >
             {busy ? 'Working…' : 'Accept pickup'}
           </button>
@@ -256,15 +256,15 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
   };
 
   return (
-    <article className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
+    <article className="skeuo-card rounded-2xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-[#EAE3D2] flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[15px] font-bold text-gray-900 truncate">{order.marketName}</p>
-          <p className="text-[13px] text-gray-500">{order.orderNumber}</p>
+          <p className="text-[15px] font-bold text-[#2D2A26] truncate">{order.marketName}</p>
+          <p className="text-[13px] text-[#8A7E6B]">{order.orderNumber}</p>
         </div>
         <span
           className={`text-[12.5px] font-bold px-2.5 py-1 rounded-full shrink-0 ${
-            readyToLeave ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700'
+            readyToLeave ? 'bg-[#1B4D3E]/10 text-[#1B4D3E]' : 'bg-[#F4F0E6] text-[#5C5346]'
           }`}
         >
           {readyToLeave ? 'On the way' : `${remaining.length} stall${remaining.length === 1 ? '' : 's'} left`}
@@ -273,7 +273,7 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
 
       {/* The live route for whichever leg is current. */}
       <Suspense
-        fallback={<div className="h-[220px] bg-gray-100 animate-pulse" aria-hidden="true" />}
+        fallback={<div className="h-[220px] bg-[#EFECE4] animate-pulse" aria-hidden="true" />}
       >
         <DeliveryRouteMap
           rider={riderPosition}
@@ -285,19 +285,19 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
 
       {/* WHO IT IS FOR. Withheld on the offer, and the first thing worth
           knowing once the job is actually theirs. */}
-      <div className="px-4 py-3 border-b border-gray-100 space-y-2">
+      <div className="px-4 py-3 border-b border-[#EAE3D2] space-y-2">
         <div className="flex items-start gap-2.5">
-          <User className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
+          <User className="w-4 h-4 text-[#8A7E6B] shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-bold text-gray-900 truncate">
+            <p className="text-[15px] font-bold text-[#2D2A26] truncate">
               {order.customerName || 'Customer'}
             </p>
-            <p className="text-[14px] text-gray-600 leading-snug">{order.address}</p>
+            <p className="text-[14px] text-[#5C5346] leading-snug">{order.address}</p>
           </div>
         </div>
 
         {order.paymentMethod === 'cod' && (
-          <p className="flex items-center gap-1.5 text-[13.5px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+          <p className="flex items-center gap-1.5 text-[13.5px] font-bold text-[#8A6A1B] bg-[#FDF3E3] border border-[#E8D4A8] rounded-xl px-2.5 py-1.5">
             <Banknote className="w-3.5 h-3.5 shrink-0" />
             Collect {formatPaise(order.totalAmountPaise)} in cash on handover
           </p>
@@ -305,18 +305,18 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
       </div>
 
       {!readyToLeave && (
-        <div className="border-b border-gray-100">
+        <div className="border-b border-[#EAE3D2]">
           <button
             type="button"
             onClick={() => setShowRound((v) => !v)}
-            className="w-full px-4 py-2 flex items-center justify-between text-[13.5px] font-bold text-gray-600"
+            className="w-full px-4 py-2 flex items-center justify-between text-[13.5px] font-bold text-[#5C5346]"
           >
             <span>Your round — {order.pickups.length} stall{order.pickups.length === 1 ? '' : 's'}</span>
             {showRound ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
 
           {showRound && (
-            <ul className="divide-y divide-gray-100">
+            <ul className="divide-y divide-[#EAE3D2]">
               {order.pickups.map((pickup) => {
                 const packed = pickup.lines.every((l) => l.packedAt);
                 return (
@@ -324,10 +324,10 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
                     <span
                       className={`w-9 h-9 rounded-xl flex items-center justify-center text-[13.5px] font-extrabold shrink-0 ${
                         pickup.collected
-                          ? 'bg-emerald-100 text-emerald-700'
+                          ? 'bg-[#1B4D3E]/10 text-[#1B4D3E]'
                           : packed
-                            ? 'bg-gray-900 text-white'
-                            : 'bg-amber-100 text-amber-700'
+                            ? 'bg-[#1B4D3E] text-white'
+                            : 'bg-[#FDF3E3] text-[#8A6A1B]'
                       }`}
                     >
                       {pickup.stallNumber}
@@ -337,15 +337,15 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
                       {/* The trader's name, so the rider is looking for a shop
                           sign rather than counting pitches. */}
                       {pickup.stallName && (
-                        <p className="text-[14px] font-bold text-gray-900 truncate">
+                        <p className="text-[14px] font-bold text-[#2D2A26] truncate">
                           {pickup.stallName}
                         </p>
                       )}
-                      <p className="text-[14px] text-gray-600 truncate">
+                      <p className="text-[14px] text-[#5C5346] truncate">
                         {pickup.lines.map((l) => `${l.name} ×${l.quantity}`).join(', ')}
                       </p>
                       {!packed && !pickup.collected && (
-                        <p className="text-[13px] text-amber-600 flex items-center gap-1 mt-0.5">
+                        <p className="text-[13px] text-[#8A6A1B] flex items-center gap-1 mt-0.5">
                           <Clock className="w-3 h-3" /> still packing
                         </p>
                       )}
@@ -357,20 +357,20 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
                       <a
                         href={`tel:${pickup.stallPhone}`}
                         aria-label={`Call stall ${pickup.stallNumber}`}
-                        className="px-2.5 py-2 rounded-lg border border-gray-300 text-gray-600 shrink-0"
+                        className="skeuo-btn-light px-2.5 py-2 rounded-lg shrink-0"
                       >
                         <Phone className="w-3.5 h-3.5" />
                       </a>
                     )}
 
                     {pickup.collected ? (
-                      <Check className="w-5 h-5 text-emerald-600 shrink-0" strokeWidth={3} />
+                      <Check className="w-5 h-5 text-[#1B4D3E] shrink-0" strokeWidth={3} />
                     ) : (
                       <button
                         onClick={() => onCollect(pickup)}
                         disabled={!packed || busy}
                         aria-label={`Collected from stall ${pickup.stallNumber}`}
-                        className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-[13.5px] font-bold shrink-0 disabled:bg-gray-200 disabled:text-gray-400"
+                        className="px-3 py-2 rounded-lg skeuo-btn-emerald text-[13.5px] font-bold shrink-0 disabled:opacity-40 disabled:shadow-none"
                       >
                         <Package className="w-4 h-4" />
                       </button>
@@ -384,11 +384,11 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
       )}
 
       {readyToLeave && (
-        <div className="px-4 py-3 border-b border-gray-100 space-y-2">
+        <div className="px-4 py-3 border-b border-[#EAE3D2] space-y-2">
           {proofUrl ? (
-            <img src={proofUrl} alt="" className="w-full h-28 object-cover rounded-xl border border-emerald-200" />
+            <img src={proofUrl} alt="" className="w-full h-28 object-cover rounded-xl border border-[#DCD5C6]" />
           ) : null}
-          <label className="inline-flex items-center gap-2 text-[12px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl cursor-pointer">
+          <label className="inline-flex items-center gap-2 text-[12px] font-bold text-[#1B4D3E] bg-[#1B4D3E]/8 border border-[#1B4D3E]/15 px-3 py-2 rounded-xl cursor-pointer">
             {uploadingProof ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
             <span>{uploadingProof ? 'Uploading…' : proofUrl ? 'Retake delivery photo' : 'Photo of delivery (optional)'}</span>
             <input
@@ -400,15 +400,15 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
               onChange={handleProofPick}
             />
           </label>
-          {proofError && <p className="text-[11px] font-bold text-red-600">{proofError}</p>}
+          {proofError && <p className="text-[11px] font-bold text-[#9B3A3A]">{proofError}</p>}
         </div>
       )}
 
-      <div className="p-3 bg-gray-50 flex gap-2">
+      <div className="p-3 bg-[#F4F0E6] flex gap-2">
         {order.phone && (
           <a
             href={`tel:${order.phone}`}
-            className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center"
+            className="skeuo-btn-light px-4 py-3 rounded-xl flex items-center justify-center"
             aria-label="Call the customer"
           >
             <Phone className="w-4 h-4" />
@@ -423,7 +423,7 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
             href={`https://www.google.com/maps/dir/?api=1&destination=${destination.lat},${destination.lng}&travelmode=driving`}
             target="_blank"
             rel="noreferrer"
-            className="px-4 py-3 rounded-xl border border-gray-300 text-gray-700 flex items-center justify-center gap-1.5 text-[14px] font-bold"
+            className="skeuo-btn-light px-4 py-3 rounded-xl flex items-center justify-center gap-1.5 text-[14px] font-bold"
           >
             <Navigation className="w-4 h-4" />
             {readyToLeave ? 'To customer' : 'To market'}
@@ -433,7 +433,7 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
         <button
           onClick={onDeliver}
           disabled={!readyToLeave || busy}
-          className="flex-1 bg-gray-900 hover:bg-black text-white text-[15.5px] font-bold py-3 rounded-xl transition active:translate-y-px disabled:bg-gray-200 disabled:text-gray-400"
+          className="flex-1 skeuo-btn-emerald text-[15.5px] font-bold py-3 rounded-xl disabled:opacity-40 disabled:shadow-none"
         >
           <span className="flex items-center justify-center gap-2">
             <PackageCheck className="w-4 h-4" />
@@ -451,12 +451,12 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
 
 function Fact({ icon, label, value }) {
   return (
-    <div className="bg-gray-50 border border-gray-100 rounded-xl px-2 py-1.5">
-      <div className="flex items-center gap-1 text-gray-400 text-[11.5px] font-bold uppercase tracking-wide">
+    <div className="bg-[#F4F0E6] border border-[#EAE3D2] rounded-xl px-2 py-1.5">
+      <div className="flex items-center gap-1 text-[#8A7E6B] text-[11.5px] font-bold uppercase tracking-wide">
         {icon}
         {label}
       </div>
-      <div className="text-[14.5px] font-extrabold text-gray-900 truncate">{value}</div>
+      <div className="text-[14.5px] font-extrabold text-[#1B4D3E] truncate">{value}</div>
     </div>
   );
 }
