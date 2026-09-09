@@ -4,7 +4,7 @@ import LoginPage from './components/LoginPage';
 import SplashScreen from './components/SplashScreen';
 import { useToast } from './components/Toast';
 import { logout } from './services/auth';
-import { fetchOrders, updateOrderStatus } from './services/orders';
+import { fetchOrders, updateOrderStatus, sameOrdersOrPrevious } from './services/orders';
 import { acceptPickup, declinePickup } from './services/rider';
 import { ApiRequestError } from './services/apiClient';
 import useSessionUser from './hooks/useSessionUser';
@@ -91,7 +91,10 @@ export default function DeliveryApp() {
       if (document.hidden) return;
       try {
         const list = await fetchOrders({ limit: 100 });
-        if (!cancelled) setOrders(list);
+        // Same list as last tick means no render at all — see
+        // sameOrdersOrPrevious. Without it this redrew the whole app every
+        // five seconds whether or not anything had moved.
+        if (!cancelled) setOrders((prev) => sameOrdersOrPrevious(prev, list));
       } catch (e) {
         /* Transient failure; the next tick retries. */
       }

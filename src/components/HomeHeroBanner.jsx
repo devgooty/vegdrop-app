@@ -493,6 +493,43 @@ export default function HomeHeroBanner({
     }, AUTO_MS);
   };
 
+  /**
+   * The carousel does not advance itself while the page is being scrolled.
+   *
+   * Advancing is not cheap, and not because of anything in this component:
+   * `scrollToCard` reads `offsetLeft`/`offsetWidth` to centre the next card,
+   * and `syncActive` reads geometry again once the re-render has dirtied
+   * layout, so one auto-advance forces two full-document layouts. Measured on
+   * the customer home screen at ~45ms each — reading `scrollLeft` on its own
+   * costs the same, so this is the price of laying the page out, not of the
+   * loop, and caching the card offsets would save nothing.
+   *
+   * Ninety milliseconds is invisible on a still screen and is a dropped frame
+   * against a moving one, which is exactly how it was reported: the app
+   * feeling like it lurched while scrolling up to the top. The banner sits at
+   * the top of the page, so scrolling there is precisely when the two collide.
+   *
+   * Pausing costs nothing: by the time the shopper is scrolling, the thing
+   * being advanced is either leaving the screen or already gone. This reuses
+   * the same pause the touch handlers use, so a page scroll and a swipe put
+   * the carousel in the same state, and it restarts on the same timer.
+   *
+   * Listening rather than throttling deliberately — the handler only writes a
+   * ref and resets a timeout, so it does no layout work of its own and there is
+   * nothing here worth rAF-batching.
+   */
+  useEffect(() => {
+    const onPageScroll = () => {
+      pauseAuto();
+      resumeAutoSoon();
+    };
+    window.addEventListener('scroll', onPageScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onPageScroll);
+    // pauseAuto/resumeAutoSoon only touch refs, so the first render's closures
+    // stay correct for the life of the component.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleAdd = (product, event) => {
     onAddToCart?.(product, event);
   };

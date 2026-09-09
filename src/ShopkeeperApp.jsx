@@ -8,7 +8,7 @@ import useSessionUser from './hooks/useSessionUser';
 import { fetchKycStatus } from './services/kyc';
 import { initialCategories } from './data/mockData';
 import { fetchProducts, updateStock, createProduct, updateProduct } from './services/products';
-import { fetchOrders, updateOrderStatus, verifyPickupCode } from './services/orders';
+import { fetchOrders, updateOrderStatus, verifyPickupCode, sameOrdersOrPrevious } from './services/orders';
 import { ApiRequestError } from './services/apiClient';
 import { fetchMyStall } from './services/stalls';
 import { fetchMyJoinRequest } from './services/markets';
@@ -316,7 +316,10 @@ export default function ShopkeeperApp() {
       if (document.hidden) return;
       try {
         const list = await fetchOrders({ limit: 100 });
-        if (!cancelled) setOrders(list);
+        // Same list as last tick means no render at all — see
+        // sameOrdersOrPrevious. Without it this redrew the whole app every
+        // five seconds whether or not anything had moved.
+        if (!cancelled) setOrders((prev) => sameOrdersOrPrevious(prev, list));
       } catch (e) {
         /* Transient failure; the next tick retries. */
       }

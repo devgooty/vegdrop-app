@@ -61,7 +61,7 @@ import { initialCategories } from './data/mockData';
 import { fetchProducts } from './services/products';
 import {
   fetchOrders, createOrder, cancelOrder,
-  acceptPartialOrder, retryPartialOrder,
+  acceptPartialOrder, retryPartialOrder, sameOrdersOrPrevious,
 } from './services/orders';
 import { fetchWallet, topUpWallet } from './services/wallet';
 import { updateUser, deleteUser, setUserAvatar } from './services/users';
@@ -721,7 +721,10 @@ export default function App() {
       if (document.hidden) return;
       try {
         const serverOrders = await fetchOrders({ limit: 100 });
-        if (!cancelled) setOrders(serverOrders);
+        // Same list as last tick means no render at all — see
+        // sameOrdersOrPrevious. Without it this redrew the whole app every
+        // five seconds whether or not anything had moved.
+        if (!cancelled) setOrders((prev) => sameOrdersOrPrevious(prev, serverOrders));
       } catch (e) {
         /* Transient poll failure; the next tick retries. */
       }
