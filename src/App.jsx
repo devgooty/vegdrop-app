@@ -48,7 +48,7 @@ import { unitsOf } from './services/packs';
 import { createSchedule, fetchSchedules, recurrenceFromDates, describeRecurrence } from './services/schedules';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
-import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon, MapPin as MapPinIcon, Heart as HeartIcon, Settings as SettingsIcon, Wallet as WalletIcon, ClipboardList as ClipboardListIcon, Camera as CameraIcon, Mail as MailIcon, Phone as PhoneIcon, Pencil as PencilIcon, BadgeCheck as BadgeCheckIcon, Share2 as ShareIcon, Star as StarIcon } from 'lucide-react';
+import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon, MapPin as MapPinIcon, Heart as HeartIcon, Settings as SettingsIcon, Wallet as WalletIcon, Package as PackageIcon, Camera as CameraIcon, Mail as MailIcon, Phone as PhoneIcon, Pencil as PencilIcon, BadgeCheck as BadgeCheckIcon, Share2 as ShareIcon, Star as StarIcon } from 'lucide-react';
 import {
   logout,
   logoutEverywhere,
@@ -2496,17 +2496,26 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* Quick actions — shortcuts to destinations that also
-                          live in the grouped list below. Real ones only:
-                          Wallet and Notepad are actual features of this app
-                          (VegWallet, the header clipboard icon), not stand-ins
-                          for things it doesn't have. */}
+                      {/* Quick actions — real destinations only, never
+                          stand-ins for features this app doesn't have.
+
+                          Orders is here because it is no longer a tab: the
+                          bottom bar was carrying six, which is one more than
+                          the pill fits comfortably on a narrow phone, and
+                          orders are something a shopper checks occasionally
+                          rather than moves between. My List gave up the slot
+                          because it is one tap away on the header's clipboard
+                          icon, which Orders no longer has anywhere else.
+
+                          Note this one leaves the account tab entirely, unlike
+                          its neighbours — Purchase History below is the
+                          finished-orders view, this is the live one. */}
                       {activeAccountView === 'menu' && (
                         <div className="flex gap-2.5 overflow-x-auto pb-1 mb-4 scrollbar-none snap-x snap-mandatory -mx-2 px-2">
                           {[
                             { Icon: MapPinIcon, label: t('account.savedAddress'), onClick: () => setActiveAccountView('address') },
                             { Icon: WalletIcon, label: t('account.quickWallet'), onClick: () => setIsWalletOpen(true) },
-                            { Icon: ClipboardListIcon, label: t('header.myList'), onClick: () => setIsNotepadOpen(true) },
+                            { Icon: PackageIcon, label: t('nav.orders'), onClick: () => setActiveTab('orders') },
                             { Icon: CoinsIcon, label: t('rewards.title'), onClick: () => setActiveAccountView('rewards') },
                           ].map(({ Icon, label, onClick }) => (
                             <button

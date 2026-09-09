@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, ShoppingBasket, UserCheck, Package, TrendingUp, ChefHat } from 'lucide-react';
+import { Home, ShoppingBasket, UserCheck, TrendingUp, ChefHat } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
 export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCart, cartOpen, cartBump, userRole }) {
@@ -128,22 +128,13 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
           <span className="text-[10.5px] sm:text-[11.5px] font-semibold mt-0.5 whitespace-nowrap">{t('nav.cart')}</span>
         </button>
 
-        {/* Orders Tab - Only for customers or guests */}
-        {(!userRole || userRole === 'customer') && (
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`flex flex-col items-center py-1.5 px-1.5 sm:px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
-              routeActive('orders')
-                ? 'text-[#1B4D3E] font-bold bg-[#1B4D3E]/10 shadow-[inset_0_2px_4px_rgba(27,77,62,0.1)]'
-                : 'text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5'
-            }`}
-          >
-            <Package className={`w-5 h-5 transition-transform duration-300 ${routeActive('orders') ? 'scale-110' : ''}`} />
-            <span className="text-[10.5px] sm:text-[11.5px] font-semibold mt-0.5 whitespace-nowrap">{t('nav.orders')}</span>
-          </button>
-        )}
-
-        {/* Account Tab */}
+        {/*
+          Account Tab — and the way to Orders, which is a quick action on the
+          account screen rather than a tab of its own. Five tabs is what this
+          pill fits without the labels crowding on a narrow phone; a sixth was
+          spent on a screen shoppers open occasionally, not one they move
+          between. Add a tab here only by taking one away.
+        */}
         <button
           onClick={() => setActiveTab('account')}
           className={`flex flex-col items-center py-1.5 px-1.5 sm:px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
