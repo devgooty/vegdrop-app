@@ -29,7 +29,7 @@ const STRINGS = {
   // --- Customer bottom nav (BottomNav.jsx) ----------------------------------
   'nav.home': { en: 'Home', hi: 'होम', te: 'హోమ్' },
   'nav.prices': { en: 'Prices', hi: 'भाव', te: 'ధరలు' },
-  'nav.cook': { en: 'Cook', hi: 'रसोई', te: 'వంట' },
+  'nav.cook': { en: 'AI Cook', hi: 'AI रसोई', te: 'AI వంట' },
   'nav.cart': { en: 'Cart', hi: 'कार्ट', te: 'కార్ట్' },
   'nav.orders': { en: 'Orders', hi: 'ऑर्डर', te: 'ఆర్డర్లు' },
   'nav.account': { en: 'Account', hi: 'खाता', te: 'ఖాతా' },

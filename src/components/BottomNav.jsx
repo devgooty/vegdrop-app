@@ -88,21 +88,6 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
           <span className="text-[10.5px] sm:text-[11.5px] font-semibold mt-0.5 whitespace-nowrap">{t('nav.prices')}</span>
         </button>
 
-        {/* Cook Tab - Only for customers or guests */}
-        {(!userRole || userRole === 'customer') && (
-          <button
-            onClick={() => setActiveTab('assistant')}
-            className={`flex flex-col items-center py-1.5 px-1.5 sm:px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
-              routeActive('assistant')
-                ? 'text-[#1B4D3E] font-bold bg-[#1B4D3E]/10 shadow-[inset_0_2px_4px_rgba(27,77,62,0.1)]'
-                : 'text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5'
-            }`}
-          >
-            <ChefHat className={`w-5 h-5 transition-transform duration-300 ${routeActive('assistant') ? 'scale-110' : ''}`} />
-            <span className="text-[10.5px] sm:text-[11.5px] font-semibold mt-0.5 whitespace-nowrap">{t('nav.cook')}</span>
-          </button>
-        )}
-
         {/* Cart Button */}
         <button
           id="bottom-cart-button"
@@ -127,6 +112,21 @@ export default function BottomNav({ activeTab, setActiveTab, cartCount, onOpenCa
           </div>
           <span className="text-[10.5px] sm:text-[11.5px] font-semibold mt-0.5 whitespace-nowrap">{t('nav.cart')}</span>
         </button>
+
+        {/* Cook Tab - Only for customers or guests */}
+        {(!userRole || userRole === 'customer') && (
+          <button
+            onClick={() => setActiveTab('assistant')}
+            className={`flex flex-col items-center py-1.5 px-1.5 sm:px-2.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-90 cursor-pointer ${
+              routeActive('assistant')
+                ? 'text-[#1B4D3E] font-bold bg-[#1B4D3E]/10 shadow-[inset_0_2px_4px_rgba(27,77,62,0.1)]'
+                : 'text-[#8A7E6B] hover:text-[#1B4D3E] hover:bg-black/5'
+            }`}
+          >
+            <ChefHat className={`w-5 h-5 transition-transform duration-300 ${routeActive('assistant') ? 'scale-110' : ''}`} />
+            <span className="text-[10.5px] sm:text-[11.5px] font-semibold mt-0.5 whitespace-nowrap">{t('nav.cook')}</span>
+          </button>
+        )}
 
         {/*
           Account Tab — and the way to Orders, which is a quick action on the
