@@ -99,6 +99,19 @@ router.get(
           distanceField: 'distanceMeters',
           maxDistance: radius,
           spherical: true,
+          /**
+           * Names the index rather than leaving Mongo to infer it.
+           *
+           * `$geoNear` picks the collection's only 2dsphere index when there is
+           * one, and refuses to choose when there are two — failing with
+           * IndexNotFound, which reads like a *missing* index and sends you
+           * looking in the wrong place. Written now, ahead of the boundary
+           * index that will make this collection ambiguous, so the deploy that
+           * adds that index cannot break the instance already running.
+           *
+           * Ranking markets always means distance to the pin.
+           */
+          key: 'location',
           query: { isActive: true },
         },
       },
