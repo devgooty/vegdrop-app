@@ -45,6 +45,8 @@ Copy `.env.example` to `.env`. Notes that are easy to get wrong:
 
   The deploy-marker half is not belt-and-braces, it is the load-bearing one. `NODE_ENV` is set by whoever configured the host, so it is a claim about the environment rather than a fact about it — a deployment can be serving real traffic with it unset or wrong, and every guard keyed only on `isProduction` is then silently inert. The platform markers are injected by the platform itself and cannot be forgotten, so *being deployed* is what this check actually tests. Treat any other "production refuses to boot" rule in this file as conditional on `NODE_ENV` genuinely being right on the host; verify it there rather than assuming.
 
+- **`GET /api/health` reports the running commit**, so a deploy can be confirmed without dashboard access — which matters here, because the Railway MCP token cannot see this service's deployments at all. `config.revision` reads whichever variable the host injects (`RAILWAY_GIT_COMMIT_SHA`, `VERCEL_GIT_COMMIT_SHA`, `RENDER_GIT_COMMIT`, …), falls back to reading `.git/HEAD` for a local checkout, and is `null` when neither exists — a normal state for a hand-built image, not an error. `uptimeSeconds` travels with it because the SHA alone cannot tell a rollout from a container that has been up since yesterday: a redeploy of an unchanged commit reports the same string. Neither feeds the `status` field — a health check answers "can this serve traffic", and taking a service out of rotation over a missing label would be worse than not knowing.
+
 ## Architecture
 
 ### Five entry apps behind one hash router

@@ -290,11 +290,29 @@ function createApp() {
   });
 
   // --- Health (must not require the database) ------------------------------
+  /**
+   * `revision` and `uptimeSeconds` are here so a push can be confirmed from
+   * outside without a dashboard: the SHA says WHICH commit is serving, and the
+   * uptime says whether this process is new. Neither alone is enough — a
+   * redeploy of an unchanged commit reports the same SHA, and a restart that
+   * rolled back reports a fresh uptime on old code.
+   *
+   * `revision` is null when nothing injected one and there is no readable .git,
+   * which is a normal state for a hand-built image, not an error. It is the
+   * short SHA only; see the note in config/env.js on why that is safe to
+   * publish on an unauthenticated route.
+   *
+   * This stays out of the `status` decision. A health check answers "can this
+   * serve traffic", and a missing revision does not stop it serving anything —
+   * folding it in would take the service out of rotation over a label.
+   */
   app.get('/api/health', (_req, res) => {
     const dbUp = isConnected();
     res.status(dbUp ? 200 : 503).json({
       status: dbUp ? 'ok' : 'degraded',
       database: dbUp ? 'connected' : 'disconnected',
+      revision: config.revision,
+      uptimeSeconds: Math.floor((Date.now() - config.startedAt) / 1000),
       timestamp: Date.now(),
     });
   });

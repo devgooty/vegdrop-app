@@ -293,6 +293,58 @@ if (devLoginRequested && (isProduction || deployedMarker)) {
 const devLoginEnabled = devLoginRequested && !isProduction && !deployedMarker;
 
 /**
+ * Which commit is running, so "did my push actually deploy?" has an answer.
+ *
+ * Every host that builds from git injects the SHA under its own name, and none
+ * of them agree on it — so this reads the union rather than picking one, and
+ * `APP_REVISION` is there for a host that injects nothing (a hand-built Docker
+ * image can pass it in at build time).
+ *
+ * The local fallback reads .git/HEAD directly rather than shelling out to git:
+ * a deployed container usually has neither the binary nor the repository, and
+ * spawning a process during config load — which happens before anything else,
+ * on every boot — is a cost paid forever for a string that is only useful in
+ * development. Any failure yields null; not knowing the revision must never
+ * stop the process booting.
+ *
+ * Only the short SHA is published (see /api/health). It identifies a build to
+ * whoever already has the repository and says nothing to whoever does not.
+ */
+function readRevision() {
+  const injected =
+    process.env.APP_REVISION ||
+    process.env.RAILWAY_GIT_COMMIT_SHA ||
+    process.env.VERCEL_GIT_COMMIT_SHA ||
+    process.env.RENDER_GIT_COMMIT ||
+    process.env.SOURCE_VERSION ||
+    process.env.HEROKU_SLUG_COMMIT ||
+    process.env.GIT_COMMIT;
+  if (injected) return injected.trim().slice(0, 12) || null;
+
+  try {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const gitDir = path.resolve(__dirname, '..', '..', '.git');
+    const head = fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8').trim();
+    // Detached HEAD holds the SHA itself; otherwise it names a ref to follow.
+    const ref = head.startsWith('ref: ') ? head.slice(5) : null;
+    const sha = ref ? fs.readFileSync(path.join(gitDir, ref), 'utf8').trim() : head;
+    return /^[0-9a-f]{40}$/.test(sha) ? sha.slice(0, 12) : null;
+  } catch {
+    return null;
+  }
+}
+
+const revision = readRevision();
+
+/**
+ * When this process started, so a health check can distinguish "the deploy
+ * rolled out" from "the same container has been up since yesterday". A SHA
+ * alone cannot: a redeploy of an unchanged commit reports the same string.
+ */
+const startedAt = Date.now();
+
+/**
  * Scheduled ("standing") orders, locked off at the owner's request.
  *
  * Locked by DEFAULT and opened by setting SCHEDULED_ORDERS_UNLOCK=1, rather than
@@ -418,6 +470,8 @@ const config = Object.freeze({
   isDevelopment: !isProduction && !isTest,
   isDeployed: Boolean(deployedMarker),
   deployedMarker: deployedMarker || null,
+  revision,
+  startedAt,
   devLoginEnabled,
   scheduledOrdersLocked,
 
