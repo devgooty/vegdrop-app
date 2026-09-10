@@ -108,3 +108,69 @@ test('a number with no account yields nothing to promote', async () => {
   // is proved by signing in, never by a database script.
   assert.equal(await User.countDocuments({}), 0);
 });
+
+// ---------------------------------------------------------------------------
+// Legacy accounts, whose number lives in pendingPhone
+// ---------------------------------------------------------------------------
+
+/**
+ * On the live database 24 of 32 accounts are shaped this way: registration once
+ * completed on an email code, so the typed number was stored unproven in
+ * `pendingPhone` and `phone` was never set. Matching `phone` alone reported
+ * "no accounts on this number" for every one of them.
+ */
+test('it finds an account whose number is only in pendingPhone', async () => {
+  const user = await User.create({
+    name: 'Legacy',
+    email: 'legacy@example.com',
+    pendingPhone: '9705541348',
+    role: 'customer',
+    phoneVerifiedAt: new Date(),
+  });
+
+  const found = await accountsFor('9705541348');
+
+  assert.equal(found.length, 1);
+  assert.equal(String(found[0]._id), String(user._id));
+});
+
+test('promoting a verified legacy account moves the number into phone', async () => {
+  const user = await User.create({
+    name: 'Legacy',
+    email: 'legacy2@example.com',
+    pendingPhone: '9705541348',
+    role: 'customer',
+    phoneVerifiedAt: new Date(),
+  });
+
+  const [target] = await accountsFor('9705541348');
+  assert.equal(await promote(target, 'market_owner'), true);
+
+  const after = await User.findById(user._id).lean();
+  assert.equal(after.role, 'market_owner');
+  assert.equal(after.phone, '9705541348', 'a proved number belongs in phone');
+  assert.equal(after.pendingPhone, undefined, 'and must not be left in both places');
+  assert.equal(after.tokenVersion, 1);
+});
+
+/**
+ * An unproven number is exactly what pendingPhone exists to hold apart, and a
+ * promotion is not a proof of possession. The role still changes — that is what
+ * the operator asked for — but the number stays where it is.
+ */
+test('an unverified legacy number is not promoted into phone', async () => {
+  const user = await User.create({
+    name: 'Unproven',
+    email: 'unproven@example.com',
+    pendingPhone: '9705541349',
+    role: 'customer',
+  });
+
+  const [target] = await accountsFor('9705541349');
+  assert.equal(await promote(target, 'market_owner'), true);
+
+  const after = await User.findById(user._id).lean();
+  assert.equal(after.role, 'market_owner', 'the role change still happens');
+  assert.equal(after.phone, undefined, 'an unproved number must not become the credential');
+  assert.equal(after.pendingPhone, '9705541349');
+});

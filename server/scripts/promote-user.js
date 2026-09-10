@@ -38,6 +38,7 @@
  *   node server/scripts/promote-user.js 9281401201 market_owner
  *   node server/scripts/promote-user.js 9281401201 market_owner --apply
  *   node server/scripts/promote-user.js 9281401201 market_owner --apply --from customer
+ *   node server/scripts/promote-user.js 9281401201 market_owner --apply --id <account id>
  */
 
 const config = require('../config/env');
@@ -66,9 +67,23 @@ function normalisePhone(input) {
 /**
  * Every account on this number, so the caller sees what they are choosing
  * between rather than having one picked for them.
+ *
+ * `pendingPhone` is matched as well as `phone`, and that is not a convenience.
+ * Accounts predating the phone-first registration hold their number ONLY in
+ * `pendingPhone` — registration once completed on an email code, so the typed
+ * number was stored unproven. On the live database that is 24 of 32 accounts.
+ * Matching `phone` alone reported "no accounts on this number" for every one of
+ * them, which reads as "you typed it wrong" rather than "this account is shaped
+ * differently", and left the operator with no way to promote anybody.
+ *
+ * The number is not taken on trust here. `phoneVerifiedAt` is carried through so
+ * the caller can see whether it was ever proved, and the promotion repairs the
+ * field only for an account that HAS proved it — see `promote`.
  */
 async function accountsFor(phone) {
-  return User.find({ phone }).select('_id name email phone role status tokenVersion').lean();
+  return User.find({ $or: [{ phone }, { pendingPhone: phone }] })
+    .select('_id name email phone pendingPhone phoneVerifiedAt role status tokenVersion')
+    .lean();
 }
 
 /**
@@ -82,9 +97,29 @@ async function accountsFor(phone) {
  * reverse would leave privileges live after they were removed.
  */
 async function promote(user, role) {
+  /**
+   * A legacy account's number is moved out of `pendingPhone` at the same time.
+   *
+   * This is the same repair `routes/auth.js` performs when such an account
+   * signs in through the outbound code — the number came back from the phone,
+   * so it is proved and belongs in the field that means proved. Doing it here
+   * matters because the reverse-OTP path does NOT perform that repair, so an
+   * account that only ever signs in that way stays legacy forever.
+   *
+   * Guarded on `phoneVerifiedAt`: an unproven number is exactly what
+   * `pendingPhone` exists to hold apart, and a promotion is not a proof of
+   * possession. An account that has never verified keeps its number where it is
+   * and is promoted regardless — the operator decided that, and the role change
+   * is the thing they asked for.
+   */
+  const repair =
+    !user.phone && user.pendingPhone && user.phoneVerifiedAt
+      ? { $set: { role, phone: user.pendingPhone }, $unset: { pendingPhone: '' } }
+      : { $set: { role } };
+
   const result = await User.updateOne(
     { _id: user._id, role: user.role },
-    { $set: { role }, $inc: { tokenVersion: 1 } }
+    { ...repair, $inc: { tokenVersion: 1 } }
   );
   return result.modifiedCount === 1;
 }
@@ -103,14 +138,18 @@ function argValue(flag) {
 async function main() {
   const APPLY = process.argv.includes('--apply');
   const FROM = argValue('--from');
+  const ID = argValue('--id');
 
   const positional = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-  // `--from customer` leaves its value in the positional list; drop it.
-  const args = FROM ? positional.filter((a) => a !== FROM) : positional;
+  // `--from customer` and `--id <oid>` leave their values in the positional
+  // list; drop them.
+  const args = positional.filter((a) => a !== FROM && a !== ID);
   const [rawPhone, role] = args;
 
   if (!rawPhone || !role) {
-    console.error('Usage: node server/scripts/promote-user.js <phone> <role> [--apply] [--from <role>]');
+    console.error(
+      'Usage: node server/scripts/promote-user.js <phone> <role> [--apply] [--from <role>] [--id <account id>]'
+    );
     console.error(`Roles: ${ROLES.join(', ')}`);
     process.exitCode = 1;
     return;
@@ -157,7 +196,13 @@ async function main() {
       return;
     }
     for (const u of found) {
-      console.info(`  ${u.role.padEnd(13)} ${String(u.status).padEnd(9)} ${u.name || '(no name)'}`);
+      // The id is printed because `--from <role>` cannot separate two accounts
+      // holding the SAME role — which legacy data produces, since the unique
+      // index binds (phone, role) and a legacy row has no `phone` to bind.
+      const legacy = !u.phone && u.pendingPhone ? '  [legacy: pendingPhone]' : '';
+      console.info(
+        `  ${String(u._id)}  ${u.role.padEnd(13)} ${String(u.status).padEnd(9)} ${u.name || '(no name)'}${legacy}`
+      );
     }
 
     if (found.some((u) => u.role === role)) {
@@ -173,7 +218,26 @@ async function main() {
      * wrong one gives privileges to an identity the operator did not intend and
      * would have no reason to go looking at.
      */
-    const candidates = FROM ? found.filter((u) => u.role === FROM) : found;
+    let candidates = FROM ? found.filter((u) => u.role === FROM) : found;
+
+    /**
+     * `--id` names one row outright.
+     *
+     * Needed because `--from <role>` assumes a role appears at most once on a
+     * number, which the (phone, role) unique index normally guarantees — but a
+     * legacy account has no `phone`, so nothing binds it, and the live database
+     * carries three `customer` rows on one number. Without this there is no
+     * expressible way to promote any of them.
+     */
+    if (ID) {
+      candidates = candidates.filter((u) => String(u._id) === ID);
+      if (candidates.length === 0) {
+        console.error(`
+  No account with id ${ID} on this number${FROM ? ` with role ${FROM}` : ''}.`);
+        process.exitCode = 1;
+        return;
+      }
+    }
 
     if (candidates.length === 0) {
       console.error(`\n  No ${FROM} account on this number to promote.`);
@@ -197,7 +261,14 @@ async function main() {
     }
 
     heading('Change');
-    console.info(`  ${target.role} → ${role}   (${target.name || target.phone})`);
+    console.info(`  ${target.role} → ${role}   (${target.name || target.phone || target.pendingPhone})`);
+    if (!target.phone && target.pendingPhone) {
+      console.info(
+        target.phoneVerifiedAt
+          ? `  legacy account — ${target.pendingPhone} moves from pendingPhone to phone (it is verified).`
+          : '  legacy account — pendingPhone is NOT verified, so it is left where it is.'
+      );
+    }
 
     if (!APPLY) {
       console.info('\nDry run complete. Re-run with --apply to write.');
@@ -215,7 +286,7 @@ async function main() {
       return;
     }
 
-    console.info(`  ${target.phone} is now ${role}.`);
+    console.info(`  ${target.phone || target.pendingPhone} is now ${role}.`);
     console.info('\n  Their existing sessions are invalidated, so they sign in again —');
     console.info('  and the new role is read from the database on the next request.');
     console.info(`  Reverse with: --apply --from ${role} ... ${target.role}`);
