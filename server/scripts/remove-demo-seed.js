@@ -16,6 +16,7 @@
  *   node server/scripts/remove-demo-seed.js            # dry run, changes nothing
  *   node server/scripts/remove-demo-seed.js --apply    # actually delete
  *   node server/scripts/remove-demo-seed.js --apply --force
+ *   node server/scripts/remove-demo-seed.js --accounts-only [--apply]
  *
  * Dry run is the default on purpose: this points at whatever MONGODB_URI is in
  * the environment, and the whole reason this script exists is that something
@@ -176,6 +177,43 @@ function entanglementTotal(tangles) {
 }
 
 /**
+ * Narrow a plan to the seeded ACCOUNTS, dropping the catalog, markets and stalls.
+ *
+ * This exists because the full plan is nearly always blocked, and blocked for a
+ * reason that has nothing to do with the accounts. `SEED_PRODUCTS` is not demo
+ * data on a real deployment — `seedProducts()` runs in production deliberately
+ * (see the note on it in utils/seed.js), so those rows ARE the live catalog, and
+ * any real order containing one makes `findEntanglements` report a row that
+ * would be orphaned. Correctly: deleting the catalog under a paid order is
+ * exactly what the stop is for.
+ *
+ * But the thing that has to go is the accounts. One of them holds `developer`
+ * and its phone number is published in utils/seed.js, and sign-in is
+ * passwordless — so whoever can receive at that number is that account. That
+ * risk is not shared by a broccoli listing.
+ *
+ * Separating them lets the accounts be deleted on their own evidence. It is not
+ * a way around the stop: `findEntanglements` still runs on the narrowed plan,
+ * and an account that has traded still blocks. It just stops the catalog's
+ * entanglement standing in for the accounts'.
+ *
+ * Markets and stalls stay behind for the same reason they are not the risk:
+ * they carry no role, cannot sign in, and a market a real shopkeeper has been
+ * approved into is somebody's livelihood.
+ */
+function accountsOnly(found) {
+  return {
+    ...found,
+    products: [],
+    markets: [],
+    stalls: [],
+    productIds: [],
+    marketIds: [],
+    stallIds: [],
+  };
+}
+
+/**
  * Delete the plan, children before parents.
  *
  * Ordered so a failure part-way through never leaves a surviving row pointing
@@ -219,6 +257,7 @@ function heading(text) {
 async function main() {
   const APPLY = process.argv.includes('--apply');
   const FORCE = process.argv.includes('--force');
+  const ACCOUNTS_ONLY = process.argv.includes('--accounts-only');
 
   if (!config.mongoUri) {
     console.error('MONGODB_URI is not set. Nothing to connect to.');
@@ -237,8 +276,9 @@ async function main() {
     console.info(`  host:     ${mongoose.connection.host}`);
     console.info(`  NODE_ENV: ${config.NODE_ENV}`);
     console.info(`  mode:     ${APPLY ? 'APPLY — will delete' : 'dry run — no writes'}`);
+    console.info(`  scope:    ${ACCOUNTS_ONLY ? 'accounts only — catalog, markets and stalls are left alone' : 'everything the seeder created'}`);
 
-    const found = await plan();
+    const found = ACCOUNTS_ONLY ? accountsOnly(await plan()) : await plan();
 
     heading('Demo data found');
     console.info(`  users:    ${found.users.length}`);
@@ -299,7 +339,7 @@ async function main() {
   }
 }
 
-module.exports = { plan, findEntanglements, entanglementTotal, remove };
+module.exports = { plan, accountsOnly, findEntanglements, entanglementTotal, remove };
 
 if (require.main === module) {
   main().catch((err) => {

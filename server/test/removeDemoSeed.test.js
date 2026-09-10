@@ -28,6 +28,7 @@ const Order = require('../models/Order');
 const { seedIfEmpty, seedDemoAccounts, SEED_ACCOUNTS, SEED_PRODUCTS, SEED_MARKETS } = require('../utils/seed');
 const {
   plan,
+  accountsOnly,
   findEntanglements,
   entanglementTotal,
   remove,
@@ -272,4 +273,91 @@ test('removing demo data leaves a real account untouched', async () => {
   await remove(await plan());
 
   assert.ok(await User.findById(real._id), 'a real account must survive the removal');
+});
+
+// ---------------------------------------------------------------------------
+// --accounts-only
+// ---------------------------------------------------------------------------
+
+/**
+ * The case this flag was written for, taken from the live database.
+ *
+ * A real customer's paid order contained a seeded catalog row, so the full plan
+ * reported an entangled order and stopped — correctly, because deleting a
+ * product out from under a paid order is exactly what the stop is for. But the
+ * accounts had nothing pointing at them at all, and the accounts are the risk:
+ * one holds `developer`, its number is published in utils/seed.js, and sign-in
+ * is passwordless.
+ */
+test('a real order on a seeded product blocks the full plan but not the accounts', async () => {
+  await seedIfEmpty();
+  await seedDemoAccounts();
+
+  const { user: realCustomer } = await require('./helpers').createUser({ role: 'customer' });
+  const product = await Product.findOne({ sku: 'VEG-BROCCOLI-500' }).lean();
+  await makeOrder({ customer: realCustomer, product, paymentStatus: 'paid' });
+
+  const full = await plan();
+  assert.equal((await findEntanglements(full)).orders, 1, 'the catalog row is entangled');
+
+  const narrowed = accountsOnly(full);
+  assert.equal(
+    entanglementTotal(await findEntanglements(narrowed)),
+    0,
+    'nothing points at the accounts themselves'
+  );
+});
+
+test('accountsOnly keeps every account and drops everything else', async () => {
+  await seedIfEmpty();
+  await seedDemoAccounts();
+
+  const narrowed = accountsOnly(await plan());
+
+  assert.equal(narrowed.users.length, SEED_ACCOUNTS.length);
+  assert.equal(narrowed.userIds.length, SEED_ACCOUNTS.length);
+  for (const key of ['products', 'markets', 'stalls', 'productIds', 'marketIds', 'stallIds']) {
+    assert.deepEqual(narrowed[key], [], `${key} must be empty`);
+  }
+});
+
+test('removing accounts only leaves the catalog, markets and stalls standing', async () => {
+  await seedIfEmpty();
+  await seedDemoAccounts();
+
+  const productsBefore = await Product.countDocuments();
+  const marketsBefore = await Market.countDocuments();
+  const stallsBefore = await Stall.countDocuments();
+  const pricesBefore = await MarketPrice.countDocuments();
+  const inventoryBefore = await StallInventory.countDocuments();
+
+  await remove(accountsOnly(await plan()));
+
+  for (const phone of SEED_ACCOUNTS.map((a) => a.phone)) {
+    assert.equal(await User.countDocuments({ phone }), 0, `${phone} must be gone`);
+  }
+
+  assert.equal(await Product.countDocuments(), productsBefore, 'the live catalog is not demo data');
+  assert.equal(await Market.countDocuments(), marketsBefore);
+  assert.equal(await Stall.countDocuments(), stallsBefore);
+  assert.equal(await MarketPrice.countDocuments(), pricesBefore);
+  assert.equal(await StallInventory.countDocuments(), inventoryBefore);
+});
+
+/**
+ * The narrowing must not become a way past the stop. An account that has
+ * actually traded still blocks, on its own evidence.
+ */
+test('an order against a demo account still blocks the narrowed plan', async () => {
+  await seedIfEmpty();
+  await seedDemoAccounts();
+
+  const customer = await User.findOne({ phone: '9000000001' }).lean();
+  const product = await Product.findOne({ sku: 'VEG-TOMATO-1000' }).lean();
+  await makeOrder({ customer, product });
+
+  const tangles = await findEntanglements(accountsOnly(await plan()));
+
+  assert.equal(tangles.orders, 1);
+  assert.ok(entanglementTotal(tangles) > 0, 'narrowing is not a bypass');
 });
