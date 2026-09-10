@@ -188,7 +188,7 @@ async function main() {
   const { connect, disconnect, ensureIndexes } = require('../db/connect');
   const { runMigrations } = require('../db/migrations');
   const { createApp } = require('../app');
-  const { seedIfEmpty, seedDemoOrdersAndData, SEED_ACCOUNTS } = require('../utils/seed');
+  const { seedIfEmpty, seedDemoAccounts, seedDemoOrdersAndData, SEED_ACCOUNTS } = require('../utils/seed');
   const sweeper = require('../services/sweeper');
 
   // See the EMAIL_FROM/SMTP_HOST comment above: config now believes email is
@@ -217,6 +217,14 @@ async function main() {
   await ensureIndexes();
 
   await seedIfEmpty();
+
+  /**
+   * The demo accounts, markets and stalls. Called HERE and not from
+   * seedIfEmpty for the same reason as seedDemoOrdersAndData below: that
+   * function runs at real boots too, and one of these accounts is a
+   * `developer` whose phone number is published in utils/seed.js.
+   */
+  await seedDemoAccounts();
 
   /**
    * Fabricated orders, wallet ledger and KYC, so the Developer Console has

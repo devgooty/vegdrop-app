@@ -3,7 +3,8 @@
 /**
  * Remove demo seed data from a database that should never have had it.
  *
- * `seedIfEmpty()` skips only when `config.isProduction`. A deployment running
+ * `seedIfEmpty()` used to create these rows behind an environment guard that
+ * skipped only when `config.isProduction`. A deployment running
  * with NODE_ENV unset or `development` but pointed at a real MONGODB_URI will
  * therefore seed that real database — which is exactly what happened here. The
  * result is live accounts with **no passwords**, including one holding the

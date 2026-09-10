@@ -47,8 +47,28 @@ test('seedIfEmpty fabricates no orders, ledger or KYC', async () => {
     'a verified KYC asserts a penny drop that never happened'
   );
 
-  // It still does its real job.
-  assert.ok(await User.countDocuments() > 0, 'demo accounts are still seeded locally');
+  /**
+   * And no accounts either, on any host.
+   *
+   * The demo accounts used to be created here behind an environment guard, and
+   * that guard is how a `developer` account whose phone number is published in
+   * utils/seed.js reached the live database. They now live behind
+   * `seedDemoAccounts()`, which server/index.js never calls — so this asserts
+   * on the call graph rather than on the guard, because a guard has to
+   * recognise every host it will ever run on and a call graph does not.
+   */
+  assert.equal(
+    await User.countDocuments(),
+    0,
+    'the shared seeder must not create accounts — see seedDemoAccounts()'
+  );
+});
+
+/** The demo accounts still exist for the local harness that does call for them. */
+test('seedDemoAccounts still seeds them off a deployed host', async () => {
+  const { seedDemoAccounts } = require('../utils/seed');
+  await seedDemoAccounts();
+  assert.ok((await User.countDocuments()) > 0, 'local development still needs its fixtures');
 });
 
 /**

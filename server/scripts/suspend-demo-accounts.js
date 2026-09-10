@@ -3,7 +3,10 @@
 /**
  * Lock the seeded demo accounts out of a real database, without deleting them.
  *
- * These accounts were created by `seedIfEmpty()` against production (see
+ * These accounts were created by `seedIfEmpty()` against production, back when
+ * it still seeded them (they now live behind `seedDemoAccounts()`, which no
+ * real boot calls — so this script cleans up rows already out there rather
+ * than a hole still open). See
  * scripts/remove-demo-seed.js for how that happened). They have **no
  * passwords** — sign-in is passwordless, so anyone who can read the OTP is in —
  * and one of them holds `developer`, the role that bypasses the vendor KYC gate

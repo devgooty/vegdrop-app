@@ -25,7 +25,7 @@ const Stall = require('../models/Stall');
 const StallInventory = require('../models/StallInventory');
 const Order = require('../models/Order');
 
-const { seedIfEmpty, SEED_ACCOUNTS, SEED_PRODUCTS, SEED_MARKETS } = require('../utils/seed');
+const { seedIfEmpty, seedDemoAccounts, SEED_ACCOUNTS, SEED_PRODUCTS, SEED_MARKETS } = require('../utils/seed');
 const {
   plan,
   findEntanglements,
@@ -39,6 +39,7 @@ test.beforeEach(resetDatabase);
 
 test('it finds every account, product, market and stall the seeder created', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   const found = await plan();
 
@@ -56,6 +57,7 @@ test('it finds every account, product, market and stall the seeder created', asy
 
 test('a real account sharing a seeded phone number is left alone', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   // Same reserved phone, a real person's email. Matching on phone alone would
   // delete this account; matching on the pair must not.
@@ -78,6 +80,7 @@ test('a real account sharing a seeded phone number is left alone', async () => {
 
 test("a real vendor's product is not deleted for reusing a seeded sku", async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   const vendor = await User.create({
     name: 'Real Vendor',
@@ -98,6 +101,7 @@ test("a real vendor's product is not deleted for reusing a seeded sku", async ()
 
 test('nothing is entangled in a database that has only been seeded', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   const tangles = await findEntanglements(await plan());
 
@@ -132,6 +136,7 @@ async function makeOrder({ customer, product, item = {}, ...overrides }) {
 
 test('an order against a demo account counts as entanglement', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   const customer = await User.findOne({ phone: '9000000001' }).lean();
   const product = await Product.findOne({ sku: 'VEG-TOMATO-1000' }).lean();
@@ -153,6 +158,7 @@ test('an order against a demo account counts as entanglement', async () => {
  */
 test('an order line CLAIMED by a demo stall counts as entanglement', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   const customer = await User.create({
     name: 'Real Customer',
@@ -177,6 +183,7 @@ test('an order line CLAIMED by a demo stall counts as entanglement', async () =>
 /** Same silent-mismatch risk on the offer path. */
 test('an order line OFFERED to a demo stall counts as entanglement', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   const customer = await User.create({
     name: 'Real Customer',
@@ -200,6 +207,7 @@ test('an order line OFFERED to a demo stall counts as entanglement', async () =>
 
 test('a real stall approved into a demo market counts as entanglement', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   const market = await Market.findOne({ slug: 'mehdipatnam-rythu-bazaar' }).lean();
   const realVendor = await User.create({
@@ -223,6 +231,7 @@ test('a real stall approved into a demo market counts as entanglement', async ()
 
 test('removing takes the demo rows and their children, and is idempotent', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   const before = await plan();
   assert.ok(before.users.length > 0);
@@ -251,6 +260,7 @@ test('removing takes the demo rows and their children, and is idempotent', async
 
 test('removing demo data leaves a real account untouched', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   const real = await User.create({
     name: 'Real Customer',

@@ -16,7 +16,7 @@ const assert = require('node:assert/strict');
 const { startTestServer, stopTestServer, resetDatabase, api, auth, signIn } = require('./helpers');
 
 const User = require('../models/User');
-const { seedIfEmpty, SEED_ACCOUNTS } = require('../utils/seed');
+const { seedIfEmpty, seedDemoAccounts, SEED_ACCOUNTS } = require('../utils/seed');
 const { findDemoAccounts, suspend, restore } = require('../scripts/suspend-demo-accounts');
 
 test.before(startTestServer);
@@ -25,6 +25,7 @@ test.beforeEach(resetDatabase);
 
 test('it finds every seeded account, whatever role', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   const users = await findDemoAccounts();
 
@@ -34,6 +35,7 @@ test('it finds every seeded account, whatever role', async () => {
 
 test('suspending sets status and bumps tokenVersion', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   const before = await User.findOne({ phone: '9000000005' }).lean();
   assert.equal(before.status, 'active');
@@ -53,6 +55,7 @@ test('suspending sets status and bumps tokenVersion', async () => {
  */
 test('a token issued before suspension is refused afterwards', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   const session = await signIn({ phone: '9000000005' });
   const before = await api().get('/api/auth/me').set(auth(session.accessToken));
@@ -68,6 +71,7 @@ test('a token issued before suspension is refused afterwards', async () => {
 /** And they cannot simply sign in again — the account is closed, not logged out. */
 test('a suspended demo account cannot sign in again', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
   await suspend(await findDemoAccounts());
 
   await assert.rejects(
@@ -79,6 +83,7 @@ test('a suspended demo account cannot sign in again', async () => {
 
 test('a real account is not touched', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   const real = await User.create({
     name: 'Real Customer',
@@ -102,6 +107,7 @@ test('a real account is not touched', async () => {
  */
 test('running it twice changes nothing the second time', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
 
   await suspend(await findDemoAccounts());
   const afterFirst = await User.findOne({ phone: '9000000005' }).lean();
@@ -115,6 +121,7 @@ test('running it twice changes nothing the second time', async () => {
 
 test('restore puts them back, and sign-in works again', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
   await suspend(await findDemoAccounts());
 
   const result = await restore(await findDemoAccounts());
@@ -130,6 +137,7 @@ test('restore puts them back, and sign-in works again', async () => {
 /** `deleted` is a decision someone made deliberately; restore must not undo it. */
 test('restore never revives an account marked deleted', async () => {
   await seedIfEmpty();
+  await seedDemoAccounts();
   await User.updateOne({ phone: '9000000003' }, { $set: { status: 'deleted' } });
 
   await restore(await findDemoAccounts());

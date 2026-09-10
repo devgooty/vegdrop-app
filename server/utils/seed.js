@@ -389,22 +389,43 @@ async function seedIfEmpty() {
   if (translatedCount > 0) console.info(`[seed] backfilled translations for ${translatedCount} product(s).`);
 
   /**
-   * Deliberately asks TWO questions, because NODE_ENV answers the wrong one.
+   * The demo accounts, markets and stalls are NOT seeded from here.
    *
-   * `isProduction` is a claim the host makes about itself, and this project's
-   * own Railway deployment was serving real traffic with NODE_ENV unset — so
-   * this guard was inert and every demo account, market and stall below was
-   * created in the live database. `isDeployed` is a fact the platform injects
-   * and cannot be forgotten; see the note on DEPLOY_MARKERS in config/env.js.
+   * They used to be, behind a `config.isProduction || config.isDeployed`
+   * guard — and that guard is how they reached the live database, because
+   * NODE_ENV was unset on the Railway host and `isDeployed` is an allowlist of
+   * platform markers that a self-hosted deploy (EC2, Docker, k8s) sets none of.
+   * A guard that has to correctly recognise every possible host is a guard that
+   * will eventually meet one it does not know.
    *
-   * Nothing under here may ever run on a real host: these rows are fictional,
-   * their phone numbers are published in this file, and one of them is a
-   * `developer` account that bypasses every role check in the system.
+   * So there is no guard here any more, because there is nothing to guard: the
+   * rows are created by `seedDemoAccounts()`, which `server/index.js` never
+   * calls. A real boot cannot create a `developer` account by misdetecting its
+   * own environment, because a real boot does not run that code at all. Same
+   * reasoning, and the same fix, as `seedDemoOrdersAndData` below.
    */
+}
+
+/**
+ * Fictional accounts, markets and stalls for local development.
+ *
+ * Called ONLY from `scripts/dev-with-memory-db.js` and from tests. Do not call
+ * it from `seedIfEmpty` or anywhere `server/index.js` can reach: one of these
+ * accounts holds `developer`, the role that bypasses the vendor KYC gate and
+ * every admin check, and its phone number is published in this file. Sign-in is
+ * passwordless, so whoever can receive at that number IS that account.
+ *
+ * The `isDeployed` check below is a backstop for a future caller that forgets
+ * the paragraph above, not the thing keeping these rows out of production —
+ * that is the call graph. It throws rather than returning quietly, so a misuse
+ * is loud in a dev log instead of silently seeding nothing.
+ */
+async function seedDemoAccounts() {
   if (config.isProduction || config.isDeployed) {
-    const why = config.isProduction ? 'disabled in production' : `disabled on a deployed host (${config.deployedMarker} is set)`;
-    console.info(`[seed] demo accounts, markets and stalls skipped: ${why}.`);
-    return;
+    throw new Error(
+      'seedDemoAccounts() must never run on a real host ' +
+        `(${config.deployedMarker || 'NODE_ENV=production'}). This is a caller bug.`
+    );
   }
 
   const accounts = await seedAccounts();
@@ -417,7 +438,7 @@ async function seedIfEmpty() {
     );
   }
 
-  if (accounts.length === 0) return;
+  if (accounts.length === 0) return accounts;
 
   console.info(`\n[seed] created ${accounts.length} development account(s):`);
   for (const account of accounts) {
@@ -427,6 +448,8 @@ async function seedIfEmpty() {
     '\n[seed] Sign in with the phone number above. There is no password — the\n' +
     '[seed] verification code is printed to this console by the dev transport.\n'
   );
+
+  return accounts;
 }
 
 /**
@@ -587,6 +610,7 @@ async function seedDemoOrdersAndData() {
  */
 module.exports = {
   seedIfEmpty,
+  seedDemoAccounts,
   seedDemoOrdersAndData,
   seedProducts,
   backfillProductTranslations,
