@@ -74,6 +74,24 @@ async function findNearestRider({ marketLocation, excludeIds }) {
         query: {
           role: 'delivery',
           status: 'active',
+          /**
+           * The load-bearing half of the rider gate.
+           *
+           * Delivery is self-registerable, so `role: 'delivery'` on its own
+           * means only "someone proved a phone number". An offer carries the
+           * customer's name, phone and home address, and on a COD order their
+           * cash — so the question this query has to answer is not "is anyone
+           * nearby" but "is anyone nearby that a human has cleared".
+           *
+           * Checked HERE as well as on the duty-status write, and not only
+           * there. That write is the door a rider walks through; this is the
+           * one dispatch actually reads. A rider approved, set online, and then
+           * rejected would otherwise keep receiving offers until they happened
+           * to toggle their own switch — the same reasoning that has
+           * middleware/auth.js re-read role and status on every request rather
+           * than trusting a token.
+           */
+          'rider.approvalStatus': 'approved',
           'rider.dutyStatus': 'online',
           'rider.lastLocationAt': { $gte: freshnessCutoff() },
           _id: { $nin: excludeIds.map(objectId) },

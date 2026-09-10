@@ -467,10 +467,13 @@ router.get('/riders', ...developerGate, async (req, res, next) => {
     const [bankDetails, deliveryCounts] = await Promise.all([
       RiderBankDetails.find({ user: { $in: riderIds } }).lean(),
       Order.aggregate([
-        { $match: { deliveryAgent: { $in: riderIds } } },
+        // `assignedTo`, not `deliveryAgent` — there is no such field on Order,
+        // so this matched nothing and every rider was reported as having made
+        // zero deliveries however many they had actually run.
+        { $match: { assignedTo: { $in: riderIds } } },
         {
           $group: {
-            _id: '$deliveryAgent',
+            _id: '$assignedTo',
             totalDeliveries: { $sum: 1 },
             completed: {
               $sum: { $cond: [{ $eq: ['$status', 'Delivered'] }, 1, 0] }
@@ -495,8 +498,22 @@ router.get('/riders', ...developerGate, async (req, res, next) => {
         name: r.name,
         phone: r.phone,
         status: r.status,
-        dutyStatus: r.onDuty ? 'On Duty' : 'Off Duty',
-        hasLocation: Boolean(r.location?.coordinates?.length),
+        // Both of these live under `rider`, not at the top level. Read from the
+        // wrong path they were constants: every rider always "Off Duty", every
+        // rider always without a location — which is exactly the pair of facts
+        // this screen exists to show.
+        dutyStatus: r.rider?.dutyStatus === 'online' ? 'On Duty' : 'Off Duty',
+        hasLocation: Boolean(r.rider?.lastLocation?.coordinates?.length),
+        /**
+         * Whether this rider may be dispatched at all.
+         *
+         * The reason this list is now a queue rather than a report: an
+         * unapproved rider is somebody who self-registered minutes ago and is
+         * waiting on a human, and nothing else in the product shows that.
+         */
+        approvalStatus: r.rider?.approvalStatus || 'pending',
+        approvedAt: r.rider?.approvedAt || null,
+        rejectionReason: r.rider?.rejectionReason || null,
         bankStatus: bank ? 'Configured' : 'Pending',
         completedDeliveries: counts.completed,
         totalAssigned: counts.totalDeliveries,
@@ -505,6 +522,87 @@ router.get('/riders', ...developerGate, async (req, res, next) => {
     });
 
     return res.json({ success: true, data });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * Clear a rider to carry real orders, or refuse them.
+ *
+ * This is the human step that self-registration deliberately leaves open. An
+ * offer carries a customer's name, phone, home address and — on COD — their
+ * cash, and `/auth/delivery/register/start` will mint a delivery account for
+ * anyone who can prove a phone number. Somebody has to look.
+ *
+ * `developer` only, via `developerGate`, and NOT `market_owner`. A rider is not
+ * scoped to a market — `findNearestRider` searches by proximity across all of
+ * them — so a market owner clearing one would be clearing them to work a
+ * competitor's market too. The same reasoning that narrowed account
+ * administration to `developer` in routes/users.js.
+ *
+ * Both directions are reversible: a rejection can be approved later and an
+ * approval withdrawn, which is why this is one route taking a decision rather
+ * than two one-way doors.
+ */
+router.post('/riders/:id/approval', ...developerGate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { decision, reason } = req.body || {};
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ success: false, error: 'Not a valid rider id.' });
+    }
+
+    if (decision !== 'approved' && decision !== 'rejected') {
+      return res
+        .status(400)
+        .json({ success: false, error: "decision must be 'approved' or 'rejected'." });
+    }
+
+    // Matched on the role as well as the id, so this endpoint can only ever
+    // move a delivery account — it is not a general-purpose writer into the
+    // user collection that happens to be reachable with any id.
+    const rider = await User.findOne({ _id: id, role: 'delivery' });
+    if (!rider) {
+      return res.status(404).json({ success: false, error: 'No delivery account with that id.' });
+    }
+
+    rider.rider.approvalStatus = decision;
+    rider.rider.approvedAt = decision === 'approved' ? new Date() : null;
+    rider.rider.approvedBy = req.user._id;
+    rider.rider.rejectionReason =
+      decision === 'rejected' ? String(reason || '').slice(0, 300) : '';
+
+    /**
+     * Withdrawing approval takes them off duty in the same write.
+     *
+     * Leaving `dutyStatus: 'online'` on a rejected rider would be harmless to
+     * dispatch — the query filters on approval too — but it would show them an
+     * app that says they are working. It would also mean a later re-approval
+     * silently put them straight back on duty without them asking.
+     */
+    if (decision === 'rejected') rider.rider.dutyStatus = 'offline';
+
+    /**
+     * Any live session is invalidated.
+     *
+     * `middleware/auth.js` compares the token's `tv` claim against the record,
+     * so this forces the delivery app to re-establish and pick up the new
+     * approval state on its next request rather than at token expiry — the
+     * same reasoning as the suspension and promotion scripts.
+     */
+    rider.tokenVersion += 1;
+    await rider.save();
+
+    return res.json({
+      success: true,
+      data: {
+        id: String(rider._id),
+        approvalStatus: rider.rider.approvalStatus,
+        rejectionReason: rider.rider.rejectionReason || null,
+      },
+    });
   } catch (err) {
     return next(err);
   }

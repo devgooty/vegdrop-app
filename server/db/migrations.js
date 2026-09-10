@@ -416,6 +416,45 @@ async function migrateProductCatalogItem() {
   return { linked, unmatched, ambiguous };
 }
 
+/**
+ * Grandfather every delivery account that predates rider approval.
+ *
+ * `User.rider.approvalStatus` defaults to `pending`, which is right for
+ * everybody who registers from now on and catastrophic for everybody who
+ * already has. Every existing `delivery` account belongs to somebody who has
+ * been working — the field simply did not exist when they signed up — and a
+ * deploy that put them all on the wrong side of a new gate would take a
+ * market's entire delivery capacity offline at once, mid-shift, with no
+ * warning and no screen explaining it.
+ *
+ * Written against the raw collection and matched on the field being ABSENT, so
+ * it is idempotent in the way that matters: a rider a developer has since
+ * rejected has `approvalStatus: 'rejected'` present, and re-running this must
+ * never quietly approve them again. Two instances booting at once both issue
+ * the same conditional update, and the second matches nothing.
+ *
+ * The same reasoning, and the same shape, as `migrateStallApproval` above.
+ */
+async function migrateRiderApproval() {
+  const users = mongoose.connection.collection('users');
+
+  const result = await users.updateMany(
+    { role: 'delivery', 'rider.approvalStatus': { $exists: false } },
+    {
+      $set: {
+        'rider.approvalStatus': 'approved',
+        // No `approvedBy`: nobody decided this, the migration did, and naming a
+        // developer who never looked at the account would be a false audit
+        // trail. A null author with a timestamp reads correctly as "cleared on
+        // the day the gate was introduced".
+        'rider.approvedAt': new Date(),
+      },
+    }
+  );
+
+  return { grandfathered: result?.modifiedCount ?? 0 };
+}
+
 async function runMigrations() {
   const started = Date.now();
   let ok = true;
@@ -433,6 +472,17 @@ async function runMigrations() {
     }
   } catch (err) {
     console.error(`[db] migration (stall approval) failed: ${err?.message}`);
+    ok = false;
+  }
+
+  try {
+    const { grandfathered } = await migrateRiderApproval();
+
+    if (grandfathered > 0) {
+      console.info(`[db] migration: grandfathered ${grandfathered} existing rider(s) as approved`);
+    }
+  } catch (err) {
+    console.error(`[db] migration (rider approval) failed: ${err?.message}`);
     ok = false;
   }
 
@@ -525,6 +575,7 @@ async function runMigrations() {
 module.exports = {
   runMigrations,
   migrateStallApproval,
+  migrateRiderApproval,
   migrateUserContactIndexes,
   migrateWalletLedgerSequence,
   migrateDroppedEmailVerification,

@@ -103,6 +103,24 @@ async function createUser({ role = 'customer', ...overrides } = {}) {
     role,
     phoneVerifiedAt: new Date(),
     ...(overrides.status ? { status: overrides.status } : {}),
+    /**
+     * A rider made by this helper is one who already works here.
+     *
+     * `User.rider.approvalStatus` defaults to `pending`, which is right for the
+     * self-registration route and wrong for a fixture: every test that seeds a
+     * rider is describing somebody mid-shift — dispatch, handoff, settlement,
+     * pickup — not somebody who signed up thirty seconds ago and is waiting on
+     * a developer. Left pending, all of those would fail for a reason that has
+     * nothing to do with what they are testing.
+     *
+     * It also matches the state of every real rider, since `migrateRiderApproval`
+     * grandfathers the ones that predate the field.
+     *
+     * A test about the GATE overrides this explicitly — see riderApproval.test.js.
+     */
+    ...(role === 'delivery'
+      ? { rider: { approvalStatus: overrides.approvalStatus || 'approved', approvedAt: new Date() } }
+      : {}),
   });
   return { user };
 }

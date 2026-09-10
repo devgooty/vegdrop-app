@@ -16,6 +16,44 @@ const router = express.Router();
 
 const riderGate = [requireAuth, requireRole('delivery', 'developer')];
 
+/**
+ * Is this rider cleared to take on NEW work?
+ *
+ * Read from the database rather than the session, for the reason
+ * middleware/auth.js re-reads role and status on every request: a rider whose
+ * approval is withdrawn mid-shift must stop being able to pick up the next job
+ * immediately, not when their token expires.
+ *
+ * `developer` passes, as everywhere else, so the flow can be exercised without
+ * clearing a real person.
+ */
+async function mayTakeWork(user) {
+  if (user.role === 'developer') return true;
+  const me = await User.findById(user._id).select('rider.approvalStatus').lean();
+  return me?.rider?.approvalStatus === 'approved';
+}
+
+/**
+ * WHY THIS GATE IS NOT SIMPLY ADDED TO `riderGate`
+ *
+ * Blanket-refusing every rider route to an unapproved account would be wrong in
+ * one direction and useless in another.
+ *
+ * Wrong: a rider approved at 9am, holding a half-collected order, whose
+ * approval is withdrawn at 10am would be locked out of `/collect` and
+ * `/deliver` — stranding a real customer's order in a stranger's bag with no
+ * way to complete or hand it back. Finishing something already assigned to you
+ * is always allowed; the same reasoning refuses `dutyStatus: 'offline'` while
+ * an order is in progress.
+ *
+ * Useless: `/bank-details` is exactly what somebody waiting for approval should
+ * be filling in.
+ *
+ * So the gate goes on the two places that let a rider reach a customer they do
+ * not already hold — accepting new work, and seeing what is available to accept
+ * — and nowhere else.
+ */
+
 /** Metres between two [lng, lat] GeoJSON points, or null if either is missing. */
 function metresBetween(a, b) {
   if (!a?.coordinates?.length || !b?.coordinates?.length) return null;
@@ -202,6 +240,38 @@ router.patch(
   async (req, res) => {
     const { dutyStatus } = req.valid.body;
 
+    /**
+     * A rider who has not been cleared cannot go on duty.
+     *
+     * The dispatch query refuses them anyway, so this is not what makes the
+     * system safe — it is what makes it honest. Without it an unapproved rider
+     * flips their switch, sees "Online", and waits out a shift for offers that
+     * were never going to come, with nothing on screen explaining why. The
+     * refusal names the state so the app can say so.
+     *
+     * `developer` passes, as it does everywhere else, and is how the flow gets
+     * exercised without approving a real person.
+     *
+     * Read from the database rather than from the session: `req.user` is
+     * re-read per request by middleware/auth.js, but reading the field
+     * explicitly here keeps this correct even if that ever changes.
+     */
+    if (dutyStatus === 'online' && !(await mayTakeWork(req.user))) {
+      // Re-read for the reason only, having already established it is not
+      // 'approved'. Told "waiting" when they are actually refused, a rider
+      // waits out a shift for a decision that has already been made.
+      const me = await User.findById(req.user._id).select('rider.approvalStatus').lean();
+      const rejected = me?.rider?.approvalStatus === 'rejected';
+
+      throw new ApiError(
+        403,
+        rejected
+          ? 'Your delivery account was not approved. Contact the market office.'
+          : 'Your delivery account is waiting to be approved. You will be able to go online once it is.',
+        rejected ? 'RIDER_REJECTED' : 'RIDER_NOT_APPROVED'
+      );
+    }
+
     const active = await Order.countDocuments({
       assignedTo: req.user._id,
       'fulfillment.status': { $in: ['packing', 'awaiting_rider', 'collecting', 'dispatched'] },
@@ -227,12 +297,32 @@ router.patch(
 router.get('/orders', ...riderGate, async (req, res) => {
   const now = new Date();
 
+  /**
+   * An unapproved rider sees only what they already hold.
+   *
+   * The open-pool branch below is the reason this matters. `findNearestRider`
+   * offers a job to one rider at a time, and this gate keeps an unapproved
+   * account out of that — but an order nobody took falls into a pool that ANY
+   * on-duty rider can claim outright, which routes around the dispatch query
+   * entirely. Listing the pool to an account that may not accept from it would
+   * only advertise work it cannot take.
+   *
+   * Their own assigned orders stay visible unconditionally, so a rider whose
+   * approval is withdrawn mid-delivery can still see the job they are holding
+   * and finish it.
+   */
+  const approved = await mayTakeWork(req.user);
+
   const orders = await Order.find({
     'fulfillment.status': { $in: ['packing', 'awaiting_rider', 'collecting', 'dispatched'] },
     $or: [
       { assignedTo: req.user._id },
-      { 'fulfillment.riderOffer.rider': req.user._id, 'fulfillment.riderOffer.expiresAt': { $gt: now } },
-      { assignedTo: null, 'fulfillment.riderOffer.openPool': true },
+      ...(approved
+        ? [
+            { 'fulfillment.riderOffer.rider': req.user._id, 'fulfillment.riderOffer.expiresAt': { $gt: now } },
+            { assignedTo: null, 'fulfillment.riderOffer.openPool': true },
+          ]
+        : []),
     ],
   })
     .sort({ createdAt: 1 })
@@ -297,6 +387,25 @@ router.post(
   ...riderGate,
   validate({ params: z.object({ id: fields.objectId }).strict() }),
   async (req, res) => {
+    /**
+     * The route that actually had to be closed.
+     *
+     * Gating dispatch and the duty switch stops an unapproved rider being
+     * OFFERED work; neither stops them taking it. An order that no individual
+     * rider accepted falls into an open pool, and this endpoint claims from
+     * that pool directly — so without this check a stranger who proved one
+     * phone number could still become `assignedTo` on a real order, and the
+     * next `GET /orders` would hand them the customer's name, phone number,
+     * exact address and, on a COD order, the cash to collect.
+     */
+    if (!(await mayTakeWork(req.user))) {
+      throw new ApiError(
+        403,
+        'Your delivery account has not been approved yet, so you cannot take orders.',
+        'RIDER_NOT_APPROVED'
+      );
+    }
+
     const orderId = req.valid.params.id;
     const kind = await Order.findById(orderId).select('shop').lean();
     if (!kind) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');

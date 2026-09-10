@@ -114,6 +114,50 @@ const userSchema = new mongoose.Schema(
      * just never sent the result anywhere.
      */
     rider: {
+      /**
+       * Whether a human has cleared this rider to carry real orders.
+       *
+       * WHY THIS EXISTS
+       *
+       * Delivery is self-registerable: `/auth/delivery/register/start` mints a
+       * `delivery` account for anyone who can prove one phone number. Until
+       * this field, nothing stood between that and being dispatched — a fresh
+       * account could go online and `findNearestRider` would hand it the next
+       * pickup, carrying the customer's name, phone number and home address,
+       * and on a COD order their cash. One phone number was the whole barrier
+       * to a stranger's address book.
+       *
+       * Self-registration is kept, deliberately. Refusing at registration would
+       * leave the applicant holding an account they cannot use and no screen
+       * explaining why, and `User.status` cannot express "pending" because
+       * middleware/auth.js rejects a non-active user before they could read
+       * one. So the account is real and usable-looking from the first minute,
+       * and this is what gates the one capability that matters.
+       *
+       * `developer` only, not `market_owner`: a rider is not scoped to a
+       * market — `findNearestRider` searches by proximity across all of them —
+       * so a market owner approving one would be clearing somebody to work a
+       * competitor's market too.
+       *
+       * Approved is the default for a reason that is not laziness: see
+       * `migrateRiderApproval` in db/migrations.js. Every delivery account that
+       * predates this field belongs to somebody already working, and a deploy
+       * that put them all on the wrong side of a new gate would strand real
+       * riders mid-shift. The migration grandfathers them; the schema default
+       * is `pending` so that everyone created after it is gated.
+       */
+      approvalStatus: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: 'pending',
+        index: true,
+      },
+      approvedAt: { type: Date, default: null },
+      /** Who cleared them, kept so a disputed decision has an author. */
+      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      /** Shown to the rider, so a refusal is actionable rather than silent. */
+      rejectionReason: { type: String, default: '', maxlength: 300 },
+
       dutyStatus: {
         type: String,
         enum: ['offline', 'online', 'busy'],
@@ -317,6 +361,24 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
     // Duty status only — never the position. A rider's live coordinates are
     // dispatch input, not something to hand back out on a profile read.
     dutyStatus: this.role === 'delivery' ? this.rider?.dutyStatus || 'offline' : undefined,
+    /**
+     * Whether this rider may work yet, and why not.
+     *
+     * Carried on the session because the delivery app has to decide what to
+     * render before it asks for anything: an unapproved rider must see that
+     * they are waiting, not a duty toggle that answers 403. The rejection
+     * reason travels with it so a refusal is actionable rather than a dead end.
+     *
+     * `undefined` for every other role, like `dutyStatus` above, so a customer
+     * payload does not carry a field about a capability they do not have.
+     */
+    riderApproval:
+      this.role === 'delivery'
+        ? {
+            status: this.rider?.approvalStatus || 'pending',
+            reason: this.rider?.rejectionReason || null,
+          }
+        : undefined,
     createdAt: this.createdAt,
   };
 };

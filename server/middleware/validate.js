@@ -50,9 +50,31 @@ function validate(schemas) {
 const nonEmptyString = (max = 200) =>
   z.string({ error: 'Expected a string.' }).trim().min(1).max(max);
 
+/**
+ * A Mongo id, normalised to lowercase hex.
+ *
+ * The regex accepts `A-F` because that is a legitimate spelling of the same id
+ * and refusing it would reject a caller who did nothing wrong. The transform is
+ * what makes accepting it safe.
+ *
+ * WHY THE LOWERCASING IS A SECURITY FIX AND NOT TIDYING
+ *
+ * `toHexString()` always returns lowercase, and several guards compare a path
+ * parameter against it with `===` to refuse an action on YOUR OWN account —
+ * `routes/users.js` does it on the role, status and delete endpoints, where the
+ * point is that "self-promotion should never be a single-actor operation".
+ *
+ * Mongoose casts hex to an ObjectId case-insensitively, so `...A1B2` and
+ * `...a1b2` load the same document while failing that `===`. An admin spelling
+ * their own id with one uppercase digit therefore walked straight past the
+ * refusal and reached the write. Normalising here fixes every such comparison
+ * at once, including ones nobody has written yet — which is the only version of
+ * this fix that stays correct.
+ */
 const objectId = z
   .string()
-  .regex(/^[0-9a-fA-F]{24}$/, 'Must be a valid id.');
+  .regex(/^[0-9a-fA-F]{24}$/, 'Must be a valid id.')
+  .transform((value) => value.toLowerCase());
 
 const email = z
   .string()
