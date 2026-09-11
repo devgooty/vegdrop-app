@@ -239,7 +239,44 @@ router.post(
 
       user.lastLoginAt = new Date();
       if (!user.phoneVerifiedAt) user.phoneVerifiedAt = new Date();
-      await user.save();
+
+      /**
+       * The same legacy repair `routes/auth.js` performs on an outbound code,
+       * and it belongs here for a stronger reason than symmetry.
+       *
+       * A message ARRIVED FROM this number, which is a better proof of
+       * possession than receiving one — so the number is proved, and a proved
+       * number belongs in `phone` rather than in `pendingPhone`, which exists to
+       * hold the ones nobody has demonstrated.
+       *
+       * Missing here, an account that only ever signs in this way stayed legacy
+       * forever: four verified sign-ins in as many minutes left one live account
+       * still carrying `phoneVerifiedAt` and no `phone` at all. That state is
+       * not inert — `findByIdentifier` has to rank an unproved claim against a
+       * proved one, and the profile screen shows no number.
+       *
+       * `challenge.phone`, never `pending.phone` or anything off the request:
+       * the number is taken from the row the webhook matched.
+       *
+       * `pendingPhone` is stored but never reserved, so two accounts can hold
+       * the same one and only the first to prove it gets it. The loser meets the
+       * unique index and is told plainly rather than shown a 500.
+       */
+      if (!user.phone && user.pendingPhone && user.pendingPhone === challenge.phone) {
+        user.phone = user.pendingPhone;
+        user.pendingPhone = undefined;
+      }
+
+      try {
+        await user.save();
+      } catch (err) {
+        if (err?.code !== 11000) throw err;
+        throw new ApiError(
+          409,
+          'That number now belongs to another account. Contact support.',
+          'ALREADY_REGISTERED'
+        );
+      }
 
       return res.json(await establishSession(user, req, res));
     }

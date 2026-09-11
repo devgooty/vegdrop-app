@@ -24,6 +24,7 @@ const {
 } = require('./helpers');
 
 const notify = require('../services/notify');
+const otp = require('../services/otp');
 const User = require('../models/User');
 const { ApiError } = require('../middleware/errors');
 
@@ -212,16 +213,51 @@ test('with no fallback configured either, registration says so at the start', as
   );
 });
 
-test('a transport that only prints codes counts as undelivered', async () => {
+/**
+ * This used to drive the endpoint and assert `delivered: false`, and could never
+ * pass: `shouldSendOutboundCode` short-circuits on `isTest` so every suite gets
+ * a `devCode` back, which means the endpoint always reports delivered under
+ * test. The assertion was overridden by the escape hatch before the transport
+ * was ever consulted, and the failure read as a flake for months.
+ *
+ * The rule it describes is real, so it is asserted where it can be observed —
+ * on the decision itself, across every combination. `config` is frozen at load,
+ * so the endpoint-level version would have needed a process per case.
+ */
+test('a transport that only prints codes counts as undelivered', () => {
   // NOTIFY_TRANSPORT=console on a live deployment: the send succeeds, but the
   // code lands in a server log. Showing a code input for that would ask the user
   // to type something they never received.
-  notify.setTransport(notify.consoleTransport);
+  assert.equal(
+    otp.shouldSendOutboundCode({ transportReaches: false, reverseOtpOn: false, isTest: false }),
+    false
+  );
+  assert.equal(notify.consoleTransport.reachesRecipient, false, 'the stub must report it cannot');
+});
 
-  const start = await register({ phone: '9876543210' });
+test('a reachable transport sends, unless reverse OTP already covers the user', () => {
+  assert.equal(
+    otp.shouldSendOutboundCode({ transportReaches: true, reverseOtpOn: false, isTest: false }),
+    true
+  );
+  // Reverse OTP costs nothing and cannot silently fail, so a paid template is
+  // not spent first.
+  assert.equal(
+    otp.shouldSendOutboundCode({ transportReaches: true, reverseOtpOn: true, isTest: false }),
+    false
+  );
+});
 
-  assert.equal(start.body.phone.delivered, false);
-  assert.equal(start.body.phone.challengeId, null);
+test('under test a code is always issued, so devCode comes back', () => {
+  for (const transportReaches of [true, false]) {
+    for (const reverseOtpOn of [true, false]) {
+      assert.equal(
+        otp.shouldSendOutboundCode({ transportReaches, reverseOtpOn, isTest: true }),
+        true,
+        `isTest must win for ${transportReaches}/${reverseOtpOn}`
+      );
+    }
+  }
 });
 
 // ---------------------------------------------------------------------------

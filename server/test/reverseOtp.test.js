@@ -427,6 +427,67 @@ test('completing a verified login issues a session', async () => {
   assert.ok((res.headers['set-cookie'] || []).some((c) => c.startsWith('vb_rt=')), 'expected a refresh cookie');
 });
 
+/**
+ * Legacy accounts: the number is in `pendingPhone` and `phone` is unset.
+ *
+ * The outbound-code path has repaired this since it shipped; this one did not,
+ * so an account that only ever signed in by reverse OTP stayed legacy forever.
+ * On the live database four verified sign-ins in as many minutes left the
+ * account still carrying `phoneVerifiedAt` and no `phone`.
+ */
+test('signing in from the number moves it out of pendingPhone', async () => {
+  const user = await User.create({
+    name: 'Legacy',
+    email: 'legacy@example.com',
+    pendingPhone: '9876543210',
+    role: 'customer',
+  });
+
+  const { token, code } = await start({ phone: '9876543210', app: 'customer' });
+  await relaySms({ from: '9876543210', text: code });
+
+  const res = await api().post('/api/auth/reverse/complete').send({ token });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.user.id, String(user._id), 'the same account, not a new one');
+
+  const after = await User.findById(user._id).lean();
+  assert.equal(after.phone, '9876543210', 'a message FROM the number proves it');
+  assert.equal(after.pendingPhone, undefined, 'and it must not be left in both places');
+  assert.ok(after.phoneVerifiedAt);
+});
+
+/**
+ * `pendingPhone` is never reserved, so two accounts can claim one number and
+ * only the first to prove it gets it. The loser must be told, not shown a 500.
+ */
+test('a number already proved by another account refuses the repair', async () => {
+  await User.create({
+    name: 'Holder',
+    email: 'holder@example.com',
+    phone: '9876543210',
+    role: 'customer',
+    phoneVerifiedAt: new Date(),
+  });
+  const claimant = await User.create({
+    name: 'Claimant',
+    email: 'claimant@example.com',
+    pendingPhone: '9876543210',
+    role: 'customer',
+  });
+
+  const { token, code } = await start({ phone: '9876543210', app: 'customer' });
+  await relaySms({ from: '9876543210', text: code });
+  const res = await api().post('/api/auth/reverse/complete').send({ token });
+
+  // The proved holder outranks the claimant, so that is who signs in.
+  assert.equal(res.status, 200);
+  assert.notEqual(res.body.user.id, String(claimant._id));
+
+  const after = await User.findById(claimant._id).lean();
+  assert.equal(after.phone, undefined, 'the claimant gains nothing');
+  assert.equal(after.pendingPhone, '9876543210');
+});
+
 test('a challenge that was never verified cannot be completed', async () => {
   const { token } = await start({ phone: '9876543210', app: 'customer' });
 

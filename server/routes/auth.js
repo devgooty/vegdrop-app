@@ -58,8 +58,11 @@ async function issueLoginChallenge({ purpose, destination, user, payload }) {
    * though it does not reach a recipient — the suite depends on that. In
    * production with reverse OTP live, outbound is never attempted.
    */
-  const shouldAttempt =
-    config.isTest || (notify.reachesRecipient('sms') && !reverseOtpEnabled());
+  const shouldAttempt = otp.shouldSendOutboundCode({
+    transportReaches: notify.reachesRecipient('sms'),
+    reverseOtpOn: reverseOtpEnabled(),
+    isTest: config.isTest,
+  });
 
   if (shouldAttempt) {
     try {
@@ -467,8 +470,11 @@ async function startRegistrationChallenge({ phone, name, purpose, role }) {
 
   let phoneChallenge = null;
 
-  const shouldAttempt =
-    config.isTest || (notify.reachesRecipient('sms') && !reverseOtpEnabled());
+  const shouldAttempt = otp.shouldSendOutboundCode({
+    transportReaches: notify.reachesRecipient('sms'),
+    reverseOtpOn: reverseOtpEnabled(),
+    isTest: config.isTest,
+  });
 
   if (shouldAttempt) {
     try {

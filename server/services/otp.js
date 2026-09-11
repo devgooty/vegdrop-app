@@ -239,4 +239,33 @@ function maskDestination(destination) {
   return `${'*'.repeat(Math.max(0, destination.length - 4))}${destination.slice(-4)}`;
 }
 
-module.exports = { issueChallenge, verifyChallenge, maskDestination };
+/**
+ * Should an outbound code be sent at all?
+ *
+ * Pure, and exported, because the answer is three-way and the branch it guards
+ * could not be observed from a test while it was inline. `isTest` short-circuits
+ * it — every suite needs a challenge back to read `devCode` from — so a test
+ * that installed the console transport and asserted "undelivered" was asserting
+ * something the escape hatch had already overridden. It could not pass, and sat
+ * red looking like a flake.
+ *
+ * The rules, in the order they matter:
+ *
+ * - A transport that only PRINTS a code has not delivered it. `reachesRecipient`
+ *   is false for the console stub and the null transport, and a code sitting in
+ *   a server log is not one the user can type.
+ * - Reverse OTP being available means the user has a way in that costs nothing
+ *   and cannot silently fail, so there is no reason to spend a paid template
+ *   first.
+ * - Under test, send regardless, so `devCode` comes back.
+ *
+ * Every input is passed in rather than read from `config` or `notify` here, so
+ * the decision can be exercised across all eight combinations without a process
+ * per case — `config` is frozen at load, which is what made this untestable.
+ */
+function shouldSendOutboundCode({ transportReaches, reverseOtpOn, isTest }) {
+  if (isTest) return true;
+  return Boolean(transportReaches) && !reverseOtpOn;
+}
+
+module.exports = { issueChallenge, verifyChallenge, maskDestination, shouldSendOutboundCode };
