@@ -84,11 +84,35 @@ async function findByIdentifier(identifier, roles) {
    * code could be delivered to one; it no longer can, so matching an email
    * would find an account nobody can then prove they own.
    */
-  return User.findOne({
-    $or: [{ phone: identifier }, { pendingPhone: identifier }],
-    status: { $ne: 'deleted' },
-    ...scope,
-  });
+  const base = { status: { $ne: 'deleted' }, ...scope };
+
+  /**
+   * A PROVED number outranks an unproved one, and this is two queries rather
+   * than one `$or` because an `$or` cannot express a preference.
+   *
+   * `phone` is the credential of record; `pendingPhone` is a number somebody
+   * typed and nobody demonstrated control of. Matched together in one filter,
+   * `findOne` returns whichever document the index reaches first — so which
+   * account you sign into is decided by storage order. That is not theoretical:
+   * one number on the live database carries a `market_owner` holding it in
+   * `phone` and two `customer` rows holding it in `pendingPhone`, and the same
+   * sign-in resolved to different accounts on different attempts. The user was
+   * bounced out of the market owner app by a coin flip.
+   *
+   * The security half matters more than the confusion. `pendingPhone` is not
+   * unique and never was — nothing stops two accounts claiming one number
+   * unproven — so leaving the two ranks equal means an unproved claim can
+   * capture a sign-in from the account that actually proved it.
+   *
+   * `createdAt` breaks the remaining tie so the answer is at least stable: among
+   * equally-ranked rows the original account wins, not whichever was touched
+   * last. Legacy data is the only place that tie can occur, because the
+   * (phone, role) unique index makes it impossible once a number is proved.
+   */
+  const proved = await User.findOne({ phone: identifier, ...base }).sort({ createdAt: 1 });
+  if (proved) return proved;
+
+  return User.findOne({ pendingPhone: identifier, ...base }).sort({ createdAt: 1 });
 }
 
 /**
