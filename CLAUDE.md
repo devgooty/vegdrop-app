@@ -418,6 +418,11 @@ Watch for the failure mode this creates: the constraint that is actually in forc
 Two more gotchas worth knowing:
 
 - Mongoose's global `sanitizeFilter` is **deliberately not enabled** — it rewrites legitimate operator queries like `{ expiresAt: { $gt: now } }` into `$eq` comparisons and silently breaks them. Injection is blocked at the validation and sanitize layers instead.
+- **`strictQuery` is on, so a misspelled field in a filter is silently dropped rather than failing.** `db/connect.js` sets it, and it is right to: it keeps a stray `$`-key or a client-supplied path from reaching the database. The cost is that `{ shopkeeper: id }` against a model whose field is `owner` does not error and does not match nothing — the path vanishes and what remains runs. A one-key filter becomes `{}` and matches **everything**.
+
+  This bites hardest where a count is being used as a safety check, because both failure directions are silent and one of them is dangerous: a filter that collapses to `{}` reports entanglement that is not there (annoying), and a filter narrowed the wrong way reports none when there is some (deletes real data). It has already produced the first: an audit counting `Stall.shopkeeper` reported three stalls against every account in the database, customers included, and blocked seven correct deletions.
+
+  Any script that decides whether to **delete** on the strength of a count must prove its filters discriminate first. `scripts/find-duplicate-accounts.js` → `assertFiltersDiscriminate()` is the pattern: query every collection for an id that cannot exist, and refuse to proceed if anything matches. It costs one round trip and catches the entire class.
 - `middleware/errors.js` only honours `err.statusCode` for `ApiError` (or `expose === true`). Trusting arbitrary SDK errors let the Razorpay client turn its own upstream 4xx into a client-facing 4xx, misreporting an integration failure as the caller's mistake.
 
 ### Performance
