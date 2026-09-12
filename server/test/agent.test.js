@@ -21,6 +21,7 @@ const {
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const { listMatchingRecipes, extractVegetables } = require('../services/agent/recipes');
+const { getOrderStatusTool } = require('../services/agent/tools');
 
 test.before(startTestServer);
 test.after(stopTestServer);
@@ -152,6 +153,58 @@ test('propose then confirm places exactly one order', async () => {
   assert.equal(confirm.status, 200, JSON.stringify(confirm.body));
   assert.ok(confirm.body.data.orderNumber);
   assert.equal(await Order.countDocuments({}), 1);
+});
+
+/**
+ * The assistant answers about YOUR order, and only yours.
+ *
+ * `get_order_status` filtered `{ _id: orderId, user: user._id }` — and Order
+ * has no `user` path. With strictQuery on, an unknown path is dropped rather
+ * than rejected, so the filter collapsed to `{ _id: orderId }` and the tool
+ * reported any order in the database to any signed-in caller. The id comes from
+ * a tool call the customer's own message steers, so nothing stopped someone
+ * asking about a number that was not theirs.
+ *
+ * The tool is called directly rather than through `/agent/chat`: the route
+ * needs a model to decide to call it, and the scoping is the thing under test.
+ */
+test('the order-status tool refuses an order belonging to someone else', async () => {
+  const mine = await authenticatedUser('customer');
+  const theirs = await authenticatedUser('customer');
+
+  const order = await Order.create({
+    orderNumber: 'VBPRIVATE1',
+    customer: theirs.user._id,
+    customerName: theirs.user.name,
+    phone: theirs.user.phone,
+    address: '12 Someone Else Lane',
+    items: [
+      {
+        product: theirs.user._id,
+        name: 'Tomatoes',
+        unitPricePaise: 4000,
+        quantity: 1,
+        lineTotalPaise: 4000,
+      },
+    ],
+    subtotalPaise: 4000,
+    totalAmountPaise: 4000,
+    paymentMethod: 'cod',
+    status: 'Pending',
+  });
+
+  const id = order._id.toHexString();
+
+  // The owner can read it.
+  const own = await getOrderStatusTool(theirs.user, { orderId: id });
+  assert.equal(own.orderNumber, 'VBPRIVATE1');
+
+  // Nobody else can. Before the fix this returned the same object.
+  await assert.rejects(
+    () => getOrderStatusTool(mine.user, { orderId: id }),
+    (err) => err.statusCode === 404,
+    'another customer must not be able to read this order'
+  );
 });
 
 test('a shopkeeper cannot use the cooking assistant', async () => {

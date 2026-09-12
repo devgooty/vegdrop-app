@@ -211,7 +211,14 @@ async function confirmOrderTool(user, { proposalId, address, lat, lng }) {
 }
 
 async function getOrderStatusTool(user, { orderId }) {
-  const order = await Order.findOne({ _id: orderId, user: user._id })
+  /**
+   * `customer`, not `user`. Order has no such path, and with strictQuery on an
+   * unknown path is dropped rather than rejected — so this filter collapsed to
+   * `{ _id: orderId }` and answered about ANY order to ANY signed-in caller.
+   * The id arrives from a tool call the customer's own message steers, so it is
+   * reachable: "what's the status of order <id>" read a stranger's order.
+   */
+  const order = await Order.findOne({ _id: orderId, customer: user._id })
     .select('orderNumber status paymentStatus totalAmountPaise fulfillment.status createdAt')
     .lean();
   if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
