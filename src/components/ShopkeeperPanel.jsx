@@ -367,12 +367,13 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
   useEffect(() => {
     if (activeScreen !== 'search-catalog') return undefined;
     let cancelled = false;
+    const query = catalogSearch.trim();
     const handle = setTimeout(() => {
       setCatalogSearchBusy(true);
       fetchProducts({
         catalogOnly: true,
-        limit: 50,
-        ...(catalogSearch.trim() ? { search: catalogSearch.trim() } : {}),
+        limit: 200,
+        ...(query ? { search: query } : {}),
       })
         .then((items) => {
           if (!cancelled) setCatalogItems(items);
@@ -381,7 +382,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
         .finally(() => {
           if (!cancelled) setCatalogSearchBusy(false);
         });
-    }, 250);
+    }, query ? 250 : 0);
     return () => {
       cancelled = true;
       clearTimeout(handle);
@@ -804,6 +805,22 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
     const categoryLocked = fromCatalog || activeScreen === 'edit-product';
 
     if (activeScreen === 'search-catalog') {
+      const catalogByCategory = categories
+        .map((cat) => ({
+          category: cat,
+          items: searchableCatalog.filter((item) => Number(item.categoryId) === Number(cat.id)),
+        }))
+        .filter((group) => group.items.length > 0);
+      // Any shared-catalog rows whose categoryId is not in the static aisle list.
+      const knownIds = new Set(categories.map((c) => Number(c.id)));
+      const otherItems = searchableCatalog.filter((item) => !knownIds.has(Number(item.categoryId)));
+      if (otherItems.length > 0) {
+        catalogByCategory.push({
+          category: { id: 'other', title: 'Other' },
+          items: otherItems,
+        });
+      }
+
       return (
         <div className="space-y-4 pb-24 animate-fade-in">
           <div className="flex items-center gap-3">
@@ -814,7 +831,12 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <h2 className="font-black text-xl text-gray-900">Add from catalog</h2>
+            <div>
+              <h2 className="font-black text-xl text-gray-900">Add from catalog</h2>
+              <p className="text-[11.5px] font-semibold text-gray-500">
+                Pick an item — photo and name are filled in for you
+              </p>
+            </div>
           </div>
 
           <KycGateBanner kyc={kyc} onOpenKyc={onOpenKyc} />
@@ -832,39 +854,51 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
 
           {catalogSearchBusy && (
             <p className="text-xs font-bold text-gray-400 flex items-center gap-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Searching…
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading catalog…
             </p>
           )}
 
-          <div className="space-y-2">
-            {searchableCatalog.map((item) => {
-              const categoryTitle = categories.find((c) => c.id === item.categoryId)?.title;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => pickCatalogItem(item)}
-                  disabled={!canUpdateStock}
-                  className="w-full text-left bg-white rounded-2xl p-3 shadow-sm border border-gray-100 flex gap-3 items-center active:scale-[0.99] transition-transform disabled:opacity-50"
-                >
-                  {item.image ? (
-                    <img src={item.image} alt="" className="w-14 h-14 rounded-xl object-cover border border-gray-100 shrink-0" />
-                  ) : (
-                    <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
-                      <Camera className="w-5 h-5 text-gray-300" />
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="font-black text-gray-900 truncate">{item.name}</p>
-                    <p className="text-xs font-bold text-gray-500">
-                      {[item.weight, categoryTitle].filter(Boolean).join(' · ')}
-                    </p>
-                  </div>
-                  <Plus className="w-5 h-5 text-green-600 shrink-0" />
-                </button>
-              );
-            })}
-            {!catalogSearchBusy && searchableCatalog.length === 0 && (
+          <div className="space-y-6">
+            {catalogByCategory.map(({ category, items }) => (
+              <section key={category.id} className="space-y-3">
+                <div className="flex items-baseline justify-between gap-2 sticky top-0 bg-[#F6F8F6]/95 backdrop-blur-sm py-1 z-10">
+                  <h3 className="font-black text-gray-900 text-base">{category.title}</h3>
+                  <span className="text-[11.5px] font-bold text-gray-400">{items.length}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {items.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => pickCatalogItem(item)}
+                      disabled={!canUpdateStock}
+                      className="text-left bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden active:scale-[0.98] transition-transform disabled:opacity-50"
+                    >
+                      {item.image ? (
+                        <img
+                          src={item.image}
+                          alt=""
+                          className="w-full aspect-[4/3] object-cover bg-gray-50"
+                        />
+                      ) : (
+                        <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center">
+                          <Camera className="w-6 h-6 text-gray-300" />
+                        </div>
+                      )}
+                      <div className="p-2.5">
+                        <p className="font-black text-sm text-gray-900 leading-snug line-clamp-2">
+                          {item.name}
+                        </p>
+                        {item.weight ? (
+                          <p className="text-[11px] font-bold text-gray-500 mt-0.5">{item.weight}</p>
+                        ) : null}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))}
+            {!catalogSearchBusy && catalogByCategory.length === 0 && (
               <p className="text-sm font-bold text-gray-500 text-center py-8">
                 No catalog items match. Add a custom product instead.
               </p>
