@@ -1,7 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { MapPin, ChevronDown } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
-import MapLocationPicker from './MapLocationPicker';
+
+/**
+ * The map picker is lazy, because Leaflet is 46 kB gzip and this bar renders on
+ * the customer's first screen.
+ *
+ * It was a static import, so every customer downloaded the whole mapping stack
+ * to render an address label — the picker itself only ever appears inside a
+ * modal nobody has opened yet. `DeliveryRouteMap` was already loaded this way;
+ * this is the same treatment for the same reason.
+ */
+const MapLocationPicker = lazy(() => import('./MapLocationPicker'));
 import { savedCustomerAddress, saveCustomerAddress } from '../services/address';
 import { reverseGeocodeGPS } from '../services/geocode';
 
@@ -103,6 +113,7 @@ export default function DeliveryLocationBar({ onAddressChange }) {
 
       {/* DETAILED FULL ADDRESS LOCATION SELECTOR MODAL */}
       {isModalOpen && (
+        <Suspense fallback={null}>
         <MapLocationPicker
           onClose={() => setIsModalOpen(false)}
           onConfirm={(address, details, coords) => {
@@ -114,6 +125,7 @@ export default function DeliveryLocationBar({ onAddressChange }) {
           }}
           reverseGeocodeGPS={reverseGeocodeGPS}
         />
+        </Suspense>
       )}
     </>
   );

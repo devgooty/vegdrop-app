@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import { MapPin, Trash2, Navigation } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { savedCustomerAddress, saveCustomerAddress, clearCustomerAddress } from '../services/address';
 import { reverseGeocodeGPS } from '../services/geocode';
-import MapLocationPicker from './MapLocationPicker';
+
+// Lazy for the reason spelled out in `DeliveryLocationBar.jsx`: Leaflet is
+// large and this picker only exists inside a modal.
+const MapLocationPicker = lazy(() => import('./MapLocationPicker'));
 
 /**
  * The "Saved Address" screen in the Account tab.
@@ -73,11 +76,13 @@ export default function AccountAddress({ onAddressChange }) {
       </p>
 
       {isPickerOpen && (
-        <MapLocationPicker
-          onClose={() => setIsPickerOpen(false)}
-          onConfirm={handleConfirm}
-          reverseGeocodeGPS={reverseGeocodeGPS}
-        />
+        <Suspense fallback={null}>
+          <MapLocationPicker
+            onClose={() => setIsPickerOpen(false)}
+            onConfirm={handleConfirm}
+            reverseGeocodeGPS={reverseGeocodeGPS}
+          />
+        </Suspense>
       )}
     </div>
   );
