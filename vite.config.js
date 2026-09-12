@@ -33,6 +33,25 @@ export default defineConfig(async ({ command, mode }) => {
   return {
     plugins: [react(), tailwindcss()],
 
+    /**
+     * Vitest, for the client half.
+     *
+     * `include` is scoped to src/ deliberately. server/test/** is a
+     * node:test suite driven by `npm test` against an in-memory MongoDB
+     * replica set; vitest's default include pattern would match those
+     * files too and run them under the wrong runner. The two suites stay
+     * separate commands - `npm test` and `npm run test:client`.
+     *
+     * `environment: 'node'` because what is worth locking here is the pure
+     * logic - wire-shape mappers, pack arithmetic, key derivation. A DOM
+     * environment (jsdom/happy-dom) is a later addition for component
+     * tests, not a prerequisite for these.
+     */
+    test: {
+      include: ['src/**/*.test.{js,jsx,mjs}'],
+      environment: 'node',
+    },
+
     server: {
       port: 3000,
       open: false,

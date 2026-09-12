@@ -11,7 +11,10 @@
     "server:dev": "node --watch server/index.js",
     "server:demo": "node server/scripts/dev-with-memory-db.js",
     "test": "node --test --test-concurrency=1 \"server/test/**/*.test.js\"",
-    "test:watch": "node --test --watch --test-concurrency=1 \"server/test/**/*.test.js\""
+    "test:watch": "node --test --watch --test-concurrency=1 \"server/test/**/*.test.js\"",
+    "test:client": "vitest run",
+    "test:client:watch": "vitest",
+    "test:all": "npm test && npm run test:client"
   },
   "keywords": [],
   "author": "",
@@ -20,7 +23,6 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.0.4",
-    "bcryptjs": "^3.0.3",
     "cloudinary": "^2.11.0",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
@@ -45,7 +47,8 @@
   },
   "devDependencies": {
     "mongodb-memory-server": "^11.2.0",
-    "supertest": "^7.2.2"
+    "supertest": "^7.2.2",
+    "vitest": "^5.0.0"
   },
   "allowScripts": {
     "mongodb-memory-server@11.2.0": true
