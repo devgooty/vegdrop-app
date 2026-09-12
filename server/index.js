@@ -28,8 +28,8 @@ async function main() {
     // The API answers /api/health and returns 503 elsewhere rather than dying,
     // so an orchestrator can observe the unhealthy state and retry.
     console.error('[db] connection failed:', err.message);
-    if (config.isProduction) {
-      console.error('[db] refusing to serve traffic without a database in production.');
+    if (config.requireRealServices) {
+      console.error('[db] refusing to serve traffic without a database on a deployed host.');
       process.exit(1);
     }
   }

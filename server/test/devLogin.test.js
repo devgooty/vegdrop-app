@@ -104,7 +104,7 @@ test('DEV_LOGIN in production is a boot-time fatal', () => {
         NOTIFY_TRANSPORT: 'whatsapp',
         WHATSAPP_PHONE_NUMBER_ID: '1',
         WHATSAPP_ACCESS_TOKEN: 'e'.repeat(48),
-        WHATSAPP_TEMPLATE_NAME: 'otp_code',
+        WHATSAPP_OTP_TEMPLATE_NAME: 'otp_code',
         RAZORPAY_KEY_ID: 'rzp_test_abcdefghij',
         RAZORPAY_KEY_SECRET: 'f'.repeat(24),
         RAZORPAYX_KEY_ID: 'rzp_test_abcdefghij',

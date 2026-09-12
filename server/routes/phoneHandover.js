@@ -46,7 +46,7 @@ function resolveClientOrigin(requested) {
   const allowed = new Set(config.corsOrigins || []);
   if (requested && allowed.has(requested)) return requested;
   // Dev convenience: Vite on :3000 when CORS list is the default.
-  if (!config.isProduction && requested && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(requested)) {
+  if (!config.requireRealServices && requested && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(requested)) {
     return requested;
   }
   if (allowed.size === 1) return [...allowed][0];

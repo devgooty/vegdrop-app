@@ -76,7 +76,9 @@ function errorHandler(err, req, res, _next) {
   if (details !== undefined) body.error.details = details;
   if (req.id) body.error.requestId = req.id;
   // Stack traces are a development affordance only.
-  if (!config.isProduction && statusCode >= 500 && err?.stack) {
+  // requireRealServices: a stack trace is a development affordance, and a
+  // deployed host must not hand one to a client because NODE_ENV went unset.
+  if (!config.requireRealServices && statusCode >= 500 && err?.stack) {
     body.error.stack = err.stack.split('\n').slice(0, 8);
   }
 

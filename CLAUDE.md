@@ -13,6 +13,8 @@ npm run dev        # Vite dev server on :3000 (proxies /api/* to :5000)
 npm run server     # Express API on :5000
 npm run server:dev # same, with --watch
 npm test           # server test suite (node --test + mongodb-memory-server)
+npm run test:client # client test suite (vitest, src/**/*.test.js)
+npm run test:all   # both
 npm run build      # production build
 ```
 
@@ -35,15 +37,21 @@ Tests spin up an in-memory MongoDB **replica set** (required — the wallet ledg
 Copy `.env.example` to `.env`. Notes that are easy to get wrong:
 
 - **Never prefix a secret with `VITE_`.** Vite inlines those into the browser bundle. This codebase previously shipped role passwords that way; they were readable in `dist/`.
-- `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `OTP_PEPPER`, `KYC_ENCRYPTION_KEY` are **required in production** — the process aborts at boot without them. In development a random ephemeral secret is generated per run, so sessions reset on restart.
+- `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `OTP_PEPPER`, `KYC_ENCRYPTION_KEY` are **required on any deployed host** — the process aborts at boot without them. In local development a random ephemeral secret is generated per run, so sessions reset on restart. "Deployed" here means `config.requireRealServices`, below — not `NODE_ENV=production`.
 - **`KYC_ENCRYPTION_KEY` is effectively permanent.** It encrypts bank account numbers at rest; rotating it makes every existing vendor KYC record undecryptable.
-- Production additionally requires `CORS_ALLOWED_ORIGINS`, real Razorpay credentials, `RAZORPAYX_*` payout credentials, and a MongoDB deployment that supports transactions. Each is a boot-time hard failure, not a warning.
+- A deployed host additionally requires `CORS_ALLOWED_ORIGINS`, a real `MONGODB_URI`, real Razorpay credentials, a `NOTIFY_TRANSPORT` that is not the console stub, and a MongoDB deployment that supports transactions. Each is a boot-time hard failure, not a warning. (`RAZORPAYX_*` is not a boot failure, but without it `services/payouts.js` resolves to `unavailable` rather than the mock, so the KYC penny drop fails closed instead of pretending to succeed.)
 - `RAZORPAYX_*` is a **separate product** from `RAZORPAY_*`. Payments credentials collect money and cannot send it, so the KYC penny drop needs its own set.
 - **`DEV_LOGIN=1` serves `GET /api/auth/dev/login?phone=…`, which mints a session with nothing proved.** It is the only sign-in bypass in the codebase and exists so a local demo can be opened in any browser without reading a code out of the console. `server/scripts/dev-with-memory-db.js` sets it; `npm run server` does not.
 
   It is guarded on **two independent facts, because NODE_ENV is not trustworthy here**. `config.devLoginEnabled` requires the flag AND a non-production `NODE_ENV` AND the absence of any deploy marker (`RAILWAY_ENVIRONMENT`, `VERCEL`, `RENDER`, …); setting the flag alongside either signal is a **boot-time fatal**. The route is not merely disabled when off — it is never registered, so there is no handler to reach.
 
-  The deploy-marker half is not belt-and-braces, it is the load-bearing one. `NODE_ENV` is set by whoever configured the host, so it is a claim about the environment rather than a fact about it — a deployment can be serving real traffic with it unset or wrong, and every guard keyed only on `isProduction` is then silently inert. The platform markers are injected by the platform itself and cannot be forgotten, so *being deployed* is what this check actually tests. Treat any other "production refuses to boot" rule in this file as conditional on `NODE_ENV` genuinely being right on the host; verify it there rather than assuming.
+  The deploy-marker half is not belt-and-braces, it is the load-bearing one. `NODE_ENV` is set by whoever configured the host, so it is a claim about the environment rather than a fact about it — a deployment can be serving real traffic with it unset or wrong, and every guard keyed only on `isProduction` is then silently inert. The platform markers are injected by the platform itself and cannot be forgotten, so *being deployed* is what this check actually tests.
+
+- **`config.requireRealServices` is the condition every "this must not be fake on a real server" guard asks**, and it is `isProduction || isDeployed`. DEV_LOGIN was once the only rule that asked the marker question; every other one keyed on `isProduction` alone and was therefore inert on this project's own Railway host, which ran with `NODE_ENV` unset. It now governs: the required secrets, `MONGODB_URI`, `CORS_ALLOWED_ORIGINS`, the console notification transport, real Razorpay credentials, the `allowMock` switches for payments/payouts/Cloudinary, refusing to serve without a database, suppressing stack traces, HSTS, and `routes/wallet.js` refusing a mock payment intent.
+
+  That last one was the worst of the set and is worth stating plainly, because it is the shape the next such bug will take: on a deployed host with `NODE_ENV` unset and Razorpay unconfigured, boot succeeded, `POST /wallet/topup/create` minted a **mock** payment intent, and `/topup/verify` then credited real wallet balance — a mock intent carries no signature to check. Three separate guards were supposed to stop that and all three asked `isProduction`.
+
+  **So: never write a new `isProduction` guard for something whose danger comes from being deployed — ask `requireRealServices`.** `isProduction` is still right for things that genuinely track the NODE_ENV build distinction, and for nothing else.
 
 - **`GET /api/health` reports the running commit**, so a deploy can be confirmed without dashboard access — which matters here, because the Railway MCP token cannot see this service's deployments at all. `config.revision` reads whichever variable the host injects (`RAILWAY_GIT_COMMIT_SHA`, `VERCEL_GIT_COMMIT_SHA`, `RENDER_GIT_COMMIT`, …), falls back to reading `.git/HEAD` for a local checkout, and is `null` when neither exists — a normal state for a hand-built image, not an error. `uptimeSeconds` travels with it because the SHA alone cannot tell a rollout from a container that has been up since yesterday: a redeploy of an unchanged commit reports the same string. Neither feeds the `status` field — a health check answers "can this serve traffic", and taking a service out of rotation over a missing label would be worse than not knowing.
 
@@ -359,7 +367,7 @@ Things that are easy to get wrong here:
 
   **The demo accounts, markets and stalls followed them out for the same reason, and the guard went with them.** They used to be created by `seedIfEmpty` behind `config.isProduction || config.isDeployed`, which is how a `developer` account whose phone number is published in `utils/seed.js` reached the live database — and `isDeployed` is an allowlist of six platform markers, so a self-hosted deploy (EC2, Docker, k8s) sets none of them and gets no guard at all. A check that has to recognise every host it will ever run on will eventually meet one it does not know. They now live behind `seedDemoAccounts()`, which `server/index.js` never calls, so a real boot cannot create one by misdetecting its own environment — it does not run that code. The `isDeployed` throw inside that function is a backstop for a forgetful future caller, not the thing keeping the rows out.
 
-  Where an environment check IS the only option: ask `config.isProduction || config.isDeployed`, never `isProduction` alone — same reasoning as `DEV_LOGIN`, and for the same reason it is the `isDeployed` half that is load-bearing. `NODE_ENV` is a claim the host makes; a platform marker is a fact about it. But prefer the call graph: **a rule of the form "this must not happen on a real server" is best kept by there being no path to it from one.**
+  Where an environment check IS the only option: ask `config.requireRealServices` (which is exactly `isProduction || isDeployed`), never `isProduction` alone — same reasoning as `DEV_LOGIN`, and for the same reason it is the `isDeployed` half that is load-bearing. `NODE_ENV` is a claim the host makes; a platform marker is a fact about it. But prefer the call graph: **a rule of the form "this must not happen on a real server" is best kept by there being no path to it from one.**
 
 ### Money
 

@@ -167,7 +167,15 @@ const razorpayx = {
   },
 };
 
-const provider = config.payouts.configured ? razorpayx : config.isProduction ? unavailable : mock;
+// requireRealServices, not isProduction. The mock reports a successful penny
+// drop for any request, which would clear vendor KYC - proof of control of a
+// settlement account - without a rupee ever moving. A deployed host must fail
+// closed to `unavailable` whatever NODE_ENV claims.
+const provider = config.payouts.configured
+  ? razorpayx
+  : config.requireRealServices
+  ? unavailable
+  : mock;
 
 module.exports = {
   validateVpa: (vpa) => provider.validateVpa(vpa),

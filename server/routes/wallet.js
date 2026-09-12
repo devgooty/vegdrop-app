@@ -186,7 +186,10 @@ router.post(
       throw new ApiError(404, 'Payment record not found.', 'NOT_FOUND');
     }
 
-    if (intent.isMock && config.isProduction) {
+    // requireRealServices, not isProduction: a deployed host with NODE_ENV
+    // unset used to reach this with the guard inert, and a mock intent has no
+    // signature to check - so a forged top-up credited real balance.
+    if (intent.isMock && config.requireRealServices) {
       throw new ApiError(400, 'Invalid payment reference.', 'INVALID_PAYMENT');
     }
 

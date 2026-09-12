@@ -21,6 +21,49 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
 const isTest = NODE_ENV === 'test';
 
+/**
+ * Markers every one of these platforms injects into a deployed process.
+ *
+ * `isProduction` alone is NOT a sufficient guard. NODE_ENV is set by whoever
+ * configured the host, which makes it a claim about the environment rather than
+ * a fact about it: a service can be serving real traffic with it unset or wrong,
+ * and every check keyed on it is then silently inert — including the one right
+ * below, which is the last thing that should fail quietly.
+ *
+ * These markers are injected by the platform itself, so they cannot be
+ * forgotten. Being deployed at all is what makes a sign-in bypass dangerous, and
+ * that is what they detect. They cost nothing when absent and they do not care
+ * what NODE_ENV claims.
+ *
+ * Exported as `isDeployed` because DEV_LOGIN is not the only thing that must not
+ * happen on a real host. `utils/seed.js` keyed its demo accounts, markets and
+ * fabricated orders on `isProduction` alone, and this project's own Railway
+ * deployment was running without NODE_ENV set — so the guard was inert and the
+ * demo seed ran against the live database. Anything whose danger comes from
+ * *being deployed* should ask this, not NODE_ENV.
+ */
+const DEPLOY_MARKERS = ['RAILWAY_ENVIRONMENT', 'RAILWAY_SERVICE_ID', 'VERCEL', 'RENDER', 'FLY_APP_NAME', 'DYNO'];
+const deployedMarker = DEPLOY_MARKERS.find((name) => process.env[name]);
+
+/**
+ * The condition every "this must not be fake on a real server" guard asks.
+ *
+ * Read the doctrine above: NODE_ENV is a claim the host makes, a platform marker
+ * is a fact about it. So every guard whose danger comes from *being deployed* --
+ * required secrets, a real database, a real CORS allow-list, a transport that
+ * does not print codes to a log, real payment and payout credentials, and the
+ * mock switches below -- keys on this rather than on isProduction alone.
+ *
+ * Until this existed, all of them were keyed on isProduction, and this
+ * project's own Railway host ran with NODE_ENV unset. That is not hypothetical:
+ * the same inert-guard bug already put the demo seed into the live database.
+ * The worst of the set was payments -- an unconfigured Razorpay on such a host
+ * booted happily, minted mock payment intents, and /wallet/topup/verify then
+ * credited real balance with no signature check.
+ */
+const isDeployed = Boolean(deployedMarker);
+const requireRealServices = isProduction || isDeployed;
+
 const fatal = [];
 const ephemeral = [];
 
@@ -35,8 +78,12 @@ function secret(name, minLength = 32) {
     return value;
   }
 
-  if (isProduction) {
-    fatal.push(`${name} is required in production but is not set.`);
+  if (requireRealServices) {
+    fatal.push(
+      `${name} is required on a deployed host but is not set. ` +
+        'An ephemeral random value would reset every session on restart, and for ' +
+        'KYC_ENCRYPTION_KEY it would make every stored bank account undecryptable.'
+    );
     return undefined;
   }
 
@@ -73,13 +120,13 @@ const mongoUri = isProduction
   ? process.env.MONGODB_URI
   : optional('MONGODB_URI', 'mongodb://127.0.0.1:27017/vegdrop');
 
-if (isProduction && !mongoUri) {
-  fatal.push('MONGODB_URI is required in production but is not set.');
+if (requireRealServices && !mongoUri) {
+  fatal.push('MONGODB_URI is required on a deployed host but is not set.');
 }
 
 const corsOrigins = list('CORS_ALLOWED_ORIGINS', isProduction ? [] : ['http://localhost:3000', 'http://127.0.0.1:3000']);
-if (isProduction && corsOrigins.length === 0) {
-  fatal.push('CORS_ALLOWED_ORIGINS is required in production (comma-separated absolute origins).');
+if (requireRealServices && corsOrigins.length === 0) {
+  fatal.push('CORS_ALLOWED_ORIGINS is required on a deployed host (comma-separated absolute origins).');
 }
 
 // --- Outbound notifications --------------------------------------------------
@@ -232,7 +279,7 @@ if (notifyTransport === 'whatsapp' && !whatsappConfigured) {
 
 // Shipping the console stub to production means verification codes are written
 // to server logs instead of being delivered. Fail at boot, not at first send.
-if (isProduction && notifyTransport === 'console') {
+if (requireRealServices && notifyTransport === 'console') {
   fatal.push(
     'A real notification transport is required in production. Configure WhatsApp (WHATSAPP_*) or implement another transport in server/services/notify.js.'
   );
@@ -259,30 +306,6 @@ if (isProduction && notifyTransport === 'console') {
  */
 const devLoginRequested = process.env.DEV_LOGIN === '1';
 
-/**
- * Markers every one of these platforms injects into a deployed process.
- *
- * `isProduction` alone is NOT a sufficient guard. NODE_ENV is set by whoever
- * configured the host, which makes it a claim about the environment rather than
- * a fact about it: a service can be serving real traffic with it unset or wrong,
- * and every check keyed on it is then silently inert — including the one right
- * below, which is the last thing that should fail quietly.
- *
- * These markers are injected by the platform itself, so they cannot be
- * forgotten. Being deployed at all is what makes a sign-in bypass dangerous, and
- * that is what they detect. They cost nothing when absent and they do not care
- * what NODE_ENV claims.
- *
- * Exported as `isDeployed` because DEV_LOGIN is not the only thing that must not
- * happen on a real host. `utils/seed.js` keyed its demo accounts, markets and
- * fabricated orders on `isProduction` alone, and this project's own Railway
- * deployment was running without NODE_ENV set — so the guard was inert and the
- * demo seed ran against the live database. Anything whose danger comes from
- * *being deployed* should ask this, not NODE_ENV.
- */
-const DEPLOY_MARKERS = ['RAILWAY_ENVIRONMENT', 'RAILWAY_SERVICE_ID', 'VERCEL', 'RENDER', 'FLY_APP_NAME', 'DYNO'];
-const deployedMarker = DEPLOY_MARKERS.find((name) => process.env[name]);
-
 if (devLoginRequested && (isProduction || deployedMarker)) {
   fatal.push(
     `DEV_LOGIN must never be set on a deployed host (${isProduction ? 'NODE_ENV=production' : `${deployedMarker} is set`}). ` +
@@ -290,7 +313,7 @@ if (devLoginRequested && (isProduction || deployedMarker)) {
   );
 }
 
-const devLoginEnabled = devLoginRequested && !isProduction && !deployedMarker;
+const devLoginEnabled = devLoginRequested && !requireRealServices;
 
 /**
  * Which commit is running, so "did my push actually deploy?" has an answer.
@@ -370,8 +393,8 @@ const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
 const razorpayConfigured = Boolean(razorpayKeyId && razorpayKeySecret);
 
 // A real key id starts with rzp_live_ / rzp_test_. Refuse obvious placeholders in prod.
-if (isProduction && (!razorpayConfigured || !/^rzp_(live|test)_/.test(razorpayKeyId))) {
-  fatal.push('RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET must be real credentials in production. Payments cannot run in mock mode.');
+if (requireRealServices && (!razorpayConfigured || !/^rzp_(live|test)_/.test(razorpayKeyId))) {
+  fatal.push('RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET must be real credentials on a deployed host. Payments cannot run in mock mode.');
 }
 
 /**
@@ -466,9 +489,11 @@ const sourcingCeilingSeconds = Math.max(
 const config = Object.freeze({
   NODE_ENV,
   isProduction,
+  /** True on production OR any host a deploy platform marker identifies. */
+  requireRealServices,
   isTest,
   isDevelopment: !isProduction && !isTest,
-  isDeployed: Boolean(deployedMarker),
+  isDeployed,
   deployedMarker: deployedMarker || null,
   revision,
   startedAt,
@@ -595,7 +620,7 @@ const config = Object.freeze({
     webhookSecret: razorpayWebhookSecret,
     configured: razorpayConfigured,
     // Mock order creation is a development affordance only; prod is blocked above.
-    allowMock: !isProduction && !razorpayConfigured,
+    allowMock: !requireRealServices && !razorpayConfigured,
   }),
 
   kyc: Object.freeze({
@@ -614,7 +639,7 @@ const config = Object.freeze({
     accountNumber: payoutAccountNumber,
     configured: payoutConfigured,
     // Simulated transfers are a development affordance only; prod is blocked above.
-    allowMock: !isProduction && !payoutConfigured,
+    allowMock: !requireRealServices && !payoutConfigured,
   }),
 
   cloudinary: Object.freeze({
@@ -624,7 +649,7 @@ const config = Object.freeze({
     configured: cloudinaryConfigured,
     // Dev/test without credentials still exercise upload routes; production never
     // pretends an image was stored when it was not.
-    allowMock: !isProduction && !cloudinaryConfigured,
+    allowMock: !requireRealServices && !cloudinaryConfigured,
   }),
 
   agent: Object.freeze({

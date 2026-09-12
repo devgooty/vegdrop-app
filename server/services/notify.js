@@ -97,10 +97,11 @@ function resolvePhoneTransport() {
     });
   }
 
-  if (config.isProduction) {
-    // Backstop only: config/env.js already refuses to boot production on the
-    // console stub, because that writes verification codes to server logs
-    // instead of delivering them.
+  if (config.requireRealServices) {
+    // Backstop only: config/env.js already refuses to boot a deployed host on
+    // the console stub, because that writes verification codes to server logs
+    // instead of delivering them. Keyed on isProduction this was inert on a
+    // host with NODE_ENV unset - the one case a backstop exists for.
     throw new Error(
       'No production notification transport is configured. Set WHATSAPP_* credentials or implement another transport in server/services/notify.js before deploying.'
     );
@@ -169,7 +170,7 @@ function resolveEmailTransport() {
     });
   }
 
-  if (config.isProduction) {
+  if (config.requireRealServices) {
     // Reached only if something addresses an email while SMTP is unconfigured.
     // Fan-out checks `configured` first, so this is a programming error, not a
     // deployment one — and it must not degrade to printing codes into a log.

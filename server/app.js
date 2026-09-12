@@ -125,7 +125,7 @@ function cspFor(directives) {
     useDefaults: true,
     directives: {
       ...directives,
-      upgradeInsecureRequests: config.isProduction ? [] : null,
+      upgradeInsecureRequests: config.requireRealServices ? [] : null,
     },
   });
 }
@@ -151,7 +151,7 @@ function createApp() {
       contentSecurityPolicy: false,
       crossOriginResourcePolicy: { policy: 'same-site' },
       referrerPolicy: { policy: 'no-referrer' },
-      hsts: config.isProduction ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
+      hsts: config.requireRealServices ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
     })
   );
 

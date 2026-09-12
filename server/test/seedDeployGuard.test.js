@@ -109,6 +109,33 @@ test('a deploy marker disables the demo seed even when NODE_ENV is not productio
         RENDER: '',
         FLY_APP_NAME: '',
         DYNO: '',
+        /**
+         * A deployed host must be fully configured, whatever NODE_ENV claims:
+         * required secrets, a real database, a CORS allow-list, a transport that
+         * does not print codes to a log, and real payment credentials are all
+         * gated on `requireRealServices` (isProduction OR a deploy marker), not
+         * on isProduction alone. So the marker runs below would abort at config
+         * validation without these, and the probe would print nothing.
+         *
+         * Supplied here for exactly the reason devLogin.test.js supplies them:
+         * so the marker is the only difference between these runs and the
+         * control, rather than one of several reasons a boot could fail.
+         */
+        MONGODB_URI: 'mongodb://localhost:27017/x?replicaSet=rs0',
+        CORS_ALLOWED_ORIGINS: 'https://example.test',
+        JWT_ACCESS_SECRET: 'a'.repeat(48),
+        JWT_REFRESH_SECRET: 'b'.repeat(48),
+        OTP_PEPPER: 'c'.repeat(48),
+        KYC_ENCRYPTION_KEY: 'd'.repeat(64),
+        NOTIFY_TRANSPORT: 'whatsapp',
+        WHATSAPP_PHONE_NUMBER_ID: '1',
+        WHATSAPP_ACCESS_TOKEN: 'e'.repeat(48),
+        WHATSAPP_OTP_TEMPLATE_NAME: 'otp_code',
+        RAZORPAY_KEY_ID: 'rzp_test_abcdefghij',
+        RAZORPAY_KEY_SECRET: 'f'.repeat(24),
+        RAZORPAYX_KEY_ID: 'rzp_test_abcdefghij',
+        RAZORPAYX_KEY_SECRET: 'g'.repeat(24),
+        RAZORPAYX_ACCOUNT_NUMBER: '1234567890',
         ...env,
       },
     });
