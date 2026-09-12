@@ -20,6 +20,7 @@ const reverseOtpRoutes = require('./routes/reverseOtp');
 const smsGatewayRoutes = require('./routes/smsGateway');
 const kycRoutes = require('./routes/kyc');
 const productRoutes = require('./routes/products');
+const catalogSuggestionRoutes = require('./routes/catalogSuggestions');
 const orderRoutes = require('./routes/orders');
 const scheduleRoutes = require('./routes/schedules');
 const userRoutes = require('./routes/users');
@@ -351,6 +352,7 @@ function createApp() {
   app.use('/api/gateway', smsGatewayRoutes);
   app.use('/api/kyc', kycRoutes);
   app.use('/api/products', productRoutes);
+  app.use('/api/catalog-suggestions', catalogSuggestionRoutes);
   app.use('/api/orders', orderRoutes);
   app.use('/api/schedules', scheduleRoutes);
   app.use('/api/users', userRoutes);
