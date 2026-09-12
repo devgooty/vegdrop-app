@@ -50,7 +50,11 @@ router.get('/overview', ...developerGate, async (req, res, next) => {
       Order.countDocuments(),
       Order.find({ createdAt: { $gte: startOfToday } }).lean(),
       Order.aggregate([
-        { $match: { status: { $in: ['Delivered', 'Out for Delivery', 'Preparing', 'Placed'] } } },
+        // Every non-cancelled order, stated the same way as the 30-day trend
+        // below. The previous $in listed 'Placed', which is not a member of
+        // ORDER_STATUSES, and silently omitted 'Pending' — so the lifetime
+        // sales figure dropped every order that had not yet been picked up.
+        { $match: { status: { $ne: 'Cancelled' } } },
         { $group: { _id: null, totalSales: { $sum: { $divide: ['$totalAmountPaise', 100] } }, count: { $sum: 1 } } }
       ]),
       Order.aggregate([
@@ -83,7 +87,10 @@ router.get('/overview', ...developerGate, async (req, res, next) => {
       Market.countDocuments(),
       Stall.countDocuments({ status: 'approved' }),
       Stall.countDocuments({ status: 'pending' }),
-      VendorKyc.countDocuments({ status: 'pending' })
+      // Not 'pending' — VendorKyc.STATUSES has no such member, so this counted
+      // zero forever. 'Awaiting verification' is draft (details in, nothing
+      // sent) or penny_sent (transfer out, confirmation outstanding).
+      VendorKyc.countDocuments({ status: { $in: ['draft', 'penny_sent'] } })
     ]);
 
     // Map role counts
@@ -312,7 +319,8 @@ router.get('/alerts', ...developerGate, async (req, res, next) => {
     const alerts = [];
 
     // Check pending KYC
-    const pendingKyc = await VendorKyc.find({ status: 'pending' })
+    // See the overview count: 'pending' is not a VendorKyc status.
+    const pendingKyc = await VendorKyc.find({ status: { $in: ['draft', 'penny_sent'] } })
       .populate('user', 'name phone email')
       .limit(10)
       .lean();
@@ -331,7 +339,7 @@ router.get('/alerts', ...developerGate, async (req, res, next) => {
 
     // Check pending stall requests
     const pendingStalls = await Stall.find({ status: 'pending' })
-      .populate('shopkeeper', 'name phone')
+      .populate('owner', 'name phone')
       .populate('market', 'name address')
       .limit(10)
       .lean();
@@ -341,7 +349,10 @@ router.get('/alerts', ...developerGate, async (req, res, next) => {
         type: 'stall',
         severity: 'medium',
         title: 'New Stall Application Pending',
-        description: `${stall.stallName || stall.shopkeeper?.name || 'Shopkeeper'} applied for a stall in ${stall.market?.name || 'Market'}.`,
+        // `stall.name` is the trading name; there is no `stallName` field. Read
+        // wrong it was always undefined, so this fell through to the applicant's
+        // personal name and the alert never showed the business applying.
+        description: `${stall.name || stall.owner?.name || 'Shopkeeper'} applied for a stall in ${stall.market?.name || 'Market'}.`,
         actionLabel: 'Review Stall',
         actionTab: 'shopkeepers',
         timestamp: stall.createdAt
@@ -367,8 +378,13 @@ router.get('/alerts', ...developerGate, async (req, res, next) => {
 
     // Check active unassigned orders
     const unassignedOrders = await Order.find({
-      status: { $in: ['Placed', 'Preparing'] },
-      deliveryAgent: { $exists: false }
+      // 'Pending', not 'Placed' (not an ORDER_STATUSES member), and
+      // `assignedTo`, not `deliveryAgent` — there is no such field on Order,
+      // and strictQuery drops an unknown path silently rather than erroring,
+      // so this clause disappeared and every Preparing order was counted as
+      // unassigned whether a rider held it or not.
+      status: { $in: ['Pending', 'Preparing'] },
+      assignedTo: null
     })
       .limit(10)
       .lean();
@@ -410,7 +426,12 @@ router.get('/shopkeepers', ...developerGate, async (req, res, next) => {
     const shopkeeperIds = shopkeepers.map((s) => s._id);
 
     const [stalls, kycs, productsCount] = await Promise.all([
-      Stall.find({ shopkeeper: { $in: shopkeeperIds } }).populate('market', 'name').lean(),
+      // `owner`, not `shopkeeper`. With strictQuery on, the unknown path was
+      // dropped rather than rejected, so this filter collapsed to {} and
+      // returned every stall in the database — and the map below then read
+      // `.shopkeeper` off each one and threw. The route 500ed as soon as a
+      // single Stall document existed.
+      Stall.find({ owner: { $in: shopkeeperIds } }).populate('market', 'name').lean(),
       VendorKyc.find({ user: { $in: shopkeeperIds } }).lean(),
       Product.aggregate([
         { $match: { owner: { $in: shopkeeperIds } } },
@@ -419,7 +440,7 @@ router.get('/shopkeepers', ...developerGate, async (req, res, next) => {
     ]);
 
     const stallsByShopkeeper = new Map();
-    stalls.forEach((st) => stallsByShopkeeper.set(st.shopkeeper.toString(), st));
+    stalls.forEach((st) => stallsByShopkeeper.set(st.owner.toString(), st));
 
     const kycByShopkeeper = new Map();
     kycs.forEach((k) => kycByShopkeeper.set(k.user.toString(), k));
@@ -437,7 +458,9 @@ router.get('/shopkeepers', ...developerGate, async (req, res, next) => {
         phone: s.phone,
         email: s.email,
         status: s.status,
-        stallName: stall?.stallName || '—',
+        // Key stays `stallName` (the admin client reads it); the source is
+        // `stall.name`, which is what the field is actually called.
+        stallName: stall?.name || '—',
         marketName: stall?.market?.name || '—',
         stallStatus: stall?.status || 'No Stall',
         kycStatus: kyc?.status || 'not_submitted',
@@ -698,7 +721,12 @@ router.get('/dump', ...developerGate, async (req, res, next) => {
           users: users.map((u) => ({ id: u._id, name: u.name, phone: u.phone, role: u.role, status: u.status })),
           products: products.map((p) => ({ id: p._id, name: p.name, price: p.price, stock: p.stock, category: p.category })),
           markets: markets.map((m) => ({ id: m._id, name: m.name, address: m.address })),
-          stalls: stalls.map((s) => ({ id: s._id, stallName: s.stallName, status: s.status })),
+          stalls: stalls.map((s) => ({
+            id: s._id,
+            stallName: s.name,
+            stallNumber: s.stallNumber,
+            status: s.status,
+          })),
           orders: orders.map((o) => ({ id: o.orderNumber || o._id, total: o.total, status: o.status, createdAt: o.createdAt }))
         }
       }

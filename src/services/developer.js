@@ -55,6 +55,30 @@ export async function fetchDeliveryAnalytics() {
 }
 
 /**
+ * Approve or reject a self-registered delivery rider.
+ *
+ * This is the only way an account created through
+ * `POST /auth/delivery/register/*` ever becomes dispatchable:
+ * `services/dispatch.js` filters offers on `rider.approvalStatus === 'approved'`
+ * and `routes/rider.js` gates the rider's own routes on the same field, so a
+ * rider sits at 'pending' until someone calls this.
+ *
+ * Rejecting also takes them off duty and bumps `tokenVersion`, so the decision
+ * reaches the delivery app on its next request rather than at token expiry.
+ *
+ * @param {string} riderId
+ * @param {'approved'|'rejected'} decision
+ * @param {string} [reason] shown to a rejected rider; ignored on approval
+ */
+export async function setRiderApproval(riderId, decision, reason = '') {
+  const result = await api.post(`/developer/riders/${riderId}/approval`, {
+    decision,
+    ...(decision === 'rejected' && reason ? { reason } : {}),
+  });
+  return result.data;
+}
+
+/**
  * Fetch wallet transactions and payout ledger summary.
  */
 export async function fetchPaymentLedger() {

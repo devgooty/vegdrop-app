@@ -37,8 +37,8 @@ export default function OrdersManagement() {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     const orderNum = (o.orderNumber || o.id || o._id || '').toLowerCase();
-    const customer = (o.deliveryAddress?.name || o.customer?.name || '').toLowerCase();
-    const phone = (o.deliveryAddress?.phone || o.customer?.phone || '');
+    const customer = (o.customerName || '').toLowerCase();
+    const phone = o.phone || '';
     return orderNum.includes(q) || customer.includes(q) || phone.includes(q);
   });
 
@@ -153,14 +153,14 @@ export default function OrdersManagement() {
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
-                        <div className="font-bold text-slate-800 text-xs">{o.deliveryAddress?.name || o.customer?.name || 'Customer'}</div>
-                        <div className="text-[12.5px] text-slate-400">{o.deliveryAddress?.phone || o.customer?.phone || '—'}</div>
+                        <div className="font-bold text-slate-800 text-xs">{o.customerName || 'Customer'}</div>
+                        <div className="text-[12.5px] text-slate-400">{o.phone || '—'}</div>
                       </td>
                       <td className="px-5 py-3.5 text-xs text-slate-600">
                         {o.items?.length || 0} item(s)
                       </td>
                       <td className="px-5 py-3.5 font-black text-slate-900 text-xs">
-                        ₹{Number(o.total || 0).toLocaleString('en-IN')}
+                        ₹{Number(o.totalAmount || 0).toLocaleString('en-IN')}
                       </td>
                       <td className="px-5 py-3.5">
                         <span className={`text-[11.5px] font-extrabold px-2.5 py-1 rounded-full border uppercase ${getStatusBadge(o.status)}`}>
@@ -168,7 +168,7 @@ export default function OrdersManagement() {
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-xs text-slate-500">
-                        {o.createdAt ? new Date(o.createdAt).toLocaleString() : '—'}
+                        {o.timestamp ? new Date(o.timestamp).toLocaleString() : '—'}
                       </td>
                       <td className="px-5 py-3.5 text-right">
                         <button
@@ -197,7 +197,7 @@ export default function OrdersManagement() {
                   Order Details #{String(selectedOrder.orderNumber || selectedOrder.id || selectedOrder._id).slice(-8).toUpperCase()}
                 </h3>
                 <p className="text-xs text-slate-400">
-                  {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleString() : '—'}
+                  {selectedOrder.timestamp ? new Date(selectedOrder.timestamp).toLocaleString() : '—'}
                 </p>
               </div>
               <span className={`text-xs font-extrabold px-3 py-1 rounded-full border uppercase ${getStatusBadge(selectedOrder.status)}`}>
@@ -211,8 +211,8 @@ export default function OrdersManagement() {
                 <MapPin className="w-3.5 h-3.5 text-slate-400" />
                 Delivery Address
               </p>
-              <p className="text-slate-900 font-semibold">{selectedOrder.deliveryAddress?.name} ({selectedOrder.deliveryAddress?.phone})</p>
-              <p className="text-slate-600">{selectedOrder.deliveryAddress?.addressLine || selectedOrder.deliveryAddress?.fullAddress || '—'}</p>
+              <p className="text-slate-900 font-semibold">{selectedOrder.customerName || 'Customer'} ({selectedOrder.phone || '—'})</p>
+              <p className="text-slate-600">{selectedOrder.address || '—'}</p>
             </div>
 
             {/* Order Items */}
@@ -234,7 +234,7 @@ export default function OrdersManagement() {
             {/* Total Summary */}
             <div className="bg-slate-900 text-white p-4 rounded-xl flex items-center justify-between">
               <span className="text-xs font-bold text-slate-300">Total Order Amount</span>
-              <span className="text-lg font-black text-emerald-400">₹{selectedOrder.total?.toLocaleString('en-IN')}</span>
+              <span className="text-lg font-black text-emerald-400">₹{Number(selectedOrder.totalAmount || 0).toLocaleString('en-IN')}</span>
             </div>
 
             <div className="pt-2">

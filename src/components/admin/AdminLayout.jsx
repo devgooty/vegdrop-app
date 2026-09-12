@@ -23,33 +23,26 @@ export default function AdminLayout({ user, onLogout }) {
     overview: 'Dashboard Overview',
     usage: 'Usage Analytics',
     users: 'Registered IDs',
-    sales: 'Sales & Revenue',
     payments: 'Payment Management',
-    allocation: 'Payment Allocation',
     shopkeepers: 'Shopkeeper Analytics',
     'catalog-suggestions': 'Catalog suggestions',
     delivery: 'Delivery Analytics',
-    customers: 'Customer Analytics',
     orders: 'Orders Management',
-    reports: 'Reports & DB Dump',
     notifications: 'Alerts',
-    settings: 'Database & Settings',
+    settings: 'Database, Settings & DB Dump',
   };
 
   const renderActiveView = () => {
     switch (activeTab) {
       case 'overview':
-      case 'sales':
         return <DashboardOverview setActiveTab={setActiveTab} />;
       case 'usage':
-      case 'customers':
         return <UsageAnalytics />;
       case 'users':
         return <UsersManagement />;
       case 'orders':
         return <OrdersManagement />;
       case 'payments':
-      case 'allocation':
         return <PaymentsView />;
       case 'shopkeepers':
         return <ShopkeepersView />;
@@ -60,7 +53,6 @@ export default function AdminLayout({ user, onLogout }) {
       case 'notifications':
         return <AlertsView setActiveTab={setActiveTab} />;
       case 'settings':
-      case 'reports':
         return <SettingsDbView />;
       default:
         return <DashboardOverview setActiveTab={setActiveTab} />;

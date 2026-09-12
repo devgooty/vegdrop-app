@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Bike, RefreshCw, Search, CheckCircle2, Clock } from 'lucide-react';
-import { fetchDeliveryAnalytics } from '../../../services/developer';
+import { Bike, RefreshCw, Search, CheckCircle2, Clock, XCircle } from 'lucide-react';
+import { fetchDeliveryAnalytics, setRiderApproval } from '../../../services/developer';
 
 export default function DeliveryPartnersView() {
   const [riders, setRiders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  // Which rider id currently has a decision in flight, so only that row's
+  // buttons go quiet rather than the whole table.
+  const [deciding, setDeciding] = useState('');
 
   const loadData = async () => {
     try {
@@ -25,6 +28,35 @@ export default function DeliveryPartnersView() {
     loadData();
   }, []);
 
+  /**
+   * Approve or reject one rider, then re-read the list.
+   *
+   * Refetching rather than patching the row locally: the decision also
+   * forces the rider offline and invalidates their session, so the row has
+   * more than one field changing and the server is the only thing that knows
+   * the whole new state.
+   */
+  const decide = async (rider, decision) => {
+    let reason = '';
+    if (decision === 'rejected') {
+      // null is Cancel, which must abort. '' is an empty-but-submitted reason,
+      // which the endpoint accepts - so the two cannot be collapsed with `|| ''`.
+      const entered = window.prompt(`Why is ${rider.name || 'this rider'} being rejected? (optional)`);
+      if (entered === null) return;
+      reason = entered;
+    }
+    try {
+      setDeciding(rider.id);
+      setError('');
+      await setRiderApproval(rider.id, decision, reason);
+      await loadData();
+    } catch (err) {
+      setError(err?.message || `Could not ${decision === 'approved' ? 'approve' : 'reject'} that rider.`);
+    } finally {
+      setDeciding('');
+    }
+  };
+
   const filtered = riders.filter((r) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
@@ -41,7 +73,7 @@ export default function DeliveryPartnersView() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">Delivery Fleet Directory</h2>
-          <p className="text-sm text-slate-500 mt-1 font-medium">Active delivery partners, on-duty status, and fulfilled orders from MongoDB.</p>
+          <p className="text-sm text-slate-500 mt-1 font-medium">Active delivery partners, on-duty status, and fulfilled orders from MongoDB. A rider stays undispatchable until approved here.</p>
         </div>
         <button 
           onClick={loadData}
@@ -82,20 +114,22 @@ export default function DeliveryPartnersView() {
                 <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Account Status</th>
                 <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Bank Setup</th>
                 <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Completed Orders</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Approval</th>
                 <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Joined</th>
+                <th className="px-5 py-3.5 text-[12.5px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 text-right">Decision</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading && riders.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="py-12 text-center text-xs text-slate-400">
+                  <td colSpan="8" className="py-12 text-center text-xs text-slate-400">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto text-emerald-500 mb-2" />
                     Loading delivery fleet from MongoDB…
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="py-12 text-center text-xs text-slate-400">
+                  <td colSpan="8" className="py-12 text-center text-xs text-slate-400">
                     No delivery riders found.
                   </td>
                 </tr>
@@ -131,8 +165,44 @@ export default function DeliveryPartnersView() {
                     <td className="px-5 py-3.5 font-bold text-xs text-slate-800">
                       {r.completedDeliveries} / {r.totalAssigned}
                     </td>
+                    <td className="px-5 py-3.5">
+                      <span className={`text-[11.5px] font-extrabold px-2.5 py-0.5 rounded-full border uppercase ${
+                        r.approvalStatus === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                        r.approvalStatus === 'rejected' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                        'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}>
+                        {r.approvalStatus || 'pending'}
+                      </span>
+                      {r.rejectionReason ? (
+                        <div className="text-[12.5px] text-slate-400 mt-1 max-w-[16rem]">{r.rejectionReason}</div>
+                      ) : null}
+                    </td>
                     <td className="px-5 py-3.5 text-xs text-slate-500">
                       {r.joinedAt ? new Date(r.joinedAt).toLocaleDateString() : '—'}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center justify-end gap-2">
+                        {r.approvalStatus !== 'approved' && (
+                          <button
+                            onClick={() => decide(r, 'approved')}
+                            disabled={deciding === r.id}
+                            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white px-2.5 py-1.5 rounded-lg text-[11.5px] font-bold transition-colors cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Approve
+                          </button>
+                        )}
+                        {r.approvalStatus !== 'rejected' && (
+                          <button
+                            onClick={() => decide(r, 'rejected')}
+                            disabled={deciding === r.id}
+                            className="flex items-center gap-1.5 bg-white border border-rose-200 hover:bg-rose-50 disabled:opacity-40 text-rose-700 px-2.5 py-1.5 rounded-lg text-[11.5px] font-bold transition-colors cursor-pointer"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            Reject
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
