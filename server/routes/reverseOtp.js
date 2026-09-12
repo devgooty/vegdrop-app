@@ -69,7 +69,7 @@ router.post(
       .object({
         phone: fields.phone,
         purpose: z.enum(PURPOSES),
-        app: z.enum(['customer', 'shopkeeper', 'delivery']).optional(),
+        app: z.enum(['customer', 'shopkeeper', 'delivery', 'developer', 'market_owner']).optional(),
         // Used only if this number turns into a new account. Ignored for an
         // existing one, so it cannot rename somebody else.
         name: fields.nonEmptyString(120).optional(),

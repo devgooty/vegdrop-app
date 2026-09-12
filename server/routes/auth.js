@@ -162,7 +162,7 @@ router.post(
          * a caller that predates app-scoping (or calls this directly) keeps the
          * old one-account-per-identifier behaviour rather than failing closed.
          */
-        app: z.enum(['customer', 'shopkeeper', 'delivery']).optional(),
+        app: z.enum(['customer', 'shopkeeper', 'delivery', 'developer', 'market_owner']).optional(),
       })
       .strict(),
   }),
@@ -207,7 +207,7 @@ router.post(
         name: fields.nonEmptyString(120).optional(),
         // Which app is asking — see `APP_ROLE_SCOPE`. Optional for the same
         // back-compat reason as on /lookup.
-        app: z.enum(['customer', 'shopkeeper', 'delivery']).optional(),
+        app: z.enum(['customer', 'shopkeeper', 'delivery', 'developer', 'market_owner']).optional(),
         // `role` is intentionally absent. .strict() rejects it if supplied,
         // which turns a privilege-escalation attempt into a 400.
       })

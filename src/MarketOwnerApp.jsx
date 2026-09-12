@@ -23,7 +23,7 @@ export default function MarketOwnerApp() {
       <div className="min-h-screen bg-[#F8F5EF] flex flex-col justify-center">
         <LoginPage
           onLogin={setUser}
-          appType="customer"
+          appType="market_owner"
           storagePrefix="vegdrop_market_"
         />
       </div>

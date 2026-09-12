@@ -81,7 +81,7 @@ router.post(
       .object({
         phone: fields.phone,
         purpose: z.enum(PURPOSES),
-        app: z.enum(['customer', 'shopkeeper', 'delivery']).optional(),
+        app: z.enum(['customer', 'shopkeeper', 'delivery', 'developer', 'market_owner']).optional(),
         name: fields.nonEmptyString(120).optional(),
         clientOrigin: fields.nonEmptyString(200).optional(),
       })

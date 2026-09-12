@@ -122,3 +122,66 @@ test('a deleted account is never resolved, proved or not', async () => {
 test('a number with no account resolves to nothing', async () => {
   assert.equal(await findByIdentifier('9999999999', CUSTOMER_SCOPE), null);
 });
+
+/**
+ * Dual-role phones: the customer-app scope must prefer the shopper account.
+ *
+ * Without this, `createdAt` alone sent anyone who also owns a market into
+ * `#/market-owner` when they opened the storefront.
+ */
+test('customer scope prefers the customer account over an older market_owner', async () => {
+  const owner = await User.create({
+    name: 'Owner',
+    email: 'owner@example.com',
+    phone: PHONE,
+    role: 'market_owner',
+    phoneVerifiedAt: new Date(),
+  });
+  const shopper = await User.create({
+    name: 'Shopper',
+    email: 'shopper@example.com',
+    phone: PHONE,
+    role: 'customer',
+    phoneVerifiedAt: new Date(),
+  });
+
+  const found = await findByIdentifier(PHONE, CUSTOMER_SCOPE);
+
+  assert.equal(String(found._id), String(shopper._id), 'shopper wins on the storefront');
+  assert.notEqual(String(found._id), String(owner._id));
+});
+
+test('market_owner scope still reaches the owner when a customer account shares the number', async () => {
+  await User.create({
+    name: 'Shopper',
+    email: 'shopper@example.com',
+    phone: PHONE,
+    role: 'customer',
+    phoneVerifiedAt: new Date(),
+  });
+  const owner = await User.create({
+    name: 'Owner',
+    email: 'owner@example.com',
+    phone: PHONE,
+    role: 'market_owner',
+    phoneVerifiedAt: new Date(),
+  });
+
+  const found = await findByIdentifier(PHONE, ['market_owner']);
+
+  assert.equal(String(found._id), String(owner._id));
+});
+
+test('customer scope still resolves a lone market_owner so the storefront can redirect', async () => {
+  const owner = await User.create({
+    name: 'Owner',
+    email: 'owner@example.com',
+    phone: PHONE,
+    role: 'market_owner',
+    phoneVerifiedAt: new Date(),
+  });
+
+  const found = await findByIdentifier(PHONE, CUSTOMER_SCOPE);
+
+  assert.equal(String(found._id), String(owner._id));
+});

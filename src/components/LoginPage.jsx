@@ -172,6 +172,10 @@ const SIGN_UP = {
   developer: {
     headingKey: 'login.developerHeading',
   },
+  // Login only — market owners are promoted, never self-registered here.
+  market_owner: {
+    headingKey: 'login.pageLogin',
+  },
 };
 
 export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegdrop_' }) {
@@ -286,8 +290,12 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
         return;
       }
 
-      if (appType === 'developer') {
-        setError(t('login.errNoDeveloperAccount'));
+      if (appType === 'developer' || appType === 'market_owner') {
+        setError(
+          appType === 'developer'
+            ? t('login.errNoDeveloperAccount')
+            : 'No market owner account for this number. Ask a developer to assign the role.'
+        );
         return;
       }
 

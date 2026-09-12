@@ -3,7 +3,7 @@ import {
   Store, Package, ShoppingBag, CheckCircle2, Clock, Truck,
   MapPin, LogOut, User, LayoutDashboard, Plus, Edit, Trash2,
   AlertTriangle, Navigation, Check, Camera, TrendingUp, BarChart3, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert, Bike,
-  Phone, KeyRound, Loader2, Search,
+  Phone, KeyRound, Loader2,
 } from 'lucide-react';
 import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../services/auth';
 import { fetchShopEarnings, withdrawShopEarnings, fetchNearbyRider, updateMyShop } from '../services/shops';
@@ -19,6 +19,7 @@ import { ApiRequestError } from '../services/apiClient';
 import { useLanguage } from '../i18n/LanguageContext';
 import OTPBoxGroup from './OTPBoxGroup';
 import LanguagePicker from './LanguagePicker';
+import CatalogBrowseScreen, { CatalogKycStrip } from './CatalogBrowseScreen';
 
 /**
  * Leaflet is heavy and only a shop with a rider actually en route ever needs
@@ -811,187 +812,32 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
     const weightLocked = fromCatalog || (activeScreen === 'edit-product' && Boolean(productForm.catalogItem));
 
     if (activeScreen === 'search-catalog') {
-      const catalogByCategory = categories
-        .map((cat) => ({
-          category: cat,
-          items: searchableCatalog.filter((item) => Number(item.categoryId) === Number(cat.id)),
-        }))
-        .filter((group) => group.items.length > 0);
-      const knownIds = new Set(categories.map((c) => Number(c.id)));
-      const otherItems = searchableCatalog.filter((item) => !knownIds.has(Number(item.categoryId)));
-      if (otherItems.length > 0) {
-        catalogByCategory.push({
-          category: { id: 'other', title: 'Other' },
-          items: otherItems,
-        });
-      }
-
-      const visibleGroups =
-        catalogCategoryFilter === 'all'
-          ? catalogByCategory
-          : catalogByCategory.filter((g) => String(g.category.id) === String(catalogCategoryFilter));
-
       return (
-        <div className="flex flex-col min-h-0 animate-fade-in -mx-4 -mt-4">
-          <div className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur-sm border-b border-gray-100 px-4 pt-3 pb-3 space-y-3">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveScreen('list');
-                  setCatalogSearch('');
-                  setCatalogCategoryFilter('all');
-                  setProductFormError('');
-                }}
-                className="p-2 rounded-full bg-white border border-gray-200 shadow-sm"
-                aria-label="Back to my products"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div className="min-w-0">
-                <h2 className="font-black text-lg text-gray-900 leading-tight">Pick from catalog</h2>
-                <p className="text-[11.5px] font-semibold text-gray-500 truncate">
-                  {searchableCatalog.length} items · photos & names ready
-                </p>
-              </div>
-            </div>
-
-            <KycGateBanner kyc={kyc} onOpenKyc={onOpenKyc} />
-
-            <div className="relative">
-              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="search"
-                value={catalogSearch}
-                onChange={(e) => {
-                  setCatalogSearch(e.target.value);
-                  setCatalogCategoryFilter('all');
-                }}
-                placeholder="Search tomatoes, onions…"
-                className="w-full bg-white border border-gray-200 rounded-xl pl-10 pr-3 py-2.5 font-bold text-sm outline-none focus:border-emerald-500 shadow-sm"
-              />
-            </div>
-
-            <div className="flex gap-2 overflow-x-auto pb-0.5 -mx-1 px-1 scrollbar-none">
-              <button
-                type="button"
-                onClick={() => setCatalogCategoryFilter('all')}
-                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-black border transition-colors ${
-                  catalogCategoryFilter === 'all'
-                    ? 'bg-emerald-600 text-white border-emerald-600'
-                    : 'bg-white text-gray-600 border-gray-200'
-                }`}
-              >
-                All
-              </button>
-              {catalogByCategory.map(({ category, items }) => (
-                <button
-                  key={category.id}
-                  type="button"
-                  onClick={() => setCatalogCategoryFilter(String(category.id))}
-                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-black border transition-colors ${
-                    String(catalogCategoryFilter) === String(category.id)
-                      ? 'bg-emerald-600 text-white border-emerald-600'
-                      : 'bg-white text-gray-600 border-gray-200'
-                  }`}
-                >
-                  {category.title}
-                  <span className="ml-1 opacity-70">{items.length}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="px-4 pt-4 pb-28 space-y-6">
-            {catalogSearchBusy && searchableCatalog.length === 0 && (
-              <div className="grid grid-cols-2 gap-2.5">
-                {[0, 1, 2, 3].map((i) => (
-                  <div key={i} className="rounded-2xl bg-white border border-gray-100 overflow-hidden animate-pulse">
-                    <div className="aspect-[4/3] bg-gray-100" />
-                    <div className="p-2.5 space-y-2">
-                      <div className="h-3 bg-gray-100 rounded w-4/5" />
-                      <div className="h-2.5 bg-gray-100 rounded w-1/3" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {visibleGroups.map(({ category, items }) => (
-              <section key={category.id} className="space-y-2.5">
-                {catalogCategoryFilter === 'all' && (
-                  <h3 className="font-black text-gray-900 text-sm tracking-tight flex items-center justify-between">
-                    <span>{category.title}</span>
-                    <span className="text-[11px] font-bold text-gray-400">{items.length}</span>
-                  </h3>
-                )}
-                <div className="grid grid-cols-2 gap-2.5">
-                  {items.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => pickCatalogItem(item)}
-                      className="text-left bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden active:scale-[0.98] transition-transform"
-                    >
-                      {item.image ? (
-                        <img
-                          src={item.image}
-                          alt=""
-                          className="w-full aspect-[4/3] object-cover bg-gray-50"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center">
-                          <Camera className="w-6 h-6 text-gray-300" />
-                        </div>
-                      )}
-                      <div className="p-2.5">
-                        <p className="font-black text-[13px] text-gray-900 leading-snug line-clamp-2">
-                          {item.name}
-                        </p>
-                        {item.weight ? (
-                          <p className="text-[11px] font-bold text-gray-500 mt-0.5">{item.weight}</p>
-                        ) : null}
-                        {!canUpdateStock && (
-                          <p className="text-[10.5px] font-black text-amber-600 mt-1">Verify to add</p>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            ))}
-
-            {!catalogSearchBusy && visibleGroups.length === 0 && (
-              <div className="text-center py-12 px-4">
-                <Package className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                <p className="font-black text-gray-800">No matches</p>
-                <p className="text-xs font-semibold text-gray-500 mt-1 leading-relaxed">
-                  Try another search, or add a custom product.
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="fixed bottom-[4.5rem] left-1/2 -translate-x-1/2 w-full max-w-md px-4 z-30 pointer-events-none">
-            <button
-              type="button"
-              onClick={() => {
-                if (!canUpdateStock) {
-                  onOpenKyc?.();
-                  return;
-                }
-                setProductForm(initialProductState);
-                setProductFormError('');
-                setImagePreviewError(false);
-                setActiveScreen('add-product');
-              }}
-              className="pointer-events-auto w-full py-3 text-sm font-black text-emerald-800 bg-white border border-emerald-200 rounded-2xl shadow-lg"
-            >
-              Add something not in the list
-            </button>
-          </div>
-        </div>
+        <CatalogBrowseScreen
+          categories={categories}
+          items={searchableCatalog}
+          search={catalogSearch}
+          onSearchChange={setCatalogSearch}
+          categoryFilter={catalogCategoryFilter}
+          onCategoryFilterChange={setCatalogCategoryFilter}
+          busy={catalogSearchBusy}
+          canUpdateStock={canUpdateStock}
+          onBack={() => {
+            setActiveScreen('list');
+            setCatalogSearch('');
+            setCatalogCategoryFilter('all');
+            setProductFormError('');
+          }}
+          onPick={pickCatalogItem}
+          onCustom={() => {
+            setProductForm(initialProductState);
+            setProductFormError('');
+            setImagePreviewError(false);
+            setActiveScreen('add-product');
+          }}
+          onOpenKyc={onOpenKyc}
+          kycBanner={<CatalogKycStrip kyc={kyc} onOpenKyc={onOpenKyc} />}
+        />
       );
     }
 
@@ -1006,8 +852,8 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
         categories.find((c) => Number(c.id) === Number(productForm.categoryId))?.title || '';
 
       return (
-        <div className="space-y-4 pb-32 animate-fade-in">
-          <div className="flex items-center gap-3">
+        <div className={`animate-fade-in pb-32 ${fromCatalog ? 'px-4 pt-4 bg-[#F8F5EF] min-h-[70vh]' : 'space-y-4 p-4'}`}>
+          <div className="flex items-center gap-3 mb-4">
             <button
               type="button"
               onClick={() => {
@@ -1016,74 +862,80 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                 setProductFormError('');
                 setImagePreviewError(false);
               }}
-              className="p-2 rounded-full bg-white border border-gray-200 shadow-sm"
+              className="p-2 rounded-full bg-[#FFFDF9] border border-[#E0D9C8] shadow-xs"
               aria-label="Back"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-5 h-5 text-[#1B4D3E]" />
             </button>
             <div className="min-w-0">
-              <h2 className="font-black text-lg text-gray-900 leading-tight">{formTitle}</h2>
+              <h2 className="font-vintage font-bold text-lg text-[#1B4D3E] leading-tight">{formTitle}</h2>
               {fromCatalog && (
-                <p className="text-[11.5px] font-semibold text-gray-500 truncate">
-                  Then add stock — name & photo are optional tweaks
+                <p className="text-[11.5px] font-semibold text-[#6B6560]">
+                  Stock & price for your shop
                 </p>
               )}
             </div>
           </div>
 
-          <KycGateBanner kyc={kyc} onOpenKyc={onOpenKyc} />
+          {(fromCatalog ? (
+            <CatalogKycStrip kyc={kyc} onOpenKyc={onOpenKyc} />
+          ) : (
+            <KycGateBanner kyc={kyc} onOpenKyc={onOpenKyc} />
+          ))}
 
           {productFormError && (
-            <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <p className="text-xs font-bold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mt-3">
               {productFormError}
             </p>
           )}
 
           {fromCatalog && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              {productForm.image && !imagePreviewError ? (
-                <img
-                  src={productForm.image}
-                  alt=""
-                  className="w-full aspect-[16/10] object-cover bg-gray-50"
-                  onError={() => setImagePreviewError(true)}
-                />
-              ) : (
-                <div className="w-full aspect-[16/10] bg-gray-100 flex items-center justify-center">
-                  <Camera className="w-8 h-8 text-gray-300" />
-                </div>
-              )}
-              <div className="p-4 space-y-1">
-                <p className="font-black text-gray-900 text-base leading-snug">{productForm.name}</p>
-                <p className="text-xs font-bold text-gray-500">
+            <div className="skeuo-card rounded-2xl overflow-hidden mt-4">
+              <div className="aspect-[16/10] bg-[#F3EFE6] border-b border-[#E5DFD1]">
+                {productForm.image && !imagePreviewError ? (
+                  <img
+                    src={productForm.image}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    onError={() => setImagePreviewError(true)}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Camera className="w-8 h-8 text-[#C4BBA8]" />
+                  </div>
+                )}
+              </div>
+              <div className="p-4">
+                <p className="font-vintage font-bold text-[#1B4D3E] text-base leading-snug">{productForm.name}</p>
+                <p className="text-xs font-bold text-[#6B6560] mt-1">
                   {[productForm.weight, categoryLabel].filter(Boolean).join(' · ')}
                 </p>
               </div>
             </div>
           )}
 
-          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-4">
+          <div className={`${fromCatalog ? 'skeuo-card' : 'bg-white border border-gray-100 shadow-sm'} rounded-2xl p-4 mt-4 space-y-4`}>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">Your price (₹)</label>
+                <label className="block text-[11px] font-extrabold text-[#6B6560] uppercase tracking-wide mb-1.5">Price (₹)</label>
                 <input
                   type="number"
                   inputMode="decimal"
                   value={productForm.price}
                   onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-emerald-500 outline-none font-black text-lg"
+                  className="w-full bg-[#FFFDF9] border border-[#E0D9C8] rounded-xl p-3 focus:border-[#1B4D3E] outline-none font-black text-xl text-[#1B4D3E]"
                   placeholder="40"
                   autoFocus={fromCatalog}
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">Stock qty</label>
+                <label className="block text-[11px] font-extrabold text-[#6B6560] uppercase tracking-wide mb-1.5">Stock</label>
                 <input
                   type="number"
                   inputMode="numeric"
                   value={productForm.stock}
                   onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-emerald-500 outline-none font-black text-lg"
+                  className="w-full bg-[#FFFDF9] border border-[#E0D9C8] rounded-xl p-3 focus:border-[#1B4D3E] outline-none font-black text-xl text-[#1B4D3E]"
                   placeholder="100"
                 />
               </div>
@@ -1092,52 +944,30 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
             {activeScreen === 'add-product' && (
               <>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 mb-1">Product image</label>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Photo</label>
                   <div className="flex items-center gap-3">
                     {productForm.image && !imagePreviewError ? (
-                      <img
-                        src={productForm.image}
-                        alt=""
-                        className="w-14 h-14 rounded-xl object-cover border border-gray-200 shrink-0"
-                        onError={() => setImagePreviewError(true)}
-                      />
+                      <img src={productForm.image} alt="" className="w-14 h-14 rounded-xl object-cover border border-[#E0D9C8]" onError={() => setImagePreviewError(true)} />
                     ) : (
-                      <div className="w-14 h-14 rounded-xl bg-gray-100 border border-dashed border-gray-300 flex items-center justify-center shrink-0">
-                        <Camera className="w-5 h-5 text-gray-300" />
+                      <div className="w-14 h-14 rounded-xl bg-[#F3EFE6] border border-dashed border-[#D5CDBC] flex items-center justify-center">
+                        <Camera className="w-5 h-5 text-[#C4BBA8]" />
                       </div>
                     )}
-                    <label className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer">
+                    <label className="inline-flex items-center gap-2 bg-[#EAE4D7] border border-[#D5CDBC] text-[#1B4D3E] text-xs font-bold px-3 py-2 rounded-xl cursor-pointer">
                       {isUploadingImage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
-                      <span>{isUploadingImage ? 'Uploading…' : 'Take / upload photo'}</span>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/*"
-                        capture="environment"
-                        className="hidden"
-                        disabled={isUploadingImage || !canUpdateStock}
-                        onChange={handleProductImagePick}
-                      />
+                      <span>{isUploadingImage ? 'Uploading…' : 'Upload photo'}</span>
+                      <input type="file" accept="image/jpeg,image/png,image/webp,image/*" capture="environment" className="hidden" disabled={isUploadingImage || !canUpdateStock} onChange={handleProductImagePick} />
                     </label>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 mb-1">Product name</label>
-                  <input
-                    type="text"
-                    value={productForm.name}
-                    onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-emerald-500 outline-none font-bold"
-                    placeholder="e.g. Fresh Tomatoes"
-                  />
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Name</label>
+                  <input type="text" value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} className="w-full bg-[#FFFDF9] border border-[#E0D9C8] rounded-xl p-3 outline-none font-bold focus:border-[#1B4D3E]" placeholder="e.g. Fresh Tomatoes" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1">Unit</label>
-                    <select
-                      value={productForm.weight}
-                      onChange={(e) => setProductForm({ ...productForm, weight: e.target.value })}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-emerald-500 outline-none font-bold"
-                    >
+                    <select value={productForm.weight} onChange={(e) => setProductForm({ ...productForm, weight: e.target.value })} className="w-full bg-[#FFFDF9] border border-[#E0D9C8] rounded-xl p-3 font-bold outline-none">
                       <option>1 Kg</option>
                       <option>500 g</option>
                       <option>1 Piece</option>
@@ -1146,54 +976,26 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1">Category</label>
-                    <select
-                      value={productForm.categoryId}
-                      onChange={(e) => setProductForm({ ...productForm, categoryId: Number(e.target.value) })}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-emerald-500 outline-none font-bold"
-                    >
+                    <select value={productForm.categoryId} onChange={(e) => setProductForm({ ...productForm, categoryId: Number(e.target.value) })} className="w-full bg-[#FFFDF9] border border-[#E0D9C8] rounded-xl p-3 font-bold outline-none">
                       {categories.map((c) => (
                         <option key={c.id} value={c.id}>{c.title}</option>
                       ))}
                     </select>
                   </div>
                 </div>
-                <p className="text-[12px] text-amber-700 font-bold bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
-                  Custom items stay unlinked until you suggest them for the shared catalog.
-                </p>
               </>
             )}
 
             {fromCatalog && (
-              <details className="group">
-                <summary className="text-xs font-black text-gray-500 cursor-pointer list-none flex items-center justify-between py-1">
-                  <span>Edit name or photo</span>
-                  <span className="text-emerald-600 group-open:rotate-90 transition-transform">›</span>
-                </summary>
-                <div className="mt-3 space-y-3 pt-1 border-t border-gray-100">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 mb-1">Name on your shop</label>
-                    <input
-                      type="text"
-                      value={productForm.name}
-                      onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-emerald-500 outline-none font-bold"
-                    />
-                  </div>
-                  <label className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer">
+              <details className="pt-1">
+                <summary className="text-xs font-extrabold text-[#1B4D3E] cursor-pointer">Edit name or photo</summary>
+                <div className="mt-3 space-y-3">
+                  <input type="text" value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} className="w-full bg-[#FFFDF9] border border-[#E0D9C8] rounded-xl p-3 font-bold outline-none" />
+                  <label className="inline-flex items-center gap-2 bg-[#EAE4D7] border border-[#D5CDBC] text-[#1B4D3E] text-xs font-bold px-3 py-2 rounded-xl cursor-pointer">
                     {isUploadingImage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
                     <span>{isUploadingImage ? 'Uploading…' : 'Replace photo'}</span>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/*"
-                      capture="environment"
-                      className="hidden"
-                      disabled={isUploadingImage || !canUpdateStock}
-                      onChange={handleProductImagePick}
-                    />
+                    <input type="file" accept="image/jpeg,image/png,image/webp,image/*" capture="environment" className="hidden" disabled={isUploadingImage || !canUpdateStock} onChange={handleProductImagePick} />
                   </label>
-                  <p className="text-[11.5px] text-gray-400 font-semibold">
-                    Unit and category stay linked to the shared catalog item.
-                  </p>
                 </div>
               </details>
             )}
@@ -1201,55 +1003,30 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
             {activeScreen === 'edit-product' && (
               <>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 mb-1">Product image</label>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Photo</label>
                   <div className="flex items-center gap-3">
                     {productForm.image && !imagePreviewError ? (
-                      <img
-                        src={productForm.image}
-                        alt=""
-                        className="w-14 h-14 rounded-xl object-cover border border-gray-200 shrink-0"
-                        onError={() => setImagePreviewError(true)}
-                      />
+                      <img src={productForm.image} alt="" className="w-14 h-14 rounded-xl object-cover border" onError={() => setImagePreviewError(true)} />
                     ) : (
-                      <div className="w-14 h-14 rounded-xl bg-gray-100 border border-dashed border-gray-300 flex items-center justify-center shrink-0">
-                        <Camera className="w-5 h-5 text-gray-300" />
-                      </div>
+                      <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center"><Camera className="w-5 h-5 text-gray-300" /></div>
                     )}
                     <label className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer">
                       {isUploadingImage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
-                      <span>{isUploadingImage ? 'Uploading…' : 'Change photo'}</span>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/*"
-                        capture="environment"
-                        className="hidden"
-                        disabled={isUploadingImage || !canUpdateStock}
-                        onChange={handleProductImagePick}
-                      />
+                      <span>Change</span>
+                      <input type="file" accept="image/jpeg,image/png,image/webp,image/*" capture="environment" className="hidden" disabled={isUploadingImage || !canUpdateStock} onChange={handleProductImagePick} />
                     </label>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 mb-1">Product name</label>
-                  <input
-                    type="text"
-                    value={productForm.name}
-                    onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-emerald-500 outline-none font-bold"
-                  />
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Name</label>
+                  <input type="text" value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-bold outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1">Unit</label>
                   {weightLocked ? (
-                    <p className="w-full bg-gray-100 border border-gray-200 rounded-xl p-3 font-bold text-gray-700">
-                      {productForm.weight || '—'}
-                    </p>
+                    <p className="w-full bg-gray-100 border border-gray-200 rounded-xl p-3 font-bold text-gray-700">{productForm.weight || '—'}</p>
                   ) : (
-                    <select
-                      value={productForm.weight}
-                      onChange={(e) => setProductForm({ ...productForm, weight: e.target.value })}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-emerald-500 outline-none font-bold"
-                    >
+                    <select value={productForm.weight} onChange={(e) => setProductForm({ ...productForm, weight: e.target.value })} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-bold outline-none">
                       <option>1 Kg</option>
                       <option>500 g</option>
                       <option>1 Piece</option>
@@ -1257,21 +1034,16 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                     </select>
                   )}
                 </div>
-                {!productForm.catalogItem && (
-                  <p className="text-[12px] text-amber-700 font-bold bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
-                    Not in shared catalog — shoppers won’t find this shop via search until you suggest it.
-                  </p>
-                )}
               </>
             )}
           </div>
 
-          <div className="fixed bottom-[4.5rem] left-1/2 -translate-x-1/2 w-full max-w-md px-4 z-30">
+          <div className="fixed bottom-[4.75rem] left-1/2 -translate-x-1/2 w-full max-w-md px-4 z-30">
             <button
               type="button"
               onClick={activeScreen === 'edit-product' ? handleEditProduct : handleAddProduct}
               disabled={!canUpdateStock || isSavingProduct}
-              className="w-full py-3.5 bg-emerald-600 text-white rounded-2xl font-black shadow-lg active:scale-[0.98] transition-transform disabled:bg-gray-300 disabled:shadow-none"
+              className="w-full py-3.5 bg-[#0B7A37] text-white rounded-2xl font-extrabold shadow-lg active:scale-[0.98] transition-transform disabled:bg-gray-300 disabled:shadow-none"
             >
               {isSavingProduct
                 ? 'Saving…'
@@ -1287,24 +1059,26 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
     }
 
     return (
-      <div className="space-y-4 pb-24 animate-fade-in">
-        <KycGateBanner kyc={kyc} onOpenKyc={onOpenKyc} />
+      <div className="space-y-4 pb-24 animate-fade-in -mx-4 -mt-2 px-4 pt-2 bg-[#F8F5EF] min-h-[60vh]">
+        <CatalogKycStrip kyc={kyc} onOpenKyc={onOpenKyc} />
 
         {productFormError && activeScreen === 'list' && (
-          <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{productFormError}</p>
+          <p className="text-xs font-bold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{productFormError}</p>
         )}
 
         {(!products || products.length === 0) && (
-          <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center">
-            <Store className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
-            <p className="font-black text-gray-900">Your shop is empty</p>
-            <p className="text-xs font-semibold text-gray-500 mt-1 leading-relaxed">
-              Add items from the shared catalog — photos and names are ready.
+          <div className="skeuo-card rounded-2xl p-8 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-[#EAE4D7] border border-[#D5CDBC] flex items-center justify-center mx-auto mb-3">
+              <Store className="w-7 h-7 text-[#1B4D3E]" />
+            </div>
+            <p className="font-vintage font-bold text-[#1B4D3E] text-lg">Your shop is empty</p>
+            <p className="text-xs font-semibold text-[#6B6560] mt-1.5 leading-relaxed max-w-[16rem] mx-auto">
+              Pick from Leafy Greens, Roots & Tubers, and the other aisles — photos and names are ready.
             </p>
             <button
               type="button"
               onClick={openCatalogSearch}
-              className="mt-4 inline-flex items-center gap-2 bg-emerald-600 text-white font-black text-sm px-4 py-2.5 rounded-xl active:scale-95"
+              className="mt-5 inline-flex items-center gap-2 bg-[#0B7A37] text-white font-extrabold text-sm px-5 py-3 rounded-2xl active:scale-95 shadow-md"
             >
               <Plus className="w-4 h-4" />
               Browse catalog
@@ -1312,72 +1086,78 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
           </div>
         )}
 
-        {products?.map(product => {
+        {products?.map((product) => {
           const suggestion = suggestionsByListing[String(product.id)];
           const canSuggest =
             !product.catalogItem &&
             (!suggestion || suggestion.status === 'rejected');
           return (
-          <div key={product.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex gap-4 items-center">
-            {product.image ? (
-              <img
-                src={product.image}
-                alt={product.name}
-                className="w-20 h-20 object-cover rounded-xl border border-gray-200 shrink-0"
-                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-              />
-            ) : (
-              <div className="w-20 h-20 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
-                <Camera className="w-6 h-6 text-gray-300" />
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <h3 className="font-black text-gray-900">{product.name}</h3>
-              <p className="text-xs text-gray-500 font-bold mb-1">₹{product.price} / {product.weight}</p>
-              {(product.stock ?? 0) <= 0 ? (
-                <span className="text-[11.5px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded-md">OUT OF STOCK</span>
+            <div key={product.id} className="skeuo-card rounded-2xl p-3.5 flex gap-3.5 items-center">
+              {product.image ? (
+                <img
+                  src={product.image}
+                  alt={product.name}
+                  className="w-[4.5rem] h-[4.5rem] object-cover rounded-xl border border-[#E5DFD1] shrink-0"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
               ) : (
-                <span className="text-[11.5px] font-black bg-green-100 text-green-700 px-2 py-0.5 rounded-md">IN STOCK ({product.stock})</span>
+                <div className="w-[4.5rem] h-[4.5rem] rounded-xl bg-[#F3EFE6] border border-[#E5DFD1] flex items-center justify-center shrink-0">
+                  <Camera className="w-6 h-6 text-[#C4BBA8]" />
+                </div>
               )}
-              {product.catalogItem ? (
-                <p className="text-[11.5px] text-emerald-700 font-bold mt-1">In shared catalog</p>
-              ) : suggestion?.status === 'pending' ? (
-                <p className="text-[11.5px] text-amber-600 font-bold mt-1">Suggested — waiting</p>
-              ) : suggestion?.status === 'rejected' ? (
-                <p className="text-[11.5px] text-gray-500 font-semibold mt-1">Suggestion rejected</p>
-              ) : null}
-              {formatAddedAt(product.createdAt) && (
-                <p className="text-[11.5px] text-gray-400 font-semibold mt-1">{formatAddedAt(product.createdAt)}</p>
-              )}
-              {canSuggest && canUpdateStock && (
+              <div className="flex-1 min-w-0">
+                <h3 className="font-vintage font-bold text-[#23201C] truncate">{product.name}</h3>
+                <p className="text-xs text-[#6B6560] font-bold mb-1.5">₹{product.price} / {product.weight}</p>
+                {(product.stock ?? 0) <= 0 ? (
+                  <span className="text-[10.5px] font-extrabold bg-red-100 text-red-700 px-2 py-0.5 rounded-md">OUT OF STOCK</span>
+                ) : (
+                  <span className="text-[10.5px] font-extrabold bg-[#E8F5EC] text-[#0B7A37] px-2 py-0.5 rounded-md">IN STOCK ({product.stock})</span>
+                )}
+                {product.catalogItem ? (
+                  <p className="text-[11px] text-[#1B4D3E] font-bold mt-1">From catalog</p>
+                ) : suggestion?.status === 'pending' ? (
+                  <p className="text-[11px] text-amber-700 font-bold mt-1">Suggested — waiting</p>
+                ) : suggestion?.status === 'rejected' ? (
+                  <p className="text-[11px] text-[#6B6560] font-semibold mt-1">Suggestion rejected</p>
+                ) : null}
+                {formatAddedAt(product.createdAt) && (
+                  <p className="text-[11px] text-[#9A948A] font-semibold mt-1">{formatAddedAt(product.createdAt)}</p>
+                )}
+                {canSuggest && canUpdateStock && (
+                  <button
+                    type="button"
+                    onClick={() => handleSuggestListing(product)}
+                    disabled={suggestBusyId === product.id}
+                    className="mt-2 text-[11px] font-extrabold text-[#1B4D3E] bg-[#EAE4D7] border border-[#D5CDBC] px-2.5 py-1 rounded-lg disabled:opacity-50"
+                  >
+                    {suggestBusyId === product.id ? 'Sending…' : 'Suggest for catalog'}
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
                 <button
                   type="button"
-                  onClick={() => handleSuggestListing(product)}
-                  disabled={suggestBusyId === product.id}
-                  className="mt-2 text-[11.5px] font-black text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded-lg disabled:opacity-50"
+                  onClick={() => openProductEditor(product)}
+                  className="p-2 bg-[#FFFDF9] border border-[#E0D9C8] text-[#6B6560] rounded-xl active:scale-90 transition-transform"
                 >
-                  {suggestBusyId === product.id ? 'Sending…' : 'Suggest for catalog'}
+                  <Edit className="w-4 h-4" />
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={() => handleDeleteProduct(product.id)}
+                  className="p-2 bg-red-50 border border-red-100 text-red-600 rounded-xl active:scale-90 transition-transform"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => openProductEditor(product)}
-                className="p-2 bg-gray-100 text-gray-600 rounded-lg active:scale-90 transition-transform"
-              >
-                <Edit className="w-4 h-4" />
-              </button>
-              <button onClick={() => handleDeleteProduct(product.id)} className="p-2 bg-red-50 text-red-600 rounded-lg active:scale-90 transition-transform">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
           );
         })}
-        {/* Floating Add Button */}
-        <button 
+        <button
+          type="button"
           onClick={openCatalogSearch}
-          className="fixed bottom-24 right-4 w-14 h-14 bg-green-600 text-white rounded-full shadow-[0_10px_20px_rgba(34,197,94,0.3)] flex items-center justify-center active:scale-90 transition-transform z-50"
+          aria-label="Add from catalog"
+          className="fixed bottom-24 right-4 w-14 h-14 bg-[#0B7A37] text-white rounded-2xl shadow-lg flex items-center justify-center active:scale-90 transition-transform z-50"
         >
           <Plus className="w-6 h-6" />
         </button>
@@ -1994,18 +1774,20 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
 
   return (
     <div className="min-h-[100dvh] bg-gray-50 flex flex-col font-sans relative max-w-md mx-auto shadow-2xl overflow-hidden border-x border-gray-200">
-      {/* Header */}
+      {/* Header — hidden on catalog browse/confirm so that screen owns the chrome */}
+      {!(
+        activeTab === 'products' &&
+        (activeScreen === 'search-catalog' ||
+          activeScreen === 'add-from-catalog' ||
+          activeScreen === 'add-product')
+      ) && (
       <header className="bg-white px-5 py-3 border-b border-gray-100 shadow-sm sticky top-0 z-40 flex items-center justify-between">
         <div className="min-w-0">
           <h1 className="font-black text-lg text-gray-900 tracking-tight truncate">
             {activeTab === 'dashboard' && 'Shopkeeper Dashboard'}
             {activeTab === 'orders' && 'Order Management'}
             {activeTab === 'products' && (
-              activeScreen === 'search-catalog' || activeScreen === 'add-from-catalog' || activeScreen === 'add-product'
-                ? 'Add products'
-                : activeScreen === 'edit-product'
-                  ? 'Edit product'
-                  : 'My products'
+              activeScreen === 'edit-product' ? 'Edit product' : 'My products'
             )}
             {activeTab === 'analytics' && 'Analytics & Earnings'}
             {activeTab === 'profile' && t('header.shopSettings')}
@@ -2029,9 +1811,19 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
           </button>
         )}
       </header>
+      )}
 
       {/* Main Content Area */}
-      <main className="flex-1 p-4 overflow-y-auto relative">
+      <main
+        className={`flex-1 overflow-y-auto relative ${
+          activeTab === 'products' &&
+          (activeScreen === 'search-catalog' ||
+            activeScreen === 'add-from-catalog' ||
+            activeScreen === 'add-product')
+            ? 'p-0'
+            : 'p-4'
+        }`}
+      >
         {activeTab === 'dashboard' && renderDashboard()}
         {activeTab === 'orders' && renderOrders()}
         {activeTab === 'products' && renderProducts()}

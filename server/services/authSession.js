@@ -33,15 +33,20 @@ function placeholderName(phone) {
  * also shops here, and the customer app must never hand a stranger's session
  * to their shopkeeper identity by accident.
  *
- * `market_owner` and `developer` sign in through the customer login box but
- * are redirected to their own apps (`#/market-owner`, `#/developer`) by the
- * client. Shopkeeper and delivery each have a dedicated app and scope.
+ * Role order inside each list is the preference when one number holds more
+ * than one of them. The customer list still includes `market_owner` /
+ * `developer` so a person who *only* has those roles can sign in on the
+ * storefront and be redirected — but a dual-role shopper must get their
+ * `customer` account first, or the storefront login dumps them into
+ * `#/market-owner`. Market owners who also shop use `#/market-owner` (scope
+ * below) to reach the owner identity on purpose.
  */
 const APP_ROLE_SCOPE = Object.freeze({
   customer: ['customer', 'market_owner', 'developer'],
   shopkeeper: ['shopkeeper'],
   delivery: ['delivery'],
   developer: ['developer'],
+  market_owner: ['market_owner'],
 });
 
 /**
@@ -109,10 +114,30 @@ async function findByIdentifier(identifier, roles) {
    * last. Legacy data is the only place that tie can occur, because the
    * (phone, role) unique index makes it impossible once a number is proved.
    */
-  const proved = await User.findOne({ phone: identifier, ...base }).sort({ createdAt: 1 });
-  if (proved) return proved;
+  const proved = await User.find({ phone: identifier, ...base }).sort({ createdAt: 1 });
+  if (proved.length > 0) return pickPreferred(proved, roles);
 
-  return User.findOne({ pendingPhone: identifier, ...base }).sort({ createdAt: 1 });
+  const pending = await User.find({ pendingPhone: identifier, ...base }).sort({ createdAt: 1 });
+  if (pending.length > 0) return pickPreferred(pending, roles);
+
+  return null;
+}
+
+/**
+ * Among equally-ranked matches, walk the caller's role list in order.
+ *
+ * `createdAt` alone is stable but wrong for multi-role phones: a market owner
+ * account created before the customer one would always win the customer-app
+ * scope, and the storefront would redirect them out of shopping. The role
+ * list is already the app's priority — reuse it.
+ */
+function pickPreferred(docs, roles) {
+  if (!roles || roles.length === 0) return docs[0];
+  for (const role of roles) {
+    const hit = docs.find((d) => d.role === role);
+    if (hit) return hit;
+  }
+  return docs[0];
 }
 
 /**
