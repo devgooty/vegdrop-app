@@ -12,6 +12,7 @@ import ShopkeepersView from './views/ShopkeepersView';
 import DeliveryPartnersView from './views/DeliveryPartnersView';
 import AlertsView from './views/AlertsView';
 import SettingsDbView from './views/SettingsDbView';
+import CatalogSuggestionsView from './views/CatalogSuggestionsView';
 
 export default function AdminLayout({ user, onLogout }) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -26,6 +27,7 @@ export default function AdminLayout({ user, onLogout }) {
     payments: 'Payment Management',
     allocation: 'Payment Allocation',
     shopkeepers: 'Shopkeeper Analytics',
+    'catalog-suggestions': 'Catalog suggestions',
     delivery: 'Delivery Analytics',
     customers: 'Customer Analytics',
     orders: 'Orders Management',
@@ -51,6 +53,8 @@ export default function AdminLayout({ user, onLogout }) {
         return <PaymentsView />;
       case 'shopkeepers':
         return <ShopkeepersView />;
+      case 'catalog-suggestions':
+        return <CatalogSuggestionsView />;
       case 'delivery':
         return <DeliveryPartnersView />;
       case 'notifications':

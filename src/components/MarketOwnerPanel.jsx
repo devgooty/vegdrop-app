@@ -21,6 +21,7 @@ import {
   Pencil,
   AlertTriangle,
   PackageX,
+  Package,
   ChevronLeft,
   Save,
   MapPin,
@@ -51,6 +52,8 @@ import { fetchProducts } from '../services/products';
 import { formatPaise } from '../services/stalls';
 import { useToast } from './Toast';
 import BoundaryWalk from './BoundaryWalk';
+import CatalogSuggestionsQueue from './CatalogSuggestionsQueue';
+import { initialCategories } from '../data/mockData';
 
 /**
  * The market owner's dashboard.
@@ -81,6 +84,7 @@ import BoundaryWalk from './BoundaryWalk';
 const TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'requests', label: 'Requests', icon: Inbox },
+  { id: 'catalog', label: 'Catalog', icon: Package },
   { id: 'stalls', label: 'Traders', icon: Store },
   { id: 'prices', label: 'Prices', icon: Tags },
   { id: 'settings', label: 'Settings', icon: Settings },
@@ -401,6 +405,16 @@ export default function MarketOwnerPanel({ onExit }) {
           onReport={report}
           toast={toast}
         />
+      )}
+
+      {tab === 'catalog' && (
+        <div className="px-4 pb-24 pt-2">
+          <CatalogSuggestionsQueue
+            categories={initialCategories}
+            onReport={report}
+            toast={toast.success}
+          />
+        </div>
       )}
 
       {tab === 'stalls' && (

@@ -3,11 +3,15 @@ import {
   Store, Package, ShoppingBag, CheckCircle2, Clock, Truck,
   MapPin, LogOut, User, LayoutDashboard, Plus, Edit, Trash2,
   AlertTriangle, Navigation, Check, Camera, TrendingUp, BarChart3, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert, Bike,
-  Phone, KeyRound, Loader2,
+  Phone, KeyRound, Loader2, Search,
 } from 'lucide-react';
 import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../services/auth';
 import { fetchShopEarnings, withdrawShopEarnings, fetchNearbyRider, updateMyShop } from '../services/shops';
 import { fetchProducts } from '../services/products';
+import {
+  createCatalogSuggestion,
+  fetchCatalogSuggestions,
+} from '../services/catalogSuggestions';
 import { fetchRiderLocation } from '../services/orders';
 import { uploadProductImage } from '../services/media';
 import { toUploadableJpeg } from '../services/imageCapture';
@@ -125,7 +129,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
       setIsSavingOpen(false);
     }
   };
-  const [activeScreen, setActiveScreen] = useState('list'); // 'list' | 'add-product' | 'edit-product' | 'inventory' | 'hours' | 'bank'
+  const [activeScreen, setActiveScreen] = useState('list'); // 'list' | 'search-catalog' | 'add-from-catalog' | 'add-product' | 'edit-product' | 'inventory' | 'hours' | 'bank'
   
   // Modals & deep dive
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -342,6 +346,12 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
    * a vendor adds products in bursts.
    */
   const [catalogItems, setCatalogItems] = useState([]);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogSearchBusy, setCatalogSearchBusy] = useState(false);
+  /** listingId → latest suggestion for badge / suggest CTA */
+  const [suggestionsByListing, setSuggestionsByListing] = useState({});
+  const [suggestBusyId, setSuggestBusyId] = useState(null);
+
   useEffect(() => {
     let cancelled = false;
     fetchProducts({ catalogOnly: true, limit: 200 })
@@ -353,6 +363,52 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (activeScreen !== 'search-catalog') return undefined;
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      setCatalogSearchBusy(true);
+      fetchProducts({
+        catalogOnly: true,
+        limit: 50,
+        ...(catalogSearch.trim() ? { search: catalogSearch.trim() } : {}),
+      })
+        .then((items) => {
+          if (!cancelled) setCatalogItems(items);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setCatalogSearchBusy(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [activeScreen, catalogSearch]);
+
+  useEffect(() => {
+    if (activeTab !== 'products') return undefined;
+    let cancelled = false;
+    fetchCatalogSuggestions()
+      .then((rows) => {
+        if (cancelled) return;
+        const map = {};
+        for (const row of rows) {
+          const key = String(row.listing);
+          const prev = map[key];
+          if (!prev || new Date(row.createdAt) > new Date(prev.createdAt)) {
+            map[key] = row;
+          }
+        }
+        setSuggestionsByListing(map);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, products]);
 
   /** sku is globally unique (this catalog has no per-vendor scoping), so a
    * pure name-slug would let two vendors' identical product names collide.
@@ -609,6 +665,43 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
     setActiveScreen('edit-product');
   };
 
+  const openCatalogSearch = () => {
+    setProductForm(initialProductState);
+    setProductFormError('');
+    setImagePreviewError(false);
+    setCatalogSearch('');
+    setActiveScreen('search-catalog');
+  };
+
+  const pickCatalogItem = (item) => {
+    setProductForm({
+      name: item.name,
+      categoryId: item.categoryId ?? categories[0]?.id ?? 1,
+      price: '',
+      weight: item.weight || '1 Kg',
+      stock: '',
+      image: item.image || '',
+      catalogItem: item.id,
+    });
+    setProductFormError('');
+    setImagePreviewError(false);
+    setActiveScreen('add-from-catalog');
+  };
+
+  const handleSuggestListing = async (product) => {
+    if (!product?.id || suggestBusyId) return;
+    setSuggestBusyId(product.id);
+    setProductFormError('');
+    try {
+      const suggestion = await createCatalogSuggestion(product.id);
+      setSuggestionsByListing((prev) => ({ ...prev, [String(product.id)]: suggestion }));
+    } catch (err) {
+      setProductFormError(err instanceof ApiRequestError ? err.message : 'Could not send that suggestion.');
+    } finally {
+      setSuggestBusyId(null);
+    }
+  };
+
   // Render Screens
   const renderDashboard = () => (
     <div className="space-y-6 animate-fade-in pb-20">
@@ -679,7 +772,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
         <h3 className="font-black text-gray-900 text-sm mb-3 px-1">Quick Actions</h3>
         <div className="grid grid-cols-2 gap-3">
           <button 
-            onClick={() => { setActiveTab('products'); setActiveScreen('add-product'); }}
+            onClick={() => { setActiveTab('products'); openCatalogSearch(); }}
             className="bg-green-50 border border-green-200 text-green-800 p-4 rounded-2xl shadow-sm flex items-center gap-3 active:scale-95 transition-transform"
           >
             <Plus className="w-6 h-6 text-green-600" />
@@ -698,12 +791,126 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
   );
 
   const renderProducts = () => {
-    if (activeScreen === 'add-product' || activeScreen === 'edit-product') {
+    const ownedCatalogIds = new Set(
+      (products || []).map((p) => p.catalogItem).filter(Boolean).map(String)
+    );
+    const searchableCatalog = catalogItems.filter((item) => !ownedCatalogIds.has(String(item.id)));
+    const fromCatalog = activeScreen === 'add-from-catalog';
+    const isProductForm =
+      activeScreen === 'add-product' ||
+      activeScreen === 'add-from-catalog' ||
+      activeScreen === 'edit-product';
+    const weightLocked = fromCatalog || (activeScreen === 'edit-product' && Boolean(productForm.catalogItem));
+    const categoryLocked = fromCatalog || activeScreen === 'edit-product';
+
+    if (activeScreen === 'search-catalog') {
+      return (
+        <div className="space-y-4 pb-24 animate-fade-in">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => { setActiveScreen('list'); setCatalogSearch(''); setProductFormError(''); }}
+              className="p-2 rounded-full bg-gray-100"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h2 className="font-black text-xl text-gray-900">Add from catalog</h2>
+          </div>
+
+          <KycGateBanner kyc={kyc} onOpenKyc={onOpenKyc} />
+
+          <div className="relative">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="search"
+              value={catalogSearch}
+              onChange={(e) => setCatalogSearch(e.target.value)}
+              placeholder="Search tomatoes, onions…"
+              className="w-full bg-white border border-gray-200 rounded-xl pl-10 pr-3 py-3 font-bold outline-none focus:border-green-500"
+            />
+          </div>
+
+          {catalogSearchBusy && (
+            <p className="text-xs font-bold text-gray-400 flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Searching…
+            </p>
+          )}
+
+          <div className="space-y-2">
+            {searchableCatalog.map((item) => {
+              const categoryTitle = categories.find((c) => c.id === item.categoryId)?.title;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => pickCatalogItem(item)}
+                  disabled={!canUpdateStock}
+                  className="w-full text-left bg-white rounded-2xl p-3 shadow-sm border border-gray-100 flex gap-3 items-center active:scale-[0.99] transition-transform disabled:opacity-50"
+                >
+                  {item.image ? (
+                    <img src={item.image} alt="" className="w-14 h-14 rounded-xl object-cover border border-gray-100 shrink-0" />
+                  ) : (
+                    <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+                      <Camera className="w-5 h-5 text-gray-300" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-black text-gray-900 truncate">{item.name}</p>
+                    <p className="text-xs font-bold text-gray-500">
+                      {[item.weight, categoryTitle].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                  <Plus className="w-5 h-5 text-green-600 shrink-0" />
+                </button>
+              );
+            })}
+            {!catalogSearchBusy && searchableCatalog.length === 0 && (
+              <p className="text-sm font-bold text-gray-500 text-center py-8">
+                No catalog items match. Add a custom product instead.
+              </p>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setProductForm(initialProductState);
+              setProductFormError('');
+              setImagePreviewError(false);
+              setActiveScreen('add-product');
+            }}
+            className="w-full py-3 text-sm font-black text-green-700 bg-green-50 border border-green-200 rounded-xl"
+          >
+            Add something not in the list
+          </button>
+        </div>
+      );
+    }
+
+    if (isProductForm) {
+      const formTitle = fromCatalog
+        ? 'Confirm listing'
+        : activeScreen === 'add-product'
+          ? 'Add custom product'
+          : 'Edit Product';
+      const backScreen = fromCatalog || activeScreen === 'add-product' ? 'search-catalog' : 'list';
+
       return (
         <div className="space-y-6 pb-20 animate-fade-in">
           <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => { setActiveScreen('list'); setProductForm(initialProductState); setProductFormError(''); setImagePreviewError(false); }} className="p-2 rounded-full bg-gray-100"><ArrowLeft className="w-5 h-5" /></button>
-            <h2 className="font-black text-xl text-gray-900">{activeScreen === 'add-product' ? 'Add New Product' : 'Edit Product'}</h2>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen(backScreen);
+                if (backScreen === 'list') setProductForm(initialProductState);
+                setProductFormError('');
+                setImagePreviewError(false);
+              }}
+              className="p-2 rounded-full bg-gray-100"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h2 className="font-black text-xl text-gray-900">{formTitle}</h2>
           </div>
 
           <KycGateBanner kyc={kyc} onOpenKyc={onOpenKyc} />
@@ -761,12 +968,18 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">Unit</label>
-                <select value={productForm.weight} onChange={e => setProductForm({...productForm, weight: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold">
-                  <option>1 Kg</option>
-                  <option>500 g</option>
-                  <option>1 Piece</option>
-                  <option>1 Dozen</option>
-                </select>
+                {weightLocked ? (
+                  <p className="w-full bg-gray-100 border border-gray-200 rounded-xl p-3 font-bold text-gray-700">
+                    {productForm.weight || '—'}
+                  </p>
+                ) : (
+                  <select value={productForm.weight} onChange={e => setProductForm({...productForm, weight: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold">
+                    <option>1 Kg</option>
+                    <option>500 g</option>
+                    <option>1 Piece</option>
+                    <option>1 Dozen</option>
+                  </select>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -775,13 +988,16 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                 <select
                   value={productForm.categoryId}
                   onChange={e => setProductForm({...productForm, categoryId: Number(e.target.value)})}
-                  disabled={activeScreen === 'edit-product'}
+                  disabled={categoryLocked}
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold disabled:opacity-60"
                 >
                   {categories.map(c => (
                     <option key={c.id} value={c.id}>{c.title}</option>
                   ))}
                 </select>
+                {fromCatalog && (
+                  <p className="text-[12.5px] text-gray-400 mt-1">From the shared catalog.</p>
+                )}
                 {activeScreen === 'edit-product' && (
                   <p className="text-[12.5px] text-gray-400 mt-1">Category can't be changed after a product is created.</p>
                 )}
@@ -792,38 +1008,35 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
               </div>
             </div>
 
-            {/* What this product IS, as opposed to what you call it. Shoppers
-                search the shared catalog, so an unlinked listing can only be
-                found by someone already looking at this shop — which is worth
-                stating plainly rather than letting a vendor discover it by
-                never being picked. */}
-            <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1">Catalog Item</label>
-              <select
-                value={productForm.catalogItem}
-                onChange={e => setProductForm({...productForm, catalogItem: e.target.value})}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-green-500 outline-none font-bold"
-              >
-                <option value="">Not linked</option>
-                {catalogItems.map(item => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}{item.weight ? ` · ${item.weight}` : ''}
-                  </option>
-                ))}
-              </select>
-              <p className={`text-[12.5px] mt-1 ${productForm.catalogItem ? 'text-gray-400' : 'text-amber-600 font-bold'}`}>
-                {productForm.catalogItem
-                  ? 'Shoppers looking for this item will see your shop.'
-                  : 'Not linked — shoppers searching for this item won’t find your shop.'}
+            {fromCatalog && (
+              <p className="text-[12.5px] text-gray-500 font-semibold">
+                Linked to the shared catalog — shoppers searching for this item will see your shop.
               </p>
-            </div>
+            )}
+
+            {activeScreen === 'add-product' && (
+              <p className="text-[12.5px] text-amber-600 font-bold">
+                Custom products are not linked yet. You can suggest them for the shared catalog after saving.
+              </p>
+            )}
+
+            {activeScreen === 'edit-product' && !productForm.catalogItem && (
+              <p className="text-[12.5px] text-amber-600 font-bold">
+                Not linked — shoppers searching for this item won’t find your shop until it is in the shared catalog.
+              </p>
+            )}
 
             <button
-              onClick={activeScreen === 'add-product' ? handleAddProduct : handleEditProduct}
+              type="button"
+              onClick={activeScreen === 'edit-product' ? handleEditProduct : handleAddProduct}
               disabled={!canUpdateStock || isSavingProduct}
               className="w-full py-4 bg-green-600 text-white rounded-xl font-black shadow-lg active:scale-95 transition-transform mt-4 disabled:bg-gray-300 disabled:active:scale-100 disabled:shadow-none"
             >
-              {isSavingProduct ? 'Saving…' : (activeScreen === 'add-product' ? 'Save Product' : 'Update Product')}
+              {isSavingProduct
+                ? 'Saving…'
+                : activeScreen === 'edit-product'
+                  ? 'Update Product'
+                  : 'Save Product'}
             </button>
           </div>
         </div>
@@ -834,7 +1047,16 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
       <div className="space-y-4 pb-24 animate-fade-in">
         <KycGateBanner kyc={kyc} onOpenKyc={onOpenKyc} />
 
-        {products?.map(product => (
+        {productFormError && activeScreen === 'list' && (
+          <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{productFormError}</p>
+        )}
+
+        {products?.map(product => {
+          const suggestion = suggestionsByListing[String(product.id)];
+          const canSuggest =
+            !product.catalogItem &&
+            (!suggestion || suggestion.status === 'rejected');
+          return (
           <div key={product.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex gap-4 items-center">
             {product.image ? (
               <img
@@ -848,7 +1070,7 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                 <Camera className="w-6 h-6 text-gray-300" />
               </div>
             )}
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <h3 className="font-black text-gray-900">{product.name}</h3>
               <p className="text-xs text-gray-500 font-bold mb-1">₹{product.price} / {product.weight}</p>
               {(product.stock ?? 0) <= 0 ? (
@@ -856,8 +1078,25 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
               ) : (
                 <span className="text-[11.5px] font-black bg-green-100 text-green-700 px-2 py-0.5 rounded-md">IN STOCK ({product.stock})</span>
               )}
+              {product.catalogItem ? (
+                <p className="text-[11.5px] text-emerald-700 font-bold mt-1">In shared catalog</p>
+              ) : suggestion?.status === 'pending' ? (
+                <p className="text-[11.5px] text-amber-600 font-bold mt-1">Suggested — waiting</p>
+              ) : suggestion?.status === 'rejected' ? (
+                <p className="text-[11.5px] text-gray-500 font-semibold mt-1">Suggestion rejected</p>
+              ) : null}
               {formatAddedAt(product.createdAt) && (
                 <p className="text-[11.5px] text-gray-400 font-semibold mt-1">{formatAddedAt(product.createdAt)}</p>
+              )}
+              {canSuggest && canUpdateStock && (
+                <button
+                  type="button"
+                  onClick={() => handleSuggestListing(product)}
+                  disabled={suggestBusyId === product.id}
+                  className="mt-2 text-[11.5px] font-black text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded-lg disabled:opacity-50"
+                >
+                  {suggestBusyId === product.id ? 'Sending…' : 'Suggest for catalog'}
+                </button>
               )}
             </div>
             <div className="flex flex-col gap-2">
@@ -872,10 +1111,11 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
               </button>
             </div>
           </div>
-        ))}
+          );
+        })}
         {/* Floating Add Button */}
         <button 
-          onClick={() => { setProductForm(initialProductState); setProductFormError(''); setImagePreviewError(false); setActiveScreen('add-product'); }}
+          onClick={openCatalogSearch}
           className="fixed bottom-24 right-4 w-14 h-14 bg-green-600 text-white rounded-full shadow-[0_10px_20px_rgba(34,197,94,0.3)] flex items-center justify-center active:scale-90 transition-transform z-50"
         >
           <Plus className="w-6 h-6" />

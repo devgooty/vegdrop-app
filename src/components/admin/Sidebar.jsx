@@ -12,7 +12,8 @@ import {
   ShoppingCart, 
   FileText, 
   Bell, 
-  Settings 
+  Settings,
+  Package,
 } from 'lucide-react';
 
 const navItems = [
@@ -23,6 +24,7 @@ const navItems = [
   { id: 'payments', label: 'Payment Management', icon: CreditCard },
   { id: 'allocation', label: 'Payment Allocation', icon: PieChart },
   { id: 'shopkeepers', label: 'Shopkeeper Analytics', icon: Store },
+  { id: 'catalog-suggestions', label: 'Catalog suggestions', icon: Package },
   { id: 'delivery', label: 'Delivery Analytics', icon: Bike },
   { id: 'customers', label: 'Customer Analytics', icon: UserCircle },
   { id: 'orders', label: 'Orders Management', icon: ShoppingCart },
