@@ -530,7 +530,11 @@ async function seedDemoOrdersAndData() {
           paymentStatus: cfg.payStatus,
           status: cfg.status,
           market: market?._id || null,
-          assignedTo: cfg.status !== 'Placed' ? rider?._id : null,
+          // 'Pending' is the state an order is in before anyone picks it up, and
+          // the one config that uses it is here to be the unassigned example.
+          // This read `!== 'Placed'` — a status ORDER_STATUSES has never had, so
+          // the test was vacuously true and every demo order carried a rider.
+          assignedTo: cfg.status === 'Pending' ? null : rider?._id || null,
           createdAt: orderTime,
           updatedAt: orderTime,
         };

@@ -139,6 +139,22 @@ export default function SettingsDbView() {
             {Math.floor((server.uptimeSeconds || 0) / 60)}m {(server.uptimeSeconds || 0) % 60}s
           </p>
           <p className="text-[12.5px] text-slate-500 mt-1">Node: {server.nodeVersion || 'v20'}</p>
+          {/*
+            Which commit is actually serving, beside how long it has been up.
+            The SHA alone cannot tell a rollout from a container that has been
+            running since yesterday — a redeploy of an unchanged commit reports
+            the same string — which is why the two are shown together, the same
+            pairing `GET /api/health` makes.
+
+            `deployed` is `config.requireRealServices`, not NODE_ENV: this
+            project's own Railway service runs with NODE_ENV unset, so the raw
+            value read "development" on a live API.
+          */}
+          <p className="text-[12.5px] text-slate-500 mt-1">
+            {server.deployed ? 'Deployed' : 'Local'}
+            {server.environment ? ` · NODE_ENV=${server.environment}` : ''}
+            {server.revision ? ` · ${String(server.revision).slice(0, 12)}` : ' · revision unknown'}
+          </p>
         </div>
 
       </div>

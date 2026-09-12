@@ -49,6 +49,7 @@ import {
   currentPosition,
 } from '../services/markets';
 import { fetchProducts } from '../services/products';
+import { ORDER_STATUSES } from '../services/orders';
 import { formatPaise } from '../services/stalls';
 import { useToast } from './Toast';
 import BoundaryWalk from './BoundaryWalk';
@@ -101,7 +102,8 @@ const WINDOWS = [
 ];
 
 /** The coarse order statuses, in the order an order actually moves through them. */
-const ORDER_FUNNEL = ['Pending', 'Preparing', 'Out for Delivery', 'Delivered', 'Cancelled'];
+// Was a local copy of the same five strings. See `ORDER_STATUSES`.
+const ORDER_FUNNEL = ORDER_STATUSES;
 
 export default function MarketOwnerPanel({ onExit }) {
   const toast = useToast();

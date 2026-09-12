@@ -10,10 +10,46 @@ const Stall = require('../models/Stall');
 const VendorKyc = require('../models/VendorKyc');
 const RiderBankDetails = require('../models/RiderBankDetails');
 const WalletTransaction = require('../models/WalletTransaction');
+const StallEarning = require('../models/StallEarning');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { isConnected } = require('../db/connect');
+const config = require('../config/env');
+const { startOfMarketDay } = require('../utils/marketDay');
 
 const router = express.Router();
+
+/**
+ * The market's timezone, in the form `$dateToString` accepts.
+ *
+ * Every date on this console is a market day, not a server day — see
+ * `utils/marketDay.js`, whose header describes the exact bug this replaces.
+ * The KPIs used the server's local midnight, the charts grouped by UTC, and the
+ * weekday labels came off a third clock again; on a UTC host that filed every
+ * order placed before 05:30 IST under the previous day, which is a good part of
+ * a vegetable market's morning.
+ *
+ * Built from the same config value `startOfMarketDay` reads, so the aggregate
+ * and the JS can never disagree about where a day starts.
+ */
+const MARKET_TZ_OFFSET_MS = config.marketDay.timezoneOffsetMinutes * 60 * 1000;
+const MARKET_TZ = (() => {
+  const mins = config.marketDay.timezoneOffsetMinutes;
+  const abs = Math.abs(mins);
+  const hh = String(Math.floor(abs / 60)).padStart(2, '0');
+  const mm = String(abs % 60).padStart(2, '0');
+  return `${mins < 0 ? '-' : '+'}${hh}:${mm}`;
+})();
+
+/** The market-local calendar date (YYYY-MM-DD) an instant falls on. */
+function marketDateString(at) {
+  return new Date(at.getTime() + MARKET_TZ_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/** The market-local weekday for a market-local date string. */
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function marketDayLabel(dateStr) {
+  return DAY_LABELS[new Date(`${dateStr}T00:00:00Z`).getUTCDay()];
+}
 
 // All developer routes are strictly locked to the developer role
 const developerGate = [requireAuth, requireRole('developer')];
@@ -25,7 +61,7 @@ const developerGate = [requireAuth, requireRole('developer')];
 router.get('/overview', ...developerGate, async (req, res, next) => {
   try {
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfToday = startOfMarketDay(now);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     const [
@@ -40,7 +76,9 @@ router.get('/overview', ...developerGate, async (req, res, next) => {
       totalMarketsCount,
       totalStallsCount,
       pendingStallRequestsCount,
-      pendingKycCount
+      pendingKycCount,
+      commissionTotals,
+      todayCommissionTotals
     ] = await Promise.all([
       User.countDocuments({ status: { $ne: 'deleted' } }),
       User.aggregate([
@@ -55,7 +93,10 @@ router.get('/overview', ...developerGate, async (req, res, next) => {
         // ORDER_STATUSES, and silently omitted 'Pending' — so the lifetime
         // sales figure dropped every order that had not yet been picked up.
         { $match: { status: { $ne: 'Cancelled' } } },
-        { $group: { _id: null, totalSales: { $sum: { $divide: ['$totalAmountPaise', 100] } }, count: { $sum: 1 } } }
+        // Summed in paise and divided once at the end. Dividing each row first
+        // accumulates float error across every order the platform has ever
+        // taken, which is the drift integer paise exists to avoid.
+        { $group: { _id: null, totalSalesPaise: { $sum: '$totalAmountPaise' }, count: { $sum: 1 } } }
       ]),
       Order.aggregate([
         {
@@ -67,9 +108,9 @@ router.get('/overview', ...developerGate, async (req, res, next) => {
         {
           $group: {
             _id: {
-              $dateToString: { format: '%Y-%m-%d', date: '$createdAt' }
+              $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: MARKET_TZ }
             },
-            revenue: { $sum: { $divide: ['$totalAmountPaise', 100] } },
+            revenuePaise: { $sum: '$totalAmountPaise' },
             orders: { $sum: 1 }
           }
         },
@@ -90,7 +131,14 @@ router.get('/overview', ...developerGate, async (req, res, next) => {
       // Not 'pending' — VendorKyc.STATUSES has no such member, so this counted
       // zero forever. 'Awaiting verification' is draft (details in, nothing
       // sent) or penny_sent (transfer out, confirmation outstanding).
-      VendorKyc.countDocuments({ status: { $in: ['draft', 'penny_sent'] } })
+      VendorKyc.countDocuments({ status: { $in: ['draft', 'penny_sent'] } }),
+      StallEarning.aggregate([
+        { $group: { _id: null, commissionPaise: { $sum: '$commissionPaise' } } }
+      ]),
+      StallEarning.aggregate([
+        { $match: { earnedAt: { $gte: startOfToday } } },
+        { $group: { _id: null, commissionPaise: { $sum: '$commissionPaise' } } }
+      ])
     ]);
 
     // Map role counts
@@ -101,33 +149,47 @@ router.get('/overview', ...developerGate, async (req, res, next) => {
       }
     });
 
-    // Today's metrics
-    const todayRevenue = todayOrders
+    // Today's metrics. Accumulated in paise, divided once — same reason as the
+    // lifetime aggregate above.
+    const todayRevenuePaise = todayOrders
       .filter((o) => o.status !== 'Cancelled')
-      .reduce((sum, o) => sum + ((o.totalAmountPaise || 0) / 100), 0);
+      .reduce((sum, o) => sum + (o.totalAmountPaise || 0), 0);
+    const todayRevenue = todayRevenuePaise / 100;
     const todayOrdersCount = todayOrders.length;
 
-    // Platform commission (10% standard estimate)
-    const allTimeSales = allTimeDeliveredOrders[0]?.totalSales || 0;
-    const platformCommission = Math.round(allTimeSales * 0.1);
-    const todayCommission = Math.round(todayRevenue * 0.1);
+    /**
+     * Commission as recorded, not as guessed.
+     *
+     * This was `Math.round(allTimeSales * 0.1)` — a flat 10% of every sale, with
+     * nothing behind it. `config.settlement.commissionBps` is the rate the
+     * platform actually charges and it defaults to ZERO, so on a deployment that
+     * has never set it the dashboard was reporting substantial revenue the
+     * platform had not taken a paisa of.
+     *
+     * `StallEarning.commissionPaise` is what `services/settlement.js` withheld,
+     * per delivered order, for market stalls and independent shops alike. It is
+     * therefore lower than a percentage of gross sales, and correctly so:
+     * commission is earned on delivery, not on placement.
+     */
+    const allTimeSales = (allTimeDeliveredOrders[0]?.totalSalesPaise || 0) / 100;
+    const platformCommission = (commissionTotals[0]?.commissionPaise || 0) / 100;
+    const todayCommission = (todayCommissionTotals[0]?.commissionPaise || 0) / 100;
 
-    // Format 7/30 days trends for Recharts
+    // Format 7/30 days trends for Recharts. `sevenDayTrends` covers 30 days;
+    // the 7-day strip is the tail of it.
     const trendMap = new Map();
     sevenDayTrends.forEach((t) => {
-      trendMap.set(t._id, { date: t._id, revenue: t.revenue, orders: t.orders });
+      trendMap.set(t._id, { date: t._id, revenue: t.revenuePaise / 100, orders: t.orders });
     });
 
-    // Generate last 7 days continuity
-    const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    // Walk back from the start of the market day, so the keys here are the same
+    // market-local dates the aggregate grouped on.
     const last7Days = [];
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      const dateStr = d.toISOString().slice(0, 10);
-      const dayName = dayLabels[d.getDay()];
+      const dateStr = marketDateString(new Date(startOfToday.getTime() - i * 24 * 60 * 60 * 1000));
       const entry = trendMap.get(dateStr) || { revenue: 0, orders: 0 };
       last7Days.push({
-        name: dayName,
+        name: marketDayLabel(dateStr),
         date: dateStr,
         revenue: entry.revenue,
         orders: entry.orders
@@ -160,7 +222,7 @@ router.get('/overview', ...developerGate, async (req, res, next) => {
           trends30Days: sevenDayTrends.map((t) => ({
             name: t._id.slice(5),
             date: t._id,
-            revenue: t.revenue,
+            revenue: t.revenuePaise / 100,
             orders: t.orders
           }))
         },
@@ -234,7 +296,17 @@ router.get('/db-status', ...developerGate, async (req, res, next) => {
             heapUsedMB: Math.round(memUsage.heapUsed / 1024 / 1024),
             heapTotalMB: Math.round(memUsage.heapTotal / 1024 / 1024)
           },
-          environment: process.env.NODE_ENV || 'development'
+          /**
+           * Both halves, because on this project's own host they disagree.
+           *
+           * NODE_ENV is unset on the Railway service, so this line alone told
+           * the operator a live API was "development" — the precise reason
+           * `config.requireRealServices` exists. `deployed` is the fact: a
+           * platform marker the host injects and nobody can forget to set.
+           */
+          environment: process.env.NODE_ENV || 'unset',
+          deployed: config.requireRealServices,
+          revision: config.revision
         },
         timestamp: new Date().toISOString()
       }
@@ -258,7 +330,7 @@ router.get('/usage-analytics', ...developerGate, async (req, res, next) => {
       {
         $group: {
           _id: {
-            date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: MARKET_TZ } },
             role: '$role'
           },
           count: { $sum: 1 }
@@ -281,14 +353,12 @@ router.get('/usage-analytics', ...developerGate, async (req, res, next) => {
       else if (role === 'market_owner') entry.market_owners += item.count;
     });
 
-    const series = Array.from(dateMap.values()).map((entry) => {
-      const d = new Date(entry.date);
-      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      return {
-        ...entry,
-        name: dayNames[d.getDay()] || entry.date.slice(5)
-      };
-    });
+    const series = Array.from(dateMap.values()).map((entry) => ({
+      ...entry,
+      // `new Date('2026-09-12').getDay()` reads a UTC instant on the server's
+      // own clock, so west of UTC it named the previous weekday.
+      name: marketDayLabel(entry.date) || entry.date.slice(5)
+    }));
 
     // Total counts by role
     const totalByRole = await User.aggregate([
@@ -359,41 +429,49 @@ router.get('/alerts', ...developerGate, async (req, res, next) => {
       });
     });
 
-    // Check out-of-stock products
-    const outOfStockProducts = await Product.find({ stock: 0 })
-      .limit(10)
-      .lean();
-    if (outOfStockProducts.length > 0) {
+    /**
+     * Check out-of-stock products.
+     *
+     * The count is a real count and the names are a sample. Both used to come
+     * from one `.limit(10)` query, so the title said "10 Products Out of Stock"
+     * however many there were — a triage screen quoting its own page size as
+     * the size of the problem.
+     */
+    const [outOfStockCount, outOfStockProducts] = await Promise.all([
+      Product.countDocuments({ stock: 0 }),
+      Product.find({ stock: 0 }).select('name').limit(3).lean()
+    ]);
+    if (outOfStockCount > 0) {
       alerts.push({
         id: 'out-of-stock-summary',
         type: 'inventory',
         severity: 'warning',
-        title: `${outOfStockProducts.length} Products Out of Stock`,
-        description: `Items like ${outOfStockProducts.slice(0, 3).map((p) => p.name).join(', ')} are currently depleted.`,
+        title: `${outOfStockCount} Products Out of Stock`,
+        description: `Items like ${outOfStockProducts.map((p) => p.name).join(', ')} are currently depleted.`,
         actionLabel: 'View Products',
         actionTab: 'overview',
         timestamp: new Date()
       });
     }
 
-    // Check active unassigned orders
-    const unassignedOrders = await Order.find({
-      // 'Pending', not 'Placed' (not an ORDER_STATUSES member), and
-      // `assignedTo`, not `deliveryAgent` — there is no such field on Order,
-      // and strictQuery drops an unknown path silently rather than erroring,
-      // so this clause disappeared and every Preparing order was counted as
-      // unassigned whether a rider held it or not.
+    // Check active unassigned orders.
+    //
+    // 'Pending', not 'Placed' (not an ORDER_STATUSES member), and `assignedTo`,
+    // not `deliveryAgent` — there is no such field on Order, and strictQuery
+    // drops an unknown path silently rather than erroring, so that clause
+    // disappeared and every Preparing order was counted as unassigned whether a
+    // rider held it or not. A real count for the same reason as the stock alert
+    // above: this number is the whole point of the alert.
+    const unassignedCount = await Order.countDocuments({
       status: { $in: ['Pending', 'Preparing'] },
       assignedTo: null
-    })
-      .limit(10)
-      .lean();
-    if (unassignedOrders.length > 0) {
+    });
+    if (unassignedCount > 0) {
       alerts.push({
         id: 'unassigned-orders',
         type: 'orders',
         severity: 'high',
-        title: `${unassignedOrders.length} Unassigned Active Orders`,
+        title: `${unassignedCount} Unassigned Active Orders`,
         description: `Orders awaiting rider assignment or shop preparation.`,
         actionLabel: 'View Orders',
         actionTab: 'orders',
@@ -647,7 +725,8 @@ router.get('/payments', ...developerGate, async (req, res, next) => {
         {
           $group: {
             _id: '$type',
-            totalAmount: { $sum: { $divide: ['$amountPaise', 100] } },
+            // Paise in, one division at the end — this is the wallet ledger.
+            totalPaise: { $sum: '$amountPaise' },
             count: { $sum: 1 }
           }
         }
@@ -656,16 +735,28 @@ router.get('/payments', ...developerGate, async (req, res, next) => {
 
     let totalCredits = 0;
     let totalDebits = 0;
+    let ledgerRows = 0;
     stats.forEach((s) => {
-      if (s._id === 'credit') totalCredits = s.totalAmount;
-      if (s._id === 'debit') totalDebits = s.totalAmount;
+      ledgerRows += s.count;
+      if (s._id === 'credit') totalCredits = s.totalPaise / 100;
+      if (s._id === 'debit') totalDebits = s.totalPaise / 100;
     });
 
     return res.json({
       success: true,
       data: {
         summary: {
-          totalTransactions: transactions.length,
+          /**
+           * The whole ledger, not the hundred rows below it.
+           *
+           * This was `transactions.length`, capped by the `.limit(100)` on the
+           * list — so once the ledger passed a hundred entries the screen read
+           * "₹X net flow across 100 recorded transactions", attributing a
+           * lifetime total to a single page. The credit and debit figures were
+           * always whole-ledger; only the count was not.
+           */
+          totalTransactions: ledgerRows,
+          shown: transactions.length,
           totalCredits,
           totalDebits,
           netFlow: totalCredits - totalDebits
@@ -709,7 +800,15 @@ router.get('/dump', ...developerGate, async (req, res, next) => {
       success: true,
       data: {
         timestamp: new Date().toISOString(),
-        counts: {
+        /**
+         * How much was sampled, which is not how much there is.
+         *
+         * Every query here is capped, so these were never totals — they were the
+         * caps. Renamed rather than counted: `/db-status` already reports real
+         * `countDocuments` per collection, and two endpoints answering the same
+         * question differently is how one of them ends up wrong.
+         */
+        sampled: {
           users: users.length,
           products: products.length,
           markets: markets.length,
@@ -719,7 +818,23 @@ router.get('/dump', ...developerGate, async (req, res, next) => {
         },
         snapshot: {
           users: users.map((u) => ({ id: u._id, name: u.name, phone: u.phone, role: u.role, status: u.status })),
-          products: products.map((p) => ({ id: p._id, name: p.name, price: p.price, stock: p.stock, category: p.category })),
+          /**
+           * `pricePaise` and `categoryId` — the names the schema actually has.
+           *
+           * This read `p.price` and `p.category`. `price` is a virtual, and
+           * `.lean()` does not run virtuals; `category` has never been a field
+           * at all. Every product in the dump carried `price: undefined,
+           * category: undefined`, in the one endpoint whose entire job is to
+           * show what is in the database.
+           */
+          products: products.map((p) => ({
+            id: p._id,
+            name: p.name,
+            pricePaise: p.pricePaise,
+            price: (p.pricePaise ?? 0) / 100,
+            stock: p.stock,
+            categoryId: p.categoryId,
+          })),
           markets: markets.map((m) => ({ id: m._id, name: m.name, address: m.address })),
           stalls: stalls.map((s) => ({
             id: s._id,
@@ -727,7 +842,24 @@ router.get('/dump', ...developerGate, async (req, res, next) => {
             stallNumber: s.stallNumber,
             status: s.status,
           })),
-          orders: orders.map((o) => ({ id: o.orderNumber || o._id, total: o.total, status: o.status, createdAt: o.createdAt }))
+          // `total` likewise: the virtual is `totalAmount`, and `.lean()`
+          // strips it either way.
+          orders: orders.map((o) => ({
+            id: o.orderNumber || o._id,
+            totalAmountPaise: o.totalAmountPaise,
+            total: (o.totalAmountPaise ?? 0) / 100,
+            status: o.status,
+            createdAt: o.createdAt,
+          })),
+          // Fetched, counted, and then dropped on the floor before.
+          walletTransactions: transactions.map((t) => ({
+            id: t._id,
+            type: t.type,
+            reason: t.reason,
+            amountPaise: t.amountPaise,
+            amount: (t.amountPaise ?? 0) / 100,
+            createdAt: t.createdAt,
+          }))
         }
       }
     });

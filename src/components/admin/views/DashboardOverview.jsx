@@ -142,10 +142,16 @@ export default function DashboardOverview({ setActiveTab }) {
           bg="bg-teal-50"
           isCurrency={true}
         />
+        {/*
+          No longer an estimate. `todayCommission` is summed from
+          StallEarning.commissionPaise — what settlement actually withheld. It
+          used to be a flat 10% of sales with nothing behind it, on a platform
+          whose configured rate (STALL_COMMISSION_BPS) defaults to zero.
+        */}
         <KPICard
-          title="Est. Commission"
+          title="Commission Today"
           value={kpis.todayCommission}
-          subtext="Platform revenue"
+          subtext="Withheld by settlement"
           icon={Activity}
           color="text-rose-600"
           bg="bg-rose-50"

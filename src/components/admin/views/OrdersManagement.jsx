@@ -3,7 +3,7 @@ import {
   ShoppingCart, Search, Filter, RefreshCw, Eye, 
   MapPin, Phone, User, Package, Calendar, IndianRupee
 } from 'lucide-react';
-import { fetchOrders } from '../../../services/orders';
+import { fetchOrders, ORDER_STATUSES } from '../../../services/orders';
 
 export default function OrdersManagement() {
   const [orders, setOrders] = useState([]);
@@ -50,7 +50,7 @@ export default function OrdersManagement() {
         return 'bg-indigo-50 text-indigo-700 border-indigo-200';
       case 'Preparing':
         return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'Placed':
+      case 'Pending':
         return 'bg-blue-50 text-blue-700 border-blue-200';
       case 'Cancelled':
         return 'bg-rose-50 text-rose-700 border-rose-200';
@@ -89,7 +89,7 @@ export default function OrdersManagement() {
         {/* Filter and Search Bar */}
         <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex gap-1.5 bg-slate-50 p-1 rounded-xl overflow-x-auto">
-            {['All', 'Placed', 'Preparing', 'Out for Delivery', 'Delivered', 'Cancelled'].map(status => (
+            {['All', ...ORDER_STATUSES].map(status => (
               <button 
                 key={status}
                 onClick={() => setStatusFilter(status)}

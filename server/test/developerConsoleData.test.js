@@ -43,6 +43,10 @@ const Market = require('../models/Market');
 const Stall = require('../models/Stall');
 const VendorKyc = require('../models/VendorKyc');
 const Order = require('../models/Order');
+const Product = require('../models/Product');
+const StallEarning = require('../models/StallEarning');
+const WalletTransaction = require('../models/WalletTransaction');
+const { startOfMarketDay } = require('../utils/marketDay');
 
 test.before(startTestServer);
 test.after(stopTestServer);
@@ -103,6 +107,20 @@ async function seedOrder(customer, { status, assignedTo = null, totalPaise = 250
     status,
     assignedTo,
   });
+}
+
+async function seedProducts(count, stock) {
+  return Product.insertMany(
+    Array.from({ length: count }, (_, i) => ({
+      sku: `SKU-${uniq()}-${i}`,
+      categoryId: 2,
+      name: `Vegetable ${i}`,
+      weight: '1kg',
+      pricePaise: 4000 + i,
+      stock,
+      owner: null,
+    }))
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -240,6 +258,182 @@ test('the unassigned-order alert counts only orders with no rider', async () => 
    * strictQuery dropped the clause and the assigned order was counted too.
    */
   assert.match(alert.title, /^2 Unassigned Active Orders/);
+});
+
+test('alert titles report the real count, not the page size', async () => {
+  /**
+   * Both of these summaries used to `.limit(10)` and then put `.length` in the
+   * title, so a triage screen quoted its own page size as the size of the
+   * problem: "10 Products Out of Stock" whether there were ten or ten thousand.
+   * Twelve of each is the smallest number that tells the two apart.
+   */
+  const developer = await authenticatedUser('developer');
+  const customer = await mkUser({ role: 'customer' });
+
+  await seedProducts(12, 0);
+  await seedProducts(2, 40); // in stock — must not be counted
+  for (let i = 0; i < 12; i += 1) {
+    await seedOrder(customer, { status: 'Pending' });
+  }
+
+  const res = await api().get('/api/developer/alerts').set(auth(developer.accessToken));
+  assert.equal(res.status, 200);
+
+  const stock = res.body.data.alerts.find((a) => a.type === 'inventory');
+  assert.ok(stock, 'depleted stock should raise an inventory alert');
+  assert.match(stock.title, /^12 Products Out of Stock/);
+  // The names stay a sample; only the number is a count.
+  assert.match(stock.description, /Items like .+ are currently depleted/);
+
+  const orders = res.body.data.alerts.find((a) => a.type === 'orders');
+  assert.ok(orders);
+  assert.match(orders.title, /^12 Unassigned Active Orders/);
+});
+
+test('today is the market day, not the server clock', async () => {
+  /**
+   * The KPIs used `new Date(y, m, d)` — the SERVER's midnight. On the UTC host
+   * this runs on, an order placed at 00:30 IST is 19:00 UTC the previous day,
+   * so the first five and a half hours of every Indian trading day were filed
+   * under yesterday and "Today's Orders" read zero through the market's busiest
+   * hour. `utils/marketDay.js` is what answers this; its header describes
+   * exactly this bug.
+   */
+  const developer = await authenticatedUser('developer');
+  const customer = await mkUser({ role: 'customer' });
+
+  const dayStart = startOfMarketDay(new Date());
+  const justAfterMidnightIst = new Date(dayStart.getTime() + 30 * 60 * 1000);
+  const justBeforeMidnightIst = new Date(dayStart.getTime() - 30 * 60 * 1000);
+
+  const today = await seedOrder(customer, { status: 'Pending', totalPaise: 12300 });
+  const yesterday = await seedOrder(customer, { status: 'Pending', totalPaise: 45600 });
+  // `createdAt` is set by timestamps, so move it afterwards.
+  await Order.collection.updateOne(
+    { _id: today._id },
+    { $set: { createdAt: justAfterMidnightIst } }
+  );
+  await Order.collection.updateOne(
+    { _id: yesterday._id },
+    { $set: { createdAt: justBeforeMidnightIst } }
+  );
+
+  const res = await api().get('/api/developer/overview').set(auth(developer.accessToken));
+  assert.equal(res.status, 200);
+
+  const { kpis } = res.body.data;
+  assert.equal(kpis.todayOrders, 1, 'the 00:30 IST order belongs to today');
+  assert.equal(kpis.todaySales, 123);
+});
+
+test('platform commission comes from the settlement ledger, not a flat 10%', async () => {
+  /**
+   * It was `Math.round(allTimeSales * 0.1)`. `config.settlement.commissionBps`
+   * is the rate actually charged and it defaults to ZERO, so a deployment that
+   * never set it saw a dashboard reporting a tenth of every sale as revenue the
+   * platform had not taken. `StallEarning.commissionPaise` is what settlement
+   * withheld — for market stalls and independent shops alike.
+   */
+  const developer = await authenticatedUser('developer');
+  const customer = await mkUser({ role: 'customer' });
+  const owner = await mkUser({ role: 'market_owner' });
+  const shopkeeper = await mkUser({ role: 'shopkeeper' });
+  const market = await seedMarket(owner, 'Commission Bazaar');
+  const stall = await seedStall({ market, owner: shopkeeper, name: 'Ravi Veg', stallNumber: 'A-1' });
+
+  const order = await seedOrder(customer, { status: 'Delivered', totalPaise: 100000 }); // ₹1000
+  await StallEarning.create({
+    // A StallEarning names exactly one seller: a market stall or a shop.
+    stall: stall._id,
+    stallNumber: stall.stallNumber,
+    market: market._id,
+    owner: shopkeeper._id,
+    order: order._id,
+    orderNumber: order.orderNumber,
+    lines: [{ name: 'Tomatoes', quantity: 1, unitPricePaise: 100000, lineTotalPaise: 100000 }],
+    grossPaise: 100000,
+    commissionPaise: 2500, // ₹25 — deliberately not a tenth of ₹1000
+    netPaise: 97500,
+    status: 'pending',
+    earnedAt: new Date(),
+    releaseAt: new Date(Date.now() + 86400000),
+  });
+
+  const res = await api().get('/api/developer/overview').set(auth(developer.accessToken));
+  assert.equal(res.status, 200);
+
+  const { kpis } = res.body.data;
+  assert.equal(kpis.allTimeSales, 1000);
+  // Was 100 — a tenth of sales, invented.
+  assert.equal(kpis.platformCommission, 25);
+  assert.equal(kpis.todayCommission, 25);
+});
+
+test('the payments summary counts the whole ledger, not the page it shows', async () => {
+  /**
+   * `totalTransactions` was `transactions.length` behind a `.limit(100)`, while
+   * the credit and debit figures came from an unlimited aggregate — so past a
+   * hundred rows the screen read "₹X net flow across 100 recorded transactions"
+   * and attributed a lifetime total to one page.
+   */
+  const developer = await authenticatedUser('developer');
+  const customer = await mkUser({ role: 'customer' });
+
+  await WalletTransaction.insertMany(
+    Array.from({ length: 105 }, (_, i) => ({
+      user: customer._id,
+      type: 'credit',
+      amountPaise: 100,
+      balanceAfterPaise: 100 * (i + 1),
+      seq: i + 1,
+      reason: 'promotional_credit',
+      idempotencyKey: `test:${uniq()}:${i}`,
+    }))
+  );
+
+  const res = await api().get('/api/developer/payments').set(auth(developer.accessToken));
+  assert.equal(res.status, 200);
+
+  const { summary, transactions } = res.body.data;
+  assert.equal(transactions.length, 100, 'the list itself stays a page');
+  assert.equal(summary.shown, 100);
+  // Was 100.
+  assert.equal(summary.totalTransactions, 105);
+  assert.equal(summary.totalCredits, 105);
+});
+
+test('the state dump reports prices and totals rather than undefined', async () => {
+  /**
+   * `/dump` read `p.price`, `p.category` and `o.total`. `price` and
+   * `totalAmount` are virtuals and `.lean()` does not run them; `category` has
+   * never been a field at all. So the one endpoint whose whole job is to show
+   * what is in the database showed `undefined` for every price and every total.
+   */
+  const developer = await authenticatedUser('developer');
+  const customer = await mkUser({ role: 'customer' });
+  await seedProducts(1, 7);
+  await seedOrder(customer, { status: 'Delivered', totalPaise: 25000 });
+
+  const res = await api().get('/api/developer/dump').set(auth(developer.accessToken));
+  assert.equal(res.status, 200);
+
+  const { snapshot, sampled } = res.body.data;
+
+  const product = snapshot.products[0];
+  assert.equal(typeof product.pricePaise, 'number');
+  assert.equal(product.price, product.pricePaise / 100);
+  assert.equal(product.categoryId, 2);
+  assert.ok(!('category' in product), 'there is no such field to report');
+
+  const order = snapshot.orders[0];
+  assert.equal(order.totalAmountPaise, 25000);
+  assert.equal(order.total, 250);
+
+  // Queried, counted and then dropped before.
+  assert.ok(Array.isArray(snapshot.walletTransactions));
+  // Renamed, because every query here is capped: these were never totals.
+  assert.equal(sampled.products, 1);
+  assert.ok(!('counts' in res.body.data));
 });
 
 // ---------------------------------------------------------------------------

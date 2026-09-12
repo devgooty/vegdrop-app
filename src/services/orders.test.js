@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toUiOrder } from './orders';
+import { toUiOrder, ORDER_STATUSES } from './orders';
 
 /**
  * The wire-shape contract between `toUiOrder` and everything that renders an
@@ -120,5 +120,39 @@ describe('toUiOrder wire shape', () => {
     expect(ui.subtotal).toBe(0);
     expect(ui.items).toEqual([]);
     expect(typeof ui.timestamp).toBe('number');
+  });
+});
+
+/**
+ * The status vocabulary, which is a contract with the server's enum.
+ *
+ * This exists because the Developer Console's Orders table kept its own copy of
+ * this list and one entry in it -- 'Placed' -- has never been a member of
+ * `ORDER_STATUSES` in `server/models/Order.js`. Nothing failed: the chip
+ * rendered, `o.status === 'Placed'` matched no row, and the table went blank.
+ * Worse, having a wrong entry disguised a missing one -- 'Pending', the state
+ * every order is created in, had no chip at all, so the newest orders were the
+ * ones an operator could not filter for.
+ *
+ * If the server's enum changes, this test is what should fail.
+ */
+describe('ORDER_STATUSES', () => {
+  it('is exactly the server enum, in order', () => {
+    expect(ORDER_STATUSES).toEqual([
+      'Pending',
+      'Preparing',
+      'Out for Delivery',
+      'Delivered',
+      'Cancelled',
+    ]);
+  });
+
+  it('does not contain a status the server has never had', () => {
+    // The specific wrong value, named so a reintroduction is loud.
+    expect(ORDER_STATUSES).not.toContain('Placed');
+  });
+
+  it('includes the state a new order is actually in', () => {
+    expect(ORDER_STATUSES[0]).toBe('Pending');
   });
 });

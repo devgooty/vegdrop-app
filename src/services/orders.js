@@ -9,6 +9,24 @@
 import { api } from './apiClient';
 
 /**
+ * The server's order statuses, in the order an order moves through them.
+ *
+ * Mirrors `ORDER_STATUSES` in `server/models/Order.js`. It is spelled out here
+ * rather than fetched because a filter row has to render before any order has
+ * loaded — but it lives in ONE client module, because it did not before: the
+ * Developer Console's Orders table carried its own copy reading 'Placed', which
+ * has never been a member. That chip filtered to an empty table, and 'Pending',
+ * the state every new order is in, had no chip at all.
+ */
+export const ORDER_STATUSES = [
+  'Pending',
+  'Preparing',
+  'Out for Delivery',
+  'Delivered',
+  'Cancelled',
+];
+
+/**
  * Adapt a server order to the shape the existing panels render.
  * Keeps `totalAmount`/`price` in rupees for display while the wire format
  * stays in integer paise.
