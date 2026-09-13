@@ -455,6 +455,35 @@ async function migrateRiderApproval() {
   return { grandfathered: result?.modifiedCount ?? 0 };
 }
 
+/**
+ * `Order.pickupCode` is gone, and its meaning inverted on the way out.
+ *
+ * It was a code the RIDER was shown and the shop typed in. Pickup codes are now
+ * the SHOP's, shown in the shopkeeper's app and typed by the rider, and they
+ * live in models/OrderHandover.js. A surviving `pickupCode` on an order in
+ * flight is a live six-digit value that the rider has already seen - exactly
+ * the kind of leftover a later change could read back and trust as the new
+ * code, which is a different code with the opposite reader. So it is removed
+ * rather than left to rot, for the same reason `emailVerifiedAt` was.
+ *
+ * Nothing needs backfilling in its place: a handover code is created the first
+ * time its holder opens the order (services/handover.js), so an order that was
+ * mid-handoff at deploy simply shows the shop a fresh code on its next poll.
+ *
+ * Idempotent: `$unset` matches nothing on a second run, and two instances
+ * booting at once both write the same absence.
+ */
+async function migrateDroppedPickupCode() {
+  const Orders = mongoose.connection.collection('orders');
+
+  const result = await Orders.updateMany(
+    { pickupCode: { $exists: true } },
+    { $unset: { pickupCode: '' } }
+  );
+
+  return { cleared: result?.modifiedCount ?? 0 };
+}
+
 async function runMigrations() {
   const started = Date.now();
   let ok = true;
@@ -568,12 +597,26 @@ async function runMigrations() {
     ok = false;
   }
 
+  try {
+    const { cleared } = await migrateDroppedPickupCode();
+
+    if (cleared > 0) {
+      console.info(
+        `[db] migration: cleared the old rider-held pickupCode from ${cleared} order(s) — pickup codes are the shop's now`
+      );
+    }
+  } catch (err) {
+    console.error(`[db] migration (dropped pickup code) failed: ${err?.message}`);
+    ok = false;
+  }
+
   console.info(`[db] migrations ready (${Date.now() - started}ms)`);
   return { ok };
 }
 
 module.exports = {
   runMigrations,
+  migrateDroppedPickupCode,
   migrateStallApproval,
   migrateRiderApproval,
   migrateUserContactIndexes,

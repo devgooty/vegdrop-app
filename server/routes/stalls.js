@@ -10,8 +10,9 @@ const Product = require('../models/Product');
 const { ApiError } = require('../middleware/errors');
 const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { stallActionLimiter } = require('../middleware/rateLimit');
+const { stallActionLimiter, handoverReissueLimiter } = require('../middleware/rateLimit');
 const sourcing = require('../services/sourcing');
+const handover = require('../services/handover');
 const settlement = require('../services/settlement');
 const { requirePhotoDataUri } = require('../services/imagePayload');
 const media = require('../services/cloudinary');
@@ -144,6 +145,74 @@ function forStall(order, stallId) {
     myTotalPaise: mine.reduce((sum, i) => sum + (i.sourcePricePaise || 0) * i.quantity, 0),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Pickup codes
+// ---------------------------------------------------------------------------
+
+/** Fulfilment states in which a stall may still be holding bags for a rider. */
+const STALL_HANDOVER_STATES = new Set(['sourcing', 'partial_review', 'packing', 'awaiting_rider', 'collecting']);
+
+/**
+ * The code this stall reads out to the rider collecting its share of an order.
+ *
+ * One per stall, not one per order: each stall hands its own bags over, and a
+ * code the rider heard at the first stall must not tick off the others. Shown
+ * while this stall has claimed lines on the order that are not yet collected,
+ * and to this stall only - the lookup is keyed on `req.stall`, so one stall can
+ * never read another's code on a shared order. Created on first read; see
+ * services/handover.js.
+ */
+async function stallPickupCode(req, read) {
+  const order = await Order.findOne({ _id: req.valid.params.id, 'items.claim.stall': req.stall._id })
+    .select('items.claim fulfillment.status')
+    .lean();
+  if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+
+  const stillHolding = order.items.some(
+    (item) => String(item.claim?.stall) === String(req.stall._id) && !item.claim?.collectedAt
+  );
+  if (!stillHolding || !STALL_HANDOVER_STATES.has(order.fulfillment?.status)) {
+    throw new ApiError(
+      409,
+      'A pickup code is shown while you have items on this order waiting for the rider.',
+      'CODE_NOT_AVAILABLE'
+    );
+  }
+
+  const shown = await read({
+    orderId: order._id,
+    stage: 'pickup',
+    stallId: req.stall._id,
+    holderId: req.user._id,
+  });
+  if (!shown) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+  return shown;
+}
+
+router.get(
+  '/orders/:id/pickup-code',
+  ...stallGate,
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const shown = await stallPickupCode(req, (args) => handover.showToHolder(args));
+    return res.json({ data: shown });
+  }
+);
+
+router.post(
+  '/orders/:id/pickup-code/reissue',
+  ...stallGate,
+  handoverReissueLimiter,
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const shown = await stallPickupCode(
+      req,
+      async (args) => (await handover.reissue(args)) || handover.showToHolder(args)
+    );
+    return res.json({ data: shown });
+  }
+);
 
 // ---------------------------------------------------------------------------
 // The stall itself

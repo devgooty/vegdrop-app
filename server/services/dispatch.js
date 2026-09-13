@@ -1,6 +1,5 @@
 'use strict';
 
-const crypto = require('crypto');
 const mongoose = require('mongoose');
 const config = require('../config/env');
 const Order = require('../models/Order');
@@ -8,6 +7,7 @@ const Market = require('../models/Market');
 const Stall = require('../models/Stall');
 const User = require('../models/User');
 const { transitionTo } = require('../utils/orderStatus');
+const handover = require('./handover');
 
 /**
  * Rider dispatch: getting somebody to the market to carry the order away.
@@ -37,14 +37,6 @@ function objectId(value) {
 
 function eventPush(event) {
   return { $each: [event], $slice: -EVENT_CAP };
-}
-
-/**
- * A six-digit pickup code. `crypto.randomInt`, not `Math.random` — same rule
- * as every other guessable secret in this codebase (see services/otp.js).
- */
-function generatePickupCode() {
-  return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 }
 
 /**
@@ -380,13 +372,29 @@ function buildPickupList(order, stalls = null) {
 /**
  * The rider has the bags from one stall.
  *
- * Only the assigned rider can tick a stall off, and only lines that stall
- * actually packed. When the last stall is ticked the order leaves the market.
+ * Only the assigned rider can tick a stall off, only lines that stall actually
+ * packed, and only with the code THAT stall is showing. When the last stall is
+ * ticked the order leaves the market.
+ *
+ * The order is read first so that a rider who taps collect before anything is
+ * packed is told so without spending one of the stall code's attempts on it.
+ * The read is not the guard - the conditional update below still is.
  */
-async function collectStall({ orderId, riderId, stallId }) {
+async function collectStall({ orderId, riderId, stallId, code }) {
   const rider = objectId(riderId);
   const stall = objectId(stallId);
   const now = new Date();
+
+  const before = await Order.findOne({ _id: orderId, assignedTo: rider, 'fulfillment.status': 'collecting' })
+    .select('items.claim')
+    .lean();
+  const ready = (before?.items || []).some(
+    (item) => String(item.claim?.stall) === String(stall) && item.claim?.packedAt && !item.claim?.collectedAt
+  );
+  if (!ready) return { order: null, reason: 'NOT_COLLECTING' };
+
+  const attempt = await handover.redeem({ orderId, stage: 'pickup', stallId: stall, code });
+  if (!attempt.ok) return { order: null, ...attempt };
 
   const updated = await Order.findOneAndUpdate(
     { _id: orderId, assignedTo: rider, 'fulfillment.status': 'collecting' },
@@ -405,6 +413,19 @@ async function collectStall({ orderId, riderId, stallId }) {
   );
 
   if (!updated) return { order: null, reason: 'NOT_COLLECTING' };
+
+  /**
+   * One collect releases everything this stall is holding, so its code is
+   * retired now.
+   *
+   * An order only reaches `collecting` once every line is packed
+   * (sourcing.advanceWhenFullyPacked), so the arrayFilter above has just ticked
+   * all of this stall's lines. If that ever changes and a stall could hand over
+   * in two goes, a second collect would be refused as ALREADY_VERIFIED rather
+   * than waved through - it fails closed, which is the right way for it to find
+   * out.
+   */
+  await handover.markRedeemed({ handoverId: attempt.handoverId, riderId: rider });
 
   /**
    * Release exactly what was just collected.
@@ -458,13 +479,23 @@ async function collectStall({ orderId, riderId, stallId }) {
  * only the assigned rider, only from `dispatched`.
  *
  * COD flips to paid at exactly this moment, matching the legacy delivery path.
+ *
+ * And only with the code the customer is showing. It is checked before the
+ * transition, so a wrong code fails before the COD flip and before settlement:
+ * no money moves on a delivery the customer has not confirmed.
  */
-async function deliverOrder({ orderId, riderId }) {
+async function deliverOrder({ orderId, riderId, code }) {
   const rider = objectId(riderId);
   const now = new Date();
 
-  const order = await Order.findOne({ _id: orderId, assignedTo: rider }).select('paymentMethod paymentStatus').lean();
+  const order = await Order.findOne({ _id: orderId, assignedTo: rider })
+    .select('paymentMethod paymentStatus fulfillment.status')
+    .lean();
   if (!order) return { delivered: false, reason: 'NOT_YOURS' };
+  if (order.fulfillment?.status !== 'dispatched') return { delivered: false, reason: 'NOT_DISPATCHED' };
+
+  const attempt = await handover.redeem({ orderId, stage: 'delivery', code });
+  if (!attempt.ok) return { delivered: false, ...attempt };
 
   const paymentStatus = order.paymentMethod === 'cod' ? 'paid' : order.paymentStatus;
 
@@ -481,6 +512,8 @@ async function deliverOrder({ orderId, riderId }) {
   );
 
   if (!delivered) return { delivered: false, reason: 'NOT_DISPATCHED' };
+
+  await handover.markRedeemed({ handoverId: attempt.handoverId, riderId: rider });
 
   /**
    * The customer has the goods, so the stalls have now earned their money.
@@ -625,7 +658,7 @@ async function openShopOrderToPool(orderId) {
  * was never asked in the first place.
  *
  * Guarded on `riderAcceptedAt: null`: once a rider has actually tapped accept
- * they are committed and a pickup code is already waiting on them — silently
+ * they are committed and on their way to the counter — silently
  * reassigning at that point would hand the shop's order to a second rider
  * while the first is already on their way, with no way for either side to
  * know. From here the handoff itself, not this clock, decides what happens
@@ -676,14 +709,15 @@ async function expireShopOrderAssignment(orderId) {
  * The rider taps accept: the moment the nearest-picked candidate becomes a
  * person who has actually agreed to come.
  *
- * Generates the pickup code here, not at offer time, so a rider who never
- * responds never has a code drifting around unused — one is only ever live
- * once someone is committed to showing up for it.
+ * No code is generated here any more. The pickup code used to be the RIDER's,
+ * minted on this tap and read out to the shop; it is now the SHOP's, shown in
+ * the shopkeeper's app and typed by the rider (services/handover.js). A rider
+ * is exactly the person who must never be handed it, so nothing on this path
+ * touches it.
  */
 async function acceptShopAssignment({ orderId, riderId }) {
   const rider = objectId(riderId);
   const now = new Date();
-  const pickupCode = generatePickupCode();
 
   const updated = await Order.findOneAndUpdate(
     {
@@ -694,7 +728,7 @@ async function acceptShopAssignment({ orderId, riderId }) {
       riderAcceptedAt: null,
     },
     {
-      $set: { riderAcceptedAt: now, pickupCode },
+      $set: { riderAcceptedAt: now },
       $push: { 'fulfillment.events': eventPush({ at: now, type: 'shop_rider_accepted', rider }) },
     },
     { returnDocument: 'after' }
@@ -746,41 +780,106 @@ async function declineShopAssignment({ orderId, riderId }) {
 }
 
 /**
- * The shopkeeper types in what the rider told them, standing at the counter.
+ * The rider types in the code the shop is showing, standing at the counter.
  *
- * This is the only thing that moves an independent-shop order to `Out for
- * Delivery` once a rider has accepted — routes/orders.js refuses the manual
- * PATCH for exactly this case. Unlike the OTP flow this replaces nothing:
- * there was no delivery verification of any kind before this existed (see the
- * long comment in DeliveryPanel.jsx on what was removed and why), so getting
- * it right matters more than getting it fast — wrong codes are reported, not
- * guessed around.
+ * This is the only thing that moves an independent-shop order from `Preparing`
+ * to `Out for Delivery` - routes/orders.js refuses the manual PATCH for every
+ * shop order. It used to run the other way round (the rider was shown a code
+ * and the SHOPKEEPER typed it), which meant the shopkeeper alone could advance
+ * the order once they had heard six digits. Now the shopkeeper cannot move it
+ * at all and the rider cannot move it without the shop's code, so a false
+ * handover needs both of them.
+ *
+ * Only the rider the order is assigned to. A rider who reaches the counter
+ * before tapping accept has plainly accepted, so `riderAcceptedAt` is stamped
+ * here if it is still empty; that is also what an order taken from the open
+ * pool through /claim needs, since that path never set it.
  */
-async function verifyShopPickup({ orderId, shopkeeperId, code }) {
-  const order = await Order.findOne({ _id: orderId, shop: shopkeeperId })
-    .select('status riderAcceptedAt pickupCode assignedTo')
+async function verifyShopPickup({ orderId, riderId, code }) {
+  const rider = objectId(riderId);
+  const order = await Order.findOne({ _id: orderId, shop: { $ne: null }, assignedTo: rider })
+    .select('status riderAcceptedAt')
     .lean();
 
   if (!order) return { verified: false, reason: 'NOT_FOUND' };
   if (order.status !== 'Preparing') return { verified: false, reason: 'NOT_PREPARING' };
-  if (!order.riderAcceptedAt) return { verified: false, reason: 'NOT_ACCEPTED_YET' };
-  if (order.pickupCode !== code) return { verified: false, reason: 'WRONG_CODE' };
+
+  const attempt = await handover.redeem({ orderId, stage: 'pickup', code });
+  if (!attempt.ok) return { verified: false, ...attempt };
 
   const now = new Date();
   const updated = await Order.findOneAndUpdate(
-    { _id: orderId, shop: shopkeeperId, status: 'Preparing', pickupCode: code },
+    { _id: orderId, shop: { $ne: null }, assignedTo: rider, status: 'Preparing' },
     {
-      $set: { status: 'Out for Delivery', pickupCode: null },
+      $set: { status: 'Out for Delivery', ...(order.riderAcceptedAt ? {} : { riderAcceptedAt: now }) },
       $push: {
-        statusHistory: { status: 'Out for Delivery', at: now, by: shopkeeperId },
-        'fulfillment.events': eventPush({ at: now, type: 'pickup_verified', rider: order.assignedTo }),
+        statusHistory: { status: 'Out for Delivery', at: now, by: rider },
+        'fulfillment.events': eventPush({ at: now, type: 'pickup_verified', rider }),
       },
     },
     { returnDocument: 'after' }
   );
 
   if (!updated) return { verified: false, reason: 'RACED' };
+  await handover.markRedeemed({ handoverId: attempt.handoverId, riderId: rider });
   return { verified: true, order: updated };
+}
+
+/**
+ * The rider types in the code the customer is showing, at the door, for an
+ * order that has no market - an independent shop's, or a legacy one.
+ *
+ * The market equivalent is `deliverOrder` above. This one replaces the
+ * rider's old `PATCH /orders/:id/status -> Delivered`, which routes/orders.js
+ * now refuses. Same effects as that PATCH, in the same order: COD flips to paid
+ * in the transition write, then a shop is settled.
+ *
+ * An unassigned order can still be completed and is claimed by doing so, as the
+ * PATCH allowed - but the conditional update pins `assignedTo` to what was just
+ * read, so two riders cannot both close it.
+ */
+async function deliverMarketlessOrder({ orderId, riderId, code }) {
+  const rider = objectId(riderId);
+  const order = await Order.findOne({
+    _id: orderId,
+    market: null,
+    $or: [{ assignedTo: rider }, { assignedTo: null }],
+  })
+    .select('status paymentMethod assignedTo shop orderNumber')
+    .lean();
+
+  if (!order) return { delivered: false, reason: 'NOT_FOUND' };
+  if (order.status !== 'Out for Delivery') return { delivered: false, reason: 'NOT_OUT_FOR_DELIVERY' };
+
+  const attempt = await handover.redeem({ orderId, stage: 'delivery', code });
+  if (!attempt.ok) return { delivered: false, ...attempt };
+
+  const now = new Date();
+  const delivered = await Order.findOneAndUpdate(
+    { _id: orderId, market: null, status: 'Out for Delivery', assignedTo: order.assignedTo || null },
+    {
+      $set: {
+        status: 'Delivered',
+        assignedTo: rider,
+        ...(order.paymentMethod === 'cod' ? { paymentStatus: 'paid' } : {}),
+      },
+      $push: { statusHistory: { status: 'Delivered', at: now, by: rider } },
+    },
+    { returnDocument: 'after' }
+  );
+
+  if (!delivered) return { delivered: false, reason: 'RACED' };
+  await handover.markRedeemed({ handoverId: attempt.handoverId, riderId: rider });
+
+  if (delivered.shop) {
+    try {
+      await require('./settlement').recordDelivery(delivered._id);
+    } catch (err) {
+      console.warn(`[dispatch] settlement for ${delivered.orderNumber} deferred: ${err.message}`);
+    }
+  }
+
+  return { delivered: true, order: delivered };
 }
 
 module.exports = {
@@ -800,4 +899,5 @@ module.exports = {
   acceptShopAssignment,
   declineShopAssignment,
   verifyShopPickup,
+  deliverMarketlessOrder,
 };

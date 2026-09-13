@@ -161,20 +161,21 @@ const orderSchema = new mongoose.Schema(
      * Independent-shop orders only. Null the whole time for a market order,
      * which has its own accept step recorded in `fulfillment.events` instead.
      * This is what gates the shopkeeper (and the customer) ever seeing the
-     * rider's name, phone, or the pickup code below — a rider who has not yet
-     * agreed to come is not yet a person worth being told about.
+     * rider's name and phone — a rider who has not yet agreed to come is not
+     * yet a person worth being told about.
      */
     riderAcceptedAt: { type: Date, default: null },
 
-    /**
-     * Shown to the rider once they accept, told to the shopkeeper in person,
-     * and typed into the shopkeeper's panel to confirm the right person is
-     * standing at the counter before the order moves to `Out for Delivery`.
+    /*
+     * There is deliberately no handover code on this document.
      *
-     * Cleared the moment it is used. A stale code left on a delivered order
-     * would be one more thing to accidentally trust.
+     * `pickupCode` used to live here, and every code now lives in
+     * models/OrderHandover.js instead. A code on the order is one careless
+     * projection away from the rider who has to type it: `.select()` of a
+     * parent path returns it despite `select: false`, `aggregate()` ignores
+     * `select: false` entirely, and several routes hand a raw `order.toJSON()`
+     * straight to the rider. db/migrations.js unsets the old field.
      */
-    pickupCode: { type: String, default: null, maxlength: 6 },
 
     /**
      * Photo taken at the door by the assigned rider.

@@ -187,7 +187,37 @@ async function verifyVendor(user) {
   });
 }
 
+/**
+ * Read a handover code the way its HOLDER's app does, over HTTP.
+ *
+ * Deliberately not a direct read of the collection: going through the holder's
+ * own route is what proves the code was reachable by the person who is meant to
+ * read it out, and the test fails loudly if it was not.
+ */
+async function readHandoverCode(path, accessToken) {
+  const res = await api().get(path).set(auth(accessToken));
+  if (res.status !== 200 || !res.body?.data?.code) {
+    throw new Error(`reading ${path} gave ${res.status}: ${JSON.stringify(res.body)}`);
+  }
+  return res.body.data.code;
+}
+
+/** The code an independent shop reads out to the rider collecting its order. */
+const shopPickupCode = (orderId, shopAccessToken) =>
+  readHandoverCode(`/api/orders/${orderId}/pickup-code`, shopAccessToken);
+
+/** The code one market stall reads out for its share of an order. */
+const stallPickupCode = (orderId, stallAccessToken) =>
+  readHandoverCode(`/api/stalls/orders/${orderId}/pickup-code`, stallAccessToken);
+
+/** The code a customer reads out at the door. */
+const deliveryCode = (orderId, customerAccessToken) =>
+  readHandoverCode(`/api/orders/${orderId}/delivery-code`, customerAccessToken);
+
 module.exports = {
+  shopPickupCode,
+  stallPickupCode,
+  deliveryCode,
   startTestServer,
   stopTestServer,
   resetDatabase,

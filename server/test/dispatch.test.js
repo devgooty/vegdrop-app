@@ -475,8 +475,15 @@ test('collecting the last stall sends the order out for delivery', async () => {
 
   assert.equal((await Order.findById(order._id)).fulfillment.status, 'collecting');
 
-  const result = await dispatch.collectStall({ orderId: order._id, riderId: rider._id, stallId: stall._id });
-  assert.equal(result.dispatched, true);
+  // The stall's own code, as the stall's app would be shown it.
+  const { code } = await require('../services/handover').showToHolder({
+    orderId: order._id,
+    stage: 'pickup',
+    stallId: stall._id,
+    holderId: stall.owner,
+  });
+  const result = await dispatch.collectStall({ orderId: order._id, riderId: rider._id, stallId: stall._id, code });
+  assert.equal(result.dispatched, true, JSON.stringify(result));
 
   const after = await Order.findById(order._id);
   assert.equal(after.fulfillment.status, 'dispatched');

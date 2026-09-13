@@ -11,6 +11,8 @@ const {
   api,
   auth,
   authenticatedUser,
+  stallPickupCode,
+  deliveryCode,
 } = require('./helpers');
 
 const config = require('../config/env');
@@ -126,9 +128,14 @@ async function completeDelivery({ unitPricePaise = 4000, quantity = 2, stallCoun
     await api()
       .post(`/api/rider/orders/${orderId}/collect`)
       .set(auth(rider.accessToken))
-      .send({ stallId: shop.stall._id.toHexString() });
+      .send({ stallId: shop.stall._id.toHexString(), code: await stallPickupCode(orderId, shop.accessToken) })
+      .expect(200);
   }
-  await api().post(`/api/rider/orders/${orderId}/deliver`).set(auth(rider.accessToken));
+  await api()
+    .post(`/api/rider/orders/${orderId}/deliver`)
+    .set(auth(rider.accessToken))
+    .send({ code: await deliveryCode(orderId, customer.accessToken) })
+    .expect(200);
 
   return { orderId, customer, market, shops, rider, products };
 }

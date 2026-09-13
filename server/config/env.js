@@ -659,6 +659,22 @@ const config = Object.freeze({
   }),
 
   /**
+   * Handover codes: the shopkeeper's code a rider types to collect, and the
+   * customer's code a rider types at the door. See services/handover.js.
+   *
+   * Frozen at load like everything here, so a test wanting a different cap
+   * sets HANDOVER_MAX_ATTEMPTS at the top of its own file, before `./helpers`.
+   */
+  handover: Object.freeze({
+    /**
+     * Wrong guesses one code survives before it locks. Matches `otp.maxAttempts`
+     * deliberately: against a million-code keyspace, five is five-in-a-million,
+     * and a rider mistyping in front of a real person needs a few goes.
+     */
+    maxAttempts: int('HANDOVER_MAX_ATTEMPTS', 5),
+  }),
+
+  /**
    * Market sourcing and rider dispatch.
    *
    * An order placed against a market is offered to every open stall in it, and

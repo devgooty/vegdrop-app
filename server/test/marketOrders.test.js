@@ -10,6 +10,8 @@ const {
   api,
   auth,
   authenticatedUser,
+  stallPickupCode,
+  deliveryCode,
 } = require('./helpers');
 
 const Order = require('../models/Order');
@@ -592,7 +594,7 @@ test('a rider walks the stalls and the last one sends the order out', async () =
   const collected = await api()
     .post(`/api/rider/orders/${orderId}/collect`)
     .set(auth(rider.accessToken))
-    .send({ stallId: shop.stall._id.toHexString() });
+    .send({ stallId: shop.stall._id.toHexString(), code: await stallPickupCode(orderId, shop.accessToken) });
 
   assert.equal(collected.status, 200);
   assert.equal(collected.body.data.dispatched, true);
@@ -608,7 +610,10 @@ test('a rider walks the stalls and the last one sends the order out', async () =
     .send({ status: 'Delivered' });
   assert.equal(byHand.status, 409);
 
-  const done = await api().post(`/api/rider/orders/${orderId}/deliver`).set(auth(rider.accessToken));
+  const done = await api()
+    .post(`/api/rider/orders/${orderId}/deliver`)
+    .set(auth(rider.accessToken))
+    .send({ code: await deliveryCode(orderId, customer.accessToken) });
   assert.equal(done.status, 200);
   assert.equal(done.body.data.fulfillment.status, 'delivered');
   assert.equal(done.body.data.status, 'Delivered');
@@ -649,9 +654,13 @@ test('only the assigned rider can mark a market order delivered', async () => {
   await api()
     .post(`/api/rider/orders/${orderId}/collect`)
     .set(auth(rider.accessToken))
-    .send({ stallId: shop.stall._id.toHexString() });
+    .send({ stallId: shop.stall._id.toHexString(), code: await stallPickupCode(orderId, shop.accessToken) });
 
-  const stolen = await api().post(`/api/rider/orders/${orderId}/deliver`).set(auth(other.accessToken));
+  // Even holding the customer's real code, another agent cannot close it.
+  const stolen = await api()
+    .post(`/api/rider/orders/${orderId}/deliver`)
+    .set(auth(other.accessToken))
+    .send({ code: await deliveryCode(orderId, customer.accessToken) });
   assert.equal(stolen.status, 404, 'another agent must not be able to close this delivery');
   assert.equal((await Order.findById(orderId)).fulfillment.status, 'dispatched');
 });

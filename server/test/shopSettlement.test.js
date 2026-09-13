@@ -25,6 +25,8 @@ const {
   auth,
   authenticatedUser,
   verifyVendor,
+  shopPickupCode,
+  deliveryCode,
 } = require('./helpers');
 
 const Order = require('../models/Order');
@@ -105,15 +107,16 @@ async function buyAndDeliver({ paymentMethod = 'wallet', pricePaise = 9900, quan
     .patch(`/api/orders/${orderId}/status`)
     .set(auth(shop.accessToken))
     .send({ status: 'Preparing' });
+  await api().post(`/api/orders/${orderId}/claim`).set(auth(rider.accessToken)).expect(200);
   await api()
-    .patch(`/api/orders/${orderId}/status`)
-    .set(auth(shop.accessToken))
-    .send({ status: 'Out for Delivery' });
-  await api().post(`/api/orders/${orderId}/claim`).set(auth(rider.accessToken));
-  const delivered = await api()
-    .patch(`/api/orders/${orderId}/status`)
+    .post(`/api/orders/${orderId}/verify-pickup`)
     .set(auth(rider.accessToken))
-    .send({ status: 'Delivered' });
+    .send({ code: await shopPickupCode(orderId, shop.accessToken) })
+    .expect(200);
+  const delivered = await api()
+    .post(`/api/orders/${orderId}/verify-delivery`)
+    .set(auth(rider.accessToken))
+    .send({ code: await deliveryCode(orderId, customer.accessToken) });
   assert.equal(delivered.status, 200, JSON.stringify(delivered.body));
 
   return { shop, customer, rider, staff, orderId, product, pricePaise, quantity };

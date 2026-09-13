@@ -12,6 +12,7 @@ const {
   authenticatedUser,
   verifyVendor,
   auth,
+  deliveryCode,
 } = require('./helpers');
 
 const Product = require('../models/Product');
@@ -430,9 +431,9 @@ test('the assigned delivery agent can complete their own order', async () => {
   const id = await orderOutForDelivery({ customer, staff, product, claimedBy: agent });
 
   const res = await api()
-    .patch(`/api/orders/${id}/status`)
+    .post(`/api/orders/${id}/verify-delivery`)
     .set(auth(agent.accessToken))
-    .send({ status: 'Delivered' })
+    .send({ code: await deliveryCode(id, customer.accessToken) })
     .expect(200);
 
   assert.equal(res.body.data.status, 'Delivered');
@@ -450,9 +451,9 @@ test('completing an unclaimed order records the agent who delivered it', async (
   const id = await orderOutForDelivery({ customer, staff, product });
 
   const res = await api()
-    .patch(`/api/orders/${id}/status`)
+    .post(`/api/orders/${id}/verify-delivery`)
     .set(auth(agent.accessToken))
-    .send({ status: 'Delivered' })
+    .send({ code: await deliveryCode(id, customer.accessToken) })
     .expect(200);
 
   assert.equal(res.body.data.status, 'Delivered');

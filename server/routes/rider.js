@@ -9,8 +9,14 @@ const RiderBankDetails = require('../models/RiderBankDetails');
 const { ApiError } = require('../middleware/errors');
 const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { riderLocationLimiter, riderBankDetailsLimiter } = require('../middleware/rateLimit');
+const {
+  riderLocationLimiter,
+  riderBankDetailsLimiter,
+  collectVerifyLimiter,
+  deliveryVerifyLimiter,
+} = require('../middleware/rateLimit');
 const dispatch = require('../services/dispatch');
+const handover = require('../services/handover');
 
 const router = express.Router();
 
@@ -462,7 +468,23 @@ router.post(
 );
 
 /**
- * Bags collected from one stall.
+ * A handover code the rider typed was refused. Same wording as the order
+ * routes, so the app says the same thing whichever door the rider came through.
+ */
+function throwCodeRefusal(result, holder) {
+  const { status, message } = handover.refusal(result.reason, {
+    holder,
+    attemptsRemaining: result.attemptsRemaining,
+  });
+  throw new ApiError(status, message, result.reason, {
+    ...(result.attemptsRemaining !== undefined ? { attemptsRemaining: result.attemptsRemaining } : {}),
+  });
+}
+
+const CODE_REASONS = new Set(['WRONG_CODE', 'CODE_LOCKED', 'CODE_NOT_ISSUED', 'ALREADY_VERIFIED']);
+
+/**
+ * Bags collected from one stall, released by the code that stall is showing.
  *
  * Ticking the last stall is what sends the order out for delivery — the rider
  * never has to remember a separate "I'm leaving" step.
@@ -470,18 +492,21 @@ router.post(
 router.post(
   '/orders/:id/collect',
   ...riderGate,
+  collectVerifyLimiter,
   validate({
     params: z.object({ id: fields.objectId }).strict(),
-    body: z.object({ stallId: fields.objectId }).strict(),
+    body: z.object({ stallId: fields.objectId, code: fields.otpCode }).strict(),
   }),
   async (req, res) => {
     const result = await dispatch.collectStall({
       orderId: req.valid.params.id,
       riderId: req.user._id,
       stallId: req.valid.body.stallId,
+      code: req.valid.body.code,
     });
 
     if (!result.order) {
+      if (CODE_REASONS.has(result.reason)) throwCodeRefusal(result, 'stall');
       throw new ApiError(
         409,
         'Those items are not ready to collect yet.',
@@ -505,24 +530,31 @@ router.post(
 );
 
 /**
- * Delivered.
+ * Delivered, confirmed by the code the customer is showing.
  *
  * A market order's status is derived, so PATCH /orders/:id/status refuses to
  * touch it — this is the completion path for one. Same guarantee as everywhere
  * else: only the assigned rider, and only once the order has actually left the
- * market.
+ * market. An independent shop's or legacy order is closed through
+ * POST /api/orders/:id/verify-delivery with the same kind of code.
  */
 router.post(
   '/orders/:id/deliver',
   ...riderGate,
-  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  deliveryVerifyLimiter,
+  validate({
+    params: z.object({ id: fields.objectId }).strict(),
+    body: z.object({ code: fields.otpCode }).strict(),
+  }),
   async (req, res) => {
     const result = await dispatch.deliverOrder({
       orderId: req.valid.params.id,
       riderId: req.user._id,
+      code: req.valid.body.code,
     });
 
     if (!result.delivered) {
+      if (CODE_REASONS.has(result.reason)) throwCodeRefusal(result, 'customer');
       throw new ApiError(
         result.reason === 'NOT_YOURS' ? 404 : 409,
         result.reason === 'NOT_YOURS'

@@ -10,12 +10,17 @@ const config = require('../config/env');
 const { ApiError } = require('../middleware/errors');
 const { validate, z, fields } = require('../middleware/validate');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { pickupVerifyLimiter } = require('../middleware/rateLimit');
+const {
+  pickupVerifyLimiter,
+  deliveryVerifyLimiter,
+  handoverReissueLimiter,
+} = require('../middleware/rateLimit');
 const wallet = require('../services/wallet');
 const sourcing = require('../services/sourcing');
 const checkout = require('../services/checkout');
 const settlement = require('../services/settlement');
 const dispatch = require('../services/dispatch');
+const handover = require('../services/handover');
 const { CANCELLABLE_BY_CUSTOMER, CANCELLABLE_BY_STAFF, transitionTo } = require('../utils/orderStatus');
 const { requirePhotoDataUri } = require('../services/imagePayload');
 const media = require('../services/cloudinary');
@@ -187,24 +192,15 @@ async function visibilityFilter(user) {
  * door; a customer is reading their own order; `market_owner` and `developer`
  * are operator roles already scoped by the filter above.
  */
-/**
- * Who may ever read `pickupCode` off an order.
- *
- * Only the rider it was generated for — told to them once, in the app, so
- * they can say it out loud at the counter — and `developer` for support. Not
- * even the shopkeeper who will type it in: the whole point of asking them to
- * enter it is that the code came from the rider standing in front of them,
- * not from a screen they could read themselves.
+/*
+ * There is no code to strip here any more. Handover codes live in
+ * models/OrderHandover.js and are only ever returned by the holder-scoped
+ * `/:id/pickup-code` and `/:id/delivery-code` routes below - never on an order
+ * payload, which is how they stay out of every raw `order.toJSON()` this
+ * router and routes/rider.js hand to a rider.
  */
-function mayReadPickupCode(order, user) {
-  if (user.role === 'developer') return true;
-  return user.role === 'delivery' && order.assignedTo && String(order.assignedTo) === user._id.toHexString();
-}
-
 function redactForViewer(order, user) {
-  const withoutCode = mayReadPickupCode(order, user) ? order : { ...order, pickupCode: undefined };
-
-  if (user.role !== 'shopkeeper') return withoutCode;
+  if (user.role !== 'shopkeeper') return order;
 
   const {
     customerName: _name,
@@ -214,7 +210,7 @@ function redactForViewer(order, user) {
     // shopkeeper has no use for it.
     deliveryLocation: _location,
     ...rest
-  } = withoutCode;
+  } = order;
 
   return rest;
 }
@@ -610,19 +606,37 @@ router.patch(
     }
 
     /**
-     * A shop order with an accepted rider moves to `Out for Delivery` only
-     * through POST /:id/verify-pickup, never by hand.
+     * Neither handover can be pushed by hand. A shop order leaves `Preparing`
+     * only when the rider types the shop's code (POST /:id/verify-pickup), and a
+     * marketless order reaches `Delivered` only when the rider types the
+     * customer's code (POST /:id/verify-delivery).
      *
-     * Scoped tightly to orders that actually went through the accept flow —
-     * `assignedTo` AND `riderAcceptedAt` both set — so a shop order that never
-     * got a location-bound dispatch (and so relies on the older /claim path)
-     * is untouched by this and keeps working exactly as it always has.
+     * This used to be scoped to shop orders whose rider had tapped accept, which
+     * left an order taken from the open pool through /claim movable by hand with
+     * no code at all. It is now every shop order, because the code no longer
+     * depends on how the rider arrived: it belongs to the shop from the moment
+     * the order is accepted.
+     *
+     * `developer` is the one exception, and deliberately so. A customer whose
+     * phone has died at the door, or a shopkeeper who cannot open the app, would
+     * otherwise strand an order with the goods already in someone's hands, and
+     * the first stuck order would become a request to weaken the gate. The
+     * override is attributed like every other transition - `statusHistory.by`
+     * records who used it.
      */
-    if (order.shop && status === 'Out for Delivery' && order.assignedTo && order.riderAcceptedAt) {
+    const override = req.user.role === 'developer';
+    if (!override && order.shop && status === 'Out for Delivery') {
       throw new ApiError(
         409,
-        "Enter the pickup code the rider gives you to confirm they've collected the order.",
+        "The rider confirms pickup by entering the code shown on this order. Read it to them at the counter.",
         'PICKUP_CODE_REQUIRED'
+      );
+    }
+    if (!override && status === 'Delivered') {
+      throw new ApiError(
+        409,
+        "Ask the customer for the delivery code shown in their app, and enter it to complete this order.",
+        'DELIVERY_CODE_REQUIRED'
       );
     }
 
@@ -736,45 +750,192 @@ router.patch(
 );
 
 /**
- * The shopkeeper types in what the rider just told them, standing at the
- * counter, to confirm the right person collected the order.
+ * Turn a failed redeem into the response the rider's app shows.
  *
- * The only path from `Preparing` to `Out for Delivery` for a shop order once
- * a rider has accepted — see the guard in PATCH /:id/status above. A wrong
- * code is reported plainly rather than a generic failure: the shopkeeper is
- * mistyping a number a real person just read out to them, not attacking
- * anything, and `pickupVerifyLimiter` is what actually bounds guessing.
+ * A wrong code is reported plainly, with the tries left, rather than as a
+ * generic failure: the rider is mistyping a number a real person just read out
+ * to them. The attempt cap in services/handover.js is what bounds guessing.
+ */
+function throwHandoverRefusal(result, { holder, notFound, notReady }) {
+  if (result.reason === 'NOT_FOUND') throw new ApiError(404, notFound, 'NOT_FOUND');
+  if (['WRONG_CODE', 'CODE_LOCKED', 'CODE_NOT_ISSUED', 'ALREADY_VERIFIED'].includes(result.reason)) {
+    const { status, message } = handover.refusal(result.reason, { holder, attemptsRemaining: result.attemptsRemaining });
+    throw new ApiError(status, message, result.reason, {
+      ...(result.attemptsRemaining !== undefined ? { attemptsRemaining: result.attemptsRemaining } : {}),
+    });
+  }
+  throw new ApiError(409, notReady, result.reason || 'NOT_READY');
+}
+
+/**
+ * The rider types in the code the shop is showing, at the counter.
+ *
+ * The only path from `Preparing` to `Out for Delivery` for a shop order - see
+ * the guard in PATCH /:id/status above. Rider-only: the code proves the SHOP
+ * released the goods, so the shop cannot be the one to submit it.
  */
 router.post(
   '/:id/verify-pickup',
   requireAuth,
-  requireRole('shopkeeper', 'developer'),
+  requireRole('delivery'),
   pickupVerifyLimiter,
   validate({
     params: z.object({ id: fields.objectId }).strict(),
-    body: z.object({ code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code.') }).strict(),
+    body: z.object({ code: fields.otpCode }).strict(),
   }),
   async (req, res) => {
     const result = await dispatch.verifyShopPickup({
       orderId: req.valid.params.id,
-      shopkeeperId: req.user._id,
+      riderId: req.user._id,
       code: req.valid.body.code,
     });
 
     if (!result.verified) {
-      if (result.reason === 'NOT_FOUND') throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
-      if (result.reason === 'WRONG_CODE') {
-        throw new ApiError(400, "That code doesn't match. Ask the rider to read it again.", 'WRONG_CODE');
-      }
-      if (result.reason === 'NOT_ACCEPTED_YET') {
-        throw new ApiError(409, 'No rider has accepted this order yet.', 'NOT_ACCEPTED_YET');
-      }
-      throw new ApiError(409, 'This order is not ready to hand over.', result.reason || 'NOT_PREPARING');
+      throwHandoverRefusal(result, {
+        holder: 'shop',
+        notFound: 'Order not found.',
+        notReady: 'This order is not ready to collect.',
+      });
     }
 
     return res.json({ data: redactForViewer(result.order.toJSON(), req.user) });
   }
 );
+
+/**
+ * The rider types in the code the customer is showing, at the door.
+ *
+ * For an order with no market - an independent shop's or a legacy one. A market
+ * order is closed through POST /api/rider/orders/:id/deliver instead, with the
+ * same code. Replaces the rider's old `PATCH /:id/status -> Delivered`.
+ */
+router.post(
+  '/:id/verify-delivery',
+  requireAuth,
+  requireRole('delivery'),
+  deliveryVerifyLimiter,
+  validate({
+    params: z.object({ id: fields.objectId }).strict(),
+    body: z.object({ code: fields.otpCode }).strict(),
+  }),
+  async (req, res) => {
+    const result = await dispatch.deliverMarketlessOrder({
+      orderId: req.valid.params.id,
+      riderId: req.user._id,
+      code: req.valid.body.code,
+    });
+
+    if (!result.delivered) {
+      throwHandoverRefusal(result, {
+        holder: 'customer',
+        notFound: 'Order not found.',
+        notReady: 'This order is not out for delivery.',
+      });
+    }
+
+    return res.json({ data: redactForViewer(result.order.toJSON(), req.user) });
+  }
+);
+
+/**
+ * The code a shop reads out to the rider collecting one of its orders.
+ *
+ * Shown from the moment the shop accepts (`Preparing`) until the rider has
+ * collected. Scoped to `shop: req.user._id` - the order's own shop and nobody
+ * else, not even `developer`, because a route that can return one live code to
+ * an operator is a route that can return all of them. Created on first read;
+ * see services/handover.js.
+ */
+router.get(
+  '/:id/pickup-code',
+  requireAuth,
+  requireRole('shopkeeper'),
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const shown = await shopPickupCode(req, (args) => handover.showToHolder(args));
+    return res.json({ data: shown });
+  }
+);
+
+router.post(
+  '/:id/pickup-code/reissue',
+  requireAuth,
+  requireRole('shopkeeper'),
+  handoverReissueLimiter,
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const shown = await shopPickupCode(
+      req,
+      async (args) => (await handover.reissue(args)) || handover.showToHolder(args)
+    );
+    return res.json({ data: shown });
+  }
+);
+
+async function shopPickupCode(req, read) {
+  const order = await Order.findOne({ _id: req.valid.params.id, shop: req.user._id }).select('status').lean();
+  if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+  if (order.status !== 'Preparing') {
+    throw new ApiError(
+      409,
+      'A pickup code is shown once you accept an order, until the rider collects it.',
+      'CODE_NOT_AVAILABLE'
+    );
+  }
+  const shown = await read({ orderId: order._id, stage: 'pickup', holderId: req.user._id });
+  if (!shown) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+  return shown;
+}
+
+/**
+ * The code a customer reads out to the rider at their door.
+ *
+ * Only once the order is on its way. Showing it earlier would let a rider ask
+ * for it over the phone before collecting anything - and a customer who has
+ * shared it early has nothing left to confirm the delivery with. Scoped to the
+ * order's own customer, for the same reason the pickup code is scoped to the
+ * shop.
+ */
+router.get(
+  '/:id/delivery-code',
+  requireAuth,
+  requireRole('customer'),
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const shown = await customerDeliveryCode(req, (args) => handover.showToHolder(args));
+    return res.json({ data: shown });
+  }
+);
+
+router.post(
+  '/:id/delivery-code/reissue',
+  requireAuth,
+  requireRole('customer'),
+  handoverReissueLimiter,
+  validate({ params: z.object({ id: fields.objectId }).strict() }),
+  async (req, res) => {
+    const shown = await customerDeliveryCode(
+      req,
+      async (args) => (await handover.reissue(args)) || handover.showToHolder(args)
+    );
+    return res.json({ data: shown });
+  }
+);
+
+async function customerDeliveryCode(req, read) {
+  const order = await Order.findOne({ _id: req.valid.params.id, customer: req.user._id }).select('status').lean();
+  if (!order) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+  if (order.status !== 'Out for Delivery') {
+    throw new ApiError(
+      409,
+      'Your delivery code appears here once your order is on its way.',
+      'CODE_NOT_AVAILABLE'
+    );
+  }
+  const shown = await read({ orderId: order._id, stage: 'delivery', holderId: req.user._id });
+  if (!shown) throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+  return shown;
+}
 
 /**
  * Where the assigned rider is right now, for the shop (or market office) that

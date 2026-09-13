@@ -708,7 +708,13 @@ test('a settled partial pays the stall only for what it actually supplied', asyn
     { _id: order._id },
     { $set: { assignedTo: rider._id, 'fulfillment.status': 'dispatched', status: 'Out for Delivery' } }
   );
-  await require('../services/dispatch').deliverOrder({ orderId: order._id, riderId: rider._id });
+  const { code } = await require('../services/handover').showToHolder({
+    orderId: order._id,
+    stage: 'delivery',
+    holderId: signedIn.user._id,
+  });
+  const done = await require('../services/dispatch').deliverOrder({ orderId: order._id, riderId: rider._id, code });
+  assert.equal(done.delivered, true, JSON.stringify(done));
 
   const earnings = await StallEarning.find({ stall: stall._id });
   assert.equal(earnings.length, 1);

@@ -280,16 +280,59 @@ const stallActionLimiter = rateLimit({
 });
 
 /**
- * Guessing the six-digit pickup code, keyed on the order rather than the
- * caller — the whole point is bounding how many guesses ONE order's code can
- * take, same reasoning as `otpVerifyLimiter` keying on the challenge.
+ * Guessing a six-digit handover code, keyed on the handover rather than the
+ * caller - the point is bounding how many guesses ONE code can take, the same
+ * reasoning as `otpVerifyLimiter` keying on the challenge.
+ *
+ * These sit ALONGSIDE the per-code attempt cap in services/handover.js, not
+ * instead of it. `base.skip` switches every limiter off under test, so the cap
+ * is the bound a test can actually drive; these add a time window on top.
+ *
+ * One bucket per stage (and per stall), never shared: fumbled pickup guesses
+ * must not spend the budget a rider needs while standing at the customer's
+ * door. Each only keys correctly as ROUTE-level middleware, where `req.params`
+ * is populated - mounted at router level the key collapses to the IP fallback.
  */
 const pickupVerifyLimiter = rateLimit({
   ...base,
   windowMs: 10 * 60 * 1000,
   limit: 10,
   keyGenerator: (req) => `pickupv:${req.params?.id || ipKeyGenerator(req.ip)}`,
-  handler: jsonLimitHandler('Too many attempts. Ask the rider to read the code again.', 'PICKUP_CODE_RATE_LIMITED'),
+  handler: jsonLimitHandler('Too many attempts. Ask the shop to read the code again.', 'PICKUP_CODE_RATE_LIMITED'),
+});
+
+/** A market stall's pickup code: one bucket per stall on the order. */
+const collectVerifyLimiter = rateLimit({
+  ...base,
+  windowMs: 10 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) =>
+    `collectv:${req.params?.id || ipKeyGenerator(req.ip)}:${String(req.body?.stallId || '-').slice(0, 32)}`,
+  handler: jsonLimitHandler('Too many attempts. Ask the stall to read the code again.', 'PICKUP_CODE_RATE_LIMITED'),
+});
+
+/** The customer's delivery code. */
+const deliveryVerifyLimiter = rateLimit({
+  ...base,
+  windowMs: 10 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) => `deliverv:${req.params?.id || ipKeyGenerator(req.ip)}`,
+  handler: jsonLimitHandler(
+    'Too many attempts. Ask the customer to read the code again.',
+    'DELIVERY_CODE_RATE_LIMITED'
+  ),
+});
+
+/**
+ * A holder asking for a fresh code. Keyed on the caller: rotating is harmless
+ * in itself, but each one is a write and nobody needs more than a few.
+ */
+const handoverReissueLimiter = rateLimit({
+  ...base,
+  windowMs: 10 * 60 * 1000,
+  limit: 20,
+  keyGenerator: (req) => `handoverre:${req.user?._id || ipKeyGenerator(req.ip)}`,
+  handler: jsonLimitHandler('Too many new codes. Please wait a few minutes.', 'RATE_LIMITED'),
 });
 
 /**
@@ -371,5 +414,8 @@ module.exports = {
   geoWriteLimiter,
   riderBankDetailsLimiter,
   pickupVerifyLimiter,
+  collectVerifyLimiter,
+  deliveryVerifyLimiter,
+  handoverReissueLimiter,
   agentChatLimiter,
 };
