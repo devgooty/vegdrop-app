@@ -51,6 +51,20 @@ const DeliveryRouteMap = lazy(() => import('./DeliveryRouteMap'));
  * underneath to repair them to. What remains is driven by real endpoints, and
  * where the data genuinely does not exist the screen says so.
  */
+/**
+ * `busy` is on duty too - it is what the server sets the moment a rider accepts
+ * a job, and it refuses to take a busy rider off duty (DELIVERY_IN_PROGRESS).
+ *
+ * Reading only `online` meant that any reload mid-job - the OS killing a
+ * backgrounded PWA, a dropped connection - showed "You are off duty" and hid
+ * the job the rider was carrying, including the box to type the customer's
+ * delivery code into. With that box gone the order could not be completed at
+ * all, by anyone but a developer.
+ */
+function isOnDuty(dutyStatus) {
+  return dutyStatus === 'online' || dutyStatus === 'busy';
+}
+
 export default function DeliveryPanel({ user, orders, onVerifyPickup, onVerifyDelivery, onAcceptShopOrder, onDeclineShopOrder, onLogout, notifications = [], onClearNotification }) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('home');
@@ -73,14 +87,14 @@ export default function DeliveryPanel({ user, orders, onVerifyPickup, onVerifyDe
    * `dutyStatus` has always been on the session user (`User.toPublicJSON`); it
    * was simply never read.
    */
-  const [isOnline, setIsOnline] = useState(user?.dutyStatus === 'online');
+  const [isOnline, setIsOnline] = useState(isOnDuty(user?.dutyStatus));
   const [isSavingDuty, setIsSavingDuty] = useState(false);
   const [dutyError, setDutyError] = useState(null);
 
   // Follow the server whenever the session is re-read — the rider may have gone
   // on or off duty on another device.
   useEffect(() => {
-    if (user?.dutyStatus) setIsOnline(user.dutyStatus === 'online');
+    if (user?.dutyStatus) setIsOnline(isOnDuty(user.dutyStatus));
   }, [user?.dutyStatus]);
 
   /**
