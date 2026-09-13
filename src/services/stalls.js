@@ -69,6 +69,22 @@ export async function declineOffer(orderId) {
   return result.data;
 }
 
+/**
+ * The code this stall reads out to the rider collecting its share of an order.
+ * Each stall on a shared order has its own; this returns only this stall's.
+ *
+ * @throws {ApiRequestError} 409 CODE_NOT_AVAILABLE once nothing is waiting
+ */
+export async function fetchStallPickupCode(orderId) {
+  const result = await api.get(`/stalls/orders/${orderId}/pickup-code`);
+  return result.data;
+}
+
+export async function reissueStallPickupCode(orderId) {
+  const result = await api.post(`/stalls/orders/${orderId}/pickup-code/reissue`);
+  return result.data;
+}
+
 /** Bagged. Omit `lineIds` to pack everything this stall holds on the order. */
 export async function packOrder(orderId, lineIds) {
   const result = await api.post(`/stalls/orders/${orderId}/pack`, lineIds ? { lineIds } : {});

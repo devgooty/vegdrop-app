@@ -8,8 +8,7 @@ import useSessionUser from './hooks/useSessionUser';
 import { fetchKycStatus } from './services/kyc';
 import { initialCategories } from './data/mockData';
 import { fetchProducts, updateStock, createProduct, updateProduct } from './services/products';
-import { fetchOrders, updateOrderStatus, verifyPickupCode, sameOrdersOrPrevious } from './services/orders';
-import { ApiRequestError } from './services/apiClient';
+import { fetchOrders, updateOrderStatus, sameOrdersOrPrevious } from './services/orders';
 import { fetchMyStall } from './services/stalls';
 import { fetchMyJoinRequest } from './services/markets';
 import { fetchMyShop } from './services/shops';
@@ -383,31 +382,6 @@ export default function ShopkeeperApp() {
     }
   }, [orders, toast]);
 
-  /**
-   * The code the rider read out at the counter, typed in to confirm it's
-   * really them. Moves the order to `Out for Delivery` on the server; a wrong
-   * code comes back as a message the shopkeeper can act on rather than a
-   * generic failure, since a mistyped digit is the overwhelmingly likely case.
-   */
-  const handleVerifyPickup = useCallback(async (orderId, code) => {
-    const target = orders.find((o) => o.id === orderId || o.serverId === orderId);
-    if (!target?.serverId) {
-      toast.error('This order is not available on the server yet.');
-      return false;
-    }
-
-    try {
-      const updated = await verifyPickupCode(target.serverId, code);
-      setOrders((prev) => prev.map((o) => (o.serverId === updated.serverId ? updated : o)));
-      toast.success(`Order ${updated.id} → Out for Delivery 🚚`);
-      return true;
-    } catch (err) {
-      const message = err instanceof ApiRequestError ? err.message : 'Could not verify that code.';
-      toast.error(message);
-      return false;
-    }
-  }, [orders, toast]);
-
   const handleAddProduct = useCallback(async (productData) => {
     try {
       const created = await createProduct(productData);
@@ -582,7 +556,6 @@ export default function ShopkeeperApp() {
         onAddProduct={handleAddProduct}
         onEditProduct={handleEditProduct}
         onUpdateOrderStatus={handleUpdateOrderStatus}
-        onVerifyPickup={handleVerifyPickup}
         onOrderAccepted={handleOrderAccepted}
         onLogout={handleLogout}
         onSyncOrders={handleSyncOrders}

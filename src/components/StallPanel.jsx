@@ -9,8 +9,11 @@ import {
   fetchStallOrders, claimLines, declineOffer, packOrder, updateMyStall, secondsLeft, formatPaise,
   fetchEarnings, withdrawEarnings, timeUntil,
   fetchStallStock, saveStallInventory, saveFreshPhoto, removeFreshPhoto,
+  fetchStallPickupCode, reissueStallPickupCode,
 } from '../services/stalls';
 import StallInventoryEditor from './StallInventoryEditor';
+import HandoverCodeCard from './HandoverCodeCard';
+import { useLanguage } from '../i18n/LanguageContext';
 import { toUploadableJpeg, approximateKb } from '../services/imageCapture';
 
 /**
@@ -601,6 +604,18 @@ export default function StallPanel({ user, stall: initialStall, onLogout }) {
                     ))}
                   </ul>
 
+                  {/*
+                    This stall's own pickup code, while it still has bags on the
+                    order. The rider types it to collect, and nothing is ticked
+                    off without it. Each stall on a shared order has its own, so
+                    a code read out here cannot collect another stall's share.
+                  */}
+                  {!collected && (
+                    <div className="px-3 pt-3">
+                      <StallPickupCode orderId={order.id} />
+                    </div>
+                  )}
+
                   {unpacked.length > 0 && (
                     <div className="p-3 bg-gray-50">
                       <button
@@ -948,6 +963,19 @@ function timeSince(when) {
  * The withdraw button is shown even when it cannot be used, with the shortfall
  * spelled out. Hiding it would just move the question rather than answer it.
  */
+/** Its own component so it can reach `t` - the panel above does not use the language context. */
+function StallPickupCode({ orderId }) {
+  const { t } = useLanguage();
+  return (
+    <HandoverCodeCard
+      title={t('handover.pickupTitle')}
+      hint={t('handover.stallHint')}
+      load={() => fetchStallPickupCode(orderId)}
+      reissue={() => reissueStallPickupCode(orderId)}
+    />
+  );
+}
+
 function EarningsCard({ earnings, busy, onWithdraw }) {
   const {
     pendingPaise, releasedPaise, nextReleaseAt,

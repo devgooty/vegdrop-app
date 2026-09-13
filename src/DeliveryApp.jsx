@@ -4,7 +4,7 @@ import LoginPage from './components/LoginPage';
 import SplashScreen from './components/SplashScreen';
 import { useToast } from './components/Toast';
 import { logout } from './services/auth';
-import { fetchOrders, updateOrderStatus, sameOrdersOrPrevious } from './services/orders';
+import { fetchOrders, verifyPickupCode, verifyDeliveryCode, sameOrdersOrPrevious } from './services/orders';
 import { acceptPickup, declinePickup } from './services/rider';
 import { ApiRequestError } from './services/apiClient';
 import useSessionUser from './hooks/useSessionUser';
@@ -113,23 +113,6 @@ export default function DeliveryApp() {
     };
   }, [user]);
 
-  const handleUpdateOrderStatus = useCallback(async (orderId, newStatus) => {
-    const target = orders.find((o) => o.id === orderId || o.serverId === orderId);
-    if (!target?.serverId) {
-      toast.error('This order is not available on the server yet.');
-      return;
-    }
-
-    try {
-      const updated = await updateOrderStatus(target.serverId, newStatus);
-      setOrders((prev) => prev.map((o) => (o.serverId === updated.serverId ? updated : o)));
-      const emoji = { Preparing: '👨‍🍳', 'Out for Delivery': '🚚', Delivered: '✅', Cancelled: '❌' }[newStatus] || '📦';
-      toast.success(`Order ${updated.id} → ${newStatus} ${emoji}`);
-    } catch (err) {
-      toast.error(err.message || 'Could not update the order.');
-    }
-  }, [orders, toast]);
-
   /**
    * Refetch rather than patch the one order in place.
    *
@@ -151,7 +134,7 @@ export default function DeliveryApp() {
     try {
       await acceptPickup(orderId);
       await refreshOrders();
-      toast.success('Pickup accepted — show the code at the shop 🔑');
+      toast.success('Pickup accepted — ask the shop for its pickup code 🔑');
     } catch (err) {
       const message = err instanceof ApiRequestError ? err.message : 'Could not accept this pickup.';
       toast.error(message);
@@ -169,6 +152,27 @@ export default function DeliveryApp() {
       toast.error(message);
       await refreshOrders();
     }
+  }, [refreshOrders, toast]);
+
+  /**
+   * The rider types a code somebody else is showing: the shop's at the counter,
+   * the customer's at the door. These are the rider's only ways to move a
+   * direct order - a rider can no longer set `Delivered` by hand.
+   *
+   * They rethrow on refusal instead of toasting, so the code box itself can say
+   * "2 tries left" beside the digits the rider just typed, rather than in a
+   * toast that disappears while they are still reading it.
+   */
+  const handleVerifyPickup = useCallback(async (orderId, code) => {
+    await verifyPickupCode(orderId, code);
+    await refreshOrders();
+    toast.success('Pickup confirmed — on your way to the customer 🚚');
+  }, [refreshOrders, toast]);
+
+  const handleVerifyDelivery = useCallback(async (orderId, code) => {
+    await verifyDeliveryCode(orderId, code);
+    await refreshOrders();
+    toast.success('Delivered — thank you ✅');
   }, [refreshOrders, toast]);
 
   const clearDeliveryNotification = useCallback((orderId) => {
@@ -243,7 +247,8 @@ export default function DeliveryApp() {
   return (
     <DeliveryPanel
       orders={orders}
-      onUpdateOrderStatus={handleUpdateOrderStatus}
+      onVerifyPickup={handleVerifyPickup}
+      onVerifyDelivery={handleVerifyDelivery}
       onAcceptShopOrder={handleAcceptShopOrder}
       onDeclineShopOrder={handleDeclineShopOrder}
       user={user}

@@ -3,7 +3,7 @@ import {
   Store, Package, ShoppingBag, CheckCircle2, Clock, Truck,
   MapPin, LogOut, User, LayoutDashboard, Plus, Edit, Trash2,
   AlertTriangle, Navigation, Check, Camera, TrendingUp, BarChart3, Settings, ArrowLeft, Wallet, RefreshCw, X, Lock, ShieldAlert, Bike,
-  Phone, KeyRound, Loader2,
+  Phone, Loader2,
 } from 'lucide-react';
 import { startPhoneChange, verifyPhoneChange, describePhoneProblem } from '../services/auth';
 import { fetchShopEarnings, withdrawShopEarnings, fetchNearbyRider, updateMyShop } from '../services/shops';
@@ -12,12 +12,13 @@ import {
   createCatalogSuggestion,
   fetchCatalogSuggestions,
 } from '../services/catalogSuggestions';
-import { fetchRiderLocation } from '../services/orders';
+import { fetchRiderLocation, fetchPickupCode, reissuePickupCode } from '../services/orders';
 import { uploadProductImage } from '../services/media';
 import { toUploadableJpeg } from '../services/imageCapture';
 import { ApiRequestError } from '../services/apiClient';
 import { useLanguage } from '../i18n/LanguageContext';
 import OTPBoxGroup from './OTPBoxGroup';
+import HandoverCodeCard from './HandoverCodeCard';
 import LanguagePicker from './LanguagePicker';
 import CatalogBrowseScreen, { CatalogKycStrip } from './CatalogBrowseScreen';
 
@@ -79,7 +80,7 @@ function KycGateBanner({ kyc, onOpenKyc }) {
   );
 }
 
-export default function ShopkeeperPanel({ user, orders, shopProfile = null, products, setProducts, categories = [], onAddProduct, onEditProduct, onUpdateOrderStatus, onVerifyPickup, onOrderAccepted, onLogout, onSyncOrders, kyc = null, onOpenKyc, onUserUpdated }) {
+export default function ShopkeeperPanel({ user, orders, shopProfile = null, products, setProducts, categories = [], onAddProduct, onEditProduct, onUpdateOrderStatus, onOrderAccepted, onLogout, onSyncOrders, kyc = null, onOpenKyc, onUserUpdated }) {
   const { t } = useLanguage();
 
   // UX gate only. Every catalog write is authorized again by the API.
@@ -1239,6 +1240,25 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                   </div>
                   <p className="text-xs text-gray-500 mb-3 line-clamp-1">{order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</p>
 
+                  {/*
+                    The shop's pickup code, from the moment it accepts. The
+                    rider types it into their app at the counter, and that is
+                    what moves the order to Out for Delivery - there is no
+                    button here for the shop to do it, on purpose: a handover
+                    needs both of you. It used to run the other way round, with
+                    the rider showing a code and the shop typing it.
+                  */}
+                  {order.shopId && (
+                    <div className="mb-3">
+                      <HandoverCodeCard
+                        title={t('handover.pickupTitle')}
+                        hint={t('handover.shopHint')}
+                        load={() => fetchPickupCode(order.serverId)}
+                        reissue={() => reissuePickupCode(order.serverId)}
+                      />
+                    </div>
+                  )}
+
                   {!order.assignedTo ? (
                     /* A status line, not a control — it was marked up as a
                        button with pointer-events disabled, so assistive tech
@@ -1310,9 +1330,6 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                         </p>
                       )}
 
-                      {onVerifyPickup && (
-                        <PickupCodeForm orderId={order.serverId} onVerify={onVerifyPickup} />
-                      )}
                     </div>
                   )}
                 </div>
@@ -2084,49 +2101,4 @@ const NavButton = ({ icon: Icon, label, isActive, onClick }) => (
   </button>
 );
 
-/**
- * Where the rider proves they're actually standing at the counter.
- *
- * `onVerify` returns a boolean rather than throwing — a wrong code is an
- * ordinary, expected outcome here (a mistyped digit), not an error state the
- * form needs to unwind from. The parent already toasts on both outcomes, so
- * this only has to clear the field on success and let the shopkeeper try
- * again on failure.
- */
-function PickupCodeForm({ orderId, onVerify }) {
-  const [code, setCode] = useState('');
-  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (code.length !== 6 || submitting) return;
-    setSubmitting(true);
-    const ok = await onVerify(orderId, code);
-    setSubmitting(false);
-    if (ok) setCode('');
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="flex items-center gap-2">
-      <div className="flex-1 flex items-center gap-2 bg-white border border-gray-300 rounded-xl px-3 py-2 focus-within:border-emerald-600">
-        <KeyRound className="w-4 h-4 text-gray-400 shrink-0" />
-        <input
-          type="text"
-          inputMode="numeric"
-          maxLength={6}
-          placeholder="Code from rider"
-          value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-          className="w-full bg-transparent text-sm font-bold tracking-[0.2em] text-gray-900 focus:outline-none placeholder:tracking-normal placeholder:font-semibold placeholder:text-gray-400"
-        />
-      </div>
-      <button
-        type="submit"
-        disabled={code.length !== 6 || submitting}
-        className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-transform"
-      >
-        {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm'}
-      </button>
-    </form>
-  );
-}

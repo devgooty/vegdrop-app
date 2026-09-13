@@ -482,6 +482,84 @@ const STRINGS = {
   },
   'orders.trackLive': { en: 'Track Your Order Live 🚴', hi: 'अपना ऑर्डर लाइव देखें 🚴', te: 'మీ ఆర్డర్‌ను లైవ్‌లో చూడండి 🚴' },
 
+  // Handover codes. The shop, a stall and the customer are each SHOWN a code;
+  // the rider TYPES it. See services/handover.js on the server.
+  'handover.pickupTitle': { en: 'Pickup code', hi: 'पिकअप कोड', te: 'పికప్ కోడ్' },
+  'handover.deliveryTitle': { en: 'Delivery code', hi: 'डिलीवरी कोड', te: 'డెలివరీ కోడ్' },
+  'handover.stallPickupTitle': {
+    en: 'Stall {number} pickup code',
+    hi: 'स्टॉल {number} पिकअप कोड',
+    te: 'స్టాల్ {number} పికప్ కోడ్',
+  },
+  'handover.shopHint': {
+    en: 'Read this to the rider at the counter. Once they enter it, hand the order over.',
+    hi: 'काउंटर पर राइडर को यह कोड बताएं। उनके डालते ही ऑर्डर सौंप दें।',
+    te: 'కౌంటర్ వద్ద రైడర్‌కు ఈ కోడ్ చెప్పండి. వారు నమోదు చేశాక ఆర్డర్ అప్పగించండి.',
+  },
+  'handover.stallHint': {
+    en: 'Read this to the rider when they collect. Every stall on an order has its own code.',
+    hi: 'सामान लेते समय राइडर को यह कोड बताएं। ऑर्डर के हर स्टॉल का अपना कोड होता है।',
+    te: 'సామాను తీసుకునేటప్పుడు రైడర్‌కు ఈ కోడ్ చెప్పండి. ఆర్డర్‌లోని ప్రతి స్టాల్‌కు వేరే కోడ్ ఉంటుంది.',
+  },
+  'handover.deliveryHint': {
+    en: 'Share this with your delivery partner only once your order is in your hands.',
+    hi: 'यह कोड डिलीवरी पार्टनर को तभी बताएं जब ऑर्डर आपके हाथ में हो।',
+    te: 'ఆర్డర్ మీ చేతికి వచ్చాకే ఈ కోడ్‌ను డెలివరీ భాగస్వామికి చెప్పండి.',
+  },
+  'handover.loading': { en: 'Getting your code…', hi: 'आपका कोड लाया जा रहा है…', te: 'మీ కోడ్ తెస్తోంది…' },
+  'handover.loadFailed': { en: 'Could not load the code.', hi: 'कोड लोड नहीं हो सका।', te: 'కోడ్ లోడ్ కాలేదు.' },
+  'handover.retry': { en: 'Retry', hi: 'फिर कोशिश करें', te: 'మళ్ళీ ప్రయత్నించండి' },
+  'handover.confirmed': {
+    en: 'Code confirmed — handed over.',
+    hi: 'कोड की पुष्टि हो गई — सौंप दिया गया।',
+    te: 'కోడ్ నిర్ధారించబడింది — అప్పగించబడింది.',
+  },
+  'handover.locked': { en: 'Code locked', hi: 'कोड लॉक हो गया', te: 'కోడ్ లాక్ అయింది' },
+  'handover.lockedBody': {
+    en: 'The wrong code was entered too many times. Get a new one and read that instead.',
+    hi: 'गलत कोड कई बार डाला गया। नया कोड लें और वही बताएं।',
+    te: 'తప్పు కోడ్ చాలాసార్లు నమోదు చేశారు. కొత్త కోడ్ తీసుకుని అది చెప్పండి.',
+  },
+  'handover.newCode': { en: 'New code', hi: 'नया कोड', te: 'కొత్త కోడ్' },
+  'handover.reissueFailed': { en: 'Could not issue a new code.', hi: 'नया कोड नहीं बन सका।', te: 'కొత్త కోడ్ ఇవ్వలేకపోయాం.' },
+  'handover.triesLeft': {
+    en: '{count} wrong tries left before it locks',
+    hi: '{count} गलत प्रयास बाकी, फिर यह लॉक हो जाएगा',
+    te: 'లాక్ అయ్యే ముందు {count} తప్పు ప్రయత్నాలు మిగిలాయి',
+  },
+  'handover.askShop': {
+    en: 'Ask {name} for the code on their screen.',
+    hi: '{name} से उनकी स्क्रीन पर दिखा कोड पूछें।',
+    te: '{name} స్క్రీన్‌పై ఉన్న కోడ్ అడగండి.',
+  },
+  'handover.askCustomer': {
+    en: 'Ask {name} for the code in their VegDrop app.',
+    hi: '{name} से उनके VegDrop ऐप में दिखा कोड पूछें।',
+    te: '{name} VegDrop యాప్‌లో ఉన్న కోడ్ అడగండి.',
+  },
+  'handover.theShop': { en: 'the shop', hi: 'दुकान', te: 'దుకాణం' },
+  'handover.theStall': { en: 'the stall', hi: 'स्टॉल', te: 'స్టాల్' },
+  'handover.theCustomer': { en: 'the customer', hi: 'ग्राहक', te: 'కస్టమర్' },
+  'handover.confirmPickup': { en: 'Confirm pickup', hi: 'पिकअप पक्का करें', te: 'పికప్ నిర్ధారించండి' },
+  'handover.confirmCollection': { en: 'Confirm collection', hi: 'सामान लेना पक्का करें', te: 'సేకరణ నిర్ధారించండి' },
+  'handover.confirmDelivery': { en: 'Confirm delivery', hi: 'डिलीवरी पक्की करें', te: 'డెలివరీ నిర్ధారించండి' },
+  'handover.entryFailed': { en: 'That did not work. Try again.', hi: 'यह नहीं हुआ। फिर कोशिश करें।', te: 'అది పని చేయలేదు. మళ్ళీ ప్రయత్నించండి.' },
+  'handover.err.wrong': {
+    en: "That code doesn't match — ask them to read it again. {count} tries left.",
+    hi: 'कोड मेल नहीं खाता — उनसे दोबारा पढ़ने को कहें। {count} प्रयास बाकी।',
+    te: 'కోడ్ సరిపోలలేదు — మళ్ళీ చదవమని అడగండి. {count} ప్రయత్నాలు మిగిలాయి.',
+  },
+  'handover.err.locked': {
+    en: 'Too many wrong codes. Ask them to tap "New code" and read you the new one.',
+    hi: 'बहुत बार गलत कोड। उनसे "नया कोड" दबाकर नया कोड बताने को कहें।',
+    te: 'చాలాసార్లు తప్పు కోడ్. "కొత్త కోడ్" నొక్కి కొత్తది చెప్పమని అడగండి.',
+  },
+  'handover.err.notIssued': {
+    en: 'Ask them to open this order in their app — the code appears there.',
+    hi: 'उनसे ऐप में यह ऑर्डर खोलने को कहें — कोड वहीं दिखेगा।',
+    te: 'వారి యాప్‌లో ఈ ఆర్డర్ తెరవమని అడగండి — కోడ్ అక్కడ కనిపిస్తుంది.',
+  },
+
   // Market fulfilment stages
   'stage.sourcing': { en: 'Finding a stall', hi: 'दुकान खोजी जा रही है', te: 'దుకాణం వెతుకుతోంది' },
   'stage.partial_review': { en: 'Needs your answer', hi: 'आपके जवाब का इंतज़ार', te: 'మీ సమాధానం కావాలి' },

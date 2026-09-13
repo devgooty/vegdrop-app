@@ -50,19 +50,24 @@ export async function declinePickup(orderId) {
 }
 
 /**
- * Bags collected from one stall.
+ * Bags collected from one stall, released by the code that stall is showing.
  *
  * Ticking the last stall is what sends the order out for delivery — there is no
  * separate "I'm leaving" step to forget.
+ *
+ * @throws {ApiRequestError} 400 WRONG_CODE, 409 CODE_LOCKED, 409 CODE_NOT_ISSUED
  */
-export async function collectFromStall(orderId, stallId) {
-  const result = await api.post(`/rider/orders/${orderId}/collect`, { stallId });
+export async function collectFromStall(orderId, stallId, code) {
+  const result = await api.post(`/rider/orders/${orderId}/collect`, { stallId, code });
   return result.data;
 }
 
-/** Handed over at the door. COD is marked collected at this moment. */
-export async function markDelivered(orderId) {
-  const result = await api.post(`/rider/orders/${orderId}/deliver`);
+/**
+ * Handed over at the door, confirmed by the code the customer is showing. COD
+ * is marked collected at this moment, and not before the code matches.
+ */
+export async function markDelivered(orderId, code) {
+  const result = await api.post(`/rider/orders/${orderId}/deliver`, { code });
   return result.data;
 }
 

@@ -52,13 +52,18 @@ export function toUiOrder(order) {
      * independent-shop pickup — not merely been picked as nearest. This is
      * what gates the shopkeeper/customer seeing `riderName`/`riderPhone`
      * below, and what tells the delivery app whether to show Accept/Decline
-     * or the pickup code.
+     * or the box for the shop's pickup code.
      */
     riderAccepted: Boolean(order.riderAcceptedAt),
-    // The rider's own code to relay to the shopkeeper. Only ever present in
-    // the assigned rider's own view of the order — the server never sends it
-    // to anyone else.
-    pickupCode: order.pickupCode || null,
+    /**
+     * The independent shop this order was placed with. Decides whether there is
+     * a pickup code at all: a legacy order has no single shop to hold one.
+     *
+     * No handover code ever arrives on an order payload - not for the shop, not
+     * for the customer, least of all for the rider who types both. Each holder
+     * fetches its own with `fetchPickupCode` / `fetchDeliveryCode` below.
+     */
+    shopId: order.shop ? String(order.shop) : null,
     // Set once riderAccepted is true, for whoever is allowed to see it.
     riderName: order.riderName || null,
     riderPhone: order.riderPhone || null,
@@ -321,14 +326,67 @@ export async function fetchRiderLocation(orderId) {
   return result.data;
 }
 
+// --- Handover codes -----------------------------------------------------------
+//
+// Two per order, and the RIDER types both: the shop's code at the counter, the
+// customer's at the door. So each holder fetches its own code here, on demand,
+// and it is never kept anywhere but the component showing it - not on the
+// polled order list, and never in web storage.
+//
+// A code view is `{ code, locked, verified, attemptsRemaining, stage }`. `code`
+// is null once the code is used or locked.
+
 /**
- * The shopkeeper types in what the rider just told them, standing at the
- * counter. The only way an independent-shop order moves to Out for Delivery
- * once a rider has accepted.
+ * The code a shop reads out to the rider collecting this order. Available from
+ * the moment the shop accepts until the rider collects.
  *
- * @throws {ApiRequestError} 400 WRONG_CODE, 409 NOT_ACCEPTED_YET
+ * @throws {ApiRequestError} 409 CODE_NOT_AVAILABLE outside that window
+ */
+export async function fetchPickupCode(orderId) {
+  const result = await api.get(`/orders/${orderId}/pickup-code`);
+  return result.data;
+}
+
+/** A fresh pickup code - after it locks, or if the shop thinks it was overheard. */
+export async function reissuePickupCode(orderId) {
+  const result = await api.post(`/orders/${orderId}/pickup-code/reissue`);
+  return result.data;
+}
+
+/**
+ * The code a customer reads out at the door. Only once the order is on its way.
+ *
+ * @throws {ApiRequestError} 409 CODE_NOT_AVAILABLE before then
+ */
+export async function fetchDeliveryCode(orderId) {
+  const result = await api.get(`/orders/${orderId}/delivery-code`);
+  return result.data;
+}
+
+export async function reissueDeliveryCode(orderId) {
+  const result = await api.post(`/orders/${orderId}/delivery-code/reissue`);
+  return result.data;
+}
+
+/**
+ * The rider types the code the shop is showing. The only way an independent
+ * shop's order leaves `Preparing`.
+ *
+ * @throws {ApiRequestError} 400 WRONG_CODE (details.attemptsRemaining),
+ *   409 CODE_LOCKED, 409 CODE_NOT_ISSUED
  */
 export async function verifyPickupCode(orderId, code) {
   const result = await api.post(`/orders/${orderId}/verify-pickup`, { code });
+  return toUiOrder(result.data);
+}
+
+/**
+ * The rider types the code the customer is showing, for an order with no
+ * market. A market order is closed with `markDelivered` in services/rider.js.
+ *
+ * @throws {ApiRequestError} same as `verifyPickupCode`
+ */
+export async function verifyDeliveryCode(orderId, code) {
+  const result = await api.post(`/orders/${orderId}/verify-delivery`, { code });
   return toUiOrder(result.data);
 }

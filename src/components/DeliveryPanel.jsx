@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import {
   Truck, CheckCircle2, MapPin, Phone, PackageCheck, Bell,
   LogOut, User, Home, Map as MapIcon, Wallet, Info, Clock, AlertTriangle,
-  Landmark, CreditCard, Lock, Loader2, Pencil, KeyRound, X, Camera,
+  Landmark, CreditCard, Lock, Loader2, Pencil, X, Camera,
 } from 'lucide-react';
 import MarketPickups from './MarketPickups';
+import HandoverCodeEntry from './HandoverCodeEntry';
 import LanguagePicker from './LanguagePicker';
 import ProfileAvatar from './ProfileAvatar';
 import VegDropMark from './VegDropMark';
@@ -35,9 +36,12 @@ const DeliveryRouteMap = lazy(() => import('./DeliveryRouteMap'));
  * - "Mark Picked Up" sent `Out for Delivery`, which `TRANSITION_PERMISSIONS` in
  *   routes/orders.js grants to shopkeeper/market_owner/developer and NOT to
  *   delivery — a guaranteed 403 for the only role that could press it.
- * - A four-digit OTP gated completion. There is no delivery OTP anywhere in the
- *   system; the endpoint takes no code, and any four digits passed. A check
- *   that always succeeds is worse than none, because it is trusted.
+ * - A four-digit OTP gated completion. There was no delivery OTP anywhere in
+ *   the system; the endpoint took no code, and any four digits passed. A check
+ *   that always succeeds is worse than none, because it is trusted. There IS a
+ *   door code now (services/handover.js), and the difference is the whole
+ *   point: the customer's app shows it, the server checks it, and this screen
+ *   holds nothing to check it against.
  * - Earnings were `deliveries × 45`, and the weekly payout was that same number
  *   × 3. There is no rider payout model in this codebase at all — `User.rider`
  *   holds duty status and a position, nothing more.
@@ -47,7 +51,7 @@ const DeliveryRouteMap = lazy(() => import('./DeliveryRouteMap'));
  * underneath to repair them to. What remains is driven by real endpoints, and
  * where the data genuinely does not exist the screen says so.
  */
-export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onAcceptShopOrder, onDeclineShopOrder, onLogout, notifications = [], onClearNotification }) {
+export default function DeliveryPanel({ user, orders, onVerifyPickup, onVerifyDelivery, onAcceptShopOrder, onDeclineShopOrder, onLogout, notifications = [], onClearNotification }) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('home');
 
@@ -264,7 +268,8 @@ export default function DeliveryPanel({ user, orders, onUpdateOrderStatus, onAcc
             isOnline={isOnline}
             agentCoords={agentCoords}
             legacyJobs={legacyJobs}
-            onUpdateOrderStatus={onUpdateOrderStatus}
+            onVerifyPickup={onVerifyPickup}
+            onVerifyDelivery={onVerifyDelivery}
             onAcceptShopOrder={onAcceptShopOrder}
             onDeclineShopOrder={onDeclineShopOrder}
           />
@@ -456,7 +461,7 @@ function HomeTab({ user, isOnline, onSetOnline, isSavingDuty, dutyError, agentCo
 // Orders
 // ---------------------------------------------------------------------------
 
-function OrdersTab({ isOnline, agentCoords, legacyJobs, onUpdateOrderStatus, onAcceptShopOrder, onDeclineShopOrder }) {
+function OrdersTab({ isOnline, agentCoords, legacyJobs, onVerifyPickup, onVerifyDelivery, onAcceptShopOrder, onDeclineShopOrder }) {
   if (!isOnline) {
     return (
       <div className="skeuo-card rounded-[1.5rem] text-center py-16 px-5">
@@ -488,7 +493,8 @@ function OrdersTab({ isOnline, agentCoords, legacyJobs, onUpdateOrderStatus, onA
             <LegacyJobCard
               key={order.serverId || order.id}
               order={order}
-              onDeliver={() => onUpdateOrderStatus(order.serverId || order.id, 'Delivered')}
+              onVerifyPickup={(code) => onVerifyPickup(order.serverId || order.id, code)}
+              onVerifyDelivery={(code) => onVerifyDelivery(order.serverId || order.id, code)}
               onAccept={() => onAcceptShopOrder(order.serverId || order.id)}
               onDecline={() => onDeclineShopOrder(order.serverId || order.id)}
             />
@@ -507,16 +513,22 @@ function OrdersTab({ isOnline, agentCoords, legacyJobs, onUpdateOrderStatus, onA
  *     not yet said yes. Accept/Decline are the only controls; nothing about
  *     the job is worth showing beyond what's already visible, because a
  *     candidate who has not agreed is not yet committed to it.
- *  2. `awaitingHandoff` — accepted, carrying a pickup code the shop will ask
- *     for. `Delivered` stays disabled: the order is not out yet.
- *  3. `readyToDeliver` — the shop verified the code. Same card as always.
+ *  2. `awaitingHandoff` — accepted, on the way to the counter. The shop's app
+ *     is showing a pickup code; the rider types it here, and that is what
+ *     sends the order out.
+ *  3. `readyToDeliver` — out for delivery. The customer's app is showing a
+ *     delivery code; the rider types it here to complete the order.
  *
- * A true legacy order (no shop at all, `shopName` null) skips 1 and 2
- * entirely and falls straight to the original spare treatment: a status
- * line while `Preparing`, `Delivered` once the shop has manually moved it —
- * there is no rider-side accept step for those and never was.
+ * The rider is shown NEITHER code, anywhere. They are the one who types both,
+ * so a code on this screen would let them confirm a handover with nobody on
+ * the other side of it.
+ *
+ * A true legacy order (no shop at all) skips 1 and 2 entirely: a status line
+ * while `Preparing`, then the door code once staff have moved it out — there
+ * is no shop to hold a pickup code for those, and no rider-side accept step.
  */
-function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
+function LegacyJobCard({ order, onVerifyPickup, onVerifyDelivery, onAccept, onDecline }) {
+  const { t } = useLanguage();
   const [acting, setActing] = useState(false);
   const [proofUrl, setProofUrl] = useState(order.deliveryProofUrl || null);
   const [proofError, setProofError] = useState('');
@@ -611,17 +623,6 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
       ) : (
         <>
           <div className="px-4 py-3 space-y-2">
-            {awaitingHandoff && order.pickupCode && (
-              <div className="rounded-xl border border-[#1B4D3E]/20 bg-[#1B4D3E]/8 px-3 py-2.5 flex items-center gap-2.5">
-                <KeyRound className="w-4 h-4 text-[#1B4D3E] shrink-0" />
-                <div>
-                  <p className="text-[12px] font-bold text-[#1B4D3E] uppercase tracking-wide">
-                    Show this to the shop
-                  </p>
-                  <p className="text-lg font-black text-[#143B2B] tracking-[0.25em]">{order.pickupCode}</p>
-                </div>
-              </div>
-            )}
             <div className="flex items-start gap-2.5">
               <MapPin className={`w-4 h-4 shrink-0 mt-0.5 ${awaitingHandoff ? 'text-[#1D4E6B]' : 'text-[#C45C26]'}`} />
               <div>
@@ -641,10 +642,12 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
               </p>
             )}
             {awaitingHandoff ? (
-              <p className="text-[13px] text-[#8A7E6B] flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 shrink-0" />
-                Waiting for the shop to confirm the code.
-              </p>
+              <HandoverCodeEntry
+                title={t('handover.pickupTitle')}
+                hint={t('handover.askShop', { name: order.shopName || t('handover.theShop') })}
+                submitLabel={t('handover.confirmPickup')}
+                onSubmit={onVerifyPickup}
+              />
             ) : (
               !readyToDeliver && (
                 <p className="text-[13px] text-[#8A7E6B] flex items-center gap-1.5">
@@ -655,6 +658,12 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
             )}
             {readyToDeliver && (
               <div className="space-y-2">
+                <HandoverCodeEntry
+                  title={t('handover.deliveryTitle')}
+                  hint={t('handover.askCustomer', { name: order.customerName || t('handover.theCustomer') })}
+                  submitLabel={t('handover.confirmDelivery')}
+                  onSubmit={onVerifyDelivery}
+                />
                 {proofUrl ? (
                   <img src={proofUrl} alt="" className="w-full h-28 object-cover rounded-xl border border-[#DCD5C6]" />
                 ) : null}
@@ -695,22 +704,11 @@ function LegacyJobCard({ order, onDeliver, onAccept, onDecline }) {
               )}`}
               target="_blank"
               rel="noreferrer"
-              className="skeuo-btn-light px-4 py-3 rounded-xl flex items-center justify-center gap-1.5 text-[14px] font-bold"
+              className="flex-1 skeuo-btn-light px-4 py-3 rounded-xl flex items-center justify-center gap-1.5 text-[14px] font-bold"
             >
               <MapPin className="w-4 h-4" />
               {awaitingHandoff ? 'Navigate to shop' : 'Navigate'}
             </a>
-            <button
-              type="button"
-              onClick={onDeliver}
-              disabled={!readyToDeliver}
-              className="flex-1 skeuo-btn-emerald text-[15.5px] font-bold py-3 rounded-xl disabled:opacity-40 disabled:shadow-none"
-            >
-              <span className="flex items-center justify-center gap-2">
-                <PackageCheck className="w-4 h-4" />
-                Mark delivered
-              </span>
-            </button>
           </div>
         </>
       )}

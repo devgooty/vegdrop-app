@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
-  Store, MapPin, Navigation, Check, Package, Clock, X, PackageCheck, Phone,
+  Store, MapPin, Navigation, Check, Package, Clock, X, Phone,
   Banknote, Boxes, User, ChevronDown, ChevronUp, Camera, Loader2,
 } from 'lucide-react';
 import { useToast } from './Toast';
@@ -8,6 +8,8 @@ import { acceptPickup, declinePickup, collectFromStall, markDelivered } from '..
 import { uploadDeliveryProof } from '../services/orders';
 import { toUploadableJpeg } from '../services/imageCapture';
 import useRiderJobs from '../hooks/useRiderJobs';
+import HandoverCodeEntry from './HandoverCodeEntry';
+import { useLanguage } from '../i18n/LanguageContext';
 
 /**
  * Leaflet is heavy and only the rider with a live job ever sees a map, so it is
@@ -61,6 +63,25 @@ export default function MarketPickups({ isOnline, riderPosition, hideIdleEmpty =
     }
   };
 
+  /**
+   * Like `run`, for a code the rider typed. A refusal is rethrown rather than
+   * toasted, so the code box can say "wrong code, 3 tries left" right beside the
+   * digits instead of in a toast that is gone before it is read.
+   */
+  const runCode = async (id, action, successMessage) => {
+    setBusy(id);
+    try {
+      await action();
+      if (successMessage) toast.success(successMessage);
+      await refresh();
+    } catch (err) {
+      await refresh();
+      throw err;
+    } finally {
+      setBusy(null);
+    }
+  };
+
   // Nothing to show and nothing pending: stay out of the way entirely.
   if (loaded && offers.length === 0 && assigned.length === 0) {
     if (!isOnline || hideIdleEmpty) return null;
@@ -96,14 +117,14 @@ export default function MarketPickups({ isOnline, riderPosition, hideIdleEmpty =
           order={order}
           riderPosition={riderPosition}
           busy={busy === order.id}
-          onCollect={(pickup) =>
-            run(
+          onCollect={(pickup, code) =>
+            runCode(
               order.id,
-              () => collectFromStall(order.id, pickup.stall),
+              () => collectFromStall(order.id, pickup.stall, code),
               `Collected from stall ${pickup.stallNumber}`
             )
           }
-          onDeliver={() => run(order.id, () => markDelivered(order.id), 'Delivered ✅')}
+          onDeliver={(code) => runCode(order.id, () => markDelivered(order.id, code), 'Delivered ✅')}
         />
       ))}
     </div>
@@ -222,10 +243,23 @@ function OfferCountdown({ expiresAt }) {
 // An accepted job: the whole picture
 // ---------------------------------------------------------------------------
 
+/**
+ * Two kinds of code, and the rider is shown neither.
+ *
+ * Each stall's app shows that stall's own pickup code; the rider taps a stall
+ * on the round and types what the trader reads out. The customer's app shows
+ * the delivery code; the rider types it at the door. One code per stall rather
+ * than one for the whole order, because a code the rider heard at the first
+ * stall must not tick off the stalls they never walked to.
+ */
 function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
+  const { t } = useLanguage();
   const remaining = order.pickups.filter((p) => !p.collected);
   const readyToLeave = order.status === 'dispatched';
   const [showRound, setShowRound] = useState(true);
+  // The stall whose code box is open. One at a time: the rider is standing at
+  // one pitch, and several open boxes invite typing a code into the wrong one.
+  const [collectingStall, setCollectingStall] = useState(null);
   const [proofUrl, setProofUrl] = useState(order.deliveryProofUrl || null);
   const [proofError, setProofError] = useState('');
   const [uploadingProof, setUploadingProof] = useState(false);
@@ -319,8 +353,10 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
             <ul className="divide-y divide-[#EAE3D2]">
               {order.pickups.map((pickup) => {
                 const packed = pickup.lines.every((l) => l.packedAt);
+                const entering = collectingStall === pickup.stall && !pickup.collected;
                 return (
-                  <li key={pickup.stall} className="px-4 py-3 flex items-center gap-3">
+                  <li key={pickup.stall} className="px-4 py-3">
+                  <div className="flex items-center gap-3">
                     <span
                       className={`w-9 h-9 rounded-xl flex items-center justify-center text-[13.5px] font-extrabold shrink-0 ${
                         pickup.collected
@@ -367,14 +403,31 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
                       <Check className="w-5 h-5 text-[#1B4D3E] shrink-0" strokeWidth={3} />
                     ) : (
                       <button
-                        onClick={() => onCollect(pickup)}
+                        type="button"
+                        onClick={() => setCollectingStall(entering ? null : pickup.stall)}
                         disabled={!packed || busy}
-                        aria-label={`Collected from stall ${pickup.stallNumber}`}
+                        aria-expanded={entering}
+                        aria-label={`Collect from stall ${pickup.stallNumber}`}
                         className="px-3 py-2 rounded-lg skeuo-btn-emerald text-[13.5px] font-bold shrink-0 disabled:opacity-40 disabled:shadow-none"
                       >
                         <Package className="w-4 h-4" />
                       </button>
                     )}
+                  </div>
+                  {entering && (
+                    <div className="mt-3">
+                      <HandoverCodeEntry
+                        title={t('handover.stallPickupTitle', { number: pickup.stallNumber })}
+                        hint={t('handover.askShop', { name: pickup.stallName || t('handover.theStall') })}
+                        submitLabel={t('handover.confirmCollection')}
+                        disabled={busy}
+                        onSubmit={async (code) => {
+                          await onCollect(pickup, code);
+                          setCollectingStall(null);
+                        }}
+                      />
+                    </div>
+                  )}
                   </li>
                 );
               })}
@@ -385,6 +438,13 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
 
       {readyToLeave && (
         <div className="px-4 py-3 border-b border-[#EAE3D2] space-y-2">
+          <HandoverCodeEntry
+            title={t('handover.deliveryTitle')}
+            hint={t('handover.askCustomer', { name: order.customerName || t('handover.theCustomer') })}
+            submitLabel={t('handover.confirmDelivery')}
+            disabled={busy}
+            onSubmit={onDeliver}
+          />
           {proofUrl ? (
             <img src={proofUrl} alt="" className="w-full h-28 object-cover rounded-xl border border-[#DCD5C6]" />
           ) : null}
@@ -423,23 +483,12 @@ function AssignedCard({ order, riderPosition, busy, onCollect, onDeliver }) {
             href={`https://www.google.com/maps/dir/?api=1&destination=${destination.lat},${destination.lng}&travelmode=driving`}
             target="_blank"
             rel="noreferrer"
-            className="skeuo-btn-light px-4 py-3 rounded-xl flex items-center justify-center gap-1.5 text-[14px] font-bold"
+            className="flex-1 skeuo-btn-light px-4 py-3 rounded-xl flex items-center justify-center gap-1.5 text-[14px] font-bold"
           >
             <Navigation className="w-4 h-4" />
             {readyToLeave ? 'To customer' : 'To market'}
           </a>
         )}
-
-        <button
-          onClick={onDeliver}
-          disabled={!readyToLeave || busy}
-          className="flex-1 skeuo-btn-emerald text-[15.5px] font-bold py-3 rounded-xl disabled:opacity-40 disabled:shadow-none"
-        >
-          <span className="flex items-center justify-center gap-2">
-            <PackageCheck className="w-4 h-4" />
-            {readyToLeave ? 'Mark delivered' : 'Collect everything first'}
-          </span>
-        </button>
       </div>
     </article>
   );

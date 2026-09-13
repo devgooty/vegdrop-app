@@ -10,8 +10,12 @@ import React, { useRef } from 'react';
  * @param {'default'|'brand'} [tone] `brand` is the sign-in screen's styling,
  *   where a filled box fills green. Anything else keeps the original look, so
  *   the profile screens that also use this are untouched.
+ * @param {string} [autoComplete] `one-time-code` is right for a code the user
+ *   was just SENT, and the phone offers it from their messages. It is wrong for
+ *   a code read off another person's screen - a rider typing a shop's pickup
+ *   code would be offered their own sign-in code instead. Pass `off` there.
  */
-export default function OTPBoxGroup({ length = 6, value, onChange, tone = 'default' }) {
+export default function OTPBoxGroup({ length = 6, value, onChange, tone = 'default', autoComplete = 'one-time-code' }) {
   const inputs = useRef([]);
 
   const handleChange = (e, index) => {
@@ -56,7 +60,7 @@ export default function OTPBoxGroup({ length = 6, value, onChange, tone = 'defau
             ref={(el) => (inputs.current[index] = el)}
             type="text"
             inputMode="numeric"
-            autoComplete="one-time-code"
+            autoComplete={autoComplete}
             maxLength={length}
             aria-label={`Digit ${index + 1} of ${length}`}
             value={digit}

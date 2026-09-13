@@ -4,6 +4,8 @@ import { isFeatureEnabled } from '../services/apiClient';
 import { Package, Clock, IndianRupee, MapPin, ArrowRight, ShoppingBag, CalendarRange, RotateCw, PauseCircle, PlayCircle, Trash2, CalendarDays, CalendarClock, Calendar as CalendarIcon, ChevronRight, Navigation, X, AlertTriangle, Lock } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { dateLocale } from '../i18n/catalog';
+import { fetchDeliveryCode, reissueDeliveryCode } from '../services/orders';
+import HandoverCodeCard from './HandoverCodeCard';
 
 /**
  * Plain-language labels for the market fulfillment stages.
@@ -558,6 +560,24 @@ export default function CustomerOrders({
                     <div className="mt-3 flex items-start gap-2 text-[12.5px] font-semibold text-rose-800 bg-rose-50 p-2.5 rounded-xl border border-rose-200">
                       <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                       <p className="leading-snug">{t('orders.failedNote')}</p>
+                    </div>
+                  )}
+
+                  {/*
+                    The delivery code. The rider types it at the door and it is
+                    what completes the order - COD is marked paid and the shop
+                    is settled on it - so the hint says to read it out only once
+                    the order is actually in hand. Shown only while the order is
+                    on its way, which is also when the server will release it.
+                  */}
+                  {order.status === 'Out for Delivery' && order.serverId && (
+                    <div className="mt-3">
+                      <HandoverCodeCard
+                        title={t('handover.deliveryTitle')}
+                        hint={t('handover.deliveryHint')}
+                        load={() => fetchDeliveryCode(order.serverId)}
+                        reissue={() => reissueDeliveryCode(order.serverId)}
+                      />
                     </div>
                   )}
 

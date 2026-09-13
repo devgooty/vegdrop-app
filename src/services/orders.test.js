@@ -106,6 +106,20 @@ describe('toUiOrder wire shape', () => {
     expect(ui.serverId).toBe('65f000000000000000000001');
   });
 
+  it('never carries a handover code, and says which shop holds the pickup one', () => {
+    // A server that still sent the old rider-held code must not have it surface.
+    const ui = toUiOrder(serverOrder({ shop: '65f0000000000000000000bb', pickupCode: '482913' }));
+
+    // Codes are fetched by their holder, on demand - never read off the order
+    // list the rider's app also polls. See services/handover.js on the server.
+    expect(ui.pickupCode).toBeUndefined();
+    expect(ui.deliveryCode).toBeUndefined();
+    expect(Object.values(ui)).not.toContain('482913');
+
+    expect(ui.shopId).toBe('65f0000000000000000000bb');
+    expect(toUiOrder(serverOrder()).shopId).toBeNull();
+  });
+
   it('returns null for a missing order rather than an empty shell', () => {
     expect(toUiOrder(null)).toBeNull();
     expect(toUiOrder(undefined)).toBeNull();
