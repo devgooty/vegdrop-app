@@ -19,6 +19,36 @@
         "server:demo"
       ],
       "port": 5000
+    },
+    {
+      "name": "vegdrop-api-alt",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "server:demo",
+        "--",
+        "--port",
+        "5001"
+      ],
+      "port": 5001,
+      "autoPort": false,
+      "env": {
+        "CORS_ALLOWED_ORIGINS": "http://localhost:3001,http://127.0.0.1:3001"
+      }
+    },
+    {
+      "name": "vegdrop-web-alt",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "--mode",
+        "altport",
+        "--port",
+        "3001",
+        "--strictPort"
+      ],
+      "port": 3001,
+      "autoPort": false
     }
   ]
 }
