@@ -178,7 +178,7 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
   };
 
   return (
-    <div className="fixed inset-0 max-w-md mx-auto z-[25] animate-fade-in flex flex-col">
+    <div className="fixed inset-0 max-w-md mx-auto z-[25] animate-fade-in flex flex-col shadow-2xl">
       {/*
         Covers the whole shell, and every part of it is painted.
 
@@ -199,9 +199,16 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
       {/* A shade warmer than the cards it holds. The sheet used to be the same
           near-white as everything on it, so the item rows had to draw their own
           grey fill to be visible at all — which is what made the list read as a
-          stack of disabled fields rather than as things you own. */}
+          stack of disabled fields rather than as things you own.
+
+          No shadow on this sheet — the column's shadow is on the wrapper above.
+          `relative` puts the sheet in a later paint layer than the static shelf
+          below it, so a `shadow-2xl` here was drawn ON TOP of the shelf: its
+          25px downward drop greyed the whole strip behind the nav pill, and the
+          same #F7F4ED read as a cooler, unmatched band. On the wrapper it only
+          falls outside the column, which is the edge it was there to mark. */}
       <div
-        className="flex-1 min-h-0 flex flex-col shadow-2xl overflow-hidden relative"
+        className="flex-1 min-h-0 flex flex-col overflow-hidden relative"
         style={{ backgroundColor: SHEET_BG }}
       >
         {/*
