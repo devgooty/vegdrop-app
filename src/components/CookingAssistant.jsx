@@ -2,12 +2,16 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ChefHat, Send, Loader2, Check, ShoppingBasket } from 'lucide-react';
 import { sendAssistantMessage, confirmAssistantOrder } from '../services/agent';
 import { ApiRequestError, NetworkError } from '../services/apiClient';
+import useAssistantChat, { updateAssistantChat, historyForServer, liveProposal } from '../hooks/useAssistantChat';
 
 /**
  * Customer cooking assistant.
  *
  * Talk about vegetables / dish names → steps → optional cart preview → confirm.
  * Orders only go through after an explicit Confirm (button or "confirm" in chat).
+ *
+ * The conversation is held by `useAssistantChat`, not here: this component is
+ * unmounted on every tab switch, and state kept in it was wiped each time.
  */
 
 /** Turn `**bold**` markers from the agent into real emphasis — no markdown lib. */
@@ -34,21 +38,21 @@ export default function CookingAssistant({
   deliveryLng,
   onOrderPlaced,
 }) {
-  const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      content:
-        "Hi! Name a dish (cabbage fry, aloo gobi, sambar…) or tell me which vegetables you have — I'll suggest curries and help order missing items.",
-    },
-  ]);
+  const userId = user?.id;
+  const chat = useAssistantChat(userId);
+  const { messages, busy } = chat;
+  const proposedOrder = liveProposal(chat.proposedOrder);
   const [input, setInput] = useState('');
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [proposedOrder, setProposedOrder] = useState(null);
   const bottomRef = useRef(null);
+  const hasScrolledRef = useRef(false);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Jump straight to the latest message when coming back to the tab; only
+    // animate for messages that arrive while it is open. A smooth scroll on
+    // mount would visibly sweep through the whole conversation on every visit.
+    bottomRef.current?.scrollIntoView({ behavior: hasScrolledRef.current ? 'smooth' : 'auto' });
+    hasScrolledRef.current = true;
   }, [messages, proposedOrder, busy]);
 
   const context = {
@@ -63,22 +67,19 @@ export default function CookingAssistant({
 
   const send = async (text) => {
     const content = String(text || '').trim();
-    if (!content || busy) return;
+    if (!content || busy || !userId) return;
 
     const nextMessages = [...messages, { role: 'user', content }];
-    setMessages(nextMessages);
+    updateAssistantChat(userId, () => ({ messages: nextMessages, busy: true }), { claim: true });
     setInput('');
     setError('');
-    setBusy(true);
 
     try {
-      const history = nextMessages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => ({ role: m.role, content: m.content }));
-
-      const data = await sendAssistantMessage({ messages: history, context });
-      setMessages((prev) => [...prev, { role: 'assistant', content: data.reply, cards: data.cards }]);
-      setProposedOrder(data.proposedOrder || null);
+      const data = await sendAssistantMessage({ messages: historyForServer(nextMessages), context });
+      updateAssistantChat(userId, (prev) => ({
+        messages: [...prev.messages, { role: 'assistant', content: data.reply, cards: data.cards }],
+        proposedOrder: data.proposedOrder || null,
+      }));
       if (data.cards?.some((c) => c.type === 'order')) {
         onOrderPlaced?.();
       }
@@ -91,13 +92,13 @@ export default function CookingAssistant({
             : 'Something went wrong. Please try again.';
       setError(msg);
     } finally {
-      setBusy(false);
+      updateAssistantChat(userId, () => ({ busy: false }));
     }
   };
 
   const handleConfirm = async () => {
-    if (!proposedOrder?.proposalId || busy) return;
-    setBusy(true);
+    if (!proposedOrder?.proposalId || busy || !userId) return;
+    updateAssistantChat(userId, () => ({ busy: true }), { claim: true });
     setError('');
     try {
       const placed = await confirmAssistantOrder({
@@ -107,20 +108,22 @@ export default function CookingAssistant({
           ? { lat: deliveryLat, lng: deliveryLng }
           : {}),
       });
-      setProposedOrder(null);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: `Order placed ✅ ${placed.orderNumber} — ₹${placed.totalAmount}. Track it under Orders.`,
-          cards: [{ type: 'order', ...placed }],
-        },
-      ]);
+      updateAssistantChat(userId, (prev) => ({
+        proposedOrder: null,
+        messages: [
+          ...prev.messages,
+          {
+            role: 'assistant',
+            content: `Order placed ✅ ${placed.orderNumber} — ₹${placed.totalAmount}. Track it under Orders.`,
+            cards: [{ type: 'order', ...placed }],
+          },
+        ],
+      }));
       onOrderPlaced?.();
     } catch (err) {
       setError(err?.message || 'Could not place that order.');
     } finally {
-      setBusy(false);
+      updateAssistantChat(userId, () => ({ busy: false }));
     }
   };
 
@@ -225,7 +228,7 @@ export default function CookingAssistant({
             <div className="flex gap-2 pt-1">
               <button
                 type="button"
-                onClick={() => setProposedOrder(null)}
+                onClick={() => updateAssistantChat(userId, () => ({ proposedOrder: null }), { claim: true })}
                 disabled={busy}
                 className="flex-1 py-2.5 rounded-xl border border-emerald-200 text-[12.5px] font-bold text-emerald-900"
               >

@@ -15,6 +15,7 @@ import SearchDiscovery from './components/SearchDiscovery';
 import ProductDetailView from './components/ProductDetailView';
 import CustomerOrders from './components/CustomerOrders';
 import CookingAssistant from './components/CookingAssistant';
+import { clearAssistantChat } from './hooks/useAssistantChat';
 import LoginPage from './components/LoginPage';
 import FlyToCartOverlay from './components/FlyToCartOverlay';
 import SplashScreen from './components/SplashScreen';
@@ -384,6 +385,7 @@ export default function App() {
     allowedRoles: ['customer'],
     onIdentityLost: (next) => {
       clearCart();
+      clearAssistantChat();
       setOrders([]);
       setScheduledOrders([]);
       setWalletBalance(0);
