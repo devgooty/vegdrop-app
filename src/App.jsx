@@ -3087,6 +3087,10 @@ export default function App() {
       <NotepadModal
         isOpen={isNotepadOpen}
         initialMode={notepadMode}
+        // Voice add picks, among the recogniser's guesses, the one this
+        // market sells — the same sheet the list results then search.
+        products={browseProducts}
+        categories={categories}
         onBuildCart={setListSearchNotes}
         onClose={() => setIsNotepadOpen(false)}
       />

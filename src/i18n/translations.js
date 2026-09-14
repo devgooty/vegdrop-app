@@ -163,6 +163,30 @@ const STRINGS = {
     te: 'వాయిస్‌తో జోడించడం విఫలమైంది. టైప్ చేయండి.',
   },
 
+  // --- Voice list, one item at a time (VoiceListSession.jsx) -----------------
+  'voiceList.first': { en: 'Say an item', hi: 'कोई सामान बोलें', te: 'ఒక వస్తువు పేరు చెప్పండి' },
+  'voiceList.next': { en: 'Next item?', hi: 'अगला सामान?', te: 'తర్వాతి వస్తువు?' },
+  'voiceList.pausedFirst': {
+    en: 'Tap the mic and say an item',
+    hi: 'माइक दबाएँ और सामान बोलें',
+    te: 'మైక్ నొక్కి వస్తువు పేరు చెప్పండి',
+  },
+  'voiceList.pausedNext': {
+    en: 'Tap the mic for the next item',
+    hi: 'अगले सामान के लिए माइक दबाएँ',
+    te: 'తర్వాతి వస్తువు కోసం మైక్ నొక్కండి',
+  },
+  'voiceList.hint': {
+    en: 'One item at a time. Say “done” or tap OK when you’re finished.',
+    hi: 'एक बार में एक सामान। पूरा होने पर “बस” बोलें या OK दबाएँ।',
+    te: 'ఒక్కోసారి ఒక్క వస్తువు. అయిపోయాక “చాలు” అని చెప్పండి లేదా OK నొక్కండి.',
+  },
+  'voiceList.ok': { en: 'OK · Show {count} items', hi: 'OK · {count} सामान दिखाएँ', te: 'OK · {count} వస్తువులు చూపించు' },
+  'voiceList.okOne': { en: 'OK · Show 1 item', hi: 'OK · 1 सामान दिखाएँ', te: 'OK · 1 వస్తువు చూపించు' },
+  'voiceList.okEmpty': { en: 'OK', hi: 'OK', te: 'OK' },
+  'voiceList.remove': { en: 'Remove {item}', hi: '{item} हटाएँ', te: '{item} తొలగించు' },
+  'voiceList.listLabel': { en: 'Items you said', hi: 'आपके बोले गए सामान', te: 'మీరు చెప్పిన వస్తువులు' },
+
   // --- Header (Header.jsx) ---------------------------------------------------
   'header.searchLabel': { en: 'Search the shop', hi: 'दुकान में खोजें', te: 'షాప్‌లో వెతకండి' },
   'header.searchPlaceholder': {
