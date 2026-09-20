@@ -12,6 +12,7 @@ const Product = require('../models/Product');
 const User = require('../models/User');
 const Order = require('../models/Order');
 const StallEarning = require('../models/StallEarning');
+const PlatformEarning = require('../models/PlatformEarning');
 const notify = require('../services/notify');
 const geoFence = require('../services/geoFence');
 const { startOfMarketDay } = require('../utils/marketDay');
@@ -1794,6 +1795,20 @@ router.post(
  * Amounts stay in paise, as everywhere else on the server. Rupees are a
  * presentation concern and rounding them here would make the per-stall figures
  * fail to add up to the total.
+ *
+ * WHY `sales.commissionPaise` COMES FROM `PlatformEarning`, NOT `StallEarning`
+ *
+ * `StallEarning.commissionPaise` is everything withheld from a stall's gross —
+ * platform, delivery, market owner AND customer incentive together — since
+ * `services/sharePolicy.js` started splitting an order into five buckets. It is
+ * the right number for a stall's own "what did I actually keep" line (still
+ * shown per row in `sales.byStall` below), but it is the wrong number for "how
+ * much did the platform take": on any market paying its rider or its owner a
+ * share (`deliveryBps`/`marketOwnerBps` > 0), summing it would double-count the
+ * market owner's own earnings back to them as money the platform kept.
+ * `PlatformEarning` is the one ledger that names only the platform's own cut,
+ * written by `services/settlement.js` at the same moment as every other share
+ * — the same fix already applied to `routes/developer.js`'s KPI.
  */
 router.get(
   '/:id/analytics',
@@ -1810,7 +1825,7 @@ router.get(
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     const marketId = market._id;
 
-    const [sales, deliveries, stallCounts, orderTotals] = await Promise.all([
+    const [sales, deliveries, stallCounts, orderTotals, platformCommission] = await Promise.all([
       /** Sales per stall. Every stall that earned anything in the window. */
       StallEarning.aggregate([
         { $match: { market: marketId, earnedAt: { $gte: since } } },
@@ -1921,6 +1936,12 @@ router.get(
           },
         },
       ]),
+
+      /** The platform's own cut for this market — see the note above. */
+      PlatformEarning.aggregate([
+        { $match: { market: marketId, earnedAt: { $gte: since } } },
+        { $group: { _id: null, amountPaise: { $sum: '$amountPaise' } } },
+      ]),
     ]);
 
     const byStatus = (rows) =>
@@ -1945,6 +1966,11 @@ router.get(
           grossPaise: sales.reduce((sum, row) => sum + row.grossPaise, 0),
           netPaise: sales.reduce((sum, row) => sum + row.netPaise, 0),
           orders: sales.reduce((sum, row) => sum + row.orders, 0),
+          // The platform's own take — see `PlatformEarning` note above. NOT the
+          // sum of the per-stall `commissionPaise` figures in `byStall`, which
+          // is each stall's own "everything not net" and includes the market
+          // owner's and rider's shares.
+          commissionPaise: platformCommission[0]?.amountPaise || 0,
         },
 
         deliveries: {

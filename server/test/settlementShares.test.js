@@ -149,6 +149,66 @@ async function setupMarketOrderReadyToDeliver({ unitPricePaise = 4000, quantity 
   return { orderId, customer, market, shop, rider };
 }
 
+/**
+ * Two stalls, uneven grosses (₹90 and ₹40), ready for `allocateShopkeeperAcrossStalls`
+ * to actually have something to allocate proportionally rather than trivially.
+ */
+async function setupTwoStallOrderReadyToDeliver({ marketOwner = null } = {}) {
+  const customer = await authenticatedUser('customer');
+  const market = await seedMarket(marketOwner);
+  const rider = await seedRider(market);
+
+  const stallSpecs = [
+    { stallNumber: 'A-1', pricePaise: 3000, quantity: 3 }, // gross 9000
+    { stallNumber: 'A-2', pricePaise: 4000, quantity: 1 }, // gross 4000
+  ];
+
+  const products = [];
+  const stalls = [];
+  for (const spec of stallSpecs) {
+    const product = await seedMarketProduct(spec.pricePaise);
+    await MarketPrice.create({ market: market._id, product: product._id, pricePaise: spec.pricePaise });
+    products.push(product);
+    stalls.push(await seedStallWithOwner(market, spec.stallNumber));
+  }
+
+  const created = await api()
+    .post('/api/orders')
+    .set(auth(customer.accessToken))
+    .send({
+      items: stallSpecs.map((spec, i) => ({ productId: products[i]._id.toHexString(), quantity: spec.quantity })),
+      address: '12 Test Lane',
+      paymentMethod: 'cod',
+      marketId: market._id.toHexString(),
+    });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const orderId = created.body.data.id;
+  const lines = created.body.data.items;
+
+  for (let i = 0; i < stalls.length; i += 1) {
+    await api()
+      .post(`/api/stalls/orders/${orderId}/claim`)
+      .set(auth(stalls[i].accessToken))
+      .send({ lineIds: [lines[i].lineId] })
+      .expect(200);
+  }
+  await sourcing.settlePending();
+
+  await api().post(`/api/rider/orders/${orderId}/accept`).set(auth(rider.accessToken)).expect(200);
+  for (const stall of stalls) {
+    await api().post(`/api/stalls/orders/${orderId}/pack`).set(auth(stall.accessToken)).send({}).expect(200);
+  }
+  for (const stall of stalls) {
+    await api()
+      .post(`/api/rider/orders/${orderId}/collect`)
+      .set(auth(rider.accessToken))
+      .send({ stallId: stall.stall._id.toHexString(), code: await stallPickupCode(orderId, stall.accessToken) })
+      .expect(200);
+  }
+
+  return { orderId, customer, market, stalls, rider };
+}
+
 async function deliverMarketOrder({ orderId, customer, rider }) {
   await api()
     .post(`/api/rider/orders/${orderId}/deliver`)
@@ -402,4 +462,150 @@ test('a delivery with no assigned rider skips the delivery payout without failin
   const earning = await StallEarning.findOne({ order: orderId });
   assert.ok(earning);
   assert.equal(String(earning.shop), shop.user._id.toHexString());
+});
+
+test('market analytics reports the platform bucket as commission, not everything withheld from stalls', async () => {
+  // deliveryBps and marketOwnerBps both above zero — the exact condition under
+  // which StallEarning.commissionPaise (withheld = platform + delivery +
+  // marketOwner + customerIncentive) diverges from PlatformEarning.amountPaise
+  // (the platform's own cut alone).
+  await setGlobalPolicy({
+    platformBps: 1000,
+    shopkeeperBps: 7000,
+    deliveryBps: 1000,
+    marketOwnerBps: 500,
+    customerIncentiveBps: 500,
+  });
+
+  const marketOwner = await authenticatedUser('market_owner');
+  const { market } = await completeMarketDelivery({
+    unitPricePaise: 4000,
+    quantity: 2,
+    marketOwner,
+  });
+
+  const res = await api()
+    .get(`/api/markets/${market._id}/analytics`)
+    .set(auth(marketOwner.accessToken));
+
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+
+  const platformEarning = await PlatformEarning.findOne({ market: market._id });
+  assert.ok(platformEarning, 'sanity: the platform bucket was actually recorded');
+
+  // gross 8000; withheld-from-stall (StallEarning.commissionPaise) is 2400
+  // (everything but the 70% shopkeeper share); the platform's own cut is 800
+  // (10%). The endpoint must report the latter.
+  assert.equal(
+    res.body.data.sales.commissionPaise,
+    platformEarning.amountPaise,
+    "reports the platform's own bucket"
+  );
+  assert.equal(res.body.data.sales.commissionPaise, 800, '10% of gross, not 30% withheld-from-stall');
+  assert.notEqual(
+    res.body.data.sales.commissionPaise,
+    res.body.data.sales.byStall.reduce((sum, row) => sum + row.commissionPaise, 0),
+    'must not equal the sum of everything withheld from stalls — that bundles in the rider and market owner shares'
+  );
+});
+
+test('a share-policy edit between a partial settlement and its retry is refused rather than mixed', async () => {
+  await setGlobalPolicy({
+    platformBps: 1000,
+    shopkeeperBps: 7000,
+    deliveryBps: 1000,
+    marketOwnerBps: 500,
+    customerIncentiveBps: 500,
+  });
+
+  const marketOwner = await authenticatedUser('market_owner');
+  const { orderId } = await completeMarketDelivery({
+    unitPricePaise: 4000,
+    quantity: 2,
+    marketOwner,
+  });
+
+  // Simulate a crash after the shopkeeper and platform buckets were written but
+  // before the rider/market-owner payouts and the incentive row were reached.
+  await Order.updateOne({ _id: orderId }, { $set: { 'fulfillment.settledAt': null } });
+  await SharePayout.deleteMany({ order: orderId });
+  await OrderIncentive.deleteMany({ order: orderId });
+
+  const beforeEarning = await StallEarning.findOne({ order: orderId }).lean();
+  const beforePlatform = await PlatformEarning.findOne({ order: orderId }).lean();
+
+  // An admin edits the policy before the retry runs.
+  await setGlobalPolicy({
+    platformBps: 2000,
+    shopkeeperBps: 6000,
+    deliveryBps: 1000,
+    marketOwnerBps: 500,
+    customerIncentiveBps: 500,
+  });
+
+  const result = await settlement.recordDelivery(orderId);
+  assert.equal(result.reason, 'POLICY_MISMATCH', 'the mismatch against already-recorded buckets is detected');
+  assert.equal(result.recorded, 0, 'nothing new is written under the changed policy');
+
+  // Nothing already committed was touched, and nothing new was created under
+  // the new (inconsistent) split.
+  const afterEarning = await StallEarning.findOne({ order: orderId }).lean();
+  assert.equal(afterEarning.netPaise, beforeEarning.netPaise, 'the original shopkeeper share is untouched');
+  const afterPlatform = await PlatformEarning.findOne({ order: orderId }).lean();
+  assert.equal(afterPlatform.amountPaise, beforePlatform.amountPaise, 'the original platform bucket is untouched');
+  assert.equal(await SharePayout.countDocuments({ order: orderId }), 0, 'no payout written under the new split');
+  assert.equal(await OrderIncentive.countDocuments({ order: orderId }), 0, 'no incentive row written under the new split');
+  assert.equal(await Order.findById(orderId).then((o) => o.fulfillment.settledAt), null, 'left unsettled for manual reconciliation');
+});
+
+test('multi-stall market order allocates the shopkeeper bucket proportionally, remainder to the last stall', async () => {
+  await setGlobalPolicy({
+    platformBps: 1000,
+    shopkeeperBps: 7000,
+    deliveryBps: 1500,
+    marketOwnerBps: 0,
+    customerIncentiveBps: 500,
+  });
+
+  const { orderId, customer, stalls, rider } = await setupTwoStallOrderReadyToDeliver();
+  await deliverMarketOrder({ orderId, customer, rider });
+
+  const gross = 13000; // 9000 + 4000
+
+  const earnings = await StallEarning.find({ order: orderId }).sort({ stallNumber: 1 }).lean();
+  assert.equal(earnings.length, 2);
+
+  const stallA = earnings.find((e) => e.stallNumber === 'A-1');
+  const stallB = earnings.find((e) => e.stallNumber === 'A-2');
+  assert.ok(stallA && stallB);
+
+  // shopkeeperPaise = floor(13000 * 0.7) = 9100, split 9000:4000 → 6300:2800
+  // (remainder lands on the last stall, per allocateShopkeeperAcrossStalls).
+  assert.equal(stallA.grossPaise, 9000);
+  assert.equal(stallA.netPaise, 6300);
+  assert.equal(stallA.commissionPaise, stallA.grossPaise - stallA.netPaise, 'commissionPaise = gross - net');
+
+  assert.equal(stallB.grossPaise, 4000);
+  assert.equal(stallB.netPaise, 2800);
+  assert.equal(stallB.commissionPaise, stallB.grossPaise - stallB.netPaise, 'commissionPaise = gross - net');
+
+  const platformEarning = await PlatformEarning.findOne({ order: orderId });
+  assert.equal(platformEarning.amountPaise, 1300, '10% of 13000');
+
+  const deliveryPayout = await SharePayout.findOne({ order: orderId, bucket: 'delivery' });
+  assert.equal(deliveryPayout.amountPaise, 1950, '15% of 13000');
+  assert.equal(String(deliveryPayout.recipient), String(rider.user._id));
+
+  const marketOwnerPayout = await SharePayout.findOne({ order: orderId, bucket: 'marketOwner' });
+  assert.equal(marketOwnerPayout, null, 'no market owner on this fixture');
+
+  const incentive = await OrderIncentive.findOne({ order: orderId });
+  assert.equal(incentive.amountPaise, 650, 'remainder bucket: 13000 - 1300 - 9100 - 1950 - 0');
+
+  const totalNet = stallA.netPaise + stallB.netPaise;
+  assert.equal(
+    totalNet + platformEarning.amountPaise + deliveryPayout.amountPaise + incentive.amountPaise,
+    gross,
+    'sanity: every bucket sums back to gross'
+  );
 });

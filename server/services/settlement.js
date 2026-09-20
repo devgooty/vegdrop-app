@@ -189,6 +189,57 @@ async function recordSharePayout({ order, bucket, recipient, amountPaise, earned
 }
 
 /**
+ * Guard against a share-policy edit landing between a crashed settlement
+ * attempt and its retry.
+ *
+ * Every bucket for one order is meant to come from ONE `splitGrossPaise` call,
+ * but nothing persists which split produced what is already on disk — only the
+ * bucket rows themselves. `effectivePolicyForOrder` reads a live, editable
+ * document, so a retry (`backfillUnsettled`, or a second manual call) that
+ * lands after an admin edits the global or market policy recomputes a
+ * DIFFERENT split from the one a first, partially-successful attempt already
+ * committed. Writing the still-missing buckets from that new split would
+ * silently break the invariant every other guarantee in this file leans on:
+ * the buckets sum to `grossPaise`.
+ *
+ * So before writing anything, the freshly resolved amounts are checked against
+ * whatever already exists for this order. An order with nothing recorded yet
+ * is trivially consistent — the ordinary, fresh case. Anything that already
+ * exists must match the fresh recompute exactly (true whenever the policy has
+ * not moved between attempts, which is the overwhelming majority of retries —
+ * a crash mid-loop still completes cleanly), or the retry is refused rather
+ * than guessed at.
+ *
+ * `stallNetByKey` carries the freshly computed per-seller net, keyed by stall
+ * id for a market order or the literal `'shop'` for an independent shop — the
+ * same key `StallEarning.stall` collapses to when it is null.
+ */
+async function amountsAgreeWithExisting(
+  orderId,
+  { stallNetByKey, platformPaise, deliveryPaise, marketOwnerPaise, incentivePaise }
+) {
+  const [existingEarnings, existingPlatform, existingPayouts, existingIncentive] = await Promise.all([
+    StallEarning.find({ order: orderId }).select('stall netPaise').lean(),
+    PlatformEarning.findOne({ order: orderId }).select('amountPaise').lean(),
+    SharePayout.find({ order: orderId }).select('bucket amountPaise').lean(),
+    OrderIncentive.findOne({ order: orderId }).select('amountPaise').lean(),
+  ]);
+
+  for (const earning of existingEarnings) {
+    const key = earning.stall ? String(earning.stall) : 'shop';
+    const fresh = stallNetByKey.get(key);
+    if (fresh !== undefined && fresh !== earning.netPaise) return false;
+  }
+  if (existingPlatform && existingPlatform.amountPaise !== platformPaise) return false;
+  for (const payout of existingPayouts) {
+    const fresh = payout.bucket === 'delivery' ? deliveryPaise : marketOwnerPaise;
+    if (fresh !== payout.amountPaise) return false;
+  }
+  if (existingIncentive && existingIncentive.amountPaise !== incentivePaise) return false;
+  return true;
+}
+
+/**
  * Record what the seller on this order is owed, and start the clock.
  *
  * Called the moment a delivery is confirmed. Safe to call again — the unique
@@ -257,6 +308,23 @@ async function recordMarketDelivery(order) {
     shares.map((s) => s.grossPaise),
     amounts.shopkeeperPaise
   );
+
+  const stallNetByKey = new Map(shares.map((s, i) => [String(s.stall), shopParts[i]]));
+  const consistent = await amountsAgreeWithExisting(order._id, {
+    stallNetByKey,
+    platformPaise: amounts.platformPaise,
+    deliveryPaise: amounts.deliveryPaise,
+    marketOwnerPaise: amounts.marketOwnerPaise,
+    incentivePaise: amounts.customerIncentivePaise,
+  });
+  if (!consistent) {
+    console.warn(
+      `[settlement] ${order.orderNumber}: resolved share split disagrees with earnings already ` +
+      'recorded for this order — the share policy likely changed between a failed attempt and this ' +
+      'retry. Refusing to write further buckets; needs manual reconciliation.'
+    );
+    return { recorded: 0, totalNetPaise: 0, reason: 'POLICY_MISMATCH' };
+  }
 
   let recorded = 0;
   let totalNetPaise = 0;
@@ -380,6 +448,22 @@ async function recordShopDelivery(order) {
 
   const netPaise = amounts.shopkeeperPaise;
   const commissionPaise = grossPaise - netPaise;
+
+  const consistent = await amountsAgreeWithExisting(order._id, {
+    stallNetByKey: new Map([['shop', netPaise]]),
+    platformPaise: amounts.platformPaise,
+    deliveryPaise: amounts.deliveryPaise,
+    marketOwnerPaise: amounts.marketOwnerPaise,
+    incentivePaise: amounts.customerIncentivePaise,
+  });
+  if (!consistent) {
+    console.warn(
+      `[settlement] ${order.orderNumber}: resolved share split disagrees with earnings already ` +
+      'recorded for this order — the share policy likely changed between a failed attempt and this ' +
+      'retry. Refusing to write further buckets; needs manual reconciliation.'
+    );
+    return { recorded: 0, totalNetPaise: 0, reason: 'POLICY_MISMATCH' };
+  }
 
   let recorded = 0;
   let totalNetPaise = 0;
