@@ -57,21 +57,22 @@ Copy `.env.example` to `.env`. Notes that are easy to get wrong:
 
 ## Architecture
 
-### Five entry apps behind one hash router
+### Six entry apps behind one hash router
 
-`src/AppRouter.jsx` reads `window.location.hash` and mounts one of five apps:
+`src/AppRouter.jsx` reads `window.location.hash` and mounts one of six apps:
 
 - `src/App.jsx` — customer-facing. Still renders the `developer` and `market_owner` panels inline as tabs, but is no longer the only way to reach them.
 - `src/ShopkeeperApp.jsx` — `#/shopkeeper`, role-locked to `shopkeeper`/`developer`.
 - `src/DeliveryApp.jsx` — `#/delivery`, role-locked to `delivery`/`developer`.
 - `src/DeveloperApp.jsx` — `#/developer`, role-locked to `developer`.
 - `src/MarketOwnerApp.jsx` — `#/market-owner`, role-locked to `market_owner`, with its own splash edition. `App.jsx` redirects a `market_owner` here on sign-in.
+- `src/AdminApp.jsx` — `#/admin`, role-locked to `admin`/`developer`. Signs in with `appType="admin"` (`APP_ROLE_SCOPE.admin` is `['admin', 'developer']`). Edits global and per-market share policy via `/api/admin/share-policy/*`; it does not join the live-order poll.
 
-Both admin apps sign in with `appType="customer"`, and that is correct rather than a copy-paste slip: `APP_ROLE_SCOPE.customer` is `['customer', 'market_owner', 'developer']`, so the customer scope is the one that resolves those accounts. Sending `app: 'developer'` from the market owner's login would fail to find the account.
+Both **market-owner** and **developer** entry apps (when reached through the customer hash) sign in with `appType="customer"`, and that is correct rather than a copy-paste slip: `APP_ROLE_SCOPE.customer` is `['customer', 'market_owner', 'developer']`, so the customer scope is the one that resolves those accounts. Sending `app: 'developer'` from the market owner's login would fail to find the account.
 
-All five are lazily loaded by `AppRouter`, so a customer never downloads the shopkeeper or delivery bundles (or Leaflet, which only the map routes pull in).
+All six are lazily loaded by `AppRouter`, so a customer never downloads the shopkeeper, delivery, or admin bundles (or Leaflet, which only the map routes pull in).
 
-Each polls `GET /api/orders` every 5s and pauses while the tab is hidden. The previous localStorage `vegdrop_orders` + `BroadcastChannel` mirror is **deliberately gone**: the server scopes orders by role, but a shared browser-storage key is readable by every app on the origin, so mirroring leaked one role's order list into another's. Don't reintroduce cross-app state sharing through web storage.
+Every app except `#/admin` polls `GET /api/orders` every 5s and pauses while the tab is hidden. The previous localStorage `vegdrop_orders` + `BroadcastChannel` mirror is **deliberately gone**: the server scopes orders by role, but a shared browser-storage key is readable by every app on the origin, so mirroring leaked one role's order list into another's. Don't reintroduce cross-app state sharing through web storage.
 
 The role checks in these components are **UX gates only**. The API authorizes every request independently, so bypassing one in the browser grants nothing.
 
@@ -433,7 +434,7 @@ Three things follow, and each has already been got wrong:
 
 Wallet balance is derived from an append-only `WalletTransaction` ledger — never a mutable field. Crediting is idempotent through a unique `idempotencyKey` (`razorpay:<paymentId>`), so a replayed verification collides on the index instead of double-crediting.
 
-**Platform commission has exactly one source of truth: `PlatformEarning.amountPaise`.** `services/sharePolicy.js` splits an order's gross into five buckets — platform, shopkeeper, delivery, market owner, customer incentive — at the rate in `config.settlement.commissionBps` (seeding `platformBps`, which **defaults to zero**) and every market may override it. `services/settlement.js` writes each bucket to where it belongs on delivery, for market stalls and independent shops alike. **`StallEarning.commissionPaise` is NOT the platform's cut** — it is everything withheld from that seller's gross (platform, delivery, market owner and customer incentive together), so summing it double-counts the delivery rider's and market owner's own earnings as money the platform kept the moment either bps is above zero. Never re-derive commission as a percentage of sales either: the Developer Console once reported `Math.round(allTimeSales * 0.1)`, so on any deployment that had not set `STALL_COMMISSION_BPS` the operator's dashboard showed substantial revenue the platform had not taken a paisa of. A figure from the ledger is also correctly *lower* than a share of gross, because commission is earned on delivery and not on placement.
+**Platform commission has exactly one source of truth: `PlatformEarning.amountPaise`.** `services/sharePolicy.js` splits an order's gross into five buckets — platform, shopkeeper, delivery, market owner, customer incentive — from the effective Mongo policy (`PlatformSharePolicy` merged with optional per-market `MarketSharePolicy`). **`STALL_COMMISSION_BPS` is bootstrap only:** `ensureGlobalPolicy()` seeds the singleton from `config.settlement.commissionBps` when no row exists (**defaults to zero**); delivery settlement reads Mongo, not the env knob. `services/settlement.js` writes each bucket to where it belongs on delivery, for market stalls and independent shops alike. **`StallEarning.commissionPaise` is NOT the platform's cut** — it is everything withheld from that seller's gross (platform, delivery, market owner and customer incentive together), so summing it double-counts the delivery rider's and market owner's own earnings as money the platform kept the moment either bps is above zero. Never re-derive commission as a percentage of sales either: the Developer Console once reported `Math.round(allTimeSales * 0.1)`, so on any deployment that had not set `STALL_COMMISSION_BPS` the operator's dashboard showed substantial revenue the platform had not taken a paisa of. A figure from the ledger is also correctly *lower* than a share of gross, because commission is earned on delivery and not on placement.
 
 Order totals are **always recomputed server-side** from the catalog. Request bodies carry only product ids and quantities; `.strict()` zod schemas reject any attempt to include `totalAmountPaise`, `status`, or `paymentStatus`.
 
@@ -485,7 +486,7 @@ Two more gotchas worth knowing:
 
 ### Performance
 
-- **Bundle**: `AppRouter` lazy-loads all five entry apps; `App.jsx` lazy-loads the admin panels. `vite.config.js` splits vendors by change cadence (`vendor-react`, `vendor-icons`, and a catch-all `vendor`) so a feature deploy invalidates only small app chunks. Customer first-load JS is ~130 KB gzip.
+- **Bundle**: `AppRouter` lazy-loads all six entry apps; `App.jsx` lazy-loads the developer/market-owner panels. `vite.config.js` splits vendors by change cadence (`vendor-react`, `vendor-icons`, and a catch-all `vendor`) so a feature deploy invalidates only small app chunks. Customer first-load JS is ~130 KB gzip.
 
 - **A named `manualChunks` entry is EAGER, whether or not anything eager imports it — this is the bundle trap, and it has cost real bytes twice.** `manualChunks` does not group modules, it *forces* them together; rolldown then duplicates a copy of react-dom into one of those vendor chunks for CJS interop, the eager app chunk imports react-dom from there, and the whole chunk gets a `<link rel="modulepreload">` in `dist/index.html`. A preload is a download at first paint, so the chunk is on the critical path no matter how lazily the app code reaches it.
 
