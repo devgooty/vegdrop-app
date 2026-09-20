@@ -3,12 +3,12 @@ import SplashScreen from './components/SplashScreen';
 import { installTapHaptics } from './lib/haptics';
 
 /**
- * Hash-based routing between the three role apps.
+ * Hash-based routing between the role apps.
  *
  * Each app is code-split. A customer opening the storefront should not download
  * the shopkeeper inventory tooling or the delivery map stack — those are large
  * (Leaflet alone is substantial) and irrelevant to them. Splitting here is the
- * single highest-leverage cut because the three apps share almost no leaf
+ * single highest-leverage cut because the role apps share almost no leaf
  * components.
  */
 const App = lazy(() => import('./App'));
@@ -16,12 +16,14 @@ const ShopkeeperApp = lazy(() => import('./ShopkeeperApp'));
 const DeliveryApp = lazy(() => import('./DeliveryApp'));
 const DeveloperApp = lazy(() => import('./DeveloperApp'));
 const MarketOwnerApp = lazy(() => import('./MarketOwnerApp'));
+const AdminApp = lazy(() => import('./AdminApp'));
 
 function getRoute() {
   const hash = window.location.hash.replace('#', '') || '/';
   if (hash.startsWith('/shopkeeper')) return 'shopkeeper';
   if (hash.startsWith('/delivery')) return 'delivery';
   if (hash.startsWith('/developer')) return 'developer';
+  if (hash.startsWith('/admin')) return 'admin';
   if (hash.startsWith('/market-owner')) return 'market_owner';
   return 'customer';
 }
@@ -36,7 +38,7 @@ export default function AppRouter() {
   }, []);
 
   // Mounted once, above the role switch, so a tap vibrates the same way
-  // whichever of the three apps is active.
+  // whichever app is active.
   useEffect(() => installTapHaptics(), []);
 
   const Active =
@@ -46,6 +48,8 @@ export default function AppRouter() {
       ? DeliveryApp
       : route === 'developer'
       ? DeveloperApp
+      : route === 'admin'
+      ? AdminApp
       : route === 'market_owner'
       ? MarketOwnerApp
       : App;

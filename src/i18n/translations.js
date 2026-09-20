@@ -1012,10 +1012,20 @@ const STRINGS = {
     hi: 'इस नंबर पर डेवलपर खाता नहीं है। एक एडमिन से पहुँच माँगें।',
     te: 'ఈ నంబర్‌కు developer account లేదు. admin access కోసం అడగండి.',
   },
+  'login.errNoAdminAccount': {
+    en: 'No admin account for this number. Ask a developer to grant access.',
+    hi: 'इस नंबर पर एडमिन खाता नहीं है। एक डेवलपर से पहुँच माँगें।',
+    te: 'ఈ నంబర్‌కు admin account లేదు. developer access కోసం అడగండి.',
+  },
   'login.developerHeading': {
     en: 'Developer',
     hi: 'डेवलपर',
     te: 'Developer',
+  },
+  'login.adminHeading': {
+    en: 'Admin',
+    hi: 'एडमिन',
+    te: 'Admin',
   },
   'login.errSendCodes': {
     en: 'Could not send the codes. Please try again.',

@@ -172,6 +172,10 @@ const SIGN_UP = {
   developer: {
     headingKey: 'login.developerHeading',
   },
+  // Login only — admins are provisioned by a developer, never self-registered here.
+  admin: {
+    headingKey: 'login.adminHeading',
+  },
   // Login only — market owners are promoted, never self-registered here.
   market_owner: {
     headingKey: 'login.pageLogin',
@@ -290,12 +294,13 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
         return;
       }
 
-      if (appType === 'developer' || appType === 'market_owner') {
-        setError(
-          appType === 'developer'
-            ? t('login.errNoDeveloperAccount')
-            : 'No market owner account for this number. Ask a developer to assign the role.'
-        );
+      const provisionedAccountErrors = {
+        developer: t('login.errNoDeveloperAccount'),
+        admin: t('login.errNoAdminAccount'),
+        market_owner: 'No market owner account for this number. Ask a developer to assign the role.',
+      };
+      if (provisionedAccountErrors[appType]) {
+        setError(provisionedAccountErrors[appType]);
         return;
       }
 
