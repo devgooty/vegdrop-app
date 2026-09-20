@@ -47,6 +47,7 @@ const APP_ROLE_SCOPE = Object.freeze({
   delivery: ['delivery'],
   developer: ['developer'],
   market_owner: ['market_owner'],
+  admin: ['admin', 'developer'],
 });
 
 /**

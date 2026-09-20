@@ -2,7 +2,9 @@
 
 const mongoose = require('mongoose');
 
-const ROLES = Object.freeze(['customer', 'delivery', 'shopkeeper', 'market_owner', 'developer']);
+const ROLES = Object.freeze([
+  'customer', 'delivery', 'shopkeeper', 'market_owner', 'developer', 'admin',
+]);
 
 /** Roles permitted to self-register. Everything else is provisioned by an admin. */
 const SELF_SERVICE_ROLES = Object.freeze(['customer']);
