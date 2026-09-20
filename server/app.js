@@ -31,6 +31,7 @@ const stallRoutes = require('./routes/stalls');
 const riderRoutes = require('./routes/rider');
 const shopRoutes = require('./routes/shops');
 const developerRoutes = require('./routes/developer');
+const adminRoutes = require('./routes/admin');
 const mediaRoutes = require('./routes/media');
 const agentRoutes = require('./routes/agent');
 
@@ -365,6 +366,7 @@ function createApp() {
   // Shopkeepers who trade from their own premises rather than a market stall.
   app.use('/api/shops', shopRoutes);
   app.use('/api/developer', developerRoutes);
+  app.use('/api/admin', adminRoutes);
   app.use('/api/media', mediaRoutes);
   app.use('/api/agent', agentRoutes);
 

@@ -6,6 +6,7 @@ const { runMigrations } = require('./db/migrations');
 const { createApp } = require('./app');
 const { seedIfEmpty } = require('./utils/seed');
 const sweeper = require('./services/sweeper');
+const sharePolicy = require('./services/sharePolicy');
 
 /**
  * Process bootstrap: connect, seed (development only), listen, and shut down
@@ -23,6 +24,7 @@ async function main() {
     // Before seeding: the seed writes documents whose uniqueness constraints
     // only exist once the indexes do.
     await ensureIndexes();
+    await sharePolicy.ensureGlobalPolicy();
     await seedIfEmpty();
   } catch (err) {
     // The API answers /api/health and returns 503 elsewhere rather than dying,

@@ -1,7 +1,5 @@
 'use strict';
 
-const { ApiError } = require('../middleware/errors');
-
 const BUCKETS = ['platform', 'shopkeeper', 'delivery', 'marketOwner', 'customerIncentive'];
 
 const BPS_FIELDS = [
@@ -20,11 +18,54 @@ const PAISE_FIELDS = [
   'customerIncentivePaise',
 ];
 
+function shareBpsInvalidError() {
+  const error = new Error('Share basis points must sum to exactly 10000.');
+  error.name = 'ApiError';
+  error.statusCode = 400;
+  error.code = 'SHARE_BPS_INVALID';
+  error.expose = true;
+  return error;
+}
+
 function assertBpsSum(policy) {
   const sum = BPS_FIELDS.reduce((acc, key) => acc + (policy[key] ?? 0), 0);
   if (sum !== 10000) {
-    throw new ApiError(400, 'Share basis points must sum to exactly 10000.', 'SHARE_BPS_INVALID');
+    throw shareBpsInvalidError();
   }
+}
+
+function lazyPolicyModels() {
+  /**
+   * Loaded lazily because PlatformSharePolicy imports this module for
+   * assertBpsSum during schema validation. Requiring it at module load would
+   * create a circular dependency before assertBpsSum is exported.
+   */
+  return {
+    PlatformSharePolicy: require('../models/PlatformSharePolicy'),
+    MarketSharePolicy: require('../models/MarketSharePolicy'),
+  };
+}
+
+async function ensureGlobalPolicy() {
+  const { PlatformSharePolicy } = lazyPolicyModels();
+  // Loaded only by the persistence helper so pure math consumers do not
+  // initialise environment configuration as a side effect of importing this file.
+  const config = require('../config/env');
+  const platformBps = config.settlement.commissionBps;
+  const seed = {
+    platformBps,
+    shopkeeperBps: 10000 - platformBps,
+    deliveryBps: 0,
+    marketOwnerBps: 0,
+    customerIncentiveBps: 0,
+    promosEnabled: true,
+  };
+
+  return PlatformSharePolicy.findOneAndUpdate(
+    {},
+    { $setOnInsert: seed },
+    { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true, runValidators: true }
+  );
 }
 
 /**
@@ -51,6 +92,19 @@ function mergePolicies(global, marketOverride) {
   }
 
   return merged;
+}
+
+async function effectivePolicyForOrder(order) {
+  const { MarketSharePolicy } = lazyPolicyModels();
+  const global = await ensureGlobalPolicy();
+  const marketId = order?.market || order?.marketId || null;
+
+  if (!marketId) {
+    return global.toObject();
+  }
+
+  const marketOverride = await MarketSharePolicy.findOne({ market: marketId }).lean();
+  return mergePolicies(global.toObject(), marketOverride);
 }
 
 /**
@@ -105,6 +159,8 @@ function forceNoMarketOwner(policy) {
 module.exports = {
   BUCKETS,
   assertBpsSum,
+  ensureGlobalPolicy,
+  effectivePolicyForOrder,
   mergePolicies,
   splitGrossPaise,
   allocateShopkeeperAcrossStalls,

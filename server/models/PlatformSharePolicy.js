@@ -18,6 +18,7 @@ const platformSharePolicySchema = new mongoose.Schema(
     deliveryBps: bpsField,
     marketOwnerBps: bpsField,
     customerIncentiveBps: bpsField,
+    promosEnabled: { type: Boolean, required: true, default: true },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   {
