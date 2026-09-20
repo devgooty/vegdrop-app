@@ -61,7 +61,10 @@ const uniq = () => `${Date.now().toString(36)}${(seq += 1)}`;
 /** Set every bucket explicitly, exactly as an admin PUT would. */
 async function setGlobalPolicy(bps) {
   await sharePolicy.ensureGlobalPolicy();
-  await PlatformSharePolicy.updateOne({}, { $set: bps });
+  await PlatformSharePolicy.updateOne(
+    { scope: sharePolicy.GLOBAL_PLATFORM_POLICY_SCOPE },
+    { $set: bps }
+  );
 }
 
 // ---------------------------------------------------------------------------

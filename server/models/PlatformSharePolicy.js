@@ -13,6 +13,13 @@ const bpsField = {
 
 const platformSharePolicySchema = new mongoose.Schema(
   {
+    scope: {
+      type: String,
+      enum: ['global'],
+      required: true,
+      unique: true,
+      default: 'global',
+    },
     platformBps: bpsField,
     shopkeeperBps: bpsField,
     deliveryBps: bpsField,

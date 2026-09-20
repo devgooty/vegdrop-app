@@ -109,8 +109,11 @@ router.put('/share-policy', validate({ body: globalPolicyBody }), async (req, re
   sharePolicy.assertBpsSum(body);
 
   const policy = await PlatformSharePolicy.findOneAndUpdate(
-    {},
-    { $set: { ...body, updatedBy: req.user._id } },
+    { scope: sharePolicy.GLOBAL_PLATFORM_POLICY_SCOPE },
+    {
+      $set: { ...body, updatedBy: req.user._id },
+      $setOnInsert: { scope: sharePolicy.GLOBAL_PLATFORM_POLICY_SCOPE },
+    },
     { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true, runValidators: true }
   );
 

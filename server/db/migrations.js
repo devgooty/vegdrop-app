@@ -473,6 +473,56 @@ async function migrateRiderApproval() {
  * Idempotent: `$unset` matches nothing on a second run, and two instances
  * booting at once both write the same absence.
  */
+const GLOBAL_PLATFORM_POLICY_SCOPE = 'global';
+
+/**
+ * Global share policy is a singleton keyed by scope. Older builds upserted with
+ * an empty filter, so a concurrent first boot could leave multiple rows.
+ */
+async function migratePlatformSharePolicySingleton() {
+  const coll = mongoose.connection.collection('platformsharepolicies');
+  const all = await coll.find({}).toArray();
+  if (all.length === 0) {
+    return { consolidated: false, removed: 0 };
+  }
+
+  const scoped = all.filter((doc) => doc.scope === GLOBAL_PLATFORM_POLICY_SCOPE);
+  let canonical =
+    (scoped.length > 0
+      ? [...scoped].sort((a, b) => {
+          const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+          const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+          return tb - ta;
+        })[0]
+      : null) ||
+    [...all].sort((a, b) => {
+      const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+      const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      return tb - ta;
+    })[0];
+
+  let consolidated = false;
+  if (canonical.scope !== GLOBAL_PLATFORM_POLICY_SCOPE) {
+    await coll.updateOne(
+      { _id: canonical._id },
+      { $set: { scope: GLOBAL_PLATFORM_POLICY_SCOPE } }
+    );
+    consolidated = true;
+  }
+
+  const removeIds = all
+    .filter((doc) => !canonical._id.equals(doc._id))
+    .map((doc) => doc._id);
+
+  let removed = 0;
+  if (removeIds.length > 0) {
+    const result = await coll.deleteMany({ _id: { $in: removeIds } });
+    removed = result?.deletedCount ?? 0;
+  }
+
+  return { consolidated, removed };
+}
+
 async function migrateDroppedPickupCode() {
   const Orders = mongoose.connection.collection('orders');
 
@@ -598,6 +648,20 @@ async function runMigrations() {
   }
 
   try {
+    const { consolidated, removed } = await migratePlatformSharePolicySingleton();
+
+    if (consolidated || removed > 0) {
+      console.info(
+        `[db] migration: consolidated platform share policy to scope "${GLOBAL_PLATFORM_POLICY_SCOPE}"` +
+          (removed > 0 ? ` (removed ${removed} duplicate row(s))` : '')
+      );
+    }
+  } catch (err) {
+    console.error(`[db] migration (platform share policy singleton) failed: ${err?.message}`);
+    ok = false;
+  }
+
+  try {
     const { cleared } = await migrateDroppedPickupCode();
 
     if (cleared > 0) {
@@ -624,4 +688,5 @@ module.exports = {
   migrateDroppedEmailVerification,
   migrateRemovedAvatarPhotos,
   migrateProductCatalogItem,
+  migratePlatformSharePolicySingleton,
 };

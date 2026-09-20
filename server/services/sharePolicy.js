@@ -1,5 +1,8 @@
 'use strict';
 
+/** Unique scope discriminator so concurrent boot upserts target one row. */
+const GLOBAL_PLATFORM_POLICY_SCOPE = 'global';
+
 const BUCKETS = ['platform', 'shopkeeper', 'delivery', 'marketOwner', 'customerIncentive'];
 
 const BPS_FIELDS = [
@@ -53,6 +56,7 @@ async function ensureGlobalPolicy() {
   const config = require('../config/env');
   const platformBps = config.settlement.commissionBps;
   const seed = {
+    scope: GLOBAL_PLATFORM_POLICY_SCOPE,
     platformBps,
     shopkeeperBps: 10000 - platformBps,
     deliveryBps: 0,
@@ -62,7 +66,7 @@ async function ensureGlobalPolicy() {
   };
 
   return PlatformSharePolicy.findOneAndUpdate(
-    {},
+    { scope: GLOBAL_PLATFORM_POLICY_SCOPE },
     { $setOnInsert: seed },
     { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true, runValidators: true }
   );
@@ -158,6 +162,7 @@ function forceNoMarketOwner(policy) {
 
 module.exports = {
   BUCKETS,
+  GLOBAL_PLATFORM_POLICY_SCOPE,
   assertBpsSum,
   ensureGlobalPolicy,
   effectivePolicyForOrder,

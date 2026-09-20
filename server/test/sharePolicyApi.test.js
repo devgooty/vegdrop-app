@@ -33,8 +33,11 @@ function bpsSum(policy) {
 test('ensureGlobalPolicy seeds from commissionBps', async () => {
   await sharePolicy.ensureGlobalPolicy();
 
-  const globalPolicy = await PlatformSharePolicy.findOne().lean();
+  const globalPolicy = await PlatformSharePolicy.findOne({
+    scope: sharePolicy.GLOBAL_PLATFORM_POLICY_SCOPE,
+  }).lean();
   assert.ok(globalPolicy);
+  assert.equal(await PlatformSharePolicy.countDocuments(), 1);
   assert.equal(globalPolicy.platformBps, config.settlement.commissionBps);
   assert.equal(globalPolicy.shopkeeperBps, 10000 - config.settlement.commissionBps);
   assert.equal(globalPolicy.deliveryBps, 0);
@@ -42,6 +45,18 @@ test('ensureGlobalPolicy seeds from commissionBps', async () => {
   assert.equal(globalPolicy.customerIncentiveBps, 0);
   assert.equal(globalPolicy.promosEnabled, true);
   assert.equal(bpsSum(globalPolicy), 10000);
+});
+
+test('ensureGlobalPolicy is idempotent under repeated upsert', async () => {
+  await Promise.all([
+    sharePolicy.ensureGlobalPolicy(),
+    sharePolicy.ensureGlobalPolicy(),
+    sharePolicy.ensureGlobalPolicy(),
+  ]);
+  assert.equal(await PlatformSharePolicy.countDocuments(), 1);
+  assert.ok(
+    await PlatformSharePolicy.findOne({ scope: sharePolicy.GLOBAL_PLATFORM_POLICY_SCOPE })
+  );
 });
 
 test('admin can PUT global policy; shopkeeper cannot read it', async () => {
