@@ -28,7 +28,7 @@ const marketSharePolicySchema = new mongoose.Schema(
     deliveryBps: optionalBpsField,
     marketOwnerBps: optionalBpsField,
     customerIncentiveBps: optionalBpsField,
-    promosEnabled: { type: Boolean, default: true },
+    promosEnabled: { type: Boolean, default: null },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   {

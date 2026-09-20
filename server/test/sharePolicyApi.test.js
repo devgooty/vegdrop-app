@@ -152,3 +152,83 @@ test('market PUT rejects override fields over 10000 before shopkeeper rebalance'
   const after = await MarketSharePolicy.findOne({ market: market._id });
   assert.equal(after, null);
 });
+
+test('market PUT validates the next persisted override after partial updates', async () => {
+  await sharePolicy.ensureGlobalPolicy();
+  const admin = await authenticatedUser('admin');
+  const owner = await authenticatedUser('market_owner');
+  const market = await Market.create({
+    name: 'Partial Override Market',
+    slug: `partial-mkt-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+    address: 'Hyd',
+    owner: owner.user._id,
+    location: { type: 'Point', coordinates: [78.4, 17.3] },
+  });
+
+  const initial = await api()
+    .put(`/api/admin/markets/${market._id}/share-policy`)
+    .set(auth(admin.accessToken))
+    .send({
+      platformBps: 1000,
+      shopkeeperBps: 6000,
+      deliveryBps: 3000,
+      marketOwnerBps: 0,
+      customerIncentiveBps: 0,
+    });
+
+  assert.equal(initial.status, 200);
+
+  const res = await api()
+    .put(`/api/admin/markets/${market._id}/share-policy`)
+    .set(auth(admin.accessToken))
+    .send({
+      platformBps: 1000,
+      deliveryBps: 4000,
+      marketOwnerBps: 1000,
+      customerIncentiveBps: 1,
+    });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error.code, 'SHARE_BPS_INVALID');
+
+  const after = await MarketSharePolicy.findOne({ market: market._id }).lean();
+  assert.equal(after.shopkeeperBps, 6000);
+  assert.equal(after.deliveryBps, 3000);
+});
+
+test('market PUT omitting promosEnabled inherits disabled global promos', async () => {
+  const admin = await authenticatedUser('admin');
+  const owner = await authenticatedUser('market_owner');
+  const market = await Market.create({
+    name: 'Promo Inherit Market',
+    slug: `promo-mkt-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+    address: 'Hyd',
+    owner: owner.user._id,
+    location: { type: 'Point', coordinates: [78.4, 17.3] },
+  });
+
+  const global = await api()
+    .put('/api/admin/share-policy')
+    .set(auth(admin.accessToken))
+    .send({
+      platformBps: 800,
+      shopkeeperBps: 7200,
+      deliveryBps: 1000,
+      marketOwnerBps: 500,
+      customerIncentiveBps: 500,
+      promosEnabled: false,
+    });
+  assert.equal(global.status, 200);
+
+  const put = await api()
+    .put(`/api/admin/markets/${market._id}/share-policy`)
+    .set(auth(admin.accessToken))
+    .send({ deliveryBps: 1500 });
+
+  assert.equal(put.status, 200);
+  assert.equal(put.body.policy.promosEnabled, null);
+  assert.equal(put.body.effective.promosEnabled, false);
+
+  const effective = await sharePolicy.effectivePolicyForOrder({ market: market._id });
+  assert.equal(effective.promosEnabled, false);
+});

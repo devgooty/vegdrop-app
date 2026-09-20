@@ -79,7 +79,7 @@ function mergePolicies(global, marketOverride) {
     merged[key] = overrideVal != null ? overrideVal : global[key];
   }
   merged.promosEnabled =
-    marketOverride != null && marketOverride.promosEnabled !== undefined
+    marketOverride != null && marketOverride.promosEnabled != null
       ? marketOverride.promosEnabled
       : global.promosEnabled;
 

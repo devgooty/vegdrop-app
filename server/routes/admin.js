@@ -32,7 +32,7 @@ const marketPolicyBody = z
     deliveryBps: bps.nullable().optional(),
     marketOwnerBps: bps.nullable().optional(),
     customerIncentiveBps: bps.nullable().optional(),
-    promosEnabled: z.boolean().optional(),
+    promosEnabled: z.boolean().nullable().optional(),
   })
   .strict();
 
@@ -45,17 +45,35 @@ const BPS_FIELDS_EXCEPT_SHOPKEEPER = [
   'customerIncentiveBps',
 ];
 
+const MARKET_OVERRIDE_FIELDS = [
+  'platformBps',
+  'shopkeeperBps',
+  'deliveryBps',
+  'marketOwnerBps',
+  'customerIncentiveBps',
+  'promosEnabled',
+];
+
 function rejectImpossibleRebalance(body) {
-  if (Object.prototype.hasOwnProperty.call(body, 'shopkeeperBps')) return;
+  if (body.shopkeeperBps != null) return;
 
   const explicitOtherSum = BPS_FIELDS_EXCEPT_SHOPKEEPER.reduce((sum, key) => {
-    if (!Object.prototype.hasOwnProperty.call(body, key)) return sum;
     return sum + (body[key] ?? 0);
   }, 0);
 
   if (explicitOtherSum > 10000) {
     throw new ApiError(400, 'Share basis points must sum to exactly 10000.', 'SHARE_BPS_INVALID');
   }
+}
+
+function nextMarketOverride(existing, patch) {
+  const next = {};
+  for (const key of MARKET_OVERRIDE_FIELDS) {
+    next[key] = Object.prototype.hasOwnProperty.call(patch, key)
+      ? patch[key]
+      : existing?.[key] ?? null;
+  }
+  return next;
 }
 
 async function requireMarket(id) {
@@ -107,23 +125,25 @@ router.put(
     await requireMarket(req.valid.params.id);
     const global = await sharePolicy.ensureGlobalPolicy();
     const body = req.valid.body;
+    const existing = await MarketSharePolicy.findOne({ market: req.valid.params.id }).lean();
+    const nextOverride = nextMarketOverride(existing, body);
 
-    rejectImpossibleRebalance(body);
+    rejectImpossibleRebalance(nextOverride);
     /**
-     * A market override may omit shopkeeperBps. mergePolicies then rebalances
-     * shopkeeperBps so the effective policy still totals 10000; validate the
-     * merged effective policy, not just the partial override payload.
+     * Validate the post-patch override, because omitted fields keep their
+     * existing stored values while null fields explicitly return to inheritance.
      */
-    const effective = sharePolicy.mergePolicies(global.toObject(), body);
+    const effective = sharePolicy.mergePolicies(global.toObject(), nextOverride);
     sharePolicy.assertBpsSum(effective);
 
     const policy = await MarketSharePolicy.findOneAndUpdate(
       { market: req.valid.params.id },
-      { $set: { ...body, market: req.valid.params.id, updatedBy: req.user._id } },
+      { $set: { ...nextOverride, market: req.valid.params.id, updatedBy: req.user._id } },
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true, runValidators: true }
     );
+    const savedEffective = sharePolicy.mergePolicies(global.toObject(), policy.toObject());
 
-    return res.json({ policy, effective });
+    return res.json({ policy, effective: savedEffective });
   }
 );
 
