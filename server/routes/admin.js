@@ -86,6 +86,16 @@ async function requireMarket(id) {
 
 router.use(...adminGate);
 
+router.get('/markets', async (_req, res) => {
+  const markets = await Market.find({}).select('name').sort({ name: 1 }).lean();
+  return res.json({
+    data: markets.map((market) => ({
+      id: String(market._id),
+      name: market.name,
+    })),
+  });
+});
+
 router.get('/share-policy', async (_req, res) => {
   const policy = await sharePolicy.ensureGlobalPolicy();
   return res.json({ policy });

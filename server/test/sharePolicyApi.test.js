@@ -69,6 +69,23 @@ test('admin can PUT global policy; shopkeeper cannot read it', async () => {
   assert.equal(no.status, 403);
 });
 
+test('admin can list markets for share-policy overrides', async () => {
+  const admin = await authenticatedUser('admin');
+  const owner = await authenticatedUser('market_owner');
+  const market = await Market.create({
+    name: 'Share Policy Market',
+    slug: `share-policy-mkt-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+    address: 'Hyd',
+    owner: owner.user._id,
+    location: { type: 'Point', coordinates: [78.4, 17.3] },
+  });
+
+  const res = await api().get('/api/admin/markets').set(auth(admin.accessToken));
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.data, [{ id: String(market._id), name: 'Share Policy Market' }]);
+});
+
 test('PUT rejecting bad global sum returns SHARE_BPS_INVALID', async () => {
   const admin = await authenticatedUser('admin');
   const res = await api()
