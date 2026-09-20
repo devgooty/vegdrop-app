@@ -70,6 +70,11 @@ const walletTransactionSchema = new mongoose.Schema(
         // customer. See services/settlement.js — the money is held for a day
         // first, so this entry lands well after the order was delivered.
         'stall_settlement',
+        // The rider's share-policy cut of an order's gross, and the market
+        // owner's — both `SharePayout`, both held for the same day and
+        // released by the same sweep as `stall_settlement` above.
+        'delivery_settlement',
+        'market_owner_settlement',
       ],
     },
 

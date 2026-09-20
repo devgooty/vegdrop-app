@@ -10,7 +10,7 @@ const Stall = require('../models/Stall');
 const VendorKyc = require('../models/VendorKyc');
 const RiderBankDetails = require('../models/RiderBankDetails');
 const WalletTransaction = require('../models/WalletTransaction');
-const StallEarning = require('../models/StallEarning');
+const PlatformEarning = require('../models/PlatformEarning');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { isConnected } = require('../db/connect');
 const config = require('../config/env');
@@ -132,12 +132,12 @@ router.get('/overview', ...developerGate, async (req, res, next) => {
       // zero forever. 'Awaiting verification' is draft (details in, nothing
       // sent) or penny_sent (transfer out, confirmation outstanding).
       VendorKyc.countDocuments({ status: { $in: ['draft', 'penny_sent'] } }),
-      StallEarning.aggregate([
-        { $group: { _id: null, commissionPaise: { $sum: '$commissionPaise' } } }
+      PlatformEarning.aggregate([
+        { $group: { _id: null, amountPaise: { $sum: '$amountPaise' } } }
       ]),
-      StallEarning.aggregate([
+      PlatformEarning.aggregate([
         { $match: { earnedAt: { $gte: startOfToday } } },
-        { $group: { _id: null, commissionPaise: { $sum: '$commissionPaise' } } }
+        { $group: { _id: null, amountPaise: { $sum: '$amountPaise' } } }
       ])
     ]);
 
@@ -158,22 +158,22 @@ router.get('/overview', ...developerGate, async (req, res, next) => {
     const todayOrdersCount = todayOrders.length;
 
     /**
-     * Commission as recorded, not as guessed.
+     * The platform's own share, as recorded, not as guessed.
      *
      * This was `Math.round(allTimeSales * 0.1)` — a flat 10% of every sale, with
-     * nothing behind it. `config.settlement.commissionBps` is the rate the
-     * platform actually charges and it defaults to ZERO, so on a deployment that
-     * has never set it the dashboard was reporting substantial revenue the
-     * platform had not taken a paisa of.
+     * nothing behind it. Then it became `StallEarning.commissionPaise`, which
+     * over-counted the instant `services/sharePolicy.js` shipped: that field is
+     * everything withheld from a seller — platform, delivery, market owner and
+     * customer incentive together — not the platform's cut alone.
      *
-     * `StallEarning.commissionPaise` is what `services/settlement.js` withheld,
-     * per delivered order, for market stalls and independent shops alike. It is
-     * therefore lower than a percentage of gross sales, and correctly so:
-     * commission is earned on delivery, not on placement.
+     * `PlatformEarning.amountPaise` is the one row that names only the
+     * platform's own bucket, written by `services/settlement.js` at the same
+     * moment as every other share. It is still earned on delivery, not
+     * placement, so it stays lower than a percentage of gross sales.
      */
     const allTimeSales = (allTimeDeliveredOrders[0]?.totalSalesPaise || 0) / 100;
-    const platformCommission = (commissionTotals[0]?.commissionPaise || 0) / 100;
-    const todayCommission = (todayCommissionTotals[0]?.commissionPaise || 0) / 100;
+    const platformCommission = (commissionTotals[0]?.amountPaise || 0) / 100;
+    const todayCommission = (todayCommissionTotals[0]?.amountPaise || 0) / 100;
 
     // Format 7/30 days trends for Recharts. `sevenDayTrends` covers 30 days;
     // the 7-day strip is the tail of it.

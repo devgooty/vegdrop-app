@@ -3,9 +3,14 @@
 const config = require('../config/env');
 const Order = require('../models/Order');
 const Stall = require('../models/Stall');
+const Market = require('../models/Market');
 const StallEarning = require('../models/StallEarning');
+const PlatformEarning = require('../models/PlatformEarning');
+const SharePayout = require('../models/SharePayout');
+const OrderIncentive = require('../models/OrderIncentive');
 const { ApiError } = require('../middleware/errors');
 const wallet = require('./wallet');
+const sharePolicy = require('./sharePolicy');
 
 /**
  * Paying the sellers — market stalls and independent shops alike.
@@ -35,6 +40,21 @@ const wallet = require('./wallet');
  * from the obligation's own id, so a replayed release finds the existing ledger
  * entry and moves nothing. Either guard alone would do; both means a bug in one
  * is not a bug in the payout.
+ *
+ * FIVE BUCKETS, NOT ONE COMMISSION
+ *
+ * A flat `commissionBps` withheld from the seller used to be the whole of it.
+ * `services/sharePolicy.js` now splits an order's gross into five buckets —
+ * platform, shopkeeper, delivery, market owner, customer incentive — and this
+ * file writes each to where it belongs: the shopkeeper share stays on
+ * `StallEarning` (so the hold/release/early-withdraw machinery below needs no
+ * change), the platform share is `PlatformEarning` (a plain audit row — the
+ * platform's money moves nowhere), the delivery and market-owner shares are
+ * `SharePayout` (hold-then-release, exactly like `StallEarning`, just for a
+ * different recipient), and the customer-incentive share is `OrderIncentive`
+ * (an accounting row only — nothing pays it out yet). An independent shop has
+ * no market owner, so `sharePolicy.forceNoMarketOwner` folds that bucket into
+ * the platform's rather than dropping it.
  */
 
 const HOLD_MS = config.settlement.holdHours * 60 * 60 * 1000;
@@ -86,30 +106,86 @@ function splitByStall(order) {
 }
 
 /**
- * What the platform keeps, and what reaches the seller.
+ * Write one document, absorbing the replay a unique index is there to catch.
  *
- * One place for the arithmetic so a stall and a shop are never rounded
- * differently on the same gross.
- */
-function applyCommission(grossPaise) {
-  const commissionPaise = Math.round((grossPaise * config.settlement.commissionBps) / 10000);
-  return { commissionPaise, netPaise: grossPaise - commissionPaise };
-}
-
-/**
- * Write one obligation, absorbing the replay.
+ * Every bucket this file writes — `StallEarning`, `PlatformEarning`,
+ * `SharePayout` — has its own unique index keyed on the order (and, for a
+ * market stall's obligation, the stall too), so a repeat of `recordDelivery`
+ * finds the collision here instead of writing a second row.
  *
  * @returns {Promise<boolean>} whether this call is the one that created it
  */
-async function createEarning(doc) {
+async function createIgnoringDuplicate(Model, doc) {
   try {
-    await StallEarning.create(doc);
+    await Model.create(doc);
     return true;
   } catch (err) {
-    // 11000 is the (order, stall) unique index doing its job on a replay.
     if (err?.code !== 11000) throw err;
     return false;
   }
+}
+
+/** `StallEarning` specifically — kept as its own name at every call site below. */
+function createEarning(doc) {
+  return createIgnoringDuplicate(StallEarning, doc);
+}
+
+/**
+ * The customer-incentive accounting row: earned once per order, whatever the
+ * flag was at the time.
+ *
+ * An upsert rather than a plain create, because unlike the other buckets there
+ * is nothing to skip when the pool is empty — `promosEnabled` has to be
+ * recorded either way, so the row is always written and the amount can
+ * legitimately be zero. `$setOnInsert` is what keeps a replay from overwriting
+ * the snapshot with whatever the policy happens to read on the second call.
+ */
+async function recordOrderIncentive(order, amounts, policy, earnedAt) {
+  try {
+    await OrderIncentive.findOneAndUpdate(
+      { order: order._id },
+      {
+        $setOnInsert: {
+          order: order._id,
+          amountPaise: amounts.customerIncentivePaise,
+          promosEnabled: policy.promosEnabled,
+          earnedAt,
+        },
+      },
+      { upsert: true, setDefaultsOnInsert: true, runValidators: true }
+    );
+  } catch (err) {
+    // A race between two callers upserting the same order at once — the loser
+    // sees the winner's document already there, which is exactly the outcome
+    // wanted.
+    if (err?.code !== 11000) throw err;
+  }
+}
+
+/**
+ * The delivery and market-owner buckets, both hold-then-release exactly like a
+ * `StallEarning`. Skipped, not failed, when there is nobody on the order to
+ * pay — an order can reach "Delivered" with no rider on record (a developer
+ * override) and a market can be unowned (administered by `developer` alone),
+ * and neither should block the seller getting paid.
+ */
+async function recordSharePayout({ order, bucket, recipient, amountPaise, earnedAt, releaseAt }) {
+  if (amountPaise <= 0) return false;
+  if (!recipient) {
+    console.warn(
+      `[settlement] ${order.orderNumber}: ${bucket} share of ${amountPaise}p has no recipient to pay; skipped`
+    );
+    return false;
+  }
+
+  return createIgnoringDuplicate(SharePayout, {
+    order: order._id,
+    bucket,
+    recipient,
+    amountPaise,
+    earnedAt,
+    releaseAt,
+  });
 }
 
 /**
@@ -167,15 +243,35 @@ async function recordMarketDelivery(order) {
   const earnedAt = new Date();
   const releaseAt = new Date(earnedAt.getTime() + HOLD_MS);
 
+  /**
+   * The whole order is split ONCE, against the goods total across every stall
+   * that supplied it — not per stall — because the platform, delivery and
+   * market-owner shares are earned on the sale as a whole. Only the
+   * shopkeeper bucket is then divided back out across stalls, in proportion
+   * to what each one actually sold.
+   */
+  const policy = await sharePolicy.effectivePolicyForOrder(order);
+  const grossPaise = shares.reduce((sum, s) => sum + s.grossPaise, 0);
+  const amounts = sharePolicy.splitGrossPaise(grossPaise, policy);
+  const shopParts = sharePolicy.allocateShopkeeperAcrossStalls(
+    shares.map((s) => s.grossPaise),
+    amounts.shopkeeperPaise
+  );
+
   let recorded = 0;
   let totalNetPaise = 0;
 
-  for (const share of shares) {
+  for (let i = 0; i < shares.length; i += 1) {
+    const share = shares[i];
     const stall = ownerByStall.get(String(share.stall));
     if (!stall?.owner) continue;
 
-    const { commissionPaise, netPaise } = applyCommission(share.grossPaise);
+    const netPaise = shopParts[i];
     if (netPaise <= 0) continue;
+    // Everything not reaching this stall — platform, delivery, market owner
+    // and customer incentive together — withheld from ITS gross, not just the
+    // platform's own cut.
+    const commissionPaise = share.grossPaise - netPaise;
 
     const created = await createEarning({
       stall: share.stall,
@@ -198,6 +294,37 @@ async function recordMarketDelivery(order) {
       totalNetPaise += netPaise;
     }
   }
+
+  if (amounts.platformPaise > 0) {
+    await createIgnoringDuplicate(PlatformEarning, {
+      order: order._id,
+      orderNumber: order.orderNumber,
+      market: order.market,
+      amountPaise: amounts.platformPaise,
+      earnedAt,
+    });
+  }
+
+  await recordSharePayout({
+    order,
+    bucket: 'delivery',
+    recipient: order.assignedTo,
+    amountPaise: amounts.deliveryPaise,
+    earnedAt,
+    releaseAt,
+  });
+
+  const market = order.market ? await Market.findById(order.market).select('owner').lean() : null;
+  await recordSharePayout({
+    order,
+    bucket: 'marketOwner',
+    recipient: market?.owner || null,
+    amountPaise: amounts.marketOwnerPaise,
+    earnedAt,
+    releaseAt,
+  });
+
+  await recordOrderIncentive(order, amounts, policy, earnedAt);
 
   await markSettled(order._id);
   return { recorded, totalNetPaise };
@@ -237,32 +364,72 @@ async function recordShopDelivery(order) {
    * because that is the platform's, not the shop's.
    */
   const grossPaise = lines.reduce((sum, line) => sum + line.lineTotalPaise, 0);
-  const { commissionPaise, netPaise } = applyCommission(grossPaise);
-
-  if (netPaise <= 0) {
-    await markSettled(order._id);
-    return { recorded: 0, totalNetPaise: 0 };
-  }
 
   const earnedAt = new Date();
-  const created = await createEarning({
-    shop: order.shop,
-    owner: order.shop,
-    order: order._id,
-    orderNumber: order.orderNumber,
-    lines,
-    grossPaise,
-    commissionPaise,
-    netPaise,
-    status: 'pending',
+  const releaseAt = new Date(earnedAt.getTime() + HOLD_MS);
+
+  /**
+   * An independent shop has no market owner to pay, so that bucket is folded
+   * into the platform's rather than silently dropped — see `forceNoMarketOwner`.
+   * Without this, a policy with `marketOwnerBps > 0` would simply vanish that
+   * share of every shop order's gross.
+   */
+  const rawPolicy = await sharePolicy.effectivePolicyForOrder(order);
+  const policy = sharePolicy.forceNoMarketOwner(rawPolicy);
+  const amounts = sharePolicy.splitGrossPaise(grossPaise, policy);
+
+  const netPaise = amounts.shopkeeperPaise;
+  const commissionPaise = grossPaise - netPaise;
+
+  let recorded = 0;
+  let totalNetPaise = 0;
+
+  if (netPaise > 0) {
+    const created = await createEarning({
+      shop: order.shop,
+      owner: order.shop,
+      order: order._id,
+      orderNumber: order.orderNumber,
+      lines,
+      grossPaise,
+      commissionPaise,
+      netPaise,
+      status: 'pending',
+      earnedAt,
+      releaseAt,
+    });
+    if (created) {
+      recorded = 1;
+      totalNetPaise = netPaise;
+    }
+  }
+
+  if (amounts.platformPaise > 0) {
+    await createIgnoringDuplicate(PlatformEarning, {
+      order: order._id,
+      orderNumber: order.orderNumber,
+      market: null,
+      amountPaise: amounts.platformPaise,
+      earnedAt,
+    });
+  }
+
+  await recordSharePayout({
+    order,
+    bucket: 'delivery',
+    recipient: order.assignedTo,
+    amountPaise: amounts.deliveryPaise,
     earnedAt,
-    releaseAt: new Date(earnedAt.getTime() + HOLD_MS),
+    releaseAt,
   });
 
+  // amounts.marketOwnerPaise is always 0 here — forceNoMarketOwner folded it
+  // into the platform bucket above.
+
+  await recordOrderIncentive(order, amounts, policy, earnedAt);
+
   await markSettled(order._id);
-  return created
-    ? { recorded: 1, totalNetPaise: netPaise }
-    : { recorded: 0, totalNetPaise: 0 };
+  return { recorded, totalNetPaise };
 }
 
 /** Flag the order so the backfill sweep stops looking at it. */
@@ -311,21 +478,74 @@ async function releaseEarning(earning, { early = false } = {}) {
   return { paidPaise: earning.netPaise, replayed: result.replayed };
 }
 
+/** `share-payout:<id>` — mirrors `payoutKey`, one ledger entry per payout, for ever. */
+function sharePayoutKey(payoutId) {
+  return `share-payout:${payoutId}`;
+}
+
+/** Which wallet reason a bucket credits under — see `WalletTransaction.reason`. */
+const SHARE_PAYOUT_WALLET_REASON = {
+  delivery: 'delivery_settlement',
+  marketOwner: 'market_owner_settlement',
+};
+
+/**
+ * Move one delivery or market-owner obligation into its recipient's wallet.
+ *
+ * Same shape as `releaseEarning` — credit first, flip status after, so a crash
+ * in between replays harmlessly onto the same idempotency key rather than
+ * losing the payout.
+ */
+async function releaseSharePayout(payout) {
+  const result = await wallet.credit({
+    userId: payout.recipient,
+    amountPaise: payout.amountPaise,
+    reason: SHARE_PAYOUT_WALLET_REASON[payout.bucket],
+    idempotencyKey: sharePayoutKey(payout._id),
+    order: payout.order,
+    note: payout.bucket === 'delivery' ? 'Delivery share' : 'Market owner share',
+    session: null,
+  });
+
+  await SharePayout.updateOne(
+    { _id: payout._id, status: 'pending' },
+    {
+      $set: {
+        status: 'released',
+        releasedAt: new Date(),
+        walletTransaction: result.transaction?._id || null,
+      },
+    }
+  );
+
+  return { paidPaise: payout.amountPaise, replayed: result.replayed };
+}
+
 /**
  * Release everything whose hold has expired. Driven by the sweeper.
+ *
+ * Covers both hold-then-release ledgers — `StallEarning` (shopkeeper) and
+ * `SharePayout` (rider, market owner) — because they share one clock and one
+ * sweep; nothing about "has the hold expired" differs between them.
  *
  * @returns {Promise<{released: number, paidPaise: number}>}
  */
 async function releaseDue({ limit = 100 } = {}) {
-  const due = await StallEarning.find({ status: 'pending', releaseAt: { $lte: new Date() } })
-    .sort({ releaseAt: 1 })
-    .limit(limit)
-    .lean();
+  const [dueEarnings, duePayouts] = await Promise.all([
+    StallEarning.find({ status: 'pending', releaseAt: { $lte: new Date() } })
+      .sort({ releaseAt: 1 })
+      .limit(limit)
+      .lean(),
+    SharePayout.find({ status: 'pending', releaseAt: { $lte: new Date() } })
+      .sort({ releaseAt: 1 })
+      .limit(limit)
+      .lean(),
+  ]);
 
   let released = 0;
   let paidPaise = 0;
 
-  for (const earning of due) {
+  for (const earning of dueEarnings) {
     try {
       const result = await releaseEarning(earning);
       released += 1;
@@ -334,6 +554,16 @@ async function releaseDue({ limit = 100 } = {}) {
       // One stuck payout must not stop the rest. Ordinary ledger contention
       // resolves itself on the next tick.
       console.warn(`[settlement] ${earning.orderNumber}: ${err.message}`);
+    }
+  }
+
+  for (const payout of duePayouts) {
+    try {
+      const result = await releaseSharePayout(payout);
+      released += 1;
+      paidPaise += result.paidPaise;
+    } catch (err) {
+      console.warn(`[settlement] share payout ${payout._id}: ${err.message}`);
     }
   }
 

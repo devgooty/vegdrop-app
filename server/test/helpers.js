@@ -50,6 +50,7 @@ const { connect, disconnect, mongoose } = require('../db/connect');
 const { createApp } = require('../app');
 const User = require('../models/User');
 const VendorKyc = require('../models/VendorKyc');
+const sharePolicy = require('../services/sharePolicy');
 
 let replSet = null;
 let app = null;
@@ -84,6 +85,15 @@ async function stopTestServer() {
 async function resetDatabase() {
   const { collections } = mongoose.connection;
   await Promise.all(Object.values(collections).map((c) => c.deleteMany({})));
+
+  /**
+   * Every test starts with a valid global share policy in place.
+   * `services/settlement.js` would seed it lazily on first use anyway —
+   * `ensureGlobalPolicy` is itself idempotent — but a suite that reads
+   * `PlatformSharePolicy` directly, or hits an admin route, should not have to
+   * know that settlement is what happens to create it first.
+   */
+  await sharePolicy.ensureGlobalPolicy();
 }
 
 function api() {

@@ -45,6 +45,7 @@ const VendorKyc = require('../models/VendorKyc');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const StallEarning = require('../models/StallEarning');
+const PlatformEarning = require('../models/PlatformEarning');
 const WalletTransaction = require('../models/WalletTransaction');
 const { startOfMarketDay } = require('../utils/marketDay');
 
@@ -331,8 +332,15 @@ test('platform commission comes from the settlement ledger, not a flat 10%', asy
    * It was `Math.round(allTimeSales * 0.1)`. `config.settlement.commissionBps`
    * is the rate actually charged and it defaults to ZERO, so a deployment that
    * never set it saw a dashboard reporting a tenth of every sale as revenue the
-   * platform had not taken. `StallEarning.commissionPaise` is what settlement
-   * withheld — for market stalls and independent shops alike.
+   * platform had not taken.
+   *
+   * `PlatformEarning.amountPaise` is the row `services/settlement.js` writes
+   * for the platform's own share-policy bucket — not `StallEarning.commissionPaise`,
+   * which (since sharePolicy) is everything withheld from the seller: platform,
+   * delivery, market owner and customer incentive together, not the platform's
+   * cut alone. A `StallEarning` is still recorded alongside it, exactly as a
+   * real settlement would, so this also pins that the KPI does not fall back to
+   * summing the wrong ledger.
    */
   const developer = await authenticatedUser('developer');
   const customer = await mkUser({ role: 'customer' });
@@ -352,11 +360,21 @@ test('platform commission comes from the settlement ledger, not a flat 10%', asy
     orderNumber: order.orderNumber,
     lines: [{ name: 'Tomatoes', quantity: 1, unitPricePaise: 100000, lineTotalPaise: 100000 }],
     grossPaise: 100000,
-    commissionPaise: 2500, // ₹25 — deliberately not a tenth of ₹1000
-    netPaise: 97500,
+    // Deliberately bigger than the platform's own share below: this is the
+    // whole withheld amount (platform + delivery + market owner + incentive),
+    // and the KPI must not mistake it for the platform's cut alone.
+    commissionPaise: 4000,
+    netPaise: 96000,
     status: 'pending',
     earnedAt: new Date(),
     releaseAt: new Date(Date.now() + 86400000),
+  });
+  await PlatformEarning.create({
+    order: order._id,
+    orderNumber: order.orderNumber,
+    market: market._id,
+    amountPaise: 2500, // ₹25 — deliberately not a tenth of ₹1000, and not the ₹40 withheld above
+    earnedAt: new Date(),
   });
 
   const res = await api().get('/api/developer/overview').set(auth(developer.accessToken));
@@ -364,7 +382,8 @@ test('platform commission comes from the settlement ledger, not a flat 10%', asy
 
   const { kpis } = res.body.data;
   assert.equal(kpis.allTimeSales, 1000);
-  // Was 100 — a tenth of sales, invented.
+  // Was 100 (a tenth of sales, invented) and then 40 (the whole withheld
+  // amount, not the platform's own share) before landing on the right ledger.
   assert.equal(kpis.platformCommission, 25);
   assert.equal(kpis.todayCommission, 25);
 });
