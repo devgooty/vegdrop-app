@@ -228,6 +228,129 @@ test('market PUT validates the next persisted override after partial updates', a
   assert.equal(after.deliveryBps, 3000);
 });
 
+/**
+ * The rebalance trap: a partial override leaves shopkeeper to be computed as
+ * `10000 - others`, and "others" includes what the market INHERITS from the
+ * global policy — so an explicit override that looks under 10000 on its own can
+ * still drive the merged shopkeeper share negative. The old pre-merge check
+ * summed only the explicit fields and waved this through; at settlement the
+ * buckets then exceeded the order's gross while the stall was paid nothing.
+ */
+test('market PUT whose rebalanced shopkeeper share would go negative is refused', async () => {
+  const admin = await authenticatedUser('admin');
+  const owner = await authenticatedUser('market_owner');
+  const market = await Market.create({
+    name: 'Negative Rebalance Market',
+    slug: `neg-mkt-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+    address: 'Hyd',
+    owner: owner.user._id,
+    location: { type: 'Point', coordinates: [78.4, 17.3] },
+  });
+
+  const global = await api()
+    .put('/api/admin/share-policy')
+    .set(auth(admin.accessToken))
+    .send({
+      platformBps: 1000,
+      shopkeeperBps: 9000,
+      deliveryBps: 0,
+      marketOwnerBps: 0,
+      customerIncentiveBps: 0,
+    });
+  assert.equal(global.status, 200);
+
+  // Explicit fields alone sum to 9500 — under 10000 — but merged with the
+  // inherited platform 1000 the rebalanced shopkeeper share is -500.
+  const res = await api()
+    .put(`/api/admin/markets/${market._id}/share-policy`)
+    .set(auth(admin.accessToken))
+    .send({ deliveryBps: 9500 });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error.code, 'SHARE_BPS_INVALID');
+  assert.equal(await MarketSharePolicy.findOne({ market: market._id }), null);
+});
+
+/**
+ * The drift trap: an override is validated against the global policy it was
+ * saved under, but the merge is recomputed from the LIVE global on every
+ * settlement. Letting a global edit through that invalidates a stored override
+ * would leave that market's orders refusing to settle until someone noticed
+ * the boot log. Refused here instead, naming the market.
+ */
+test('global PUT that would invalidate a stored market override is refused', async () => {
+  const admin = await authenticatedUser('admin');
+  const owner = await authenticatedUser('market_owner');
+  const market = await Market.create({
+    name: 'Drift Market',
+    slug: `drift-mkt-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+    address: 'Hyd',
+    owner: owner.user._id,
+    location: { type: 'Point', coordinates: [78.4, 17.3] },
+  });
+
+  await api()
+    .put('/api/admin/share-policy')
+    .set(auth(admin.accessToken))
+    .send({
+      platformBps: 1000,
+      shopkeeperBps: 9000,
+      deliveryBps: 0,
+      marketOwnerBps: 0,
+      customerIncentiveBps: 0,
+    })
+    .expect(200);
+
+  // Valid under the current global: inherited platform 1000 + explicit
+  // shopkeeper 7000 + delivery 2000 = 10000.
+  await api()
+    .put(`/api/admin/markets/${market._id}/share-policy`)
+    .set(auth(admin.accessToken))
+    .send({ shopkeeperBps: 7000, deliveryBps: 2000 })
+    .expect(200);
+
+  // Raising platform to 2000 would make that market's merged sum 11000.
+  const res = await api()
+    .put('/api/admin/share-policy')
+    .set(auth(admin.accessToken))
+    .send({
+      platformBps: 2000,
+      shopkeeperBps: 8000,
+      deliveryBps: 0,
+      marketOwnerBps: 0,
+      customerIncentiveBps: 0,
+    });
+
+  assert.equal(res.status, 409);
+  assert.equal(res.body.error.code, 'SHARE_POLICY_CONFLICT');
+  assert.match(res.body.error.message, /Drift Market/);
+
+  const globalAfter = await PlatformSharePolicy.findOne({
+    scope: sharePolicy.GLOBAL_PLATFORM_POLICY_SCOPE,
+  }).lean();
+  assert.equal(globalAfter.platformBps, 1000, 'the global policy is untouched');
+
+  // A fully explicit override sums to 10000 under any global, so the admin can
+  // always fix the override first and then land the same global change.
+  await api()
+    .put(`/api/admin/markets/${market._id}/share-policy`)
+    .set(auth(admin.accessToken))
+    .send({ platformBps: 1000, shopkeeperBps: 7000, deliveryBps: 2000, marketOwnerBps: 0, customerIncentiveBps: 0 })
+    .expect(200);
+
+  await api()
+    .put('/api/admin/share-policy')
+    .set(auth(admin.accessToken))
+    .send({
+      platformBps: 2000,
+      shopkeeperBps: 8000,
+      deliveryBps: 0,
+      marketOwnerBps: 0,
+      customerIncentiveBps: 0,
+    })
+    .expect(200);
+});
+
 test('market PUT omitting promosEnabled inherits disabled global promos', async () => {
   const admin = await authenticatedUser('admin');
   const owner = await authenticatedUser('market_owner');

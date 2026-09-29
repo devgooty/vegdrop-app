@@ -39,6 +39,7 @@ const {
   auth,
 } = require('./helpers');
 
+const User = require('../models/User');
 const Market = require('../models/Market');
 const Stall = require('../models/Stall');
 const VendorKyc = require('../models/VendorKyc');
@@ -169,6 +170,17 @@ test('each shopkeeper is matched to their OWN stall, not whichever came first', 
   assert.equal(byId.get(ravi._id.toString()).marketName, 'North Bazaar');
   assert.equal(byId.get(anand._id.toString()).stallName, 'Anand Greens');
   assert.equal(byId.get(anand._id.toString()).marketName, 'South Bazaar');
+});
+
+test('a rider on an active job is reported On Duty, not Off Duty', async () => {
+  const developer = await authenticatedUser('developer');
+  const rider = await mkUser({ role: 'delivery' });
+  await User.updateOne({ _id: rider._id }, { $set: { 'rider.dutyStatus': 'busy' } });
+
+  const res = await api().get('/api/developer/riders').set(auth(developer.accessToken));
+  assert.equal(res.status, 200);
+  const row = res.body.data.find((r) => r.id === rider._id.toString());
+  assert.equal(row.dutyStatus, 'On Duty');
 });
 
 test('a shopkeeper with no stall is reported, not dropped', async () => {

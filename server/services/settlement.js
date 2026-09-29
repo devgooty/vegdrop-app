@@ -302,7 +302,42 @@ async function recordMarketDelivery(order) {
    * to what each one actually sold.
    */
   const policy = await sharePolicy.effectivePolicyForOrder(order);
+
+  /**
+   * The merge is recomputed from live documents on every settlement, so a
+   * global-policy edit made after a market override was saved can hand this
+   * function a policy that no write-time validation ever approved — buckets
+   * out of range or a sum off 10000. `splitGrossPaise` would faithfully turn
+   * that into buckets that do not sum to gross (its last bucket is computed
+   * as a remainder and can go negative, which `OrderIncentive`'s `min: 0`
+   * then rejects — but only AFTER the other buckets were already written).
+   * Refuse before writing anything, exactly like POLICY_MISMATCH below: the
+   * order stays unsettled for the backfill sweep, and settles cleanly the
+   * moment the policy is fixed.
+   */
+  if (!sharePolicy.policyIsValid(policy)) {
+    console.warn(
+      `[settlement] ${order.orderNumber}: effective share policy is invalid (a bucket out of ` +
+      'range or the sum off 10000) — a global policy edit likely invalidated this market\'s ' +
+      'override. Refusing to settle until the policy is fixed.'
+    );
+    return { recorded: 0, totalNetPaise: 0, reason: 'POLICY_INVALID' };
+  }
+
   const grossPaise = shares.reduce((sum, s) => sum + s.grossPaise, 0);
+  const unpaidShare = shares.find((share) => {
+    if (share.grossPaise <= 0) return false;
+    const stall = ownerByStall.get(String(share.stall));
+    return !stall?.owner;
+  });
+  if (unpaidShare) {
+    console.warn(
+      `[settlement] ${order.orderNumber}: stall ${unpaidShare.stall} supplied goods but has ` +
+      'no owner — refusing to mark the order settled until every stall share can be recorded.'
+    );
+    return { recorded: 0, totalNetPaise: 0, reason: 'STALL_OWNER_MISSING' };
+  }
+
   const amounts = sharePolicy.splitGrossPaise(grossPaise, policy);
   const shopParts = sharePolicy.allocateShopkeeperAcrossStalls(
     shares.map((s) => s.grossPaise),
@@ -443,6 +478,21 @@ async function recordShopDelivery(order) {
    * share of every shop order's gross.
    */
   const rawPolicy = await sharePolicy.effectivePolicyForOrder(order);
+
+  // Same refusal as recordMarketDelivery, for the same reason: the merged
+  // policy is recomputed live and can have drifted invalid since it was saved.
+  // Checked on the raw policy — folding the market-owner bucket into the
+  // platform's preserves both the sum and non-negativity, so it cannot mask
+  // or introduce invalidity.
+  if (!sharePolicy.policyIsValid(rawPolicy)) {
+    console.warn(
+      `[settlement] ${order.orderNumber}: effective share policy is invalid (a bucket out of ` +
+      'range or the sum off 10000) — a global policy edit likely invalidated a stored ' +
+      'override. Refusing to settle until the policy is fixed.'
+    );
+    return { recorded: 0, totalNetPaise: 0, reason: 'POLICY_INVALID' };
+  }
+
   const policy = sharePolicy.forceNoMarketOwner(rawPolicy);
   const amounts = sharePolicy.splitGrossPaise(grossPaise, policy);
 

@@ -481,6 +481,47 @@ test('a market owner can still call off an order that is already packing', async
   assert.equal((await Stall.findById(shop.stall._id)).activeLoad, 0, 'the stall is released');
 });
 
+/**
+ * "Staff" for a market order means the market's operator, never a stall.
+ *
+ * `TRANSITION_PERMISSIONS.Cancelled` includes `shopkeeper` for the legacy
+ * single-shop flow, and the market branch used to inherit it unnarrowed — so a
+ * stall holding one claimed line (whose visibility that claim is exactly what
+ * grants) could kill the whole order mid-packing: full refund, every other
+ * stall's committed produce released.
+ */
+test('a stall shopkeeper cannot cancel the market order they hold one line of', async () => {
+  const customer = await authenticatedUser('customer');
+  const market = await seedMarket();
+  const tomato = await seedProduct();
+  await MarketPrice.create({ market: market._id, product: tomato._id, pricePaise: 4000 });
+  const shop = await seedStallWithOwner(market);
+
+  const created = await api()
+    .post('/api/orders')
+    .set(auth(customer.accessToken))
+    .send({
+      items: [{ productId: tomato._id.toHexString(), quantity: 1 }],
+      address: '12 Test Lane',
+      paymentMethod: 'cod',
+      marketId: market._id.toHexString(),
+    });
+
+  await api()
+    .post(`/api/stalls/orders/${created.body.data.id}/claim`)
+    .set(auth(shop.accessToken))
+    .send({ lineIds: [created.body.data.items[0].lineId] });
+
+  const refused = await api()
+    .patch(`/api/orders/${created.body.data.id}/status`)
+    .set(auth(shop.accessToken))
+    .send({ status: 'Cancelled' });
+
+  assert.equal(refused.status, 403);
+  const after = await Order.findById(created.body.data.id);
+  assert.notEqual(after.fulfillment.status, 'cancelled', 'the order lives on');
+});
+
 // ---------------------------------------------------------------------------
 // Bundled fix 2 — riders could never see their own offer
 // ---------------------------------------------------------------------------

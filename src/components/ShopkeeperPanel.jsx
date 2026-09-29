@@ -184,6 +184,17 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
   useEffect(() => {
     try {
       localStorage.removeItem('vegdrop_shopkeeper_bank');
+      /**
+       * The unkeyed profile copy goes for a related reason. The profile is
+       * saved under a per-account key (`…_profile_<phone>`), but a shared
+       * unkeyed copy used to be written alongside it and read as a fallback —
+       * so on a shared device, the next shopkeeper to sign in was seeded with
+       * the PREVIOUS account's shop name, phone and address. Removing the
+       * writer is only half the fix (see the basket comment in services/
+       * cart.js): the bled copy is already sitting in browsers, so it is
+       * deleted here the same way the bank details were.
+       */
+      localStorage.removeItem('vegdrop_shopkeeper_profile');
     } catch {
       /* Private mode or a full quota — nothing was readable there anyway. */
     }
@@ -226,8 +237,11 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
   };
   const [profileData, setProfileData] = useState(() => {
     try {
+      // Keyed by account, and ONLY the keyed copy is read — the unkeyed
+      // fallback this used to take handed one shopkeeper's profile to the next
+      // account on the same device (see the cleanup effect above).
       const savedKey = `vegdrop_shopkeeper_profile_${user?.phone || 'default'}`;
-      const saved = localStorage.getItem(savedKey) || localStorage.getItem('vegdrop_shopkeeper_profile');
+      const saved = localStorage.getItem(savedKey);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed) return parsed;
@@ -1882,9 +1896,12 @@ export default function ShopkeeperPanel({ user, orders, shopProfile = null, prod
                 };
                 setProfileData(updated);
                 try {
+                  // Per-account key only. The unkeyed copy that was also
+                  // written here is what bled this profile into other accounts
+                  // on the same device; the cleanup effect near the top of the
+                  // component deletes copies already stored.
                   const savedKey = `vegdrop_shopkeeper_profile_${profileData.phone || user?.phone || 'default'}`;
                   localStorage.setItem(savedKey, JSON.stringify(updated));
-                  localStorage.setItem('vegdrop_shopkeeper_profile', JSON.stringify(updated));
                 } catch(err) {}
                 setIsEditProfileOpen(false);
               }}

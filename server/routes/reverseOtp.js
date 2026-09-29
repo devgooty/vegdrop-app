@@ -69,7 +69,12 @@ router.post(
       .object({
         phone: fields.phone,
         purpose: z.enum(PURPOSES),
-        app: z.enum(['customer', 'shopkeeper', 'delivery', 'developer', 'market_owner']).optional(),
+        // Must list every key of APP_ROLE_SCOPE, same as /auth/lookup and
+        // /auth/otp/start. This enum once lagged behind when 'admin' was added
+        // there — and because reverse OTP is the only sign-in path that
+        // survives an outbound-transport outage, the drift meant the admin app
+        // could not sign in at all on a deployed host.
+        app: z.enum(['customer', 'shopkeeper', 'delivery', 'developer', 'market_owner', 'admin']).optional(),
         // Used only if this number turns into a new account. Ignored for an
         // existing one, so it cannot rename somebody else.
         name: fields.nonEmptyString(120).optional(),

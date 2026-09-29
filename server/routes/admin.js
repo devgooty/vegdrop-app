@@ -38,13 +38,6 @@ const marketPolicyBody = z
 
 const marketParams = z.object({ id: fields.objectId }).strict();
 
-const BPS_FIELDS_EXCEPT_SHOPKEEPER = [
-  'platformBps',
-  'deliveryBps',
-  'marketOwnerBps',
-  'customerIncentiveBps',
-];
-
 const MARKET_OVERRIDE_FIELDS = [
   'platformBps',
   'shopkeeperBps',
@@ -53,18 +46,6 @@ const MARKET_OVERRIDE_FIELDS = [
   'customerIncentiveBps',
   'promosEnabled',
 ];
-
-function rejectImpossibleRebalance(body) {
-  if (body.shopkeeperBps != null) return;
-
-  const explicitOtherSum = BPS_FIELDS_EXCEPT_SHOPKEEPER.reduce((sum, key) => {
-    return sum + (body[key] ?? 0);
-  }, 0);
-
-  if (explicitOtherSum > 10000) {
-    throw new ApiError(400, 'Share basis points must sum to exactly 10000.', 'SHARE_BPS_INVALID');
-  }
-}
 
 function nextMarketOverride(existing, patch) {
   const next = {};
@@ -106,7 +87,35 @@ router.put('/share-policy', validate({ body: globalPolicyBody }), async (req, re
     promosEnabled: true,
     ...req.valid.body,
   };
-  sharePolicy.assertBpsSum(body);
+  sharePolicy.assertValidPolicy(body);
+
+  /**
+   * A market override is validated against the global policy IT WAS SAVED
+   * UNDER, and the merge is recomputed from the live global on every
+   * settlement — so editing the global can silently turn a stored override
+   * invalid (a partial override's rebalanced shopkeeper share goes negative,
+   * or an explicit override's merged sum drifts off 10000). Settlement then
+   * refuses those orders and they pile up unsettled. Refuse the edit here
+   * instead, naming the markets, so the admin fixes the overrides first —
+   * a fully explicit override sums to 10000 under any global, so there is
+   * always an order of operations that gets both changes through.
+   */
+  const overrides = await MarketSharePolicy.find({}).lean();
+  const broken = overrides.filter(
+    (override) => !sharePolicy.policyIsValid(sharePolicy.mergePolicies(body, override))
+  );
+  if (broken.length > 0) {
+    const markets = await Market.find({ _id: { $in: broken.map((b) => b.market) } })
+      .select('name')
+      .lean();
+    const names = markets.map((m) => m.name).join(', ');
+    throw new ApiError(
+      409,
+      `This change would make the share split invalid for ${broken.length} market(s): ${names}. ` +
+        'Update or remove those market overrides first.',
+      'SHARE_POLICY_CONFLICT'
+    );
+  }
 
   const policy = await PlatformSharePolicy.findOneAndUpdate(
     { scope: sharePolicy.GLOBAL_PLATFORM_POLICY_SCOPE },
@@ -141,13 +150,18 @@ router.put(
     const existing = await MarketSharePolicy.findOne({ market: req.valid.params.id }).lean();
     const nextOverride = nextMarketOverride(existing, body);
 
-    rejectImpossibleRebalance(nextOverride);
     /**
      * Validate the post-patch override, because omitted fields keep their
      * existing stored values while null fields explicitly return to inheritance.
+     *
+     * `assertValidPolicy`, not `assertBpsSum`: the rebalance in `mergePolicies`
+     * constructs a sum of exactly 10000 by definition, so the sum check alone
+     * waved through a merged policy whose shopkeeper share was NEGATIVE
+     * (inherited fields plus an explicit override exceeding 10000 together).
+     * Range-checking every merged bucket is the check that actually binds here.
      */
     const effective = sharePolicy.mergePolicies(global.toObject(), nextOverride);
-    sharePolicy.assertBpsSum(effective);
+    sharePolicy.assertValidPolicy(effective);
 
     const policy = await MarketSharePolicy.findOneAndUpdate(
       { market: req.valid.params.id },

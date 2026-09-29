@@ -478,7 +478,23 @@ const GLOBAL_PLATFORM_POLICY_SCOPE = 'global';
 /**
  * Global share policy is a singleton keyed by scope. Older builds upserted with
  * an empty filter, so a concurrent first boot could leave multiple rows.
+ *
+ * The canonical choice MUST be deterministic across instances, which is why the
+ * sort tiebreaks on `_id`. The duplicate rows this migration cleans up were
+ * created by concurrent first-boot upserts, so near-identical `updatedAt`
+ * values are the expected case, not a corner — and two instances running this
+ * at once with an ambiguous sort could each pick a different canonical and
+ * delete each other's, leaving ZERO rows: the admin-configured policy destroyed
+ * and silently reseeded from the env default. Sorted identically, both
+ * instances agree on the survivor and the deletes overlap harmlessly.
  */
+function newestFirst(a, b) {
+  const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+  const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+  if (tb !== ta) return tb - ta;
+  return String(b._id).localeCompare(String(a._id));
+}
+
 async function migratePlatformSharePolicySingleton() {
   const coll = mongoose.connection.collection('platformsharepolicies');
   const all = await coll.find({}).toArray();
@@ -488,18 +504,7 @@ async function migratePlatformSharePolicySingleton() {
 
   const scoped = all.filter((doc) => doc.scope === GLOBAL_PLATFORM_POLICY_SCOPE);
   let canonical =
-    (scoped.length > 0
-      ? [...scoped].sort((a, b) => {
-          const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-          const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-          return tb - ta;
-        })[0]
-      : null) ||
-    [...all].sort((a, b) => {
-      const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-      const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-      return tb - ta;
-    })[0];
+    (scoped.length > 0 ? [...scoped].sort(newestFirst)[0] : null) || [...all].sort(newestFirst)[0];
 
   let consolidated = false;
   if (canonical.scope !== GLOBAL_PLATFORM_POLICY_SCOPE) {

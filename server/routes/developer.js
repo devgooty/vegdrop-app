@@ -603,7 +603,7 @@ router.get('/riders', ...developerGate, async (req, res, next) => {
         // wrong path they were constants: every rider always "Off Duty", every
         // rider always without a location — which is exactly the pair of facts
         // this screen exists to show.
-        dutyStatus: r.rider?.dutyStatus === 'online' ? 'On Duty' : 'Off Duty',
+        dutyStatus: ['online', 'busy'].includes(r.rider?.dutyStatus) ? 'On Duty' : 'Off Duty',
         hasLocation: Boolean(r.rider?.lastLocation?.coordinates?.length),
         /**
          * Whether this rider may be dispatched at all.
@@ -771,7 +771,11 @@ router.get('/payments', ...developerGate, async (req, res, next) => {
           balanceAfter: (t.balanceAfterPaise || 0) / 100,
           reason: t.reason,
           note: t.note,
-          referenceId: t.referenceId,
+          // `WalletTransaction` has no `referenceId` path — reading one off a
+          // lean row was silently `undefined` (the same class as the /dump
+          // faults annotated elsewhere in this file), so the console's
+          // reference column was always blank. The payment id is the reference.
+          referenceId: t.razorpayPaymentId || t.idempotencyKey || null,
           createdAt: t.createdAt
         }))
       }

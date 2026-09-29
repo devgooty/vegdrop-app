@@ -21,6 +21,7 @@ const checkout = require('../services/checkout');
 const settlement = require('../services/settlement');
 const dispatch = require('../services/dispatch');
 const handover = require('../services/handover');
+const { mayTakeWork } = require('../services/riderApproval');
 const { CANCELLABLE_BY_CUSTOMER, CANCELLABLE_BY_STAFF, transitionTo } = require('../utils/orderStatus');
 const { requirePhotoDataUri } = require('../services/imagePayload');
 const media = require('../services/cloudinary');
@@ -148,24 +149,38 @@ async function visibilityFilter(user) {
      * The two market branches matter: during a rider offer `assignedTo` is
      * still null, so without them the rider we just picked could never actually
      * see the order we are offering them.
+     *
+     * Every pool clause is conditional on approval, mirroring GET /rider/orders:
+     * an unapproved rider may not accept or claim anything, so listing the pool
+     * to them would only advertise work they cannot take — and hand them the
+     * customer's name, phone and address on orders they hold no relationship
+     * to. Their own assignments stay visible unconditionally, so a rider whose
+     * approval is withdrawn mid-delivery can still finish the job they hold.
      */
+    const approved = await mayTakeWork(user);
     return {
       $or: [
         { assignedTo: user._id },
-        {
-          'fulfillment.riderOffer.rider': user._id,
-          'fulfillment.riderOffer.expiresAt': { $gt: new Date() },
-        },
-        { assignedTo: null, 'fulfillment.riderOffer.openPool': true },
-        /**
-         * Legacy marketless orders keep the original unclaimed-pool behaviour.
-         *
-         * Deliberately NOT narrowed by `shop`, unlike the shopkeeper branch
-         * above: an independent shop has no market, so the dispatch cascade —
-         * which picks the rider nearest a market — has no origin to work from.
-         * The open pool is how a shop order reaches a rider at all.
-         */
-        { assignedTo: null, market: null, status: { $in: ['Preparing', 'Out for Delivery'] } },
+        ...(approved
+          ? [
+              {
+                'fulfillment.riderOffer.rider': user._id,
+                'fulfillment.riderOffer.expiresAt': { $gt: new Date() },
+              },
+              { assignedTo: null, 'fulfillment.riderOffer.openPool': true },
+              /**
+               * Legacy marketless orders keep the original unclaimed-pool
+               * behaviour.
+               *
+               * Deliberately NOT narrowed by `shop`, unlike the shopkeeper
+               * branch above: an independent shop has no market, so the
+               * dispatch cascade — which picks the rider nearest a market —
+               * has no origin to work from. The open pool is how a shop order
+               * reaches a rider at all.
+               */
+              { assignedTo: null, market: null, status: { $in: ['Preparing', 'Out for Delivery'] } },
+            ]
+          : []),
       ],
     };
   }
@@ -402,6 +417,31 @@ async function cancelMarketOrder({ req, res, order }) {
 
   if (isCustomer && order.customer.toString() !== req.user._id.toHexString()) {
     throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
+  }
+
+  /**
+   * "Staff" here means the market's operator, never a stall.
+   *
+   * `TRANSITION_PERMISSIONS.Cancelled` includes `shopkeeper` for the LEGACY
+   * single-shop flow, where the shop cancelling its own order is legitimate —
+   * but a market order reaches this function through that same permission
+   * list, and a shopkeeper's visibility includes any order they hold one
+   * claimed line on, plus every open-pool sourcing order in their market. Left
+   * unnarrowed, a stall supplying one line of a four-stall order could kill
+   * the WHOLE order mid-packing: full customer refund, three other stalls'
+   * committed produce released, with `statusHistory.by` the only trace. A
+   * stall that cannot supply its line has its own vocabulary (declining the
+   * offer, short-packing into partial_review); closing the entire order
+   * belongs to the people accountable for the whole of it. The market owner's
+   * `visibilityFilter` scope means they can only reach their own markets'
+   * orders here.
+   */
+  if (!isCustomer && !['market_owner', 'developer'].includes(req.user.role)) {
+    throw new ApiError(
+      403,
+      'Only the customer or the market office can cancel a market order.',
+      'FORBIDDEN'
+    );
   }
 
   const allowedStates = isCustomer ? CANCELLABLE_BY_CUSTOMER : CANCELLABLE_BY_STAFF;
@@ -998,6 +1038,23 @@ router.post(
      * An independent shop belongs on this side on purpose: it has no market, so
      * there is no origin for the cascade to measure from.
      */
+
+    /**
+     * Approval gate, mirroring POST /rider/orders/:id/accept — this claim is
+     * the shop/legacy twin of that route, and it is the one that actually has
+     * to be closed: without it, a stranger who proved one phone number could
+     * become `assignedTo` on a real order, and the next GET /orders would hand
+     * them the customer's name, phone, exact address and, on a COD order, the
+     * cash to collect.
+     */
+    if (!(await mayTakeWork(req.user))) {
+      throw new ApiError(
+        403,
+        'Your delivery account has not been approved yet, so you cannot take orders.',
+        'RIDER_NOT_APPROVED'
+      );
+    }
+
     const order = await Order.findOneAndUpdate(
       {
         _id: req.valid.params.id,

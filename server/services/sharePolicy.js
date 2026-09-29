@@ -37,6 +37,34 @@ function assertBpsSum(policy) {
   }
 }
 
+/**
+ * Is this a policy money can actually be split by?
+ *
+ * The sum check alone is NOT enough, and the gap is exactly the rebalance in
+ * `mergePolicies`: it constructs `shopkeeperBps = 10000 - others`, so its
+ * output sums to 10000 *by definition* — including when "others" exceed 10000
+ * and the shopkeeper share it built is negative. A negative bucket passed
+ * `assertBpsSum`, was saved, and at settlement produced buckets that summed to
+ * more than the order's gross while the stall that supplied the goods was
+ * silently skipped. So validity is both facts: every bucket an integer within
+ * [0, 10000], AND the five summing to exactly 10000.
+ */
+function policyIsValid(policy) {
+  let sum = 0;
+  for (const key of BPS_FIELDS) {
+    const val = policy[key] ?? 0;
+    if (!Number.isInteger(val) || val < 0 || val > 10000) return false;
+    sum += val;
+  }
+  return sum === 10000;
+}
+
+function assertValidPolicy(policy) {
+  if (!policyIsValid(policy)) {
+    throw shareBpsInvalidError();
+  }
+}
+
 function lazyPolicyModels() {
   /**
    * Loaded lazily because PlatformSharePolicy imports this module for
@@ -164,6 +192,8 @@ module.exports = {
   BUCKETS,
   GLOBAL_PLATFORM_POLICY_SCOPE,
   assertBpsSum,
+  policyIsValid,
+  assertValidPolicy,
   ensureGlobalPolicy,
   effectivePolicyForOrder,
   mergePolicies,

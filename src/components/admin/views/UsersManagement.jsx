@@ -11,6 +11,7 @@ const ROLE_OPTIONS = [
   { id: 'shopkeeper', label: 'Shopkeeper', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   { id: 'delivery', label: 'Delivery Rider', color: 'bg-amber-50 text-amber-700 border-amber-200' },
   { id: 'market_owner', label: 'Market Owner', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { id: 'admin', label: 'Admin', color: 'bg-slate-100 text-slate-800 border-slate-300' },
   { id: 'developer', label: 'Developer', color: 'bg-purple-50 text-purple-700 border-purple-200' },
 ];
 
@@ -98,12 +99,12 @@ export default function UsersManagement() {
     try {
       setIsUpdating(true);
       setError('');
-      // Find matching user by phone or email in loaded list
       const cleanTarget = assignIdentifier.trim();
-      const match = users.find(u => 
-        (u.phone && u.phone === cleanTarget) || 
+      const found = await fetchUsers({ q: cleanTarget, limit: 20 });
+      const match = (found || []).find((u) =>
+        (u.phone && (u.phone === cleanTarget || u.phone.endsWith(cleanTarget.replace(/\D/g, '')))) ||
         (u.email && u.email.toLowerCase() === cleanTarget.toLowerCase())
-      );
+      ) || (found && found.length === 1 ? found[0] : null);
 
       if (!match) {
         throw new Error(`No account found matching "${cleanTarget}". Ensure user has signed in once before promoting.`);
@@ -183,7 +184,7 @@ export default function UsersManagement() {
         <form onSubmit={handleAssignRoleSubmit} className="bg-slate-900 text-white p-5 rounded-2xl space-y-4 shadow-lg">
           <div>
             <h4 className="text-sm font-black text-white">Assign Role to Existing Account</h4>
-            <p className="text-xs text-slate-400">Promotes an account in MongoDB to shopkeeper, delivery, market owner, or developer.</p>
+            <p className="text-xs text-slate-400">Promotes an account in MongoDB to shopkeeper, delivery, market owner, admin, or developer.</p>
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
@@ -204,11 +205,12 @@ export default function UsersManagement() {
                 onChange={(e) => setAssignRole(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none focus:border-emerald-500"
               >
-                <option value="shopkeeper">🏪 Shopkeeper (Store Vendor)</option>
-                <option value="delivery">🚚 Delivery (Rider Fleet)</option>
-                <option value="market_owner">📊 Market Owner (Mandi Admin)</option>
-                <option value="developer">💻 Developer (Platform Staff)</option>
-                <option value="customer">🛒 Customer</option>
+                <option value="shopkeeper">Shopkeeper (Store Vendor)</option>
+                <option value="delivery">Delivery (Rider Fleet)</option>
+                <option value="market_owner">Market Owner (Mandi Admin)</option>
+                <option value="admin">Admin (Share Policy)</option>
+                <option value="developer">Developer (Platform Staff)</option>
+                <option value="customer">Customer</option>
               </select>
             </div>
           </div>
@@ -228,7 +230,7 @@ export default function UsersManagement() {
         {/* Tabs & Search */}
         <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex gap-1.5 bg-slate-50 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
-            {['All', 'Customer', 'Shopkeeper', 'Delivery', 'Market_Owner', 'Developer'].map(tab => (
+            {['All', 'Customer', 'Shopkeeper', 'Delivery', 'Market_Owner', 'Admin', 'Developer'].map(tab => (
               <button 
                 key={tab}
                 onClick={() => setActiveTab(tab)}

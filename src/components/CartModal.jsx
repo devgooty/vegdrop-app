@@ -30,7 +30,7 @@ const FREE_DELIVERY_THRESHOLD = 300;
  */
 const SHEET_BG = '#F7F4ED';
 
-export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity, onCheckout, walletBalance = 0, onSelectProduct, blockedReason = null }) {
+export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity, onCheckout, walletBalance = 0, onSelectProduct, blockedReason = null, codOnly = false }) {
   const { t, language } = useLanguage();
   const [placed, setPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('COD'); // 'PhonePe' | 'Google Pay' | 'Paytm' | 'COD' | 'VegWallet'
@@ -54,6 +54,13 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, isPaying, onClose]);
+
+  // Standing orders are COD-only on the server. The picker used to stay live
+  // and the success line quoted whichever tile was selected, so a wallet/UPI
+  // choice looked paid when createSchedule had already forced `cod`.
+  useEffect(() => {
+    if (isOpen && codOnly) setPaymentMethod('COD');
+  }, [isOpen, codOnly]);
 
   /**
    * The shop behind the basket must not scroll while the basket is open.
@@ -139,23 +146,20 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
   const handlePlaceOrder = async () => {
     if (cartItems.length === 0 || isPaying || blockedReason) return;
 
-    // onCheckout is async and server-authoritative: it returns false when the
-    // server rejects the order (insufficient funds, insufficient stock).
-    if (paymentMethod === 'COD' || paymentMethod === 'VegWallet') {
-      const result = await onCheckout(grandTotal, paymentMethod);
-      if (result === false) return;
-
-      setPlaced(true);
-      setTimeout(() => {
-        setPlaced(false);
-        onClose();
-      }, 2500);
-      return;
-    }
-
     /**
-     * UPI and card open Razorpay, and the method is passed through as chosen.
+     * `isPaying` guards EVERY method, not just the ones that open Razorpay.
      *
+     * The flag was added for the Razorpay modal (see its declaration above),
+     * and COD/VegWallet used to skip it — but those branches also await a
+     * network round trip, and a wallet checkout debits real balance on the
+     * server during it. With the button still live under a slow request, a
+     * second tap re-entered this handler and placed a duplicate order — on
+     * VegWallet, a second debit of real money.
+     *
+     * onCheckout is async and server-authoritative: it returns false when the
+     * server rejects the order (insufficient funds, insufficient stock).
+     *
+     * UPI and card open Razorpay, and the method is passed through as chosen.
      * It used to be rewritten to 'VegWallet' here, which meant picking UPI with
      * an empty wallet failed with "insufficient funds" and no way to pay from
      * the basket. handleCheckout now collects the shortfall through Razorpay
@@ -468,6 +472,8 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                 <div className="bg-white rounded-2xl border border-[#EFE9DD] shadow-[0_2px_10px_rgba(24,54,42,0.05)] p-4 space-y-2.5">
                   <p className="text-[10.5px] font-black uppercase tracking-wider text-slate-400">{t('cart.selectPayment')}</p>
                   <div className="grid grid-cols-2 gap-2">
+                    {!codOnly && (
+                    <>
                     {/* PhonePe */}
                     <button
                       onClick={() => setPaymentMethod('PhonePe')}
@@ -542,6 +548,8 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
                         <p className="text-[9.5px] text-orange-600 font-semibold">{t('cart.walletBalance', { amount: walletBalance.toFixed(2) })}</p>
                       </div>
                     </button>
+                    </>
+                    )}
 
                     {/* Cash on Delivery, spanning both columns — five tiles in
                         a two-column grid otherwise leave the last one stranded

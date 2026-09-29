@@ -43,8 +43,8 @@ function placeholderName(phone) {
  */
 const APP_ROLE_SCOPE = Object.freeze({
   customer: ['customer', 'market_owner', 'developer'],
-  shopkeeper: ['shopkeeper'],
-  delivery: ['delivery'],
+  shopkeeper: ['shopkeeper', 'developer'],
+  delivery: ['delivery', 'developer'],
   developer: ['developer'],
   market_owner: ['market_owner'],
   admin: ['admin', 'developer'],

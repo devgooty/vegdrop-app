@@ -81,7 +81,9 @@ router.post(
       .object({
         phone: fields.phone,
         purpose: z.enum(PURPOSES),
-        app: z.enum(['customer', 'shopkeeper', 'delivery', 'developer', 'market_owner']).optional(),
+        // Every key of APP_ROLE_SCOPE — see the note on the same enum in
+        // routes/reverseOtp.js for why lagging behind it locks an app out.
+        app: z.enum(['customer', 'shopkeeper', 'delivery', 'developer', 'market_owner', 'admin']).optional(),
         name: fields.nonEmptyString(120).optional(),
         clientOrigin: fields.nonEmptyString(200).optional(),
       })

@@ -29,9 +29,19 @@ async function connect(uri = config.mongoUri) {
 
   transactionsSupported = await detectTransactionSupport();
 
-  if (!transactionsSupported && config.isProduction) {
+  /**
+   * `requireRealServices`, NOT `isProduction`: the danger here comes from being
+   * deployed, and NODE_ENV is a claim the host makes rather than a fact about
+   * it. Keyed on `isProduction` alone, a deployed host with NODE_ENV unset
+   * (the documented state of this project's own Railway service) pointed at a
+   * standalone mongod booted fine — and `withTransaction` then silently ran
+   * checkout, the wallet ledger and settlement with a null session, no
+   * atomicity, and nothing in the logs. Same class as the mock payment-intent
+   * incident; see the `requireRealServices` rule in CLAUDE.md.
+   */
+  if (!transactionsSupported && config.requireRealServices) {
     throw new Error(
-      'MongoDB deployment does not support transactions. Wallet and order operations require a replica set in production.'
+      'MongoDB deployment does not support transactions. Wallet and order operations require a replica set on a deployed host.'
     );
   }
 

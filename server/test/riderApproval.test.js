@@ -283,6 +283,95 @@ test('a rider whose approval is withdrawn mid-delivery still sees their own orde
   assert.equal(list.body.data.assigned[0].id, String(order._id));
 });
 
+// --- The shop/legacy pool, the market pool's twin in routes/orders.js -------
+
+/**
+ * `routes/orders.js` has its own pool clause (the delivery branch of
+ * `visibilityFilter`) and its own claim route (`POST /orders/:id/claim`) for
+ * marketless and independent-shop orders. They are parallel paths to the same
+ * outcome as the market pool above — becoming `assignedTo` on a real order —
+ * so the approval gate has to exist on both or it exists on neither. It was
+ * first closed on the market path alone, and an unapproved account could still
+ * read the customer's name, phone and address from, and then claim, any
+ * unassigned shop order.
+ */
+async function legacyShopOrder() {
+  const customer = await authenticatedUser('customer');
+
+  const product = await Product.create({
+    sku: `SKU-${uniq()}`,
+    categoryId: 1,
+    name: 'Tomato',
+    pricePaise: 4000,
+    stock: 50,
+  });
+
+  return Order.create({
+    orderNumber: `VD-${uniq()}`,
+    customer: customer.user._id,
+    customerName: 'Priya Sharma',
+    phone: '9876543210',
+    address: '12 Banjara Hills, Hyderabad',
+    deliveryLocation: { type: 'Point', coordinates: [LNG, LAT] },
+    items: [
+      {
+        product: product._id,
+        name: 'Tomato',
+        unitPricePaise: 4000,
+        quantity: 2,
+        lineTotalPaise: 8000,
+      },
+    ],
+    subtotalPaise: 8000,
+    deliveryFeePaise: 0,
+    totalAmountPaise: 8000,
+    // Cash on delivery — the version of this that carries money as well as an
+    // address.
+    paymentMethod: 'cod',
+    paymentStatus: 'pending',
+    status: 'Preparing',
+    assignedTo: null,
+    // No `market`, no `fulfillment` — exactly the legacy/shop shape /claim serves.
+  });
+}
+
+test('an unapproved rider is not shown the shop/legacy pool through GET /orders', async () => {
+  const rider = await seedRider({ approvalStatus: 'pending' });
+  await legacyShopOrder();
+
+  const list = await api().get('/api/orders').set(auth(rider.accessToken)).expect(200);
+
+  assert.equal(list.body.data.length, 0, 'advertising work it cannot take, with the customer attached');
+});
+
+test('an unapproved rider cannot claim a shop/legacy order', async () => {
+  const rider = await seedRider({ approvalStatus: 'pending' });
+  const order = await legacyShopOrder();
+
+  const refused = await api()
+    .post(`/api/orders/${order._id}/claim`)
+    .set(auth(rider.accessToken))
+    .expect(403);
+
+  assert.equal(refused.body.error.code, 'RIDER_NOT_APPROVED');
+
+  const after = await Order.findById(order._id).lean();
+  assert.equal(after.assignedTo, null, 'the order must not have been taken');
+});
+
+test('an approved rider still sees and claims the shop/legacy pool', async () => {
+  const rider = await seedRider();
+  const order = await legacyShopOrder();
+
+  const list = await api().get('/api/orders').set(auth(rider.accessToken)).expect(200);
+  assert.equal(list.body.data.length, 1);
+
+  await api().post(`/api/orders/${order._id}/claim`).set(auth(rider.accessToken)).expect(200);
+
+  const after = await Order.findById(order._id).lean();
+  assert.equal(String(after.assignedTo), String(rider.user._id));
+});
+
 // --- The developer's decision ----------------------------------------------
 
 test('a developer approves a rider, and the rider can then work', async () => {

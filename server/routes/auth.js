@@ -20,6 +20,7 @@ const reverseOtp = require('../services/reverseOtp');
 const {
   placeholderName,
   APP_ROLE_SCOPE,
+  appMayCreateAccount,
   findByIdentifier,
   sessionPayload,
   establishSession,
@@ -268,7 +269,7 @@ router.post(
           next: 'verify',
         });
       }
-    } else if (app === 'shopkeeper' || app === 'delivery') {
+    } else if (app && !appMayCreateAccount(app)) {
       /**
        * A phone with no scoped match, on an app that never mints an account
        * from one.
@@ -282,6 +283,12 @@ router.post(
        * number on the delivery app's sign-in screen for the first time would
        * silently get a customer account they can never see from that app —
        * the exact confusion self-registration was built to avoid.
+       *
+       * `appMayCreateAccount`, not a hand-rolled app list: this condition once
+       * named only shopkeeper and delivery, so the market-owner and admin login
+       * screens — added later — fell through and could mint stray customer
+       * accounts, invisible from the app that created them. The reverse-OTP
+       * path always asked the shared helper and never drifted.
        *
        * Answered the same non-committal way the branches above are: nothing
        * here reveals whether that was the reason.

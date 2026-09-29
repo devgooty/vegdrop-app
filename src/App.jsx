@@ -370,7 +370,14 @@ export default function App() {
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   
-  const [activeTab, setActiveTab] = useLocalStorage('vegdrop_tab', 'login');
+  const [activeTab, setActiveTab] = useLocalStorage('vegdrop_tab', 'home');
+
+  // Browsing is open to guests; the sign-in screen is only ever reached by asking
+  // for it. A 'login' persisted by an earlier build would otherwise reopen it.
+  useEffect(() => {
+    if (activeTab === 'login' || activeTab === 'signup') setActiveTab('home');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * Session state is held in memory and restored from the httpOnly refresh
@@ -382,7 +389,10 @@ export default function App() {
    * the redirect effect below sends any that arrive anyway straight across.
    */
   const { user, setUser, isRestoringSession } = useSessionUser({
-    allowedRoles: ['customer'],
+    // Other roles must pass this gate so the redirect below can send them to
+    // their own hash. Restricting this to `customer` alone treated a shopkeeper
+    // (or admin) landing on `#/` as signed out, so the redirect never saw them.
+    allowedRoles: ['customer', 'shopkeeper', 'delivery', 'developer', 'market_owner', 'admin'],
     onIdentityLost: (next) => {
       clearCart();
       clearAssistantChat();
@@ -588,6 +598,10 @@ export default function App() {
       window.location.hash = '#/developer';
       return;
     }
+    if (user.role === 'admin') {
+      window.location.hash = '#/admin';
+      return;
+    }
     if (user.role === 'market_owner') {
       window.location.hash = '#/market-owner';
     }
@@ -597,7 +611,7 @@ export default function App() {
     if (!user || (activeTab !== 'login' && activeTab !== 'signup')) return;
     // Those two are leaving for another app entirely; picking a tab for them
     // here would fight the redirect above for one render.
-    if (user.role === 'shopkeeper' || user.role === 'delivery' || user.role === 'developer' || user.role === 'market_owner') return;
+    if (user.role === 'shopkeeper' || user.role === 'delivery' || user.role === 'developer' || user.role === 'admin' || user.role === 'market_owner') return;
 
     setActiveTab('home');
   }, [user, activeTab, setActiveTab]);
@@ -812,17 +826,17 @@ export default function App() {
   const handleScheduleCart = useCallback(async () => {
     if (!user) {
       toast.warning(t('toast.signInToSchedule'));
-      return;
+      return false;
     }
     if (!scheduledCartItems || scheduledCartItems.length === 0) {
       toast.warning(t('toast.basketEmpty'));
-      return;
+      return false;
     }
     // A standing order inherits the same requirement as a one-off: without a
     // market it would mint an unfillable order every single run.
     if (checkoutBlockedReason) {
       toast.error(checkoutBlockedReason);
-      return;
+      return false;
     }
 
     const frequency = String(scheduleFilter || 'Daily').toLowerCase();
@@ -832,7 +846,7 @@ export default function App() {
       toast.warning(
         t(frequency === 'weekly' ? 'toast.pickWeekday' : 'toast.pickMonthDay')
       );
-      return;
+      return false;
     }
 
     const coords = savedCustomerCoords();
@@ -896,8 +910,10 @@ export default function App() {
           date: new Date(created.nextRunAt).toLocaleDateString(dateLocale(language)),
         })
       );
+      return true;
     } catch (err) {
       toast.error(err.message || t('toast.scheduleFailed'));
+      return false;
     }
   }, [
     selectedDates,
@@ -944,7 +960,7 @@ export default function App() {
     await logout();
     setUser(null);
     clearCart();
-    setActiveTab('login');
+    setActiveTab('home');
     toast.info(t('toast.signedOut', { name }));
   }, [user, clearCart, setActiveTab, toast, t]);
 
@@ -978,7 +994,7 @@ export default function App() {
     }
     setUser(null);
     clearCart();
-    setActiveTab('login');
+    setActiveTab('home');
     toast.success(t('toast.loggedOutEverywhere', { name }));
   }, [user, clearCart, setActiveTab, toast, t]);
 
@@ -1005,7 +1021,7 @@ export default function App() {
     await logout();
     setUser(null);
     clearCart();
-    setActiveTab('login');
+    setActiveTab('home');
     toast.warning(t('toast.accountDeleted'));
   }, [user, clearCart, setActiveTab, toast, t]);
 
@@ -3154,6 +3170,7 @@ export default function App() {
         onCheckout={handleScheduleCart}
         walletBalance={walletBalance}
         blockedReason={checkoutBlockedReason}
+        codOnly
       />
 
     </div>

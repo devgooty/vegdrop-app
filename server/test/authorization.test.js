@@ -205,6 +205,16 @@ test('a market owner cannot list the user table', async () => {
   assert.equal(res.status, 403, 'toPublicJSON carries every customer phone and email');
 });
 
+test('developer user list can find an account by phone without loading the whole table', async () => {
+  const { accessToken } = await authenticatedUser('developer');
+  const { user } = await createUser({ role: 'customer', phone: '9876500999' });
+
+  const res = await api().get('/api/users').query({ q: '9876500999' }).set(auth(accessToken));
+  assert.equal(res.status, 200);
+  assert.equal(res.body.data.length, 1);
+  assert.equal(res.body.data[0].id, user._id.toHexString());
+});
+
 test('a market owner cannot suspend or delete an account', async () => {
   const target = await createUser({ role: 'customer' });
   const { accessToken } = await authenticatedUser('market_owner');

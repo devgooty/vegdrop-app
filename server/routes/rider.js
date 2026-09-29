@@ -17,27 +17,11 @@ const {
 } = require('../middleware/rateLimit');
 const dispatch = require('../services/dispatch');
 const handover = require('../services/handover');
+const { mayTakeWork } = require('../services/riderApproval');
 
 const router = express.Router();
 
 const riderGate = [requireAuth, requireRole('delivery', 'developer')];
-
-/**
- * Is this rider cleared to take on NEW work?
- *
- * Read from the database rather than the session, for the reason
- * middleware/auth.js re-reads role and status on every request: a rider whose
- * approval is withdrawn mid-shift must stop being able to pick up the next job
- * immediately, not when their token expires.
- *
- * `developer` passes, as everywhere else, so the flow can be exercised without
- * clearing a real person.
- */
-async function mayTakeWork(user) {
-  if (user.role === 'developer') return true;
-  const me = await User.findById(user._id).select('rider.approvalStatus').lean();
-  return me?.rider?.approvalStatus === 'approved';
-}
 
 /**
  * WHY THIS GATE IS NOT SIMPLY ADDED TO `riderGate`

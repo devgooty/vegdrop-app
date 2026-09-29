@@ -45,6 +45,7 @@ const PlatformEarning = require('../models/PlatformEarning');
 const SharePayout = require('../models/SharePayout');
 const OrderIncentive = require('../models/OrderIncentive');
 const PlatformSharePolicy = require('../models/PlatformSharePolicy');
+const MarketSharePolicy = require('../models/MarketSharePolicy');
 const User = require('../models/User');
 const sourcing = require('../services/sourcing');
 const settlement = require('../services/settlement');
@@ -512,6 +513,22 @@ test('market analytics reports the platform bucket as commission, not everything
   );
 });
 
+test('a stall that lost its owner is not marked settled', async () => {
+  const ctx = await setupMarketOrderReadyToDeliver({ unitPricePaise: 4000, quantity: 2 });
+  await Stall.collection.updateOne({ _id: ctx.shop.stall._id }, { $unset: { owner: 1 } });
+
+  await deliverMarketOrder(ctx);
+
+  const result = await settlement.recordDelivery(ctx.orderId);
+  assert.equal(result.reason, 'STALL_OWNER_MISSING');
+  assert.equal(await StallEarning.countDocuments({ order: ctx.orderId }), 0);
+  assert.equal(
+    await Order.findById(ctx.orderId).then((o) => o.fulfillment.settledAt),
+    null,
+    'left unsettled so a later backfill can pay the stall once it has an owner'
+  );
+});
+
 test('a share-policy edit between a partial settlement and its retry is refused rather than mixed', async () => {
   await setGlobalPolicy({
     platformBps: 1000,
@@ -559,6 +576,64 @@ test('a share-policy edit between a partial settlement and its retry is refused 
   assert.equal(await SharePayout.countDocuments({ order: orderId }), 0, 'no payout written under the new split');
   assert.equal(await OrderIncentive.countDocuments({ order: orderId }), 0, 'no incentive row written under the new split');
   assert.equal(await Order.findById(orderId).then((o) => o.fulfillment.settledAt), null, 'left unsettled for manual reconciliation');
+});
+
+/**
+ * The drift refusal: a stored market override merged against a LATER global can
+ * be invalid — a partial override's rebalanced shopkeeper share goes negative.
+ * The admin API refuses edits that would create this state, but settlement
+ * cannot trust that (out-of-band edits, older data), so it must refuse to
+ * write ANY bucket from an invalid split rather than committing more paise
+ * than the order grossed and crash-looping on the incentive row's `min: 0`.
+ */
+test('settlement refuses an invalid effective policy outright, and settles once it is fixed', async () => {
+  await setGlobalPolicy({
+    platformBps: 1000,
+    shopkeeperBps: 9000,
+    deliveryBps: 0,
+    marketOwnerBps: 0,
+    customerIncentiveBps: 0,
+  });
+
+  const ctx = await setupMarketOrderReadyToDeliver({ unitPricePaise: 4000, quantity: 2 });
+
+  // A partial override, valid under the current global: shopkeeper rebalances
+  // to 10000 - (1000 + 2000) = 7000.
+  await MarketSharePolicy.create({ market: ctx.market._id, deliveryBps: 2000 });
+
+  // The drift, written through the model directly — the admin route now refuses
+  // exactly this. Merged for the market: platform 9000 + delivery 2000 leaves
+  // shopkeeper at -1000.
+  await setGlobalPolicy({ platformBps: 9000, shopkeeperBps: 1000 });
+
+  await deliverMarketOrder(ctx);
+
+  // The refusal is total: not one bucket is written from the invalid split.
+  assert.equal(await StallEarning.countDocuments({ order: ctx.orderId }), 0);
+  assert.equal(await PlatformEarning.countDocuments({ order: ctx.orderId }), 0);
+  assert.equal(await SharePayout.countDocuments({ order: ctx.orderId }), 0);
+  assert.equal(await OrderIncentive.countDocuments({ order: ctx.orderId }), 0);
+
+  const result = await settlement.recordDelivery(ctx.orderId);
+  assert.equal(result.reason, 'POLICY_INVALID');
+  assert.equal(
+    await Order.findById(ctx.orderId).then((o) => o.fulfillment.settledAt),
+    null,
+    'left unsettled for the backfill sweep'
+  );
+
+  // Fixing the policy lets the very same order settle cleanly on the next sweep.
+  await setGlobalPolicy({ platformBps: 1000, shopkeeperBps: 9000 });
+  const retried = await settlement.recordDelivery(ctx.orderId);
+  assert.equal(retried.recorded, 1);
+
+  const earning = await StallEarning.findOne({ order: ctx.orderId }).lean();
+  // 8000 gross, platform 10%, delivery 20% (override), shopkeeper 70%.
+  assert.equal(earning.netPaise, 5600);
+  const platform = await PlatformEarning.findOne({ order: ctx.orderId }).lean();
+  assert.equal(platform.amountPaise, 800);
+  const deliveryPayout = await SharePayout.findOne({ order: ctx.orderId, bucket: 'delivery' }).lean();
+  assert.equal(deliveryPayout.amountPaise, 1600);
 });
 
 test('multi-stall market order allocates the shopkeeper bucket proportionally, remainder to the last stall', async () => {

@@ -598,7 +598,7 @@ function OverviewTab({ analytics, windowDays, onWindowChange, onRefresh, refresh
           only one of the two invites the wrong one being quoted. */}
       <div className="grid grid-cols-3 gap-2">
         <Figure label="Gross" value={formatPaise(sales?.grossPaise)} tone="text-[#1B4D3E]" />
-        <Figure label="Commission" value={formatPaise(sales?.commissionPaise ?? commissionOf(sales))} tone="text-amber-700" />
+        <Figure label="Commission" value={formatPaise(sales?.commissionPaise || 0)} tone="text-amber-700" />
         <Figure label="To stalls" value={formatPaise(sales?.netPaise)} tone="text-gray-900" />
       </div>
 
@@ -716,19 +716,6 @@ function OverviewTab({ analytics, windowDays, onWindowChange, onRefresh, refresh
       )}
     </>
   );
-}
-
-/**
- * Commission the server did not send.
- *
- * `sales.commissionPaise` is not part of the aggregate total today — only the
- * per-stall rows carry it — so it is summed here rather than shown as a blank.
- * Derived from the rows the breakdown already displays, so it always agrees
- * with what is on screen.
- */
-function commissionOf(sales) {
-  if (!sales?.byStall?.length) return 0;
-  return sales.byStall.reduce((sum, row) => sum + (row.commissionPaise || 0), 0);
 }
 
 // ---------------------------------------------------------------------------

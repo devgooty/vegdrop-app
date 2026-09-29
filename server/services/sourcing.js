@@ -1093,8 +1093,6 @@ async function refundToWallet(order) {
  * restock, no status change.
  */
 async function failOrder(order, note = 'No market could source this order.') {
-  await releaseClaims(order);
-
   const now = new Date();
   // COD never took money, so there is nothing to give back — the payment simply
   // never happens. A wallet refund is settled below, once the close has stuck.
@@ -1115,6 +1113,20 @@ async function failOrder(order, note = 'No market could source this order.') {
   // A stall took the last line between our decision and this write. The order is
   // alive and on its way; touching the money or the stock now would corrupt it.
   if (!failed) return null;
+
+  /**
+   * Claims are released only AFTER the close has stuck, like the refund and the
+   * restock below — the comment above this function promises exactly that, and
+   * this call once ran first. Released eagerly, the race the guard exists for
+   * (a stall claiming the last line between the sweep's decision and this
+   * write) decremented each stall's `activeLoad` for an order that was still
+   * alive; when the rider later collected, `collectStall` decremented again,
+   * the zero floor ate the difference, and the stall's OTHER live orders
+   * stopped counting against it in auto-accept ranking. The failed transition
+   * does not clear `items[].claim`, so the per-stall counts are still
+   * derivable from the closed document.
+   */
+  await releaseClaims(failed);
 
   await refundToWallet(failed);
 

@@ -159,6 +159,33 @@ test('lookup on the customer app does not see a shopkeeper-only number', async (
   assert.equal(res.body.exists, false);
 });
 
+test('lookup on the shopkeeper app finds a developer-only number so staff can inspect the stall UI', async () => {
+  const { user } = await createUser({ role: 'developer' });
+
+  const res = await api()
+    .post('/api/auth/lookup')
+    .send({ identifier: user.phone, app: 'shopkeeper' });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.exists, true);
+});
+
+test('lookup on the shopkeeper app still prefers the shopkeeper account over a developer sharing the number', async () => {
+  const phone = '9876500018';
+  await createUser({ role: 'developer', phone });
+  const { user: shopkeeper } = await createUser({ role: 'shopkeeper', phone });
+
+  const start = await api()
+    .post('/api/auth/otp/start')
+    .send({ identifier: phone, app: 'shopkeeper' });
+  const verify = await api()
+    .post('/api/auth/otp/verify')
+    .send({ challengeId: start.body.challengeId, code: start.body.devCode });
+
+  assert.equal(verify.body.user.role, 'shopkeeper');
+  assert.equal(verify.body.user.id, shopkeeper.id);
+});
+
 test('lookup on the shopkeeper app finds the shopkeeper account when both exist', async () => {
   const phone = '9876500012';
   await createUser({ role: 'customer', phone });

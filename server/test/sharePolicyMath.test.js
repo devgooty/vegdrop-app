@@ -8,6 +8,7 @@ const {
   allocateShopkeeperAcrossStalls,
   forceNoMarketOwner,
   assertBpsSum,
+  policyIsValid,
 } = require('../services/sharePolicy');
 
 const global = {
@@ -48,4 +49,24 @@ test('forceNoMarketOwner folds marketOwner into platform', () => {
   assert.equal(p.marketOwnerBps, 0);
   assert.equal(p.platformBps, 1500);
   assertBpsSum(p);
+});
+
+/**
+ * The sum check alone is NOT validity, and the gap is the rebalance:
+ * `mergePolicies` constructs `shopkeeperBps = 10000 - others`, so its output
+ * sums to 10000 by definition — including when the shopkeeper share it built
+ * is negative. `policyIsValid` is the check that binds.
+ */
+test('a rebalanced merge with a negative shopkeeper share passes the sum check but fails validity', () => {
+  const m = mergePolicies(global, { deliveryBps: 9500 }); // others: 1000+9500+500+500 = 11500
+  assert.equal(m.shopkeeperBps, -1500, 'the rebalance really does go negative');
+  assert.doesNotThrow(() => assertBpsSum(m), 'the sum check is blind to it');
+  assert.equal(policyIsValid(m), false);
+});
+
+test('policyIsValid requires every bucket in range and the sum exactly 10000', () => {
+  assert.equal(policyIsValid(global), true);
+  assert.equal(policyIsValid({ ...global, platformBps: 999 }), false, 'sum off 10000');
+  assert.equal(policyIsValid({ ...global, platformBps: -1, shopkeeperBps: 8001 }), false, 'negative bucket');
+  assert.equal(policyIsValid({ ...global, platformBps: 10.5, shopkeeperBps: 7989.5 }), false, 'non-integer');
 });

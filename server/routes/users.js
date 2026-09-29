@@ -56,15 +56,22 @@ router.get(
         role: z.enum(ROLES).optional(),
         status: z.enum(['active', 'suspended', 'deleted']).optional(),
         limit: z.coerce.number().int().min(1).max(200).default(100),
+        q: z.string().trim().min(1).max(80).optional(),
       })
       .strict(),
   }),
   async (req, res) => {
-    const { role, status, limit } = req.valid.query;
+    const { role, status, limit, q } = req.valid.query;
 
     const filter = {};
     if (role) filter.role = role;
     filter.status = status || { $ne: 'deleted' };
+    if (q) {
+      const digits = q.replace(/\D/g, '');
+      const or = [{ phone: q }, { email: q.toLowerCase() }];
+      if (digits.length >= 8) or.push({ phone: new RegExp(`${digits}$`) });
+      filter.$or = or;
+    }
 
     const users = await User.find(filter).sort({ createdAt: -1 }).limit(limit);
     return res.json({ data: users.map((u) => u.toPublicJSON()) });

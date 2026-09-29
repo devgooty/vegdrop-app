@@ -15,6 +15,7 @@ export async function fetchUsers(filters = {}) {
   if (filters.role) params.set('role', filters.role);
   if (filters.status) params.set('status', filters.status);
   if (filters.limit) params.set('limit', String(filters.limit));
+  if (filters.q) params.set('q', filters.q);
 
   const query = params.toString();
   const result = await api.get(`/users${query ? `?${query}` : ''}`);

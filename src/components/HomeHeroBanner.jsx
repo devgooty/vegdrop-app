@@ -32,10 +32,10 @@ const COLLECTIONS = [
     subtitle: 'hero.leafySub',
     categoryId: 1,
     photo: heroPhoto('1540420773420-3366772f4999'),
-    header: 'rgba(226, 242, 229, 0.86)',
-    wash: '#E2F2E5',
-    cardFrom: '#EAF6EC',
-    ink: '#1B4D3E',
+    header: 'rgba(209, 242, 222, 0.88)',
+    wash: '#D1F2DE',
+    bg: '#0E6B3F',
+    glow: '#2FA56A',
     pick: (list) => list.filter((p) => p.categoryId === 1),
   },
   {
@@ -44,10 +44,10 @@ const COLLECTIONS = [
     subtitle: 'hero.savingsSub',
     categoryId: 2,
     photo: heroPhoto('1624668430039-0175a0fbf006'),
-    header: 'rgba(252, 230, 233, 0.86)',
-    wash: '#FCE6E9',
-    cardFrom: '#FDEFF1',
-    ink: '#8C2F3C',
+    header: 'rgba(255, 221, 216, 0.88)',
+    wash: '#FFDDD8',
+    bg: '#C7362B',
+    glow: '#F27A5E',
     pick: (list) => list.filter((p) => p.oldPrice > p.price),
   },
   {
@@ -56,10 +56,10 @@ const COLLECTIONS = [
     subtitle: 'hero.organicPicksSub',
     categoryId: 3,
     photo: heroPhoto('1619566636858-adf3ef46400b'),
-    header: 'rgba(250, 240, 219, 0.86)',
-    wash: '#FAF0DB',
-    cardFrom: '#FDF6E7',
-    ink: '#7A5A16',
+    header: 'rgba(255, 234, 196, 0.88)',
+    wash: '#FFEAC4',
+    bg: '#C06A0A',
+    glow: '#F2B441',
     pick: (list) => list.filter((p) => p.isOrganic),
   },
   {
@@ -68,10 +68,10 @@ const COLLECTIONS = [
     subtitle: 'hero.budgetSub',
     categoryId: 2,
     photo: heroPhoto('1678954157605-38cc2f12c780'),
-    header: 'rgba(224, 238, 250, 0.86)',
-    wash: '#E0EEFA',
-    cardFrom: '#ECF5FD',
-    ink: '#1D4E6B',
+    header: 'rgba(210, 234, 252, 0.88)',
+    wash: '#D2EAFC',
+    bg: '#0B5E8E',
+    glow: '#3AA3DB',
     pick: (list) => list.filter((p) => p.price <= 50),
   },
   {
@@ -80,10 +80,10 @@ const COLLECTIONS = [
     subtitle: 'hero.veggiesSub',
     categoryId: 2,
     photo: heroPhoto('1566385101042-1a0aa0c1268c'),
-    header: 'rgba(251, 233, 219, 0.86)',
-    wash: '#FBE9DB',
-    cardFrom: '#FDF1E8',
-    ink: '#8A4B1B',
+    header: 'rgba(214, 240, 236, 0.88)',
+    wash: '#D6F0EC',
+    bg: '#0F766E',
+    glow: '#3CB8A8',
     pick: (list) => list.filter((p) => p.categoryId === 2),
   },
   {
@@ -92,10 +92,10 @@ const COLLECTIONS = [
     subtitle: 'hero.exoticPicksSub',
     categoryId: 4,
     photo: heroPhoto('1608686207856-001b95cf60ca'),
-    header: 'rgba(238, 232, 250, 0.86)',
-    wash: '#EEE8FA',
-    cardFrom: '#F3EEFC',
-    ink: '#4B3A7A',
+    header: 'rgba(233, 222, 252, 0.88)',
+    wash: '#E9DEFC',
+    bg: '#5B2BB5',
+    glow: '#9A6BEA',
     pick: (list) => list.filter((p) => p.categoryId === 4),
   },
 ];
@@ -107,20 +107,23 @@ const STORES = [
     subtitle: 'hero.budgetSub',
     badge: 'deal.budgetBadge',
     pick: (list) => [...list.filter((p) => p.price <= 50)].sort((a, b) => a.price - b.price),
-    header: 'rgba(238, 234, 248, 0.86)',
+    header: 'rgba(226, 218, 252, 0.88)',
     theme: {
-      wash: '#EEEAF8',
-      footer: '#E4DDF4',
-      badge: '#5B3AA8',
-      badgeInk: '#F4E27A',
-      badgeRing: '#E8D56A',
-      ink: '#2D2A26',
-      accent: '#4A3A8A',
-      selectBorder: '#C5D4F0',
-      selectFill: '#EEF3FB',
-      selectInk: '#2F4A8A',
-      coin: 'rgba(123, 92, 196, 0.22)',
-      dot: '#5B3AA8',
+      wash: '#E2DAFC',
+      top: 'linear-gradient(135deg, #6D3FD6 0%, #4A22A8 100%)',
+      body: '#FFFFFF',
+      footer: '#EFE9FE',
+      badge: '#FFD84D',
+      badgeInk: '#3E1B8F',
+      badgeRing: '#FFFFFF',
+      ink: '#FFFFFF',
+      sub: 'rgba(255, 255, 255, 0.82)',
+      accent: '#4A22A8',
+      selectBorder: '#C9B8F5',
+      selectFill: '#F3EEFF',
+      selectInk: '#4A22A8',
+      coin: 'rgba(255, 255, 255, 0.16)',
+      dot: '#5B2BB5',
     },
   },
   {
@@ -132,20 +135,23 @@ const STORES = [
       [...list.filter((p) => Number(p.oldPrice) > Number(p.price))].sort(
         (a, b) => discountPercent(b) - discountPercent(a)
       ),
-    header: 'rgba(231, 243, 238, 0.86)',
+    header: 'rgba(255, 221, 216, 0.88)',
     theme: {
-      wash: '#E7F3EE',
-      footer: '#D7EBE3',
-      badge: '#1B4D3E',
-      badgeInk: '#F4E27A',
-      badgeRing: '#C9A227',
-      ink: '#2D2A26',
-      accent: '#1B4D3E',
-      selectBorder: '#B7D4C8',
-      selectFill: '#EEF7F3',
-      selectInk: '#1B4D3E',
-      coin: 'rgba(27, 77, 62, 0.18)',
-      dot: '#1B4D3E',
+      wash: '#FFDDD8',
+      top: 'linear-gradient(135deg, #E2483A 0%, #B0271E 100%)',
+      body: '#FFFFFF',
+      footer: '#FFECE9',
+      badge: '#FFFFFF',
+      badgeInk: '#B0271E',
+      badgeRing: '#FFD3CC',
+      ink: '#FFFFFF',
+      sub: 'rgba(255, 255, 255, 0.85)',
+      accent: '#B0271E',
+      selectBorder: '#F6B8AE',
+      selectFill: '#FFF1EE',
+      selectInk: '#B0271E',
+      coin: 'rgba(255, 255, 255, 0.18)',
+      dot: '#C7362B',
     },
   },
 ];
@@ -223,7 +229,7 @@ function cardAccent(card) {
 }
 
 function cardDot(card) {
-  return card.kind === 'store' ? card.store.theme.dot : card.ink;
+  return card.kind === 'store' ? card.store.theme.dot : card.bg;
 }
 
 function CoinDecor({ color }) {
@@ -610,10 +616,10 @@ export default function HomeHeroBanner({
             return (
               <article
                 key={card.key}
-                className="group relative snap-center snap-always shrink-0 w-[94%] min-h-80 rounded-3xl overflow-hidden border border-black/[0.04] shadow-sm"
-                style={{ backgroundColor: theme.wash }}
+                className="group relative snap-center snap-always shrink-0 w-[94%] min-h-80 flex flex-col rounded-3xl overflow-hidden border border-black/[0.06] shadow-md"
+                style={{ backgroundColor: theme.body }}
               >
-                <header className="relative px-3 pt-3 pb-2">
+                <header className="relative px-3 pt-3.5 pb-3" style={{ backgroundImage: theme.top }}>
                   <CoinDecor color={theme.coin} />
                   <div className="relative flex items-center gap-2.5">
                     <div
@@ -635,14 +641,14 @@ export default function HomeHeroBanner({
                     </h2>
                     <p
                       className="ml-auto max-w-[42%] text-right text-[11.5px] font-bold leading-snug"
-                      style={{ color: theme.accent }}
+                      style={{ color: theme.sub }}
                     >
                       {t(store.subtitle)}
                     </p>
                   </div>
                 </header>
 
-                <div className="divide-y divide-black/[0.05]">
+                <div className="flex-1 divide-y divide-black/[0.05]">
                   {rows.map((product) => (
                     <DealRow
                       key={product.id}
@@ -684,8 +690,8 @@ export default function HomeHeroBanner({
           return (
             <article
               key={card.key}
-              className="group relative snap-center snap-always shrink-0 w-[94%] min-h-80 self-stretch rounded-3xl overflow-hidden border border-black/5 shadow-sm"
-              style={{ backgroundColor: card.cardFrom }}
+              className="group relative snap-center snap-always shrink-0 w-[94%] min-h-80 self-stretch rounded-3xl overflow-hidden border border-black/[0.06] shadow-md"
+              style={{ backgroundColor: card.bg }}
             >
               <img
                 src={card.photo}
@@ -699,28 +705,28 @@ export default function HomeHeroBanner({
                 aria-hidden="true"
                 className="absolute inset-0"
                 style={{
-                  backgroundImage: `linear-gradient(to right, ${card.cardFrom} 0%, ${card.cardFrom} 55%, transparent 80%)`,
+                  backgroundImage: `radial-gradient(circle at 0% 0%, ${card.glow}66 0%, transparent 45%), linear-gradient(to right, ${card.bg} 0%, ${card.bg} 46%, ${card.bg}00 78%)`,
                 }}
               />
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute -bottom-10 -left-10 h-36 w-36 rounded-full border-[14px] opacity-20"
+                style={{ borderColor: card.glow }}
+              />
 
-              <div className="absolute inset-0 flex flex-col justify-center gap-2 p-5 w-[62%]">
-                <div className="space-y-1">
-                  <h2
-                    className="font-vintage text-[23.5px] font-black leading-[1.1] tracking-tight"
-                    style={{ color: card.ink }}
-                  >
+              <div className="absolute inset-0 flex flex-col justify-center gap-3 p-5 w-[62%]">
+                <div className="space-y-1.5">
+                  <h2 className="font-vintage text-[25px] font-black leading-[1.08] tracking-tight text-white drop-shadow-sm">
                     {t(card.title)}
                   </h2>
-                  <p className="text-[13.5px] font-bold opacity-75 leading-snug" style={{ color: card.ink }}>
-                    {t(card.subtitle)}
-                  </p>
+                  <p className="text-[13.5px] font-bold leading-snug text-white/85">{t(card.subtitle)}</p>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => onExplore?.(category)}
-                  className="self-start flex items-center gap-1 px-5 py-2.5 rounded-full text-sm font-extrabold text-white shadow-sm cursor-pointer active:scale-95 transition-transform"
-                  style={{ backgroundColor: card.ink }}
+                  className="self-start flex items-center gap-1 px-5 py-2.5 rounded-full text-sm font-extrabold bg-white shadow-md cursor-pointer active:scale-95 transition-transform"
+                  style={{ color: card.bg }}
                 >
                   <span>{t('hero.shopNow')}</span>
                   <ChevronRight className="w-4 h-4" />
