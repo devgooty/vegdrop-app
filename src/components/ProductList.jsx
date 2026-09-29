@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Star, Plus, Minus, ChevronRight, Eye } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { productName, productWeight, categoryTitle } from '../i18n/catalog';
@@ -50,7 +50,7 @@ export default function ProductList({
             </div>
 
             {/* HORIZONTAL PRODUCT ROW */}
-            <div className="flex gap-3.5 overflow-x-auto no-scrollbar snap-x snap-mandatory py-1.5 -mx-4 px-4 scroll-smooth">
+            <CenterLiftRow>
               {categoryProducts.map((item, prodIndex) => {
                 return (
                   <ProductCard
@@ -65,11 +65,97 @@ export default function ProductList({
                   />
                 );
               })}
-            </div>
+            </CenterLiftRow>
           </div>
         );
       })}
     </section>
+  );
+}
+
+const LIFT_PX = 14;
+const REST_SCALE = 0.92;
+const PEAK_SCALE = 1.03;
+const REST_OPACITY = 0.8;
+
+/**
+ * A product row whose centre card rises and grows as the shopper swipes, with
+ * its neighbours easing back down on either side. The side padding lets the
+ * first and last cards reach the centre too, and snap-center settles on one.
+ *
+ * Transforms go on a wrapper, not the card: the card's own fade-in animation
+ * sets `transform` and would override an inline one for as long as it runs.
+ * Card centres are measured once (and on resize), so each scroll frame reads
+ * only scrollLeft and writes only transforms.
+ */
+function CenterLiftRow({ children }) {
+  const ref = useRef(null);
+  const count = React.Children.count(children);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
+
+    let raf = 0;
+    let centres = [];
+    let span = 1;
+
+    const measure = () => {
+      const items = [...el.children];
+      centres = items.map((item) => item.offsetLeft + item.offsetWidth / 2);
+      span = (items[0]?.offsetWidth || 176) + 14;
+    };
+
+    const apply = () => {
+      raf = 0;
+      const mid = el.scrollLeft + el.clientWidth / 2;
+      const items = el.children;
+      for (let i = 0; i < items.length; i += 1) {
+        const t = Math.max(0, 1 - Math.abs(centres[i] - mid) / span);
+        const eased = t * t * (3 - 2 * t);
+        const scale = REST_SCALE + (PEAK_SCALE - REST_SCALE) * eased;
+        items[i].style.transform = `translateY(${(-LIFT_PX * eased).toFixed(2)}px) scale(${scale.toFixed(4)})`;
+        items[i].style.opacity = (REST_OPACITY + (1 - REST_OPACITY) * eased).toFixed(3);
+        items[i].style.zIndex = eased > 0.5 ? '1' : '';
+      }
+    };
+
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(apply);
+    };
+
+    const ro = new ResizeObserver(() => {
+      measure();
+      schedule();
+    });
+    ro.observe(el);
+    measure();
+    apply();
+
+    el.addEventListener('scroll', schedule, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      el.removeEventListener('scroll', schedule);
+    };
+  }, [count]);
+
+  return (
+    <div
+      ref={ref}
+      className="relative flex gap-3.5 overflow-x-auto no-scrollbar snap-x snap-mandatory pt-6 pb-2 -mx-4 scroll-smooth"
+      style={{ paddingInline: 'calc(50% - 5.5rem)' }}
+    >
+      {React.Children.map(children, (child) => (
+        <div
+          className="shrink-0 snap-center flex"
+          style={{ transformOrigin: 'center bottom', willChange: 'transform' }}
+        >
+          {child}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -130,7 +216,7 @@ function ProductCard({
 
   return (
     <div
-      className="w-44 flex-shrink-0 snap-start skeuo-card-interactive rounded-2xl p-2.5 flex flex-col justify-between group cursor-pointer animate-fade-in"
+      className="w-44 flex-shrink-0 skeuo-card-interactive rounded-2xl p-2.5 flex flex-col justify-between group cursor-pointer animate-fade-in"
       style={{ animationDelay: `${delayIndex * 80}ms` }}
     >
       {/* Clickable Image & Info */}
