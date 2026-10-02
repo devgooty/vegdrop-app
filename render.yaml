@@ -1,0 +1,106 @@
+# Render blueprint for the VegDrop API.
+#
+# The frontend stays on Vercel and this service is the Express API alone, which
+# is why the build does NOT run `vite build`. server/app.js mounts the static
+# handlers only when a build is present (`hasClient`), so omitting it leaves a
+# pure-API process rather than a broken one — the same path `npm run server`
+# and the test suite take.
+#
+# Nothing here needs a deploy-environment flag: `RENDER` is already in
+# DEPLOY_MARKERS in server/config/env.js, so `isDeployed` — and with it
+# `requireRealServices` — is true on this host on its own. RENDER_GIT_COMMIT is
+# likewise already read by `config.revision`, so GET /api/health reports the
+# running commit here exactly as it did on Railway.
+#
+# Every secret below is `sync: false`: Render prompts for it when the blueprint
+# is applied and it is never written into this repo. Copy the values out of
+# Railway (service -> Variables -> Raw Editor) BEFORE that account lapses.
+# KYC_ENCRYPTION_KEY above all: it decrypts stored vendor bank accounts, and a
+# fresh value makes every existing VendorKyc record undecryptable for good.
+
+services:
+  - type: web
+    name: vegdrop-api
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    autoDeploy: true
+    buildCommand: npm ci --omit=dev
+    startCommand: node server/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+
+      # Render terminates TLS at its own proxy. Without this every request
+      # reaches express-rate-limit carrying the proxy's address, so the
+      # per-caller limiter buckets the whole internet together and one busy
+      # user spends everybody's budget.
+      - key: TRUST_PROXY
+        value: "1"
+
+      # The only transport that is not the console stub. config/env.js makes
+      # `console` a boot-time fatal once requireRealServices is true, which it
+      # is here, so this cannot be left unset.
+      - key: NOTIFY_TRANSPORT
+        value: whatsapp
+
+      # --- boot-critical: config/env.js aborts at startup without these ------
+      - key: MONGODB_URI
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: OTP_PEPPER
+        sync: false
+      # Effectively permanent. Copy it; never regenerate it.
+      - key: KYC_ENCRYPTION_KEY
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+
+      # --- OTP delivery: sign-in is passwordless, so this IS the auth path ---
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_OTP_TEMPLATE_NAME
+        sync: false
+      - key: WHATSAPP_TEMPLATE_LOCALE
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_INBOX_NUMBER
+        sync: false
+      - key: SMS_GATEWAY_INBOX_NUMBER
+        sync: false
+      - key: SMS_GATEWAY_SECRET
+        sync: false
+
+      # --- not boot-critical; the routes that need them answer 503 unset ----
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: AGENT_MODEL
+        sync: false
