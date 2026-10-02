@@ -2426,6 +2426,7 @@ export default function App() {
                   onOrderPlaced={() => {
                     fetchOrders({ limit: 100 }).then(setOrders).catch(() => {});
                   }}
+                  onRequireSignIn={() => setActiveTab('login')}
                 />
               ) : (
                 /* ACCOUNT & ROLE SWITCHER TAB.

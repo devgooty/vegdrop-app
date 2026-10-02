@@ -41,7 +41,7 @@ const DEFAULT_PROPOSAL_MINUTES = 10;
 export const GREETING = Object.freeze({
   role: 'assistant',
   content:
-    "Hi! Name a dish (cabbage fry, aloo gobi, sambar…) or tell me which vegetables you have — I'll suggest curries and help order missing items.",
+    "Hi! Name a dish — gutti vankaya, aloo gobi, palak paneer — or tell me the vegetables you have. I'll give you a tested recipe and can put the vegetables in your cart.",
 });
 
 /**

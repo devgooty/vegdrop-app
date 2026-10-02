@@ -14,19 +14,124 @@ import useAssistantChat, { updateAssistantChat, historyForServer, liveProposal }
  * unmounted on every tab switch, and state kept in it was wiped each time.
  */
 
-/** Turn `**bold**` markers from the agent into real emphasis — no markdown lib. */
+/** Turn `**bold**` and `*italic*` markers from the agent into real emphasis — no markdown lib. */
 function formatChatText(text) {
-  const parts = String(text || '').split(/(\*\*[^*]+\*\*)/g);
+  const parts = String(text || '').split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*)/g);
   return parts.map((part, i) => {
-    if (/^\*\*[^*]+\*\*$/.test(part)) {
+    if (/^\*\*[^*\n]+\*\*$/.test(part)) {
       return (
         <strong key={i} className="font-extrabold">
           {part.slice(2, -2)}
         </strong>
       );
     }
+    if (/^\*[^*\n]+\*$/.test(part)) {
+      return (
+        <em key={i} className="font-semibold not-italic text-emerald-800">
+          {part.slice(1, -1)}
+        </em>
+      );
+    }
     return <React.Fragment key={i}>{part}</React.Fragment>;
   });
+}
+
+/** Paise to rupees, showing paise only when there are any — so the lines add up to the total. */
+function rupees(paise) {
+  const n = Number(paise) || 0;
+  return n % 100 === 0 ? String(n / 100) : (n / 100).toFixed(2);
+}
+
+const FRACTIONS = { 0.25: '¼', 0.5: '½', 0.75: '¾' };
+
+/** 0.5 → "½", 1.25 → "1¼", 3 → "3". */
+function niceQty(n) {
+  if (n == null || !Number.isFinite(Number(n))) return '';
+  const whole = Math.floor(n);
+  const frac = Math.round((n - whole) * 100) / 100;
+  const f = FRACTIONS[frac];
+  if (f) return whole ? `${whole}${f}` : f;
+  return String(Math.round(n * 100) / 100);
+}
+
+function ingredientAmount(ing) {
+  if (ing.produce) return ing.unit === 'kg' ? `${ing.quantity} kg` : `${ing.quantity} g`;
+  if (ing.unit === 'to taste') return 'to taste';
+  const q = niceQty(ing.quantity);
+  return q ? `${q} ${ing.unit}` : ing.unit;
+}
+
+const STARTERS = ['Gutti vankaya', 'Aloo gobi for 4', 'I have potato and beans', 'How to stop bhindi getting sticky'];
+
+function RecipeCard({ r }) {
+  const produce = (r.ingredients || []).filter((i) => i.produce);
+  const pantry = (r.ingredients || []).filter((i) => i.pantry);
+  return (
+    <div className="mt-2 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2.5 text-[12px] text-emerald-950 whitespace-normal">
+      <p className="font-black text-[13px] leading-tight">{r.name}</p>
+      <p className="mt-0.5 text-[11px] font-semibold text-emerald-800/80">
+        {[r.minutes != null ? `${r.minutes} min` : null, r.servings ? `serves ${r.servings}` : null, r.cuisine, r.vegan ? 'vegan' : null]
+          .filter(Boolean)
+          .join(' · ')}
+      </p>
+
+      {produce.length > 0 && (
+        <>
+          <p className="mt-2 text-[11px] font-black uppercase tracking-wide text-emerald-900/70">Vegetables</p>
+          <ul className="mt-0.5 space-y-0.5">
+            {produce.map((i, k) => (
+              <li key={`p${k}`} className="flex justify-between gap-2">
+                <span className="font-semibold">
+                  {i.name}
+                  {i.prep ? <span className="font-medium text-emerald-800/70"> — {i.prep}</span> : null}
+                  {i.optional ? <span className="font-medium text-emerald-800/70"> (optional)</span> : null}
+                </span>
+                <span className="shrink-0 font-bold">{ingredientAmount(i)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {pantry.length > 0 && (
+        <>
+          <p className="mt-2 text-[11px] font-black uppercase tracking-wide text-emerald-900/70">From your kitchen</p>
+          <ul className="mt-0.5 space-y-0.5">
+            {pantry.map((i, k) => (
+              <li key={`k${k}`} className="flex justify-between gap-2">
+                <span className="font-medium">
+                  {i.name}
+                  {i.optional ? <span className="text-emerald-800/70"> (optional)</span> : null}
+                </span>
+                <span className="shrink-0 font-semibold">{ingredientAmount(i)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {Array.isArray(r.steps) && r.steps.length > 0 && (
+        <>
+          <p className="mt-2 text-[11px] font-black uppercase tracking-wide text-emerald-900/70">Steps</p>
+          <ol className="mt-0.5 space-y-1 list-decimal pl-4 font-medium">
+            {r.steps.map((step, si) => (
+              <li key={si}>{step}</li>
+            ))}
+          </ol>
+        </>
+      )}
+
+      {Array.isArray(r.tips) && r.tips.length > 0 && (
+        <div className="mt-2 rounded-lg bg-amber-50 border border-amber-100 px-2 py-1.5 text-amber-950">
+          {r.tips.map((tip, ti) => (
+            <p key={ti} className="font-medium">
+              💡 {tip}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function CookingAssistant({
@@ -37,6 +142,7 @@ export default function CookingAssistant({
   deliveryLat,
   deliveryLng,
   onOrderPlaced,
+  onRequireSignIn,
 }) {
   const userId = user?.id;
   const chat = useAssistantChat(userId);
@@ -156,7 +262,7 @@ export default function CookingAssistant({
               >
                 {formatChatText(m.content)}
                 {matches.length > 0 && (
-                  <ul className="mt-2 space-y-1.5">
+                  <ul className="mt-2 space-y-1.5 whitespace-normal">
                     {matches.map((c) => (
                       <li key={c.id}>
                         <button
@@ -167,8 +273,8 @@ export default function CookingAssistant({
                         >
                           {c.index}. {c.name}
                           <span className="block font-semibold text-emerald-700/80 text-[11px]">
-                            {c.minutes} min
-                            {c.matchScore != null ? ` · ${c.matchScore}% match` : ''}
+                            {[c.minutes != null ? `${c.minutes} min` : null, c.cuisine].filter(Boolean).join(' · ')}
+                            {Array.isArray(c.missing) && c.missing.length > 0 ? ` · also needs ${c.missing.join(', ')}` : ''}
                           </span>
                         </button>
                       </li>
@@ -176,27 +282,7 @@ export default function CookingAssistant({
                   </ul>
                 )}
                 {recipes.map((r) => (
-                  <div
-                    key={r.id}
-                    className="mt-2 rounded-xl border border-emerald-100 bg-emerald-50/70 px-2.5 py-2 text-[12px] text-emerald-950"
-                  >
-                    <p className="font-black">
-                      {r.name}
-                      {r.minutes != null ? ` · ${r.minutes} min` : ''}
-                    </p>
-                    {Array.isArray(r.vegetables) && r.vegetables.length > 0 && (
-                      <p className="mt-1 font-semibold text-emerald-800/80">
-                        Need: {r.vegetables.join(', ')}
-                      </p>
-                    )}
-                    {Array.isArray(r.steps) && r.steps.length > 0 && (
-                      <ol className="mt-1.5 space-y-1 list-decimal list-inside font-medium">
-                        {r.steps.map((step, si) => (
-                          <li key={si}>{step}</li>
-                        ))}
-                      </ol>
-                    )}
-                  </div>
+                  <RecipeCard key={r.id} r={r} />
                 ))}
               </div>
             </div>
@@ -216,14 +302,37 @@ export default function CookingAssistant({
                   <li key={l.productId} className="flex justify-between gap-2">
                     <span>
                       {l.name} × {l.quantity}
+                      {l.weight ? <span className="text-emerald-800/70"> ({l.weight})</span> : null}
+                      {l.lowStock ? <span className="text-amber-700 font-bold"> · low stock</span> : null}
                     </span>
-                    <span className="font-bold">₹{(l.lineTotalPaise / 100).toFixed(0)}</span>
+                    <span className="font-bold">₹{rupees(l.lineTotalPaise)}</span>
                   </li>
                 ))}
             </ul>
+            {proposedOrder.deliveryFeePaise > 0 && (
+              <p className="text-[11.5px] text-emerald-900 flex justify-between">
+                <span>Delivery</span>
+                <span>₹{rupees(proposedOrder.deliveryFeePaise)}</span>
+              </p>
+            )}
+            {(proposedOrder.lines || []).some((l) => l.missingFromCatalog) && (
+              <p className="text-[11.5px] text-amber-800">
+                Not available right now:{' '}
+                {proposedOrder.lines
+                  .filter((l) => l.missingFromCatalog)
+                  .map((l) => l.name)
+                  .join(', ')}
+              </p>
+            )}
+            {proposedOrder.alreadyHave?.length > 0 && (
+              <p className="text-[11.5px] text-emerald-800/80">Left out (you have): {proposedOrder.alreadyHave.join(', ')}</p>
+            )}
+            {proposedOrder.fromYourKitchen?.length > 0 && (
+              <p className="text-[11.5px] text-emerald-800/80">From your kitchen: {proposedOrder.fromYourKitchen.join(', ')}</p>
+            )}
             <p className="text-[12.5px] font-black text-emerald-950 flex justify-between">
               <span>Total</span>
-              <span>₹{proposedOrder.total}</span>
+              <span>₹{rupees(proposedOrder.totalPaise)}</span>
             </p>
             <div className="flex gap-2 pt-1">
               <button
@@ -260,6 +369,33 @@ export default function CookingAssistant({
         <div ref={bottomRef} />
       </div>
 
+      {userId && messages.length <= 1 && !busy && (
+        <div className="shrink-0 px-3 pt-2 flex flex-wrap gap-1.5">
+          {STARTERS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => send(s)}
+              className="text-[11.5px] font-bold px-2.5 py-1.5 rounded-full bg-white border border-[#DCD5C6] text-[#1B4D3E] hover:bg-emerald-50"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!userId ? (
+        <div className="shrink-0 p-3 border-t border-[#E8E2D6] bg-[#FAF7F2] flex items-center gap-2">
+          <p className="flex-1 text-[12.5px] font-semibold text-[#5C5343]">Sign in to chat with the cooking helper.</p>
+          <button
+            type="button"
+            onClick={() => onRequireSignIn?.()}
+            className="shrink-0 px-4 py-2.5 rounded-xl bg-[#1B4D3E] text-white text-[12.5px] font-bold"
+          >
+            Sign in
+          </button>
+        </div>
+      ) : (
       <form
         className="shrink-0 p-3 border-t border-[#E8E2D6] bg-[#FAF7F2] flex gap-2"
         onSubmit={(e) => {
@@ -270,7 +406,7 @@ export default function CookingAssistant({
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Cabbage fry… or I have potato, tomato…"
+          placeholder="Gutti vankaya… or I have potato, beans…"
           disabled={busy}
           className="flex-1 min-w-0 bg-white border border-[#DCD5C6] rounded-xl px-3.5 py-3 text-[13px] outline-none focus:border-[#1B4D3E]"
         />
@@ -283,6 +419,7 @@ export default function CookingAssistant({
           <Send className="w-4 h-4" />
         </button>
       </form>
+      )}
     </div>
   );
 }

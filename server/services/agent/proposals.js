@@ -75,9 +75,40 @@ function peekProposal(proposalId, userId) {
   return row.payload;
 }
 
+/**
+ * Claim a proposal for one in-flight checkout, releasing it if that fails.
+ *
+ * The order is written before the proposal is consumed, so that a failure the
+ * customer can fix leaves the preview usable. That alone would let two taps of
+ * Confirm place two orders, so the first claim wins and the second is refused
+ * as already in progress.
+ */
+function claimProposal(proposalId, userId) {
+  prune();
+  const row = proposals.get(String(proposalId));
+  if (!row || row.userId !== String(userId) || row.expiresAt <= Date.now()) return null;
+  if (row.placing) return null;
+  row.placing = true;
+  return row.payload;
+}
+
+function releaseProposal(proposalId, userId) {
+  const row = proposals.get(String(proposalId));
+  if (row && row.userId === String(userId)) row.placing = false;
+}
+
+/** Revoke a preview the customer cancelled, so a later "yes" cannot redeem it. */
+function dropProposal(proposalId, userId) {
+  const row = proposals.get(String(proposalId));
+  if (row && row.userId === String(userId)) proposals.delete(String(proposalId));
+}
+
 module.exports = {
   getSession,
   saveProposal,
   takeProposal,
   peekProposal,
+  claimProposal,
+  releaseProposal,
+  dropProposal,
 };

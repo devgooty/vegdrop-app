@@ -73,7 +73,7 @@ test('recipe matcher finds dishes by dish name', () => {
   const { findRecipesByDishName } = require('../services/agent/recipes');
   const byAlias = findRecipesByDishName('aloo gobi');
   assert.ok(byAlias.length >= 1);
-  assert.match(byAlias[0].name, /potato|cauliflower/i);
+  assert.equal(byAlias[0].id, 'aloo-gobi');
 
   const byTitle = findRecipesByDishName('cabbage fry');
   assert.equal(byTitle[0].id, 'cabbage-fry');
@@ -110,7 +110,10 @@ test('a customer can chat for recipe matches without placing an order', async ()
     });
 
   assert.equal(res.status, 200, JSON.stringify(res.body));
-  assert.match(res.body.data.reply, /option|found|curry|dish/i);
+  assert.ok(
+    res.body.data.cards?.some((c) => c.type === 'recipe_match'),
+    'expected dish suggestions for the vegetables'
+  );
   assert.equal(await Order.countDocuments({}), 0, 'chat alone must not create orders');
 });
 
@@ -118,20 +121,23 @@ test('propose then confirm places exactly one order', async () => {
   const customer = await authenticatedUser('customer');
   await seedTomatoPotato();
 
+  // A named dish, then its vegetables. ("I have potato, tomato and onion"
+  // would correctly leave all three out of the cart and have nothing to order.)
   const chat = await api()
     .post('/api/agent/chat')
     .set(auth(customer.accessToken))
     .send({
-      messages: [{ role: 'user', content: 'I have potato, tomato and onion' }],
+      messages: [{ role: 'user', content: 'How to make aloo tamatar ki sabzi' }],
     });
   assert.equal(chat.status, 200);
+  assert.ok(chat.body.data.cards?.some((c) => c.type === 'recipe' && c.id === 'potato-tomato-curry'));
 
   const orderChat = await api()
     .post('/api/agent/chat')
     .set(auth(customer.accessToken))
     .send({
       messages: [
-        { role: 'user', content: 'I have potato, tomato and onion' },
+        { role: 'user', content: 'How to make aloo tamatar ki sabzi' },
         { role: 'assistant', content: chat.body.data.reply },
         { role: 'user', content: 'order missing ingredients' },
       ],

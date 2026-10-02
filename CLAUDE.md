@@ -404,7 +404,21 @@ Things that are easy to get wrong here:
 
 ### The cooking assistant
 
-`POST /api/agent/chat` is a recipe-and-ordering assistant (`services/agent/`): it matches dishes to vegetables the customer has, and can assemble a basket. `customer`/`developer` only, behind `agentChatLimiter`, and it needs `OPENAI_API_KEY` — without it the tool loop has no model to drive it.
+`POST /api/agent/chat` is a recipe-and-ordering assistant (`services/agent/`): it matches dishes to vegetables the customer has, and can assemble a basket. `customer`/`developer` only, behind `agentChatLimiter`. With `OPENAI_API_KEY` a model drives the tools; without it — and whenever the provider fails — `runLocalTurn` answers on its own, so the local router has to be right by itself, not a demo fallback.
+
+**Every recipe answer comes from the recipe book, never from memory.** `server/data/recipes.json` holds 83 hand-checked home recipes (each written, then reviewed independently for culinary and data accuracy): per-serving produce in grams tied to a `produce` key, kitchen staples marked `pantry`, 5–10 concrete steps, tips. `server/data/produce.json` is the vocabulary that ties a vegetable's names (aloo, bangaladumpa, urulaikizhangu) to the one catalog SKU it is sold as. The model path is told to use `get_recipe` quantities verbatim and to say plainly when the book lacks a dish; the local router says "I don't have a tested recipe for X" rather than answering with a near miss. Being wrong confidently is the failure that matters — a customer cannot tell a wrong recipe from a right one until dinner is ruined.
+
+Matching rules that have each already been got wrong:
+
+- **Match on canonical tokens, not strings.** Vegetable names become `veg:<key>`, form words (curry/kura, fry/vepudu, dal/pappu) become `form:<group>`, filler (Hinglish/Tenglish/Tamil chatter included) is dropped, and "with roti"/"no gravy" are removed before matching — from dish names too, or "tomato chutney *for dosa*" answers "masala dosa". A raw substring check matched "patta gobhi matar" (cabbage) to "gobhi matar" (cauliflower).
+- **An exact name wins; the longer one first; at equal length the one typed verbatim.** "kakarakaya fry" and "karela fry" are both bitter-gourd-fry by token — the Telugu name means the Andhra dish. Two equally exact names are a choice to offer, never a guess.
+- **Typo correction must not "correct" real words.** "butter" is one letter from "mutter" (peas) and turned paneer butter masala into matar paneer; words any dish name uses, and a short `REAL_WORDS` list, are never corrected.
+- **"I have X" is not "make X"**, except when the typed name says more than its vegetables ("veg clear *soup* with celery").
+- **Cards are `{ type: 'recipe' | 'recipe_match', ...recipe }`, so a recipe must never carry a `type` field** — the dish type is `dishType`. A `type: 'dry'` overwrote the card type and the client rendered nothing.
+
+Ordering from a recipe resolves each vegetable by SKU first and then by name with the produce entry's exclusions (a name search for potato also finds Sweet Potato), counts packs from the pack size, and leaves out what the customer said they have.
+
+`test/agentAccuracy.test.js` pins all of this, including customer-message sets in `test/fixtures/agentEvals*.json`, each written and labelled by an author who never saw the matcher. The bar: zero confident wrong dishes, ≥95% exact. When adding phrasing support, add a fresh blind set rather than tuning against these.
 
 **Chat never places an order.** `propose` builds a preview and returns a `proposalId`; `POST /agent/confirm-order` is the only path that writes an `Order`, and `proposals.takeProposal(id, user._id)` is scoped to the caller so a proposal id is not a bearer token for someone else's basket. `test/agent.test.js` asserts `Order.countDocuments()` is still zero after a propose.
 

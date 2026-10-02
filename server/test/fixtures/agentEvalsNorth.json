@@ -1,0 +1,382 @@
+{
+ "cases": [
+  {
+   "text": "bhai lauki ki sabji kese banate hai, bilkul mummy jaisi chahiye",
+   "intent": "dish",
+   "recipeId": "lauki-sabzi"
+  },
+  {
+   "text": "tori ki sabji batao yaar, sirf 2 log hai ghar pe",
+   "intent": "dish",
+   "recipeId": "turai-sabzi"
+  },
+  {
+   "text": "karele pyaz ki sabzi bnani h, kadwa kam lage aisi wali",
+   "intent": "dish",
+   "recipeId": "karela-fry"
+  },
+  {
+   "text": "shimla mirch aloo ki sukhi sabzi parathe ke saath",
+   "intent": "dish",
+   "recipeId": "aloo-shimla-mirch"
+  },
+  {
+   "text": "halwai jaisa khatta meetha kaddu, puri ke saath khana hai",
+   "intent": "dish",
+   "recipeId": "kaddu-ki-sabzi"
+  },
+  {
+   "text": "jeera aloo fatafat bata, hostel me hu bas 20 min hai",
+   "intent": "dish",
+   "recipeId": "jeera-aloo"
+  },
+  {
+   "text": "aalu gobhi dry wali sunday lunch ke liye, 4 log",
+   "intent": "dish",
+   "recipeId": "aloo-gobi"
+  },
+  {
+   "text": "gobhi ke parathe kaise bele ki phate nahi",
+   "intent": "dish",
+   "recipeId": "gobi-paratha"
+  },
+  {
+   "text": "aloo ke parathe nashte me, dahi makhan ke saath",
+   "intent": "dish",
+   "recipeId": "aloo-paratha"
+  },
+  {
+   "text": "muli ka parantha sardi special recepie plz",
+   "intent": "dish",
+   "recipeId": "mooli-paratha"
+  },
+  {
+   "text": "baby potato wala dum aloo dinner ke liye",
+   "intent": "dish",
+   "recipeId": "dum-aloo"
+  },
+  {
+   "text": "dhaba style mutter paneer 5 logo ke liye",
+   "intent": "dish",
+   "recipeId": "matar-paneer"
+  },
+  {
+   "text": "paneer makhani ghar pe restaurant jaisa kaise bane",
+   "intent": "dish",
+   "recipeId": "paneer-butter-masala"
+  },
+  {
+   "text": "saag paneer bnana hai, recipe bhej do bhai",
+   "intent": "dish",
+   "recipeId": "palak-paneer"
+  },
+  {
+   "text": "sarso ka saag pehli baar bana rahi hu, madad karo",
+   "intent": "dish",
+   "recipeId": "sarson-ka-saag"
+  },
+  {
+   "text": "gas pe bhun ke baingan bharta chahiye, 3 log",
+   "intent": "dish",
+   "recipeId": "baingan-bharta"
+  },
+  {
+   "text": "aloo baingan ki sabzi jaldi wali roti ke saath",
+   "intent": "dish",
+   "recipeId": "aloo-baingan"
+  },
+  {
+   "text": "masala bhindi pyaaz daal ke kaise banau",
+   "intent": "dish",
+   "recipeId": "bhindi-masala"
+  },
+  {
+   "text": "bhindi ki sukhi sabzi tiffin me deni hai kal",
+   "intent": "dish",
+   "recipeId": "bhindi-fry"
+  },
+  {
+   "text": "arhar dal tadka jeera lahsun wala, cooker me",
+   "intent": "dish",
+   "recipeId": "dal-tadka"
+  },
+  {
+   "text": "palak wali dal bana do, toor dal pada hai",
+   "intent": "dish",
+   "recipeId": "dal-palak"
+  },
+  {
+   "text": "ghiya chane ki dal lucknow wali",
+   "intent": "dish",
+   "recipeId": "lauki-chana-dal"
+  },
+  {
+   "text": "rasedar aloo matar puri ke liye, 6 log",
+   "intent": "dish",
+   "recipeId": "aloo-matar-curry"
+  },
+  {
+   "text": "shalgam ki sabzi punjabi tarike se",
+   "intent": "dish",
+   "recipeId": "shalgam-sabzi"
+  },
+  {
+   "text": "phool gobhi matar ki sabzi 4 logon ke liye",
+   "intent": "dish",
+   "recipeId": "gobi-matar"
+  },
+  {
+   "text": "band gobhi matar ki sukhi sabzi",
+   "intent": "dish",
+   "recipeId": "cabbage-matar-sabzi"
+  },
+  {
+   "text": "mutter pulav simple wala dinner ke liye",
+   "intent": "dish",
+   "recipeId": "matar-pulao"
+  },
+  {
+   "text": "subz biryani handi wali kaise banaye",
+   "intent": "dish",
+   "recipeId": "veg-biryani"
+  },
+  {
+   "text": "hari chutney samose ke liye, dhaniya pudina wali",
+   "intent": "dish",
+   "recipeId": "coriander-chutney"
+  },
+  {
+   "text": "udupi jaisa sambhar banana hai dosa ke saath",
+   "intent": "dish",
+   "recipeId": "veg-sambar"
+  },
+  {
+   "text": "khumb matar ki sabzi roti ke saath, 3 log",
+   "intent": "dish",
+   "recipeId": "mushroom-matar"
+  },
+  {
+   "text": "kanda bhaji mumbai style, baarish me chai ke saath",
+   "intent": "dish",
+   "recipeId": "onion-pakoda"
+  },
+  {
+   "text": "tawa pe crispy aloo ki tikki kaise bane",
+   "intent": "dish",
+   "recipeId": "aloo-tikki"
+  },
+  {
+   "text": "kakdi ka raita pulao ke saath",
+   "intent": "dish",
+   "recipeId": "cucumber-raita"
+  },
+  {
+   "text": "tamatar aloo ki rasedar sabji bhandare wali",
+   "intent": "dish",
+   "recipeId": "potato-tomato-curry"
+  },
+  {
+   "text": "butter garlic asparagus kaise banaye, pehli baar laya hu",
+   "intent": "dish",
+   "recipeId": "sauteed-asparagus"
+  },
+  {
+   "text": "aloo matar ki sabji bata do bhai",
+   "intent": "dish",
+   "anyOf": [
+    "aloo-matar-curry",
+    "aloo-matar-sukhi"
+   ]
+  },
+  {
+   "text": "bhindi ki sabzi kaise banaye",
+   "intent": "dish",
+   "anyOf": [
+    "bhindi-fry",
+    "bhindi-masala"
+   ]
+  },
+  {
+   "text": "spring onion ki sabzi besan daal ke, roti ke saath",
+   "intent": "dish",
+   "recipeId": "hara-pyaz-sabzi"
+  },
+  {
+   "text": "ghar pe sirf turai aur pyaz hai yaar, kya banau",
+   "intent": "have",
+   "vegetables": [
+    "ridge gourd",
+    "onion"
+   ]
+  },
+  {
+   "text": "fridge me tinda, tamatar aur hari mirch hai, kuch bata do",
+   "intent": "have",
+   "vegetables": [
+    "tomato",
+    "green chilli"
+   ]
+  },
+  {
+   "text": "karela aur aloo bacha hai, raat ko kya bane",
+   "intent": "have",
+   "vegetables": [
+    "bitter gourd",
+    "potato"
+   ]
+  },
+  {
+   "text": "shimla mirch, paneer aur pyaaz pada hai ghar pe, kya banau",
+   "intent": "have",
+   "vegetables": [
+    "capsicum",
+    "onion"
+   ]
+  },
+  {
+   "text": "kaddu ka bada tukda pada hai, kya banau jaldi",
+   "intent": "have",
+   "vegetables": [
+    "pumpkin"
+   ]
+  },
+  {
+   "text": "gajar matar aur aloo hai, tiffin ke liye kya banau",
+   "intent": "have",
+   "vegetables": [
+    "carrot",
+    "peas",
+    "potato"
+   ]
+  },
+  {
+   "text": "mere paas baingan aur aloo hai, roti ke saath kya chalega",
+   "intent": "have",
+   "vegetables": [
+    "brinjal",
+    "potato"
+   ]
+  },
+  {
+   "text": "palak, methi aur aloo hai ghar pe, kya bana sakte",
+   "intent": "have",
+   "vegetables": [
+    "spinach",
+    "potato"
+   ]
+  },
+  {
+   "text": "phool gobhi ek hai aur 2 tamatar, kya banau yaar",
+   "intent": "have",
+   "vegetables": [
+    "cauliflower",
+    "tomato"
+   ]
+  },
+  {
+   "text": "mushroom ka packet khatam karna hai, thode matar bhi hai, idea do",
+   "intent": "have",
+   "vegetables": [
+    "mushroom",
+    "peas"
+   ]
+  },
+  {
+   "text": "mandi se shalgam aur mooli le aaya, ab inka kya karu",
+   "intent": "have",
+   "vegetables": [
+    "turnip",
+    "radish"
+   ]
+  },
+  {
+   "text": "bharwa tinda kaise banaye, masala bhar ke",
+   "intent": "unknown_dish"
+  },
+  {
+   "text": "arbi ki sukhi sabzi ajwain wali bnani hai",
+   "intent": "unknown_dish"
+  },
+  {
+   "text": "kanda poha kaise banaye nashte ke liye, pune style",
+   "intent": "unknown_dish"
+  },
+  {
+   "text": "lauki ke kofte gravy wale, 4 log",
+   "intent": "unknown_dish"
+  },
+  {
+   "text": "dal makhani restaurant jaisi kaise banti hai",
+   "intent": "unknown_dish"
+  },
+  {
+   "text": "misal pav ghar pe banana hai, tari wala",
+   "intent": "unknown_dish"
+  },
+  {
+   "text": "bhai butter chicken ki recipe chahiye ghar pe",
+   "intent": "nonveg"
+  },
+  {
+   "text": "anda bhurji jaldi wala, hostel me hu",
+   "intent": "nonveg"
+  },
+  {
+   "text": "keema matar 4 logo ke liye kaise banaye",
+   "intent": "nonveg"
+  },
+  {
+   "text": "lauki kadwi toh nahi, kaatne se pehle kaise check kare",
+   "intent": "question"
+  },
+  {
+   "text": "pulao me chawal chipak jaate hai, khila khila kaise bane",
+   "intent": "question"
+  },
+  {
+   "text": "gravy patli ho gayi hai, gaadhi kaise karu jaldi",
+   "intent": "question"
+  },
+  {
+   "text": "arbi chhilne se haath me khujli hoti hai, kya karu",
+   "intent": "question"
+  },
+  {
+   "text": "shimla mirch aaj kitne ki hai",
+   "intent": "price",
+   "vegetables": [
+    "capsicum"
+   ]
+  },
+  {
+   "text": "bhai lauki ka bhav kya chal raha hai",
+   "intent": "price",
+   "vegetables": [
+    "bottle gourd"
+   ]
+  },
+  {
+   "text": "aloo ka rate kya hai 1 kg ka",
+   "intent": "price",
+   "vegetables": [
+    "potato"
+   ]
+  },
+  {
+   "text": "heyy bhai",
+   "intent": "greeting"
+  },
+  {
+   "text": "ram ram ji, kaise ho",
+   "intent": "greeting"
+  },
+  {
+   "text": "lauki ka juice roz peene se bp kam hota hai kya",
+   "intent": "health"
+  },
+  {
+   "text": "uric acid hai mujhe, tamatar aur palak kha sakte hai?",
+   "intent": "health"
+  }
+ ]
+}
