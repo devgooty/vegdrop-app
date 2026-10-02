@@ -1,0 +1,16 @@
+# node_modules MUST stay out: the image installs its own in a separate stage,
+# and copying a host or build-context copy over it would undo that.
+node_modules
+dist
+
+# Never bake secrets into an image layer.
+.env
+.env.*
+
+.git
+.gitignore
+.superpowers
+coverage
+*.log
+.vscode
+.idea
