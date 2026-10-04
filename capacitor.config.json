@@ -1,0 +1,22 @@
+{
+  "appId": "com.vegdrop.app",
+  "appName": "VegDrop",
+  "webDir": "dist",
+  "server": {
+    "url": "https://vegbazzar-app.vercel.app",
+    "errorPath": "offline.html",
+    "allowNavigation": [
+      "vegbazzar-app.vercel.app",
+      "checkout.razorpay.com",
+      "api.razorpay.com"
+    ]
+  },
+  "plugins": {
+    "SystemBars": {
+      "style": "LIGHT"
+    }
+  },
+  "android": {
+    "backgroundColor": "#FFFFFF"
+  }
+}

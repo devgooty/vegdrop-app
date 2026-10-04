@@ -14,3 +14,7 @@ coverage
 *.log
 .vscode
 .idea
+
+# The Capacitor Android shell and its icon sources; the API image never uses them.
+android
+resources

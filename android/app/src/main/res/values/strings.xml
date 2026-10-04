@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">VegDrop</string>
+    <string name="title_activity_main">VegDrop</string>
+    <string name="package_name">com.vegdrop.app</string>
+    <string name="custom_url_scheme">com.vegdrop.app</string>
+</resources>

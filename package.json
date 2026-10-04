@@ -14,13 +14,18 @@
     "test:watch": "node --test --watch --test-concurrency=1 \"server/test/**/*.test.js\"",
     "test:client": "vitest run",
     "test:client:watch": "vitest",
-    "test:all": "npm test && npm run test:client"
+    "test:all": "npm test && npm run test:client",
+    "android:sync": "vite build && cap sync android",
+    "android:open": "cap open android",
+    "android:run": "vite build && cap run android"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.0.4",
     "cloudinary": "^2.11.0",
@@ -46,6 +51,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "mongodb-memory-server": "^11.2.0",
     "supertest": "^7.2.2",
     "vitest": "^5.0.0"

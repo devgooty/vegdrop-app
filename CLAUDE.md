@@ -528,3 +528,17 @@ Two more gotchas worth knowing:
 ### Styling
 
 Tailwind CSS v4 via `@tailwindcss/vite`. No `tailwind.config.js` is used or needed under v4.
+
+### Android app (Capacitor)
+
+`android/` is a Capacitor 8 shell. **It loads the live site (`server.url` in `capacitor.config.json`), not the bundled `dist/`**, and that is the security model talking, not laziness. The refresh token is an httpOnly `SameSite=Strict` cookie on the site's own origin; a bundled app runs at `https://localhost`, so every API call would be cross-site and the cookie would never be sent. Making that work means `SameSite=None` plus a CORS entry for a WebView origin — loosening the one cookie that holds every session. Loading the real origin keeps auth byte-for-byte identical, and every Vercel deploy updates the app with no store release.
+
+- `dist/` is still copied in for `offline.html` (the `server.errorPath`) and its logo, nothing else.
+- `allowNavigation` must list any host the app navigates to at top level; anything else opens in the system browser. Razorpay is on it.
+- Location, camera and mic prompts from the page are bridged to Android runtime permissions by Capacitor, but only for permissions declared in `AndroidManifest.xml`. A new browser API needing one fails silently until it is added there.
+- **The app draws edge-to-edge behind a transparent status bar** (`MainActivity` + `styles.xml`), so each screen's header colour runs to the top. That relies on the site padding headers with `env(safe-area-inset-top)` under `viewport-fit=cover`; a new full-bleed header that skips it will sit under the clock. The theme's default was an opaque dark bar.
+- `allowBackup="false"` keeps the WebView's cookie store — the refresh token — out of Google cloud backups.
+- `SpeechRecognition` does not exist in Android WebView, so voice search is unavailable in the app — the mic button still shows and lands on the overlay's `unsupported` state. A native speech plugin is the fix if it matters.
+- Icons come from `resources/` via `npx @capacitor/assets generate --android`.
+
+`npm run android:sync` rebuilds and syncs; `npm run android:open` opens Android Studio (needs JDK 21 + Android SDK) to build the APK/AAB.
