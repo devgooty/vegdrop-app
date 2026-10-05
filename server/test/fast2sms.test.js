@@ -216,7 +216,7 @@ test('the code and the key never appear in log output; the number is masked', as
 function loadConfig(env) {
   return spawnSync(
     process.execPath,
-    ['-e', "const c = require('./server/config/env'); console.log(c.notifyTransport)"],
+    ['-e', "const c = require('./server/config/env'); console.log(JSON.stringify({ transport: c.notifyTransport, outboundFirst: c.otp.outboundFirst }))"],
     {
       cwd: path.join(__dirname, '..', '..'),
       encoding: 'utf8',
@@ -224,6 +224,7 @@ function loadConfig(env) {
         ...process.env,
         NODE_ENV: 'development',
         NOTIFY_TRANSPORT: '',
+        OTP_OUTBOUND_FIRST: '',
         FAST2SMS_API_KEY: '',
         WHATSAPP_PHONE_NUMBER_ID: '',
         WHATSAPP_ACCESS_TOKEN: '',
@@ -241,12 +242,12 @@ function loadConfig(env) {
 }
 
 // dotenv may print a banner to stdout before the line the child writes.
-const lastLine = (out) => out.trim().split('\n').pop();
+const printed = (out) => JSON.parse(out.trim().split('\n').pop());
 
 test('configuring only FAST2SMS_API_KEY selects the fast2sms transport', () => {
   const res = loadConfig({ FAST2SMS_API_KEY: 'k'.repeat(32) });
   assert.equal(res.status, 0, res.stderr);
-  assert.equal(lastLine(res.stdout), 'fast2sms');
+  assert.equal(printed(res.stdout).transport, 'fast2sms');
 });
 
 test('NOTIFY_TRANSPORT=fast2sms without a key is a boot-time fatal', () => {
@@ -258,5 +259,39 @@ test('NOTIFY_TRANSPORT=fast2sms without a key is a boot-time fatal', () => {
 test('with neither provider configured the default stays the console stub', () => {
   const res = loadConfig({});
   assert.equal(res.status, 0, res.stderr);
-  assert.equal(lastLine(res.stdout), 'console');
+  assert.equal(printed(res.stdout).transport, 'console');
+});
+
+// ---------------------------------------------------------------------------
+// Code first, reverse OTP as the fallback (OTP_OUTBOUND_FIRST)
+// ---------------------------------------------------------------------------
+
+test('code-first defaults ON for fast2sms, so the transport is not silently skipped', () => {
+  const res = loadConfig({ FAST2SMS_API_KEY: 'k'.repeat(32) });
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(printed(res.stdout).outboundFirst, true);
+});
+
+test('code-first defaults OFF for WhatsApp, so an existing deployment is unchanged', () => {
+  const res = loadConfig({
+    WHATSAPP_PHONE_NUMBER_ID: '1',
+    WHATSAPP_ACCESS_TOKEN: 'e'.repeat(48),
+    WHATSAPP_OTP_TEMPLATE_NAME: 'otp_code',
+  });
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(printed(res.stdout).transport, 'whatsapp');
+  assert.equal(printed(res.stdout).outboundFirst, false);
+});
+
+test('OTP_OUTBOUND_FIRST can be set either way explicitly', () => {
+  const on = loadConfig({
+    WHATSAPP_PHONE_NUMBER_ID: '1',
+    WHATSAPP_ACCESS_TOKEN: 'e'.repeat(48),
+    WHATSAPP_OTP_TEMPLATE_NAME: 'otp_code',
+    OTP_OUTBOUND_FIRST: 'true',
+  });
+  assert.equal(printed(on.stdout).outboundFirst, true);
+
+  const off = loadConfig({ FAST2SMS_API_KEY: 'k'.repeat(32), OTP_OUTBOUND_FIRST: 'false' });
+  assert.equal(printed(off.stdout).outboundFirst, false);
 });

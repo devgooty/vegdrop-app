@@ -1,7 +1,9 @@
-import React, { useState, useRef, useLayoutEffect } from 'react';
+import React, { useState, useRef, useLayoutEffect, useEffect } from 'react';
 import { ArrowRight, ArrowLeft, Loader2, Check, Info } from 'lucide-react';
 import {
   lookupIdentifier,
+  startIdentifierAuth,
+  verifyPhoneAuth,
   startRegistration,
   verifyRegistration,
   startVendorRegistration,
@@ -18,6 +20,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { LANGUAGES } from '../i18n/translations';
 
 import ReverseOtpPanel from './ReverseOtpPanel';
+import OTPBoxGroup from './OTPBoxGroup';
 
 /**
  * Sign in and sign up — passwordless.
@@ -33,9 +36,13 @@ import ReverseOtpPanel from './ReverseOtpPanel';
  * No email address is collected anywhere here. An account is created without
  * one; anyone who wants stall notices adds it from their profile later.
  *
- * Outbound OTP is intentionally not offered: production WhatsApp templates
- * are unreliable, and reverse OTP is the path that still works when nothing
- * can be delivered. The lookup call reveals whether an identifier is
+ * CODE FIRST, REVERSE OTP AS THE FALLBACK. Both forks above ask the server to
+ * text a code and show a six-box entry. The server answers with no challenge
+ * when it cannot or will not send (no transport, a failed send, or a deployment
+ * that is still reverse-OTP-only), and that same screen then shows reverse OTP —
+ * the path that still works when nothing can be delivered. A user who was sent a
+ * code and never got it can switch to reverse OTP from the code screen, when the
+ * server says it is available (`reverseAvailable`). The lookup call reveals whether an identifier is
  * registered, which the rest of this flow is careful never to disclose — a
  * deliberate trade for this UX, priced by the tightest rate limit on the
  * server, so never call it while the user is typing.
@@ -56,6 +63,9 @@ import ReverseOtpPanel from './ReverseOtpPanel';
  * `onLogin` receives the user object the server returns. This component never
  * determines a role and never validates a code — both are server decisions.
  */
+/** Matches OTP_RESEND_COOLDOWN_SECONDS on the server; the server is what enforces it. */
+const RESEND_SECONDS = 30;
+
 const STEP = {
   IDENTIFIER: 'identifier',
   LOGIN_CODE: 'login-code',
@@ -237,8 +247,31 @@ export default function LoginPage({ onLogin, onClose, appType = 'customer', stor
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  /** Token from reverse OTP — the only way a number is proved here. */
+  /** Token from reverse OTP — proves a number when no code was (or could be) sent. */
   const [reversePhoneToken, setReversePhoneToken] = useState(null);
+
+  /**
+   * The outbound code that was sent, if one was.
+   *
+   * `null` after a request means the server sent nothing, which is the cue to
+   * show reverse OTP instead. `useReverse` is the user choosing it themselves
+   * from the code box.
+   */
+  const [challenge, setChallenge] = useState(null);
+  const [code, setCode] = useState('');
+  const [useReverse, setUseReverse] = useState(false);
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [codeRequestFailed, setCodeRequestFailed] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
+
+  // Discards the answer to a code request the user has since walked away from.
+  const requestSeq = useRef(0);
+
+  useEffect(() => {
+    if (resendIn <= 0) return undefined;
+    const timer = setTimeout(() => setResendIn((n) => n - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
 
   /**
    * The number a reverse sign-in would be raised against.
@@ -261,12 +294,68 @@ export default function LoginPage({ onLogin, onClose, appType = 'customer', stor
     return fallback;
   };
 
+  const clearCodeState = () => {
+    requestSeq.current += 1;
+    setChallenge(null);
+    setCode('');
+    setUseReverse(false);
+    setIsSendingCode(false);
+    setCodeRequestFailed(false);
+    setResendIn(0);
+  };
+
   const resetToStart = () => {
     setError('');
     setReversePhoneToken(null);
     setLoginPhone(null);
+    clearCodeState();
     setStep(STEP.IDENTIFIER);
   };
+
+  /**
+   * Ask the server to text a code for the current sign-in or sign-up.
+   *
+   * A reply with no challenge is not an error — it means nothing was sent and
+   * reverse OTP takes over. A thrown error is: the number cannot be verified
+   * right now, and showing a reverse-OTP panel the server has no channel for
+   * would only strand the user.
+   */
+  const requestCode = async (kind, number) => {
+    const seq = (requestSeq.current += 1);
+    setError('');
+    setCode('');
+    setUseReverse(false);
+    setCodeRequestFailed(false);
+    setChallenge(null);
+    setIsSendingCode(true);
+
+    try {
+      const result =
+        kind === 'login'
+          ? await startIdentifierAuth({ identifier: number, app: appType })
+          : await signUp.start({ phone: number, name: name.trim() || undefined });
+      if (seq !== requestSeq.current) return;
+
+      const sent = kind === 'login' ? result : result.phone;
+      if (sent?.challengeId) {
+        setChallenge({
+          challengeId: sent.challengeId,
+          destination: sent.destination,
+          reverseAvailable: Boolean(result.reverseAvailable),
+        });
+        setResendIn(RESEND_SECONDS);
+      }
+    } catch (err) {
+      if (seq !== requestSeq.current) return;
+      setCodeRequestFailed(true);
+      setError(describeError(err, t('login.errSendCode')));
+    } finally {
+      if (seq === requestSeq.current) setIsSendingCode(false);
+    }
+  };
+
+  const resendCode = () =>
+    requestCode(step === STEP.LOGIN_CODE ? 'login' : 'register', step === STEP.LOGIN_CODE ? loginPhone : phone.trim());
 
   /** Step 1: does this identifier have an account? Fork accordingly. */
   const handleContinue = async (e) => {
@@ -295,8 +384,10 @@ export default function LoginPage({ onLogin, onClose, appType = 'customer', stor
       const { exists } = await lookupIdentifier({ identifier: typed, app: appType });
 
       if (exists) {
-        setLoginPhone(typed.replace(/\D/g, '').slice(-10));
+        const number = typed.replace(/\D/g, '').slice(-10);
+        setLoginPhone(number);
         setStep(STEP.LOGIN_CODE);
+        requestCode('login', number);
         return;
       }
 
@@ -334,6 +425,7 @@ export default function LoginPage({ onLogin, onClose, appType = 'customer', stor
     setError('');
     setReversePhoneToken(null);
     setStep(STEP.REGISTER_CODES);
+    requestCode('register', phone.trim());
   };
 
   /** New account: spend the reverse-OTP token to create the account. */
@@ -341,7 +433,13 @@ export default function LoginPage({ onLogin, onClose, appType = 'customer', stor
     e.preventDefault();
     if (isSubmitting) return;
 
-    if (!reversePhoneToken) {
+    const typedCode = code.replace(/\s/g, '');
+    if (codeEntryActive) {
+      if (typedCode.length !== 6) {
+        setError(t('login.errAllSix'));
+        return;
+      }
+    } else if (!reversePhoneToken) {
       setError(t('login.errReversePending'));
       return;
     }
@@ -350,10 +448,11 @@ export default function LoginPage({ onLogin, onClose, appType = 'customer', stor
     setIsSubmitting(true);
 
     try {
-      const user = await signUp.verify({
-        phoneToken: reversePhoneToken,
-        name: name.trim() || undefined,
-      });
+      const user = await signUp.verify(
+        codeEntryActive
+          ? { phoneChallengeId: challenge.challengeId, phoneCode: typedCode, name: name.trim() || undefined }
+          : { phoneToken: reversePhoneToken, name: name.trim() || undefined }
+      );
       onLogin(user);
     } catch (err) {
       setError(describeError(err, t('login.errCheckCodes')));
@@ -361,6 +460,32 @@ export default function LoginPage({ onLogin, onClose, appType = 'customer', stor
       setIsSubmitting(false);
     }
   };
+
+  /** Sign in with the texted code. */
+  const handleVerifyLoginCode = async (e) => {
+    e.preventDefault();
+    if (isSubmitting || !challenge) return;
+
+    const typedCode = code.replace(/\s/g, '');
+    if (typedCode.length !== 6) {
+      setError(t('login.errAllSix'));
+      return;
+    }
+
+    setError('');
+    setIsSubmitting(true);
+    try {
+      const user = await verifyPhoneAuth({ challengeId: challenge.challengeId, code: typedCode });
+      onLogin(user);
+    } catch (err) {
+      setError(describeError(err, t('login.errCheckCodes')));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  /** A code was sent and the user has not chosen reverse OTP instead. */
+  const codeEntryActive = Boolean(challenge?.challengeId) && !useReverse;
 
   let title = t(COPY_KEYS[step].title);
   let sub = t(COPY_KEYS[step].sub);
@@ -373,10 +498,10 @@ export default function LoginPage({ onLogin, onClose, appType = 'customer', stor
   // Reverse OTP — short verify framing; the panel owns the rest.
   if (step === STEP.LOGIN_CODE) {
     title = t('login.enterCode');
-    sub = t('login.enterCodeSub');
+    sub = codeEntryActive ? t('login.enterCodeSubSms') : t('login.enterCodeSub');
   } else if (step === STEP.REGISTER_CODES) {
     title = t('login.enterCode');
-    sub = t('login.sendUsCodeSubRegister');
+    sub = codeEntryActive ? t('login.enterCodeSubSms') : t('login.sendUsCodeSubRegister');
   }
 
   const fieldClass =
@@ -594,18 +719,71 @@ export default function LoginPage({ onLogin, onClose, appType = 'customer', stor
               </form>
             )}
 
-            {/* STEP 2A — sign in via reverse OTP */}
+            {/* STEP 2A — sign in: the texted code, or reverse OTP when none was sent */}
             {step === STEP.LOGIN_CODE && (
               <div className="si-step space-y-4">
-                <ReverseOtpPanel
-                  phone={loginPhone}
-                  purpose="login"
-                  app={appType}
-                  onVerified={({ user: signedIn }) => onLogin(signedIn)}
-                  onBack={resetToStart}
-                />
+                {isSendingCode ? (
+                  <SendingNotice label={t('login.sendingCode')} />
+                ) : codeRequestFailed ? (
+                  <>
+                    {error && <Notice tone="error">{error}</Notice>}
+                    <button type="button" onClick={resendCode} className={primaryButton}>
+                      {t('login.tryAgain')}
+                    </button>
+                    <div className="text-center">
+                      <button type="button" onClick={resetToStart} className={quietButton}>{t('login.startOver')}</button>
+                    </div>
+                  </>
+                ) : codeEntryActive ? (
+                  <form onSubmit={handleVerifyLoginCode} className="space-y-4">
+                    <CodeEntry
+                      destination={challenge.destination}
+                      value={code}
+                      onChange={setCode}
+                      resendIn={resendIn}
+                      onResend={resendCode}
+                      disabled={isSubmitting}
+                      t={t}
+                      quietButton={quietButton}
+                    />
 
-                {error && <Notice tone="error">{error}</Notice>}
+                    {error && <Notice tone="error">{error}</Notice>}
+
+                    <button type="submit" disabled={isSubmitting} className={primaryButton}>
+                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                      <span>{t(isSubmitting ? 'login.checking' : 'login.verifyCode')}</span>
+                    </button>
+
+                    <div className="flex flex-col items-center gap-2">
+                      {challenge.reverseAvailable && (
+                        <button type="button" onClick={() => setUseReverse(true)} className={quietButton}>
+                          {t('login.useReverseInstead')}
+                        </button>
+                      )}
+                      <button type="button" onClick={resetToStart} className={quietButton}>{t('common.back')}</button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <ReverseOtpPanel
+                      phone={loginPhone}
+                      purpose="login"
+                      app={appType}
+                      onVerified={({ user: signedIn }) => onLogin(signedIn)}
+                      onBack={resetToStart}
+                    />
+
+                    {error && <Notice tone="error">{error}</Notice>}
+
+                    {challenge && (
+                      <div className="text-center">
+                        <button type="button" onClick={() => setUseReverse(false)} className={quietButton}>
+                          {t('login.useCodeInstead')}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
 
@@ -696,25 +874,71 @@ export default function LoginPage({ onLogin, onClose, appType = 'customer', stor
             {/* STEP 3 — prove the number, then the account exists */}
             {step === STEP.REGISTER_CODES && (
               <form onSubmit={handleVerifyRegistration} className="si-step space-y-4">
-                <div>
-                  <label className={labelClass}>{t('login.reversePhoneLabel')}</label>
-                  {reversePhoneToken ? (
-                    <Notice tone="info">{t('login.reverseVerified')}</Notice>
-                  ) : (
-                    <ReverseOtpPanel
-                      phone={phone.trim()}
-                      purpose={signUp.reversePurpose}
-                      app={appType}
-                      name={name.trim() || undefined}
-                      completeHere={false}
-                      onVerified={({ token }) => setReversePhoneToken(token)}
+                {isSendingCode ? (
+                  <SendingNotice label={t('login.sendingCode')} />
+                ) : codeRequestFailed ? (
+                  <button type="button" onClick={resendCode} className={primaryButton}>
+                    {t('login.tryAgain')}
+                  </button>
+                ) : codeEntryActive ? (
+                  <>
+                    <CodeEntry
+                      destination={challenge.destination}
+                      value={code}
+                      onChange={setCode}
+                      resendIn={resendIn}
+                      onResend={resendCode}
+                      disabled={isSubmitting}
+                      t={t}
+                      quietButton={quietButton}
                     />
-                  )}
-                </div>
+                    {challenge.reverseAvailable && (
+                      <div className="text-center">
+                        <button type="button" onClick={() => setUseReverse(true)} className={quietButton}>
+                          {t('login.useReverseInstead')}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className={labelClass}>{t('login.reversePhoneLabel')}</label>
+                      {reversePhoneToken ? (
+                        <Notice tone="info">{t('login.reverseVerified')}</Notice>
+                      ) : (
+                        <ReverseOtpPanel
+                          phone={phone.trim()}
+                          purpose={signUp.reversePurpose}
+                          app={appType}
+                          name={name.trim() || undefined}
+                          completeHere={false}
+                          onVerified={({ token }) => setReversePhoneToken(token)}
+                        />
+                      )}
+                    </div>
+                    {challenge && !reversePhoneToken && (
+                      <div className="text-center">
+                        <button type="button" onClick={() => setUseReverse(false)} className={quietButton}>
+                          {t('login.useCodeInstead')}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
 
                 {error && <Notice tone="error">{error}</Notice>}
 
-                <button type="submit" disabled={isSubmitting || !reversePhoneToken} className={primaryButton}>
+                <button
+                  type="submit"
+                  disabled={
+                    isSubmitting ||
+                    isSendingCode ||
+                    codeRequestFailed ||
+                    (codeEntryActive ? code.replace(/\s/g, '').length !== 6 : !reversePhoneToken)
+                  }
+                  className={primaryButton}
+                >
                   {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                   <span>{t(isSubmitting ? 'login.checking' : 'login.createAccount')}</span>
                 </button>
@@ -730,6 +954,32 @@ export default function LoginPage({ onLogin, onClose, appType = 'customer', stor
       </main>
       </div>
     </div>
+  );
+}
+
+/** The six boxes, the number the code went to, and resend. */
+function CodeEntry({ destination, value, onChange, resendIn, onResend, disabled, t, quietButton }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-[14px] leading-relaxed text-[#0F1F17]/80">{t('login.codeSentTo', { destination })}</p>
+      <fieldset disabled={disabled} className="border-0 p-0 m-0">
+        <OTPBoxGroup length={6} value={value} onChange={onChange} tone="brand" />
+      </fieldset>
+      <div className="text-center">
+        <button type="button" onClick={onResend} disabled={resendIn > 0 || disabled} className={`${quietButton} disabled:no-underline disabled:opacity-60 disabled:cursor-not-allowed`}>
+          {resendIn > 0 ? t('login.resendIn', { seconds: resendIn }) : t('login.resendCode')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SendingNotice({ label }) {
+  return (
+    <p role="status" className="flex items-center gap-2 text-[14px] text-[#0F1F17]/80">
+      <Loader2 className="w-4 h-4 animate-spin" />
+      <span>{label}</span>
+    </p>
   );
 }
 
