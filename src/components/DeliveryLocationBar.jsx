@@ -59,21 +59,30 @@ export default function DeliveryLocationBar({ onAddressChange }) {
    * what it was for — and a denial there is permanent, so a badly-timed prompt
    * costs every distance-based feature for good. LocationPrimer asks first; this
    * only tops up the address afterwards.
+   *
+   * Runs again when the Android app announces location being switched on
+   * (`vegdrop:locationon`, from MainActivity): with it off at launch, the
+   * attempt on mount failed silently.
    */
   useEffect(() => {
-    const saved = savedCustomerAddress();
-    const primerAnswered = localStorage.getItem('vegdrop_location_primer');
-    if (primerAnswered && (!saved || saved.includes('516439')) && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const { latitude, longitude } = position.coords;
-          const { formattedFullAddress, detailsObj } = await reverseGeocodeGPS(latitude, longitude);
-          saveLocation(formattedFullAddress, detailsObj, { lat: latitude, lng: longitude });
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-      );
-    }
+    const detect = () => {
+      const saved = savedCustomerAddress();
+      const primerAnswered = localStorage.getItem('vegdrop_location_primer');
+      if (primerAnswered && (!saved || saved.includes('516439')) && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            const { latitude, longitude } = position.coords;
+            const { formattedFullAddress, detailsObj } = await reverseGeocodeGPS(latitude, longitude);
+            saveLocation(formattedFullAddress, detailsObj, { lat: latitude, lng: longitude });
+          },
+          () => {},
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+        );
+      }
+    };
+    detect();
+    window.addEventListener('vegdrop:locationon', detect);
+    return () => window.removeEventListener('vegdrop:locationon', detect);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

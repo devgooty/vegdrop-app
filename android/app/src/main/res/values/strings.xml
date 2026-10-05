@@ -4,4 +4,8 @@
     <string name="title_activity_main">VegDrop</string>
     <string name="package_name">com.vegdrop.app</string>
     <string name="custom_url_scheme">com.vegdrop.app</string>
+    <string name="location_off_title">Turn on location</string>
+    <string name="location_off_message">VegDrop uses your location to find the markets that deliver to you.</string>
+    <string name="location_off_open_settings">Open settings</string>
+    <string name="location_off_not_now">Not now</string>
 </resources>

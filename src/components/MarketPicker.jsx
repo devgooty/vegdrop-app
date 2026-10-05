@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Store, MapPin, ChevronRight, RefreshCw, AlertTriangle, Check } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { fetchNearbyMarkets, currentPosition, savedCustomerCoords } from '../services/markets';
@@ -21,14 +21,20 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(false);
+  // Only the newest load may write state. A position request can take its full
+  // timeout, so a retry fired meanwhile could otherwise succeed and then be
+  // overwritten by the first attempt's late "needs-location".
+  const latestLoad = useRef(0);
 
   const load = useCallback(async () => {
+    const run = ++latestLoad.current;
     setLoading(true);
     setError(null);
     try {
       // The address picker has been saving coordinates all along; fall back to
       // asking the browser only if it has none.
       const coords = savedCustomerCoords() || (await currentPosition());
+      if (run !== latestLoad.current) return;
       if (!coords) {
         setError('needs-location');
         setMarkets([]);
@@ -36,6 +42,7 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
       }
 
       const found = await fetchNearbyMarkets({ ...coords, radius: 20000 });
+      if (run !== latestLoad.current) return;
       setMarkets(found);
 
       // Pick the nearest deliverable market automatically. Making someone
@@ -46,9 +53,9 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
         if (best) onSelectMarket(best);
       }
     } catch (err) {
-      setError(err.message || 'Could not find markets near you.');
+      if (run === latestLoad.current) setError(err.message || 'Could not find markets near you.');
     } finally {
-      setLoading(false);
+      if (run === latestLoad.current) setLoading(false);
     }
     // `selectedMarket` is deliberately not a dependency: re-running on every
     // selection would refetch the list each time the customer switched market.
@@ -57,6 +64,17 @@ export default function MarketPicker({ selectedMarket, onSelectMarket }) {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // The Android app (MainActivity) announces the device's location being
+  // switched on. The load above failed if it was off at launch, so try again —
+  // unless an address was saved, in which case it never needed the device.
+  useEffect(() => {
+    const retry = () => {
+      if (!savedCustomerCoords()) load();
+    };
+    window.addEventListener('vegdrop:locationon', retry);
+    return () => window.removeEventListener('vegdrop:locationon', retry);
   }, [load]);
 
   if (loading && markets.length === 0) {
