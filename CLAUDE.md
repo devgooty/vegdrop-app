@@ -185,6 +185,13 @@ the two — the failover chain is email-only. `services/transports/fast2sms.js`
 judges success on the response body (`return: true`), not the HTTP status,
 because Fast2SMS can reject with a 200.
 
+Two Fast2SMS routes: the default `otp` route (`/dev/bulkV2`), which Fast2SMS
+refuses with `status_code 996` until the account's website is verified, and the
+OTP template API (`/dev/otp/send`), used when `FAST2SMS_OTP_ID` is set. Both send
+**our own code** (so hashing, expiry and attempt limits stay in `services/otp.js`);
+Fast2SMS's Verify OTP / Resend OTP endpoints are deliberately not used, to avoid
+a second source of truth for whether a code is right.
+
 **Code first, reverse OTP as the fallback (`OTP_OUTBOUND_FIRST`).** Historically,
 turning a reverse-OTP channel on meant the outbound code was *never attempted* —
 `routes/auth.js` treated reverse OTP as a replacement. That silently ignores a

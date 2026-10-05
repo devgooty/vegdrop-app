@@ -138,6 +138,10 @@ const whatsappConfigured = Boolean(whatsappPhoneNumberId && whatsappAccessToken 
 
 const fast2smsApiKey = optional('FAST2SMS_API_KEY', '');
 const fast2smsConfigured = Boolean(fast2smsApiKey);
+// Optional: the id of an OTP template made in the Fast2SMS dashboard. When set,
+// codes go through POST /dev/otp/send instead of the website-verification-gated
+// `otp` route. See services/transports/fast2sms.js.
+const fast2smsOtpId = optional('FAST2SMS_OTP_ID', '');
 
 // --- Inbound verification (reverse OTP) --------------------------------------
 
@@ -569,6 +573,7 @@ const config = Object.freeze({
   fast2sms: Object.freeze({
     configured: fast2smsConfigured,
     apiKey: fast2smsApiKey,
+    otpId: fast2smsOtpId,
     timeoutMs: int('FAST2SMS_TIMEOUT_MS', 10000),
   }),
 
