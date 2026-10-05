@@ -102,10 +102,11 @@ function resolvePhoneTransport() {
     // FAST2SMS_API_KEY presence is validated at boot in config/env.js.
     const { createFast2smsTransport } = require('./transports/fast2sms');
 
-    console.info('[notify] transport=fast2sms route=otp');
+    console.info(`[notify] transport=fast2sms route=${config.fast2sms.otpId ? 'otp_template' : 'otp'}`);
 
     return createFast2smsTransport({
       apiKey: config.fast2sms.apiKey,
+      otpTemplateId: config.fast2sms.otpId,
       timeoutMs: config.fast2sms.timeoutMs,
     });
   }

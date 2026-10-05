@@ -206,6 +206,71 @@ test('the code and the key never appear in log output; the number is masked', as
 });
 
 // ---------------------------------------------------------------------------
+// OTP template API (FAST2SMS_OTP_ID)
+// ---------------------------------------------------------------------------
+
+const OK_TEMPLATE = { status: 200, body: { return: true, status_code: 200, request_id: 'lwdtp7cjyqxvfe9', message: 'OTP sent successfully' } };
+
+test('with an OTP template id the OTP API is used and our own code is passed through', async () => {
+  const { t, calls } = transport({ otpTemplateId: 'tpl_123' }, [OK_TEMPLATE]);
+
+  await t.send(msg());
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://www.fast2sms.com/dev/otp/send');
+  assert.equal(calls[0].options.headers.authorization, 'test-key');
+  assert.deepEqual(calls[0].body, {
+    mobile: '9876543210',
+    otp_id: 'tpl_123',
+    otp: '123456',
+    otp_length: 6,
+    otp_expiry: 5,
+  });
+});
+
+test('the expiry is sent in whole minutes, rounded up and never below one', async () => {
+  const send = async (ttlSeconds) => {
+    const { t, calls } = transport({ otpTemplateId: 'tpl_123' }, [OK_TEMPLATE]);
+    await t.send(msg({ otp: { ...otp, ttlSeconds } }));
+    return calls[0].body.otp_expiry;
+  };
+
+  assert.equal(await send(300), 5);
+  assert.equal(await send(301), 6, 'a 5m01s code must not be shortened to 5');
+  assert.equal(await send(20), 1);
+});
+
+test('without an OTP template id the original otp route is still used', async () => {
+  const { t, calls } = transport();
+  await t.send(msg());
+  assert.equal(calls[0].url, 'https://www.fast2sms.com/dev/bulkV2');
+});
+
+test('the OTP API shares the failure handling: return:false is a failure and the code is not logged', async () => {
+  const written = [];
+  const originals = { info: console.info, error: console.error };
+  console.info = (...a) => written.push(JSON.stringify(a));
+  console.error = (...a) => written.push(JSON.stringify(a));
+
+  try {
+    const { t } = transport({ otpTemplateId: 'tpl_123' }, [
+      { status: 200, body: { return: false, status_code: 400, message: 'Invalid OTP template for 123456' } },
+    ]);
+    await assert.rejects(
+      () => t.send(msg()),
+      (err) => {
+        assert.equal(err.code, 'OTP_DELIVERY_FAILED');
+        return true;
+      }
+    );
+  } finally {
+    Object.assign(console, originals);
+  }
+
+  assert.doesNotMatch(written.join('\n'), /123456/);
+});
+
+// ---------------------------------------------------------------------------
 // Boot-time configuration
 // ---------------------------------------------------------------------------
 

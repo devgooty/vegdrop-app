@@ -13,6 +13,19 @@
  * business has DLT sender and template ids a `dlt` route would allow branded
  * text; that is a separate route with different parameters and is not done here.
  *
+ * TWO ROUTES
+ *
+ * Without `otpTemplateId` this uses `POST /dev/bulkV2` with `route=otp`. That
+ * route is gated: until the account's website is verified Fast2SMS answers
+ * `status_code 996`.
+ *
+ * With `otpTemplateId` (FAST2SMS_OTP_ID) it uses `POST /dev/otp/send`, which
+ * sends through an OTP template created in the Fast2SMS dashboard. We still pass
+ * OUR OWN code in `otp`, so generation, hashing, expiry and attempt limits stay
+ * in services/otp.js — Fast2SMS's own Verify/Resend endpoints are not used, and
+ * must not be: a second source of truth for "is this code right" is how a code
+ * ends up valid in one place and not the other.
+ *
  * WHAT THIS DELIBERATELY DOES NOT DO
  *
  *  - It never logs the code. Fast2SMS error messages are redacted of it too, in
@@ -29,7 +42,11 @@
 
 const { ApiError } = require('../../middleware/errors');
 
+/** The `otp` route: Fast2SMS fixes the wording, and needs website verification first. */
 const ENDPOINT = 'https://www.fast2sms.com/dev/bulkV2';
+
+/** The OTP API: sends through an OTP template (`otp_id`) the account has set up. */
+const TEMPLATE_ENDPOINT = 'https://www.fast2sms.com/dev/otp/send';
 
 /** Retried once; everything else (bad key, no balance, bad number) is permanent. */
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
@@ -76,6 +93,7 @@ function describeFailure(body, status, code) {
  */
 function createFast2smsTransport({
   apiKey,
+  otpTemplateId = '',
   timeoutMs = 10000,
   maxAttempts = 2,
   fetchImpl = globalThis.fetch,
@@ -85,8 +103,8 @@ function createFast2smsTransport({
   }
 
   /** Single HTTP attempt. Returns { ok, status, body }. */
-  async function attempt(payload) {
-    const response = await fetchImpl(ENDPOINT, {
+  async function attempt(endpoint, payload) {
+    const response = await fetchImpl(endpoint, {
       method: 'POST',
       headers: {
         authorization: apiKey,
@@ -125,8 +143,22 @@ function createFast2smsTransport({
       }
 
       const destination = toFast2smsNumber(to);
+      let endpoint = ENDPOINT;
       // `variables_values` is the code alone: Fast2SMS wraps it in its own text.
-      const payload = { route: 'otp', variables_values: otp.code, numbers: destination };
+      let payload = { route: 'otp', variables_values: otp.code, numbers: destination };
+
+      if (otpTemplateId) {
+        endpoint = TEMPLATE_ENDPOINT;
+        payload = {
+          mobile: destination,
+          otp_id: otpTemplateId,
+          otp: otp.code,
+          otp_length: otp.code.length,
+          // The OTP API takes minutes (1-10080); round UP so a 5 minute code is
+          // never shortened, and never ask for less than one.
+          otp_expiry: Math.max(1, Math.ceil((otp.ttlSeconds || 300) / 60)),
+        };
+      }
 
       const genericFailure = () =>
         new ApiError(
@@ -138,7 +170,7 @@ function createFast2smsTransport({
       for (let n = 1; n <= maxAttempts; n += 1) {
         let result;
         try {
-          result = await attempt(payload);
+          result = await attempt(endpoint, payload);
         } catch (err) {
           // Network failure, DNS, or the AbortSignal timeout firing.
           if (n < maxAttempts) continue;
@@ -155,6 +187,7 @@ function createFast2smsTransport({
           console.info('[fast2sms] code dispatched', {
             to: maskPhone(destination),
             requestId: result.body?.request_id ?? null,
+            route: otpTemplateId ? 'otp_template' : 'otp',
             attempt: n,
           });
           return;
