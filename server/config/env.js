@@ -290,6 +290,24 @@ if (notifyTransport === 'fast2sms' && !fast2smsConfigured) {
   fatal.push('NOTIFY_TRANSPORT=fast2sms requires FAST2SMS_API_KEY.');
 }
 
+/**
+ * Send the outbound code FIRST, with reverse OTP as the fallback.
+ *
+ * Until now, turning reverse OTP on meant outbound codes were never attempted at
+ * all — the reason was unreliable WhatsApp templates. That is wrong for a cheap
+ * SMS transport: someone who sets NOTIFY_TRANSPORT=fast2sms wants texts sent, and
+ * would otherwise find the transport silently unused whenever a reverse-OTP
+ * channel was also configured.
+ *
+ * With this on, /auth/otp/start and /register/start try the transport; the
+ * sign-in screen shows the code box, and offers reverse OTP when the send failed
+ * or the user did not receive the code. Defaults on for fast2sms, off for
+ * everything else, so an existing WhatsApp + reverse-OTP deployment behaves
+ * exactly as before until it opts in with OTP_OUTBOUND_FIRST=true.
+ */
+const outboundFirst =
+  optional('OTP_OUTBOUND_FIRST', notifyTransport === 'fast2sms' ? 'true' : 'false').toLowerCase() === 'true';
+
 // Shipping the console stub to production means verification codes are written
 // to server logs instead of being delivered. Fail at boot, not at first send.
 if (requireRealServices && notifyTransport === 'console') {
@@ -538,6 +556,8 @@ const config = Object.freeze({
     ttlSeconds: int('OTP_TTL_SECONDS', 5 * 60),
     maxAttempts: int('OTP_MAX_ATTEMPTS', 5),
     resendCooldownSeconds: int('OTP_RESEND_COOLDOWN_SECONDS', 30),
+    // See the note above `outboundFirst`: try the transport before offering reverse OTP.
+    outboundFirst,
   }),
 
   // No `auth` block: there are no passwords, so there is no password policy and

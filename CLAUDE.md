@@ -185,6 +185,26 @@ the two — the failover chain is email-only. `services/transports/fast2sms.js`
 judges success on the response body (`return: true`), not the HTTP status,
 because Fast2SMS can reject with a 200.
 
+**Code first, reverse OTP as the fallback (`OTP_OUTBOUND_FIRST`).** Historically,
+turning a reverse-OTP channel on meant the outbound code was *never attempted* —
+`routes/auth.js` treated reverse OTP as a replacement. That silently ignores a
+configured SMS transport, so `config.otp.outboundFirst` (default **true for
+fast2sms, false for everything else**, overridable) makes reverse OTP the
+fallback instead: `/auth/otp/start` and `/register/start` try the transport, and
+the sign-in screen (`LoginPage.jsx`) shows the six-box code entry. A response with
+no `challengeId` (nothing sent, a failed send, a deployment that is still
+reverse-only) makes the same screen show `ReverseOtpPanel`; when a code *was*
+sent and `reverseAvailable` is true, the code screen offers "verify by sending us
+a message", and the reverse panel offers "text me a code instead". A thrown error
+(no transport, nothing to fall back to) is shown with Try again rather than a
+reverse panel the server has no channel for.
+
+`reverseAvailable` is on both start responses for that reason. Resend is gated by
+a 30 s client countdown that mirrors `OTP_RESEND_COOLDOWN_SECONDS`; the server
+still enforces it (`OTP_COOLDOWN`, 429), so going Back and re-entering the same
+number inside the window shows an error until it passes — the challenge id of a
+code already sent cannot be recovered.
+
 There is no `OTP_CHANNEL` setting — it was removed rather than left as a knob
 that can no longer change anything.
 

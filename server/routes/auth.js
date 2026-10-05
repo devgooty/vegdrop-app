@@ -33,6 +33,17 @@ function reverseOtpEnabled() {
   return config.reverseOtp.whatsapp.configured || config.reverseOtp.sms.configured;
 }
 
+/**
+ * Is reverse OTP standing IN FOR the outbound code, rather than beside it?
+ *
+ * True only when a reverse channel is live and the deployment has not opted in to
+ * code-first (OTP_OUTBOUND_FIRST). Code-first keeps reverse OTP available as the
+ * fallback while still attempting the transport — see config/env.js.
+ */
+function reverseReplacesOutbound() {
+  return reverseOtpEnabled() && !config.otp.outboundFirst;
+}
+
 /** Shape returned when outbound delivery is off and the client should use reverse OTP. */
 function undeliveredChallenge(destination) {
   return {
@@ -61,7 +72,7 @@ async function issueLoginChallenge({ purpose, destination, user, payload }) {
    */
   const shouldAttempt = otp.shouldSendOutboundCode({
     transportReaches: notify.reachesRecipient('sms'),
-    reverseOtpOn: reverseOtpEnabled(),
+    reverseOtpOn: reverseReplacesOutbound(),
     isTest: config.isTest,
   });
 
@@ -302,9 +313,11 @@ router.post(
       });
     }
 
-    // Reverse OTP is live in production — never attempt outbound WhatsApp here.
+    // Reverse OTP stands in for the outbound code — never attempt outbound here.
     // Old clients still call this route on Continue; they must get 202, not 503.
-    if (reverseOtpEnabled() && !config.isTest) {
+    // (Skipped when OTP_OUTBOUND_FIRST is on: the transport is tried first and
+    // issueLoginChallenge falls back to this same undelivered shape on failure.)
+    if (reverseReplacesOutbound() && !config.isTest) {
       return res.status(202).json({ ...undeliveredChallenge(destination), next: 'verify' });
     }
 
@@ -317,7 +330,9 @@ router.post(
 
     // 202 whether or not that identifier has an account, and whether or not the
     // account is active. Authentication is not complete and no token is issued.
-    return res.status(202).json({ ...challenge, next: 'verify' });
+    // `reverseAvailable` lets the client offer "verify by messaging us instead"
+    // beside the code box, without a second round trip to find out.
+    return res.status(202).json({ ...challenge, next: 'verify', reverseAvailable: reverseOtpEnabled() });
   }
 );
 
@@ -479,7 +494,7 @@ async function startRegistrationChallenge({ phone, name, purpose, role }) {
 
   const shouldAttempt = otp.shouldSendOutboundCode({
     transportReaches: notify.reachesRecipient('sms'),
-    reverseOtpOn: reverseOtpEnabled(),
+    reverseOtpOn: reverseReplacesOutbound(),
     isTest: config.isTest,
   });
 
@@ -518,6 +533,8 @@ async function startRegistrationChallenge({ phone, name, purpose, role }) {
       : { challengeId: null, destination: otp.maskDestination(phone), delivered: false },
     expiresAt: phoneChallenge?.expiresAt ?? null,
     next: 'verify',
+    // See /otp/start: lets the client offer reverse OTP beside the code box.
+    reverseAvailable: reverseOtpEnabled(),
     // Test-only, mirroring issueChallenge; never populated outside NODE_ENV=test.
     ...(config.isTest ? { devCodes: { phone: phoneChallenge?.devCode ?? null } } : {}),
   };

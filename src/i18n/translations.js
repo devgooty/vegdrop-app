@@ -924,6 +924,44 @@ const STRINGS = {
     hi: 'पूरा करने के लिए अपने मोबाइल से कोड भेजें।',
     te: 'పూర్తి చేయడానికి మీ మొబైల్ నుండి కోడ్ పంపండి.',
   },
+  /*
+    Code first, reverse OTP as the fallback: the server texts a code, and the
+    sign-in screen offers "send us a message" when none was sent or none arrived.
+  */
+  'login.enterCodeSubSms': {
+    en: 'Enter the code we texted you.',
+    hi: 'हमारे भेजे गए कोड को दर्ज करें।',
+    te: 'మేము పంపిన కోడ్‌ను నమోదు చేయండి.',
+  },
+  'login.codeSentTo': {
+    en: 'We texted a 6-digit code to {destination}.',
+    hi: 'हमने {destination} पर 6 अंकों का कोड भेजा है।',
+    te: 'మేము {destination} కు 6 అంకెల కోడ్ పంపాము.',
+  },
+  'login.sendingCode': { en: 'Sending your code…', hi: 'आपका कोड भेज रहे हैं…', te: 'మీ కోడ్ పంపుతున్నాం…' },
+  'login.verifyCode': { en: 'Verify', hi: 'सत्यापित करें', te: 'ధృవీకరించండి' },
+  'login.resendCode': { en: 'Resend code', hi: 'कोड दोबारा भेजें', te: 'కోడ్ మళ్లీ పంపండి' },
+  'login.resendIn': {
+    en: 'Resend code in {seconds}s',
+    hi: '{seconds} सेकंड में कोड दोबारा भेजें',
+    te: '{seconds} సెకన్లలో కోడ్ మళ్లీ పంపండి',
+  },
+  'login.useReverseInstead': {
+    en: 'Didn’t get it? Verify by sending us a message',
+    hi: 'कोड नहीं मिला? हमें संदेश भेजकर सत्यापित करें',
+    te: 'కోడ్ రాలేదా? మాకు సందేశం పంపి ధృవీకరించండి',
+  },
+  'login.useCodeInstead': {
+    en: 'Text me a code instead',
+    hi: 'इसके बजाय मुझे कोड भेजें',
+    te: 'బదులుగా నాకు కోడ్ పంపండి',
+  },
+  'login.tryAgain': { en: 'Try again', hi: 'फिर कोशिश करें', te: 'మళ్లీ ప్రయత్నించండి' },
+  'login.errSendCode': {
+    en: 'Could not send the code. Please try again.',
+    hi: 'कोड नहीं भेज सके। कृपया फिर कोशिश करें।',
+    te: 'కోడ్ పంపలేకపోయాం. దయచేసి మళ్లీ ప్రయత్నించండి.',
+  },
   'login.createAccount': { en: 'Create account', hi: 'खाता बनाएँ', te: 'ఖాతా సృష్టించండి' },
   /*
     Registration proves the phone and asks for nothing else but a name. It used
