@@ -3,6 +3,7 @@ import { setScheduleStatus, cancelSchedule, describeRecurrence } from '../servic
 import { isFeatureEnabled } from '../services/apiClient';
 import { Package, Clock, IndianRupee, MapPin, ArrowRight, ShoppingBag, CalendarRange, RotateCw, PauseCircle, PlayCircle, Trash2, CalendarDays, CalendarClock, Calendar as CalendarIcon, ChevronRight, Navigation, X, AlertTriangle, Lock } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useBackLayer } from '../hooks/useBackLayer';
 import { dateLocale } from '../i18n/catalog';
 import { fetchDeliveryCode, reissueDeliveryCode } from '../services/orders';
 import HandoverCodeCard from './HandoverCodeCard';
@@ -107,6 +108,7 @@ export default function CustomerOrders({
     if (!scheduledUnlocked && activeTab === 'scheduled') setActiveTab('recent');
   }, [scheduledUnlocked, activeTab]);
   const [trackingModalOrder, setTrackingModalOrder] = useState(null);
+  useBackLayer(Boolean(trackingModalOrder), () => setTrackingModalOrder(null));
   const [busyScheduleId, setBusyScheduleId] = useState(null);
   const [scheduleError, setScheduleError] = useState(null);
   /**

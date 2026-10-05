@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { ArrowLeft, LocateFixed, MapPin, Loader2, ShoppingBag, Store, Navigation, RefreshCw } from 'lucide-react';
+import { ArrowLeft, LocateFixed, MapPin, Loader2, ShoppingBag, Store, Navigation, RefreshCw, Search } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
 // Fix Leaflet default icon issue in React/Vite
@@ -60,13 +60,28 @@ function MapFlyTo({ position }) {
   return null;
 }
 
-export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGPS }) {
+// A tap anywhere on the map moves the pin there.
+function TapToPin({ onPick }) {
+  useMapEvents({
+    click(event) {
+      onPick(event.latlng.lat, event.latlng.lng, { fly: false });
+    },
+  });
+  return null;
+}
+
+/**
+ * `manual`: opened from "Select location manually" — start on search and the
+ * map, not on GPS. Either way the pin can be searched for, tapped or dragged.
+ */
+export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGPS, manual = false }) {
   const { t } = useLanguage();
   const defaultPosition = [20.5937, 78.9629];
 
-  const [gpsPos, setGpsPos] = useState(null); // The actual GPS-pinned position
+  const [gpsPos, setGpsPos] = useState(null); // where the pin is: GPS, search, tap or drag
   const [flyToPos, setFlyToPos] = useState(null);
-  const [isDetecting, setIsDetecting] = useState(false);
+  const [isDetecting, setIsDetecting] = useState(false); // waiting on GPS
+  const [isResolving, setIsResolving] = useState(false); // looking up the pin's address
   const [locationDetails, setLocationDetails] = useState(null);
   const [formattedFullAddress, setFormattedFullAddress] = useState('');
   const [nearbyPlaces, setNearbyPlaces] = useState([]);
@@ -144,50 +159,117 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
     }
   };
 
+  /**
+   * Put the pin somewhere and look up what is there — from GPS, a search
+   * result, a tap on the map or a drag of the pin. Only the latest lookup may
+   * land: a slow one for where the pin used to be must not overwrite the next.
+   */
+  const lookupSeq = useRef(0);
+  const placePin = async (lat, lng, { fly = true } = {}) => {
+    const seq = ++lookupSeq.current;
+    const pos = { lat, lng };
+    setGpsPos(pos);
+    if (fly) setFlyToPos(pos);
+    setHasInitialLoaded(true);
+    setGpsError(false);
+    setIsResolving(true);
+    setFormattedFullAddress('');
+    setLocationDetails(null);
+    setNearbyPlaces([]);
+    try {
+      const { formattedFullAddress, detailsObj } = await reverseGeocodeGPS(lat, lng);
+      if (seq !== lookupSeq.current) return;
+      setFormattedFullAddress(formattedFullAddress);
+      setLocationDetails(detailsObj);
+      fetchNearbyPlaces(lat, lng);
+    } catch {
+      if (seq === lookupSeq.current) setFormattedFullAddress(t('map.addressFailed'));
+    } finally {
+      if (seq === lookupSeq.current) setIsResolving(false);
+    }
+  };
+
   const detectAndFetch = () => {
     if (!navigator.geolocation) {
       setGpsError(true);
+      setHasInitialLoaded(true);
       return;
     }
     setIsDetecting(true);
     setGpsError(false);
-    setFormattedFullAddress('');
-    setLocationDetails(null);
-    setNearbyPlaces([]);
 
     navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        const pos = { lat: latitude, lng: longitude };
-        setGpsPos(pos);
-        setFlyToPos(pos);
-        try {
-          const { formattedFullAddress, detailsObj } = await reverseGeocodeGPS(latitude, longitude);
-          setFormattedFullAddress(formattedFullAddress);
-          setLocationDetails(detailsObj);
-          fetchNearbyPlaces(latitude, longitude);
-        } catch (e) {
-          setFormattedFullAddress(t('map.addressFailed'));
-        }
+      (position) => {
         setIsDetecting(false);
-        setHasInitialLoaded(true);
+        placePin(position.coords.latitude, position.coords.longitude);
       },
-      (err) => {
+      () => {
         setIsDetecting(false);
         setGpsError(true);
         setHasInitialLoaded(true);
-        setGpsPos({ lat: defaultPosition[0], lng: defaultPosition[1] });
-        setFlyToPos({ lat: defaultPosition[0], lng: defaultPosition[1] });
-        setFormattedFullAddress(t('map.permissionDenied'));
+        // No pin rather than one in the middle of the country at street zoom,
+        // which read as "this is where you are". The map opens zoomed out so
+        // the shopper can search or tap instead.
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     );
   };
 
-  // Auto-detect on open
+  // GPS on open, unless the shopper chose to pick by hand — they came here
+  // because location is off or refused, so asking again would only fail.
   useEffect(() => {
+    if (manual) {
+      setHasInitialLoaded(true);
+      return;
+    }
     detectAndFetch();
   }, []);
+
+  /**
+   * Find a place by name or pincode (OpenStreetMap's Nominatim — free, no key,
+   * one request per submit rather than per keystroke, as its usage policy asks).
+   */
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState(null); // null: no search yet
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState(false);
+
+  const runSearch = async (event) => {
+    event?.preventDefault();
+    const q = query.trim();
+    if (!q) return;
+    setIsSearching(true);
+    setSearchError(false);
+    try {
+      const params = /^\d{6}$/.test(q)
+        ? `postalcode=${q}&country=India`
+        : `q=${encodeURIComponent(q)}&countrycodes=in`;
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&${params}`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) throw new Error(`search ${res.status}`);
+      const data = await res.json();
+      setResults(
+        (Array.isArray(data) ? data : []).map((place) => ({
+          id: place.place_id,
+          name: place.display_name,
+          lat: Number(place.lat),
+          lng: Number(place.lon),
+        }))
+      );
+    } catch {
+      setSearchError(true);
+      setResults(null);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const chooseResult = (place) => {
+    setResults(null);
+    setQuery('');
+    placePin(place.lat, place.lng);
+  };
 
   /**
    * Freeze the page underneath while the picker is up.
@@ -295,21 +377,71 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
     <div className="fixed inset-0 bg-[#FFFDF9] z-[1000] flex flex-col animate-fade-in h-[100dvh] w-full">
 
       {/* FLOATING BACK BUTTON */}
-      <div className="absolute top-[calc(1.5rem+env(safe-area-inset-top,0px))] left-4 z-[500]">
+      <div className="absolute top-[calc(1.5rem+env(safe-area-inset-top,0px))] left-4 right-4 z-[500] flex items-start gap-2">
         <button
           onClick={onClose}
+          aria-label={t('common.back')}
           className="bg-white p-3 rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.15)] text-[#1B4D3E] hover:bg-gray-50 transition-colors shrink-0 cursor-pointer active:scale-95 border border-gray-100"
         >
           <ArrowLeft className="w-5 h-5 stroke-[2.5]" />
         </button>
+
+        {/* SEARCH — the way to set an address with location off */}
+        <div className="flex-1 min-w-0">
+          <form
+            onSubmit={runSearch}
+            className="flex items-center bg-white rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.15)] border border-gray-100 pl-4 pr-1.5 h-[46px]"
+          >
+            <input
+              type="search"
+              enterKeyHint="search"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setSearchError(false);
+              }}
+              placeholder={t('map.searchPlaceholder')}
+              className="flex-1 min-w-0 bg-transparent text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={isSearching || !query.trim()}
+              aria-label={t('map.searchPlaceholder')}
+              className="w-9 h-9 rounded-full bg-[#1B4D3E] text-white flex items-center justify-center shrink-0 disabled:opacity-50 cursor-pointer"
+            >
+              {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            </button>
+          </form>
+
+          {(searchError || results) && (
+            <div className="mt-2 bg-white rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.15)] border border-gray-100 overflow-hidden max-h-[40vh] overflow-y-auto overscroll-contain">
+              {searchError && <p className="px-4 py-3 text-[13px] text-red-700">{t('map.searchFailed')}</p>}
+              {results && results.length === 0 && (
+                <p className="px-4 py-3 text-[13px] text-gray-500">{t('map.searchNone')}</p>
+              )}
+              {results?.map((place) => (
+                <button
+                  key={place.id}
+                  type="button"
+                  onClick={() => chooseResult(place)}
+                  className="w-full text-left px-4 py-2.5 border-b last:border-b-0 border-gray-100 flex items-start gap-2 active:bg-gray-50 cursor-pointer"
+                >
+                  <MapPin className="w-4 h-4 text-[#1B4D3E] shrink-0 mt-0.5" />
+                  <span className="text-[13px] text-gray-800 leading-snug line-clamp-2">{place.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* MAP - fixed view, no drag to change location */}
+      {/* MAP — tap it, or drag the pin, to move where the order goes */}
       <div className="relative flex-1 bg-gray-100">
-        {hasInitialLoaded && gpsPos && (
+        {hasInitialLoaded && (
           <MapContainer
             center={[mapCenter.lat, mapCenter.lng]}
-            zoom={17}
+            // Zoomed out to the country until there is a pin to look at.
+            zoom={gpsPos ? 17 : 5}
             zoomControl={false}
             attributionControl={false}
             className="w-full h-full"
@@ -317,7 +449,20 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            <Marker position={[gpsPos.lat, gpsPos.lng]} icon={customerMarkerIcon} />
+            {gpsPos && (
+              <Marker
+                position={[gpsPos.lat, gpsPos.lng]}
+                icon={customerMarkerIcon}
+                draggable
+                eventHandlers={{
+                  dragend: (event) => {
+                    const { lat, lng } = event.target.getLatLng();
+                    placePin(lat, lng, { fly: false });
+                  },
+                }}
+              />
+            )}
+            <TapToPin onPick={placePin} />
             <MapFlyTo position={flyToPos} />
           </MapContainer>
         )}
@@ -346,9 +491,10 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
           </div>
         )}
 
-        {/* GPS Error state */}
-        {gpsError && !isDetecting && (
-          <div className="absolute bottom-20 left-4 right-4 z-[400] bg-red-50 border border-red-200 rounded-2xl p-3 text-xs text-red-700 font-semibold text-center">
+        {/* GPS failed and there is no pin yet. How to place one by hand is
+            said in the sheet below. */}
+        {gpsError && !gpsPos && !isDetecting && (
+          <div className="absolute bottom-20 left-4 right-4 z-[400] bg-red-50 border border-red-200 rounded-2xl p-3 text-xs text-red-700 font-semibold text-center pointer-events-none">
             {t('map.gpsDenied')}
           </div>
         )}
@@ -372,15 +518,15 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
                   ? locationDetails.mandal
                   : (locationDetails?.village && locationDetails.village !== 'N/A'
                     ? locationDetails.village
-                    : (isDetecting ? '...' : t('map.fetching')))}
+                    : (isDetecting || isResolving ? '...' : gpsPos ? t('map.fetching') : t('delivery.setAddress')))}
               </h3>
               <div className="text-gray-500 text-xs mt-0.5 leading-snug line-clamp-2 min-h-[28px]">
-                {isDetecting ? (
+                {isDetecting || isResolving ? (
                   <span className="flex items-center gap-1.5 text-[#1B4D3E] font-medium">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('map.fetchingAddress')}
                   </span>
                 ) : (
-                  formattedFullAddress || t('map.waitingGps')
+                  formattedFullAddress || (gpsPos ? t('map.waitingGps') : t('map.tapToPin'))
                 )}
               </div>
             </div>
@@ -410,7 +556,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
             </div>
           )}
 
-          {!isLoadingNearby && !isDetecting && nearbyPlaces.length === 0 && locationDetails && (
+          {!isLoadingNearby && !isDetecting && !isResolving && nearbyPlaces.length === 0 && locationDetails && (
             <div className="text-center py-4">
               <ShoppingBag className="w-8 h-8 text-gray-200 mx-auto mb-1" />
               <p className="text-[12.5px] text-gray-400 font-medium">
@@ -444,7 +590,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
         </div>
 
         {/* Verify/Edit Pincode field */}
-        {!isDetecting && locationDetails && (
+        {!isDetecting && !isResolving && locationDetails && (
           <div className="px-5 pb-1">
             <label className="block text-[11.5px] font-extrabold text-[#1B4D3E] uppercase tracking-wider mb-1">{t('map.pincodeLabel')}</label>
             <input
@@ -477,7 +623,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
         <div className="p-5 pt-3 pb-8">
           <button
             onClick={handleConfirm}
-            disabled={isDetecting || !locationDetails}
+            disabled={isDetecting || isResolving || !locationDetails}
             className="w-full bg-[#1B4D3E] hover:bg-[#143B2B] text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center shadow-md transition-all cursor-pointer text-[16.5px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed gap-2"
           >
             <MapPin className="w-4 h-4" />

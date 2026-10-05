@@ -14,6 +14,7 @@ export default function ProductDetailView({
   onAddToCart,
   onUpdateQuantity,
   onBack,
+  backToCategory = false,
   products = [],
   categories = [],
   onSelectProduct,
@@ -82,9 +83,9 @@ export default function ProductDetailView({
         >
           <ArrowLeft className="w-4 h-4 text-[#1B4D3E]" />
           <span>
-            {t('product.backTo', {
-              category: category ? categoryTitle(category, language) : t('product.category'),
-            })}
+            {backToCategory && category
+              ? t('product.backTo', { category: categoryTitle(category, language) })
+              : t('common.back')}
           </span>
         </button>
 

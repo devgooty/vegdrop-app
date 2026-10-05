@@ -755,6 +755,50 @@ const STRINGS = {
   'primer.notNow': { en: 'Not now', hi: 'अभी नहीं', te: 'ఇప్పుడు వద్దు' },
   'primer.allow': { en: 'Allow location', hi: 'लोकेशन की अनुमति दें', te: 'లొకేషన్‌ను అనుమతించండి' },
 
+  // --- Location sheet (LocationRequiredSheet.jsx) -------------------------------
+  'locSheet.permissionTitle': {
+    en: 'Location permission not enabled',
+    hi: 'लोकेशन की अनुमति चालू नहीं है',
+    te: 'లొకేషన్ అనుమతి ఆన్‌లో లేదు',
+  },
+  'locSheet.offTitle': {
+    en: 'Device location is off',
+    hi: 'डिवाइस की लोकेशन बंद है',
+    te: 'పరికరం లొకేషన్ ఆఫ్‌లో ఉంది',
+  },
+  'locSheet.body': {
+    en: 'Please enable location for a better delivery experience.',
+    hi: 'बेहतर डिलीवरी अनुभव के लिए कृपया लोकेशन चालू करें।',
+    te: 'మెరుగైన డెలివరీ అనుభవం కోసం దయచేసి లొకేషన్ ఆన్ చేయండి.',
+  },
+  'locSheet.enable': { en: 'Enable device location', hi: 'डिवाइस लोकेशन चालू करें', te: 'పరికరం లొకేషన్ ఆన్ చేయండి' },
+  'locSheet.manual': { en: 'Select location manually', hi: 'लोकेशन ख़ुद चुनें', te: 'లొకేషన్‌ను మీరే ఎంచుకోండి' },
+  'locSheet.blockedApp': {
+    en: 'Turn on Location under Permissions in the Settings page that just opened, then come back.',
+    hi: 'अभी खुले सेटिंग्स पेज में Permissions के अंदर Location चालू करें, फिर वापस आएँ।',
+    te: 'ఇప్పుడు తెరిచిన సెట్టింగ్స్ పేజీలో Permissions కింద Location ఆన్ చేసి, తిరిగి రండి.',
+  },
+  'locSheet.blockedBrowser': {
+    en: 'Location is blocked for this site. Allow it from the lock icon next to the address bar.',
+    hi: 'इस साइट के लिए लोकेशन बंद है। एड्रेस बार के पास ताले वाले आइकन से अनुमति दें।',
+    te: 'ఈ సైట్‌కు లొకేషన్ బ్లాక్ అయింది. అడ్రస్ బార్ పక్కన ఉన్న తాళం గుర్తు నుండి అనుమతించండి.',
+  },
+  'locSheet.stillOff': {
+    en: 'Location is still off. You can pick your address on the map instead.',
+    hi: 'लोकेशन अब भी बंद है। आप नक्शे पर अपना पता चुन सकते हैं।',
+    te: 'లొకేషన్ ఇంకా ఆఫ్‌లో ఉంది. మీరు మ్యాప్‌లో మీ చిరునామా ఎంచుకోవచ్చు.',
+  },
+
+  // Picking an address by hand (MapLocationPicker.jsx, manual mode)
+  'map.searchPlaceholder': { en: 'Search area, street or pincode', hi: 'इलाक़ा, गली या पिनकोड खोजें', te: 'ప్రాంతం, వీధి లేదా పిన్‌కోడ్ వెతకండి' },
+  'map.searchNone': { en: 'No places found. Try a pincode.', hi: 'कोई जगह नहीं मिली। पिनकोड से खोजें।', te: 'ఏ ప్రదేశమూ దొరకలేదు. పిన్‌కోడ్‌తో వెతకండి.' },
+  'map.searchFailed': { en: 'Search failed. Check your connection.', hi: 'खोज नहीं हो सकी। कनेक्शन जाँचें।', te: 'వెతకడం విఫలమైంది. కనెక్షన్ చూడండి.' },
+  'map.tapToPin': {
+    en: 'Search above, or tap the map to drop your pin.',
+    hi: 'ऊपर खोजें, या पिन लगाने के लिए नक्शे पर टैप करें।',
+    te: 'పైన వెతకండి, లేదా పిన్ పెట్టడానికి మ్యాప్‌పై నొక్కండి.',
+  },
+
   // --- Address picker (MapLocationPicker.jsx) ----------------------------------
   //
   // `place.type` is not here: it is an emoji plus an OpenStreetMap tag value

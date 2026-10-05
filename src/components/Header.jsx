@@ -6,6 +6,7 @@ import DeliveryLocationBar from './DeliveryLocationBar';
 import { buildSuggestions } from '../services/search';
 import { createSpeechRecognition, mapSpeechError, resolveVoiceQuery } from '../services/voiceSearch';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useBackLayer } from '../hooks/useBackLayer';
 
 export default function Header({
   searchVal,
@@ -276,6 +277,8 @@ export default function Header({
     setVoiceStatus('idle');
     setVoiceLive('');
   };
+
+  useBackLayer(voiceOpen, closeVoiceSearch);
 
   const handleChange = (event) => {
     setSearchVal(event.target.value);

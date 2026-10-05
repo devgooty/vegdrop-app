@@ -76,6 +76,24 @@ Every app except `#/admin` polls `GET /api/orders` every 5s and pauses while the
 
 The role checks in these components are **UX gates only**. The API authorizes every request independently, so bypassing one in the browser grants nothing.
 
+**A role redirect uses `location.replace`, never `location.hash =`.** Assigning pushed the role app on top of the storefront entry it came from, so back returned to the storefront, which restored the session and redirected forward again — a shopkeeper or rider could press back forever and never leave. `OTHER_APP_HASH` in `App.jsx` is the one map of where each role goes.
+
+### The back button
+
+**What back does is whatever browser history says**, in a browser and in the Android app alike (`MainActivity` hands the button to `webView.goBack()`). `src/lib/backStack.js` keeps that history in step with the screen, and the rule is one entry per thing on it:
+
+- **Tabs.** Home is the first entry. A bottom-nav tab is one entry above it, and tabs replace each other, so back from any of them returns Home and back on Home leaves the app. A page opened from a tab (Orders, from Account) stacks on top of it.
+- **Layers.** Anything opened over a tab — product, category, search, basket, wallet, sheets, an account section, the map picker, sign-in — registers with `useBackLayer(open, close)`, which pushes an entry while it is open, and back closes the newest. Closing it any other way gives the entry back with `history.go(-1)`; a dead entry is a press that does nothing.
+
+Every history operation goes through one queue, because `history.go()` lands asynchronously and a `pushState` issued before it lands is the entry it then steps back over — closing the basket and switching tab in one tap is exactly that case. `src/lib/backStack.test.js` pins it against a fake History.
+
+Things that are easy to get wrong here:
+
+- **Put `useBackLayer` where the open/closed state lives**, not inside the overlay. App unmounts its whole tree while the sign-in screen is up, and a basket still open behind it must keep its entry.
+- **Never `pushState`, `replaceState` or `history.go` directly** in the customer app — it desynchronises the count the module keeps, and back starts landing one entry off.
+- **An overlay rendered inside `PageTransition` must portal to `document.body`.** Its transform is a containing block for `position: fixed`, so a "full-screen" sheet is centred on the whole page, far below the viewport, with only its backdrop visible. `LocationRequiredSheet` and `MapLocationPicker` both portal for this reason.
+- **Sign-in returns to the tab it was opened from** (`returnTabRef`), and a guest placing an order is sent there rather than shown a toast: the basket stays open behind it.
+
 ### Authentication — server-authoritative, passwordless
 
 This is the part most likely to be misunderstood, because two earlier versions did it differently.
@@ -541,7 +559,8 @@ Tailwind CSS v4 via `@tailwindcss/vite`. No `tailwind.config.js` is used or need
 - `dist/` is still copied in for `offline.html` (the `server.errorPath`) and its logo, nothing else.
 - `allowNavigation` must list any host the app navigates to at top level; anything else opens in the system browser. Razorpay is on it.
 - Location, camera and mic prompts from the page are bridged to Android runtime permissions by Capacitor, but only for permissions declared in `AndroidManifest.xml`. A new browser API needing one fails silently until it is added there.
-- **Location switched off is handled natively, because the page cannot.** A WebView has no way to offer to turn device location on, so the page's request just fails. `MainActivity` shows Google's one-tap "Turn on location" dialog once per launch when the app already holds the permission and location is off (a plain Settings link without Play services), and dispatches a `vegdrop:locationon` window event whenever location comes back on, however it happened. `MarketPicker` and `DeliveryLocationBar` retry on it. **Native changes like this ship only in a new APK**; a Vercel deploy does not reach them.
+- **Back is handled in `MainActivity`**, because Capacitor's core does not handle it at all (the App plugin does, and this app does not use it): it fell through to Android's default and closed VegDrop from every screen. It now goes back one WebView history entry while there is one — see "The back button" above.
+- **Location refused or switched off is asked about by the page, and fixed by the phone.** `LocationRequiredSheet` shows once per launch ("Location permission not enabled" / "Device location is off") with *Enable device location* and *Select location manually*. Enabling calls `LocationPlugin` (`VegDropLocation`) through `window.Capacitor.nativePromise` — the bridge Capacitor injects into the live page, so no npm package is bundled (`src/services/nativeLocation.js`). The plugin asks for the permission, then shows Google's one-tap "Turn on location" (a Settings link without Play services); a permission blocked with "don't ask again" opens the app's Settings page instead. Manual opens `MapLocationPicker` in search mode (Nominatim, area or pincode, plus tap or drag the pin). `MainActivity` dispatches `vegdrop:locationon` whenever location comes back on, however it happened, and `MarketPicker` and `DeliveryLocationBar` retry on it. **Native changes like this ship only in a new APK**; a Vercel deploy does not reach them, and a page served to an older APK simply finds no plugin and treats it as a browser.
 - **The app draws edge-to-edge behind a transparent status bar** (`MainActivity` + `styles.xml`), so each screen's header colour runs to the top. That relies on the site padding headers with `env(safe-area-inset-top)` under `viewport-fit=cover`; a new full-bleed header that skips it will sit under the clock. The theme's default was an opaque dark bar.
 - `allowBackup="false"` keeps the WebView's cookie store — the refresh token — out of Google cloud backups.
 - `SpeechRecognition` does not exist in Android WebView, so voice search is unavailable in the app — the mic button still shows and lands on the overlay's `unsupported` state. A native speech plugin is the fix if it matters.

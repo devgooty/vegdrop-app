@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { MapPin, ChevronDown } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useBackLayer } from '../hooks/useBackLayer';
 
 /**
  * The map picker is lazy, because Leaflet is 46 kB gzip and this bar renders on
@@ -50,6 +51,19 @@ export default function DeliveryLocationBar({ onAddressChange }) {
   });
   const [locationDetails, setLocationDetails] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // Opened from LocationRequiredSheet's "Select location manually": location
+  // is off or refused, so the picker starts on search rather than on GPS.
+  const [pickManually, setPickManually] = useState(false);
+  useBackLayer(isModalOpen, () => setIsModalOpen(false));
+
+  useEffect(() => {
+    const openManual = () => {
+      setPickManually(true);
+      setIsModalOpen(true);
+    };
+    window.addEventListener('vegdrop:pickaddress', openManual);
+    return () => window.removeEventListener('vegdrop:pickaddress', openManual);
+  }, []);
 
   /**
    * Attempt automatic high precision GPS detection on mount if not saved.
@@ -98,7 +112,10 @@ export default function DeliveryLocationBar({ onAddressChange }) {
   return (
     <>
       <button
-        onClick={() => setIsModalOpen(true)}
+        onClick={() => {
+          setPickManually(false);
+          setIsModalOpen(true);
+        }}
         className="flex items-start gap-2 hover:opacity-80 transition-opacity cursor-pointer min-w-0 text-left"
         title={t('delivery.changeAddressTitle')}
       >
@@ -124,6 +141,7 @@ export default function DeliveryLocationBar({ onAddressChange }) {
       {isModalOpen && (
         <Suspense fallback={null}>
         <MapLocationPicker
+          manual={pickManually}
           onClose={() => setIsModalOpen(false)}
           onConfirm={(address, details, coords) => {
             // `coords` is the picker's GPS fix. Without it this path saved an

@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useState } from 'react';
 import { MapPin, Trash2, Navigation } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useBackLayer } from '../hooks/useBackLayer';
 import { savedCustomerAddress, saveCustomerAddress, clearCustomerAddress } from '../services/address';
 import { reverseGeocodeGPS } from '../services/geocode';
 
@@ -21,6 +22,7 @@ export default function AccountAddress({ onAddressChange }) {
   const { t } = useLanguage();
   const [address, setAddress] = useState(() => savedCustomerAddress());
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  useBackLayer(isPickerOpen, () => setIsPickerOpen(false));
 
   const handleConfirm = (newAddress, _details, coords) => {
     saveCustomerAddress(newAddress, coords);

@@ -35,6 +35,7 @@ import OTPBoxGroup from './components/OTPBoxGroup';
 import MarketPicker from './components/MarketPicker';
 import NearbyShops from './components/NearbyShops';
 import LocationPrimer from './components/LocationPrimer';
+import LocationRequiredSheet from './components/LocationRequiredSheet';
 import LanguagePicker from './components/LanguagePicker';
 import { useLanguage } from './i18n/LanguageContext';
 import { LANGUAGES } from './i18n/translations';
@@ -58,6 +59,8 @@ import {
 } from './services/auth';
 import useLocalStorage from './hooks/useLocalStorage';
 import useSessionUser from './hooks/useSessionUser';
+import { useBackLayer } from './hooks/useBackLayer';
+import { setTab as syncTabHistory, startBackStack, resetBackStack } from './lib/backStack';
 import { initialCategories } from './data/mockData';
 import { fetchProducts } from './services/products';
 import {
@@ -85,6 +88,15 @@ import { RUPEES_PER_BATCH, TOKENS_PER_BATCH } from './services/rewards';
  * been a second, redundant one above it.
  */
 const HEADER_TABS = ['home'];
+
+/** Roles with an app of their own, and where it lives. A customer stays here. */
+const OTHER_APP_HASH = {
+  shopkeeper: '#/shopkeeper',
+  delivery: '#/delivery',
+  developer: '#/developer',
+  admin: '#/admin',
+  market_owner: '#/market-owner',
+};
 
 /**
  * What a cart line IS, independent of who is selling it.
@@ -584,76 +596,59 @@ export default function App() {
    * `user` would yank someone off whatever tab they were reading.
    */
   useEffect(() => {
-    if (!user) return;
-
-    if (user.role === 'shopkeeper') {
-      window.location.hash = '#/shopkeeper';
-      return;
-    }
-    if (user.role === 'delivery') {
-      window.location.hash = '#/delivery';
-      return;
-    }
-    if (user.role === 'developer') {
-      window.location.hash = '#/developer';
-      return;
-    }
-    if (user.role === 'admin') {
-      window.location.hash = '#/admin';
-      return;
-    }
-    if (user.role === 'market_owner') {
-      window.location.hash = '#/market-owner';
-    }
+    const target = user && OTHER_APP_HASH[user.role];
+    if (!target) return;
+    // replace(), never `location.hash =`. Assigning pushed the role app on top
+    // of the storefront entry it came from, so back returned to the storefront,
+    // which restored the session and redirected forward again: a shopkeeper or
+    // rider could press back forever and never leave. And this app's history
+    // stops first, so its overlays unmounting cannot step the role app back.
+    resetBackStack();
+    window.location.replace(target);
   }, [user]);
+
+  /**
+   * The tab sign-in was asked from, so finishing it returns there — the
+   * cooking helper's "Sign in", the basket's "Place order". It used to land on
+   * Home every time, leaving the shopper to find their way back.
+   */
+  const returnTabRef = useRef(activeTab === 'login' || activeTab === 'signup' ? 'home' : activeTab);
+  useEffect(() => {
+    if (activeTab !== 'login' && activeTab !== 'signup') returnTabRef.current = activeTab;
+  }, [activeTab]);
 
   useEffect(() => {
     if (!user || (activeTab !== 'login' && activeTab !== 'signup')) return;
-    // Those two are leaving for another app entirely; picking a tab for them
-    // here would fight the redirect above for one render.
-    if (user.role === 'shopkeeper' || user.role === 'delivery' || user.role === 'developer' || user.role === 'admin' || user.role === 'market_owner') return;
+    // Those are leaving for another app entirely; picking a tab for them here
+    // would fight the redirect above for one render.
+    if (OTHER_APP_HASH[user.role]) return;
 
-    setActiveTab('home');
+    setActiveTab(returnTabRef.current);
   }, [user, activeTab, setActiveTab]);
 
   /**
-   * Wire the phone/browser back button to the bottom-nav tabs.
+   * The back button. lib/backStack.js keeps history in step with what is on
+   * screen: tabs here, and every overlay through useBackLayer below.
    *
-   * Prices (and every other tab) had no way back at all: they are top-level
-   * screens with no on-screen back arrow, so the only route to them was
-   * tapping another icon in BottomNav. Nothing here ever touched browser
-   * history, so pressing device back from Prices didn't return to Home — it
-   * left the app entirely, landing on whatever page opened it (or closing a
-   * installed PWA outright).
-   *
-   * Every tab change now pushes a history entry, and popping it lands back on
-   * the previous tab instead. `isPoppingRef` stops that landing from pushing
-   * a second entry, which would otherwise turn one back press into a no-op.
+   * Not before the session has restored, and not for an account that is about
+   * to be redirected: entries this app pushed would sit under the role app,
+   * and back would land on them.
    */
-  const isPoppingRef = useRef(false);
-
   useEffect(() => {
-    window.history.replaceState({ vegdropTab: activeTab }, '');
-  }, []); // seed once, so the very first back press has a defined entry to land on
-
-  useEffect(() => {
-    const onPopState = (event) => {
-      isPoppingRef.current = true;
-      setActiveTab(event.state?.vegdropTab || 'home');
-    };
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
+    startBackStack((tab) => setActiveTab(tab));
+    return resetBackStack;
   }, [setActiveTab]);
 
   useEffect(() => {
-    if (isPoppingRef.current) {
-      isPoppingRef.current = false;
-      return;
-    }
-    // Pre-auth screens aren't tabs to navigate back through.
+    if (isRestoringSession || (user && OTHER_APP_HASH[user.role])) return;
     if (activeTab === 'login' || activeTab === 'signup') return;
-    window.history.pushState({ vegdropTab: activeTab }, '');
-  }, [activeTab]);
+    syncTabHistory(activeTab);
+  }, [activeTab, isRestoringSession, user]);
+
+  // Sign-in is a screen over the tab it was opened from, not a tab of its own.
+  useBackLayer((activeTab === 'login' || activeTab === 'signup') && !user, () =>
+    setActiveTab(returnTabRef.current)
+  );
 
   /**
    * Initial load.
@@ -826,6 +821,7 @@ export default function App() {
   const handleScheduleCart = useCallback(async () => {
     if (!user) {
       toast.warning(t('toast.signInToSchedule'));
+      setActiveTab('login');
       return false;
     }
     if (!scheduledCartItems || scheduledCartItems.length === 0) {
@@ -922,6 +918,7 @@ export default function App() {
     user,
     selectedMarket,
     checkoutBlockedReason,
+    setActiveTab,
     toast,
     t,
     language,
@@ -935,23 +932,15 @@ export default function App() {
    */
   const handleLogin = useCallback((userData) => {
     setUser(userData);
-    if (userData.role === 'shopkeeper') {
-      window.location.hash = '#/shopkeeper';
+    const target = OTHER_APP_HASH[userData.role];
+    if (target) {
+      // See the redirect effect: replace, and stop this app's history first —
+      // the sign-in screen closing must not step the role app back.
+      resetBackStack();
+      window.location.replace(target);
       return;
     }
-    if (userData.role === 'delivery') {
-      window.location.hash = '#/delivery';
-      return;
-    }
-    if (userData.role === 'developer') {
-      window.location.hash = '#/developer';
-      return;
-    }
-    if (userData.role === 'market_owner') {
-      window.location.hash = '#/market-owner';
-      return;
-    }
-    setActiveTab('home');
+    setActiveTab(returnTabRef.current);
     toast.success(t('toast.welcomeBack', { name: userData.name }));
   }, [setActiveTab, toast, t]);
 
@@ -1654,7 +1643,11 @@ export default function App() {
    */
   const handleCheckout = useCallback(async (totalAmount, selectedPaymentMethod = 'COD') => {
     if (!user) {
+      // Straight to sign-in rather than a toast alone, which left the basket
+      // with no way forward. The basket stays open behind it, so signing in
+      // comes back here with the order still to place.
       toast.error(t('toast.signInToOrder'));
+      setActiveTab('login');
       return false;
     }
     // Authoritative: the modal disables its button on the same condition, but a
@@ -1903,6 +1896,7 @@ export default function App() {
     walletBalance,
     setWalletBalance,
     setWalletTransactions,
+    setActiveTab,
     t,
   ]);
 
@@ -2092,6 +2086,27 @@ export default function App() {
     return [...lines.entries()].map(([productId, quantity]) => ({ productId, quantity }));
   }, [cartItems]);
 
+  /**
+   * Everything that opens over a tab gets a history entry, so the back button
+   * closes it instead of changing the tab underneath — see lib/backStack.js.
+   * Declared here, where the state lives, rather than inside each overlay:
+   * the sign-in screen unmounts this whole tree, and a basket still open
+   * behind it must keep its entry.
+   */
+  useBackLayer(searchDiscoveryOpen, handleClearSearch);
+  useBackLayer(Boolean(searchQuery), handleClearSearch);
+  useBackLayer(Boolean(activeCategoryDetail), () => setActiveCategoryDetail(null));
+  useBackLayer(Boolean(activeProductDetail), () => setActiveProductDetail(null));
+  useBackLayer(activeTab === 'account' && activeAccountView !== 'menu', () => setActiveAccountView('menu'));
+  useBackLayer(isCartOpen, () => setIsCartOpen(false));
+  useBackLayer(isScheduledCartOpen, () => setIsScheduledCartOpen(false));
+  useBackLayer(isWalletOpen, () => setIsWalletOpen(false));
+  useBackLayer(isNotepadChooserOpen, () => setIsNotepadChooserOpen(false));
+  useBackLayer(isNotepadOpen, () => setIsNotepadOpen(false));
+  useBackLayer(Boolean(listSearchNotes), () => setListSearchNotes(null));
+  useBackLayer(isAvatarPickerOpen && Boolean(user), () => setIsAvatarPickerOpen(false));
+  useBackLayer(isRateAppOpen, () => setIsRateAppOpen(false));
+
   const sectionLabel = accountSectionLabel(language);
 
   // Its own native name, never a translated one, for the same reason
@@ -2127,7 +2142,7 @@ export default function App() {
   // One screen for both. Signing in with a number that has no account creates
   // one, so there is no separate sign-up page to route to.
   if ((activeTab === 'login' || activeTab === 'signup') && !user) {
-    return <LoginPage onLogin={handleLogin} />;
+    return <LoginPage onLogin={handleLogin} onClose={() => setActiveTab(returnTabRef.current)} />;
   }
 
   return (
@@ -2164,6 +2179,10 @@ export default function App() {
           key={activeProductDetail.product.originalId ?? activeProductDetail.product.id}
           product={activeProductDetail.product}
           category={activeProductDetail.category}
+          // Its back button returns to a category only when one is open
+          // beneath it; from Home or search it used to promise "Back to
+          // Fresh Vegetables" and land somewhere else.
+          backToCategory={Boolean(activeCategoryDetail)}
           cartItems={activeCartItems}
           onAddToCart={handleAddToCart}
           onUpdateQuantity={handleUpdateQuantity}
@@ -2331,6 +2350,13 @@ export default function App() {
                       either way.
                     */}
                     <LocationPrimer onLocated={setCustomerCoords} />
+
+                    {/* Location refused or switched off: switch it on, or pick
+                        an address by hand. The picker belongs to the address bar
+                        in the header, which is why this asks by event. */}
+                    <LocationRequiredSheet
+                      onPickManually={() => window.dispatchEvent(new Event('vegdrop:pickaddress'))}
+                    />
 
                     {/*
                       Which market am I buying from — above the categories,

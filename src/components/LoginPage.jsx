@@ -1,5 +1,5 @@
 import React, { useState, useRef, useLayoutEffect } from 'react';
-import { ArrowRight, Loader2, Check, Info } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Loader2, Check, Info } from 'lucide-react';
 import {
   lookupIdentifier,
   startRegistration,
@@ -182,7 +182,13 @@ const SIGN_UP = {
   },
 };
 
-export default function LoginPage({ onLogin, appType = 'customer', storagePrefix = 'vegdrop_' }) {
+/**
+ * `onClose`, when given, puts a back arrow in the corner. The storefront passes
+ * it: there the shop is still behind this screen, and without a way back a
+ * guest who tapped "Sign in" out of curiosity could only finish signing in.
+ * The role apps do not — this screen is all they have until someone signs in.
+ */
+export default function LoginPage({ onLogin, onClose, appType = 'customer', storagePrefix = 'vegdrop_' }) {
   const signUp = SIGN_UP[appType] || SIGN_UP.customer;
   const { language, setLanguage, t } = useLanguage();
 
@@ -412,6 +418,17 @@ export default function LoginPage({ onLogin, appType = 'customer', storagePrefix
           (isArriving ? ' is-brand-arriving' : '')
         }
       >
+
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t('common.back')}
+          className="absolute left-3 top-[calc(0.75rem+env(safe-area-inset-top,0px))] z-20 w-10 h-10 rounded-full bg-white/90 border border-gray-200 shadow-sm flex items-center justify-center text-[#1B4D3E] cursor-pointer active:scale-95"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+      )}
 
       {/* Full bleed to the screen edges — the artwork's own white margin is the
           only padding it needs, and the page continues in the same white where
