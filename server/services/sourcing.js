@@ -517,24 +517,44 @@ async function planRound({ marketId, lines, declinedBy = [] }) {
 }
 
 /**
- * Draw down a stall's declared stock for lines it actually won.
+ * Reserve a stall's declared stock for an auto-accept claim, BEFORE claiming.
  *
- * Guarded, and deliberately best-effort: if the guard fails the stall's
- * declared figure was stale, but the claim still stands. Declared stock is an
- * availability hint, not a ledger — the produce itself is on a table and the
- * shopkeeper reconciles it. Failing the claim here would leave the line
- * unsourced for a stall that does have the goods.
+ * This used to run after the claim and ignore its result, so two orders racing
+ * for a stall's last 2 kg both auto-claimed it: the plan for each was ranked
+ * against the same inventory snapshot, one drawdown matched, the other silently
+ * did nothing, and the stall was committed — with no human ever tapping accept —
+ * to produce it did not have.
+ *
+ * Each line is reserved by its own guarded `$inc`, so of two racers exactly one
+ * gets the last units. A line that cannot be reserved is not dropped: the caller
+ * offers it to the same stall instead, and the shopkeeper decides. Declared stock
+ * is still only a hint about the table — but auto-accept is the one path where
+ * nobody looks at the table, so the hint is all there is to go on.
+ *
+ * @returns {Promise<Array>} the lineIds whose stock was reserved
  */
-async function drawDownStock(stallId, take, wonLineIds, lineIds) {
-  const wonKeys = new Set(wonLineIds.map(String));
+async function reserveStock(stallId, take, lineIds) {
+  const results = await Promise.all(
+    take.map((t) =>
+      StallInventory.updateOne(
+        { stall: stallId, product: t.product, stock: { $gte: t.quantity } },
+        { $inc: { stock: -t.quantity } }
+      ).then((r) => r.modifiedCount === 1, () => false)
+    )
+  );
+  return lineIds.filter((_, index) => results[index]);
+}
+
+/** Hand back stock reserved for lines the claim then lost to another stall. */
+async function releaseReservedStock(stallId, take, lineIds, releaseLineIds) {
+  const release = new Set(releaseLineIds.map(String));
   await Promise.all(
     take
-      .filter((_, index) => wonKeys.has(String(lineIds[index])))
+      .filter((_, index) => release.has(String(lineIds[index])))
       .map((t) =>
-        StallInventory.updateOne(
-          { stall: stallId, product: t.product, stock: { $gte: t.quantity } },
-          { $inc: { stock: -t.quantity } }
-        ).catch(() => {})
+        StallInventory.updateOne({ stall: stallId, product: t.product }, { $inc: { stock: t.quantity } }).catch(
+          () => {}
+        )
       )
   );
 }
@@ -617,21 +637,39 @@ async function offerRound(orderId, actorId = null) {
   let claimed = 0;
   let promoted = null;
 
-  for (const entry of plan) {
-    if (entry.autoAccept) {
-      const result = await claimLines({
-        orderId,
-        stallId: entry.stallId,
-        stallNumber: entry.stallNumber,
-        lineIds: entry.lineIds,
-        auto: true,
-        actorId,
-      });
+  for (const planned of plan) {
+    let entry = planned;
 
-      claimed += result.won.length;
-      if (result.promoted) promoted = result.promoted;
-      await drawDownStock(entry.stallId, entry.take, result.won.map((i) => i.lineId), entry.lineIds);
-      continue;
+    if (entry.autoAccept) {
+      const reserved = await reserveStock(entry.stallId, entry.take, entry.lineIds);
+
+      if (reserved.length > 0) {
+        const result = await claimLines({
+          orderId,
+          stallId: entry.stallId,
+          stallNumber: entry.stallNumber,
+          lineIds: reserved,
+          auto: true,
+          actorId,
+        });
+
+        claimed += result.won.length;
+        if (result.promoted) promoted = result.promoted;
+
+        const wonKeys = new Set(result.won.map((i) => String(i.lineId)));
+        await releaseReservedStock(
+          entry.stallId,
+          entry.take,
+          entry.lineIds,
+          reserved.filter((id) => !wonKeys.has(String(id)))
+        );
+      }
+
+      // Whatever the declared stock could not cover is asked, not assumed.
+      const reservedKeys = new Set(reserved.map(String));
+      const unreserved = entry.lineIds.filter((id) => !reservedKeys.has(String(id)));
+      if (unreserved.length === 0) continue;
+      entry = { ...entry, lineIds: unreserved };
     }
 
     /**

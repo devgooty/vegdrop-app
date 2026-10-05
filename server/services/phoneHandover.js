@@ -186,19 +186,31 @@ async function pairSession({ sessionId, claimToken, pairNumber, issueChallenge }
   }
 
   if (!pairNumbersMatch(pairNumber, session.pairNumber)) {
-    const attempts = (session.pairAttempts || 0) + 1;
-    session.pairAttempts = attempts;
+    /**
+     * Counted with a conditional `$inc`, never read → +1 → save.
+     *
+     * The read-modify-save version lost increments under concurrency: parallel
+     * wrong guesses all read the same count, so the three-attempt cap became
+     * whatever the IP rate limiter allowed. The filter refuses once the cap is
+     * reached, so the server — not the request — decides who got the last try.
+     */
+    const bumped = await PhoneHandoverSession.findOneAndUpdate(
+      { _id: session._id, state: 'scanned', pairAttempts: { $lt: MAX_PAIR_ATTEMPTS } },
+      { $inc: { pairAttempts: 1 } },
+      { returnDocument: 'after' }
+    );
+    const attempts = bumped ? bumped.pairAttempts : MAX_PAIR_ATTEMPTS;
     if (attempts >= MAX_PAIR_ATTEMPTS) {
-      session.state = 'failed';
-      session.pairNumber = null;
-      await session.save();
+      await PhoneHandoverSession.updateOne(
+        { _id: session._id, state: 'scanned' },
+        { $set: { state: 'failed', pairNumber: null } }
+      );
       throw new ApiError(
         429,
         'Too many wrong numbers. Refresh and try again.',
         'HANDOVER_PAIR_LOCKED'
       );
     }
-    await session.save();
     throw new ApiError(400, 'That number does not match.', 'HANDOVER_PAIR_MISMATCH', {
       attemptsLeft: MAX_PAIR_ATTEMPTS - attempts,
     });
@@ -218,6 +230,9 @@ async function pairSession({ sessionId, claimToken, pairNumber, issueChallenge }
       sessionId,
       state: 'scanned',
       expiresAt: { $gt: new Date() },
+      // A right guess that raced the wrong ones still loses once they used up
+      // the cap — otherwise a burst could include the answer and win anyway.
+      pairAttempts: { $lt: MAX_PAIR_ATTEMPTS },
     },
     {
       $set: {

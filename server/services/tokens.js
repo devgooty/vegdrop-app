@@ -106,48 +106,98 @@ async function consumeRefreshToken(rawToken) {
   }
 
   const tokenHash = sha256(rawToken);
-  const record = await RefreshToken.findOne({ tokenHash });
+  const now = new Date();
 
-  if (!record) return { ok: false, reason: 'unknown' };
+  /**
+   * Retire the token in the same operation that checks it is live.
+   *
+   * This was findOne → check → (later) save. Two refreshes presenting one
+   * cookie — two tabs, or the customer and shopkeeper apps side by side, which
+   * the client cannot dedupe across — both passed the check and both minted a
+   * successor, forking the session. Now exactly one request retires it.
+   */
+  const record = await RefreshToken.findOneAndUpdate(
+    { tokenHash, revokedAt: null, expiresAt: { $gt: now } },
+    { $set: { revokedAt: now, rotatedAt: now } },
+    { returnDocument: 'after' }
+  );
+  if (record) return { ok: true, record, graceReplay: false };
 
-  if (record.revokedAt) {
-    await revokeFamily(record.family, 'reuse_detected');
-    return { ok: false, reason: 'reuse_detected' };
-  }
+  const existing = await RefreshToken.findOne({ tokenHash });
+  if (!existing) return { ok: false, reason: 'unknown' };
 
-  if (record.expiresAt.getTime() <= Date.now()) {
+  if (!existing.revokedAt && existing.expiresAt.getTime() <= now.getTime()) {
     return { ok: false, reason: 'expired' };
   }
 
-  return { ok: true, record };
+  /**
+   * Presented again moments after it was rotated: the loser of the race above,
+   * or — the case the mobile app hits — a refresh whose response was lost on a
+   * flaky network, so the client never received the successor and retried with
+   * what it had. Treating either as theft revoked the whole family and signed a
+   * legitimate user out. Within the grace window it is answered with a sibling
+   * token in the same family instead.
+   *
+   * The window is the cost: a thief replaying a stolen token within it is not
+   * caught by reuse detection. It is short for that reason, it never applies to
+   * a family that has been revoked (logout, reuse, suspension), and it only
+   * applies to a token retired by rotation — never one revoked outright.
+   */
+  if (
+    existing.rotatedAt &&
+    !existing.familyRevokedAt &&
+    existing.expiresAt.getTime() > now.getTime() &&
+    now.getTime() - existing.rotatedAt.getTime() <= REUSE_GRACE_MS
+  ) {
+    return { ok: true, record: existing, graceReplay: true };
+  }
+
+  if (existing.revokedAt) {
+    await revokeFamily(existing.family, 'reuse_detected');
+    return { ok: false, reason: 'reuse_detected' };
+  }
+
+  return { ok: false, reason: 'expired' };
 }
 
+/** How long a just-rotated token is still accepted. See consumeRefreshToken. */
+const REUSE_GRACE_MS = 30 * 1000;
+
 async function markRotated(record, replacementToken) {
-  record.revokedAt = new Date();
-  record.replacedByHash = sha256(replacementToken);
-  await record.save();
+  await RefreshToken.updateOne({ _id: record._id }, { $set: { replacedByHash: sha256(replacementToken) } });
+}
+
+/**
+ * Revoking marks EVERY token in the scope, already-rotated ones included, with
+ * `familyRevokedAt` — that is what stops the rotation grace window from reviving
+ * a family that was deliberately ended. A pipeline update, so a token already
+ * revoked keeps its original `revokedAt`.
+ */
+function revokeWhere(filter) {
+  const now = new Date();
+  return RefreshToken.updateMany(
+    { ...filter, familyRevokedAt: null },
+    [{ $set: { familyRevokedAt: now, revokedAt: { $ifNull: ['$revokedAt', now] } } }],
+    { updatePipeline: true }
+  );
 }
 
 async function revokeFamily(family, _reason) {
-  await RefreshToken.updateMany(
-    { family, revokedAt: null },
-    { $set: { revokedAt: new Date() } }
-  );
+  await revokeWhere({ family });
 }
 
 async function revokeAllForUser(userId) {
-  await RefreshToken.updateMany(
-    { user: userId, revokedAt: null },
-    { $set: { revokedAt: new Date() } }
-  );
+  await revokeWhere({ user: userId });
 }
 
+/**
+ * Logout ends the whole family, not only the presented token: a family is one
+ * sign-in on one device, and the grace window can have given it siblings.
+ */
 async function revokeByToken(rawToken) {
   if (typeof rawToken !== 'string' || rawToken.length === 0) return;
-  await RefreshToken.updateOne(
-    { tokenHash: sha256(rawToken), revokedAt: null },
-    { $set: { revokedAt: new Date() } }
-  );
+  const record = await RefreshToken.findOne({ tokenHash: sha256(rawToken) }).select('family').lean();
+  if (record) await revokeFamily(record.family, 'logout');
 }
 
 function setRefreshCookie(res, token, expiresAt) {

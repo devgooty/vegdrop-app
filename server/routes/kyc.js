@@ -44,6 +44,9 @@ function normalizeName(value) {
     .replace(/[^a-z]/g, '');
 }
 
+/** How long a penny-drop send may hold its lock before another may take it. */
+const PENNY_SEND_LOCK_MS = 2 * 60 * 1000;
+
 async function loadKyc(user) {
   return VendorKyc.findOne({ user: user._id });
 }
@@ -197,33 +200,96 @@ router.post(
       );
     }
 
+    /**
+     * Claim the right to send BEFORE paying for anything.
+     *
+     * The checks above are a read; two taps both passed them and both asked
+     * RazorpayX for a real transfer, and only the second amount's hash survived
+     * — so the vendor saw two credits and had even odds of burning an attempt
+     * on the one we no longer recognised. This conditional write repeats those
+     * checks and takes a short lock in one operation, so exactly one request
+     * reaches the provider. The lock self-expires in case the process dies
+     * holding it.
+     */
+    const now = new Date();
+    const claimed = await VendorKyc.findOneAndUpdate(
+      {
+        _id: kyc._id,
+        status: { $nin: ['verified', 'rejected'] },
+        $and: [
+          { $or: [{ status: { $ne: 'penny_sent' } }, { 'pennyDrop.expiresAt': { $lte: now } }] },
+          {
+            $or: [
+              { 'pennyDrop.sendingAt': null },
+              { 'pennyDrop.sendingAt': { $lte: new Date(now.getTime() - PENNY_SEND_LOCK_MS) } },
+            ],
+          },
+        ],
+      },
+      { $set: { 'pennyDrop.sendingAt': now } },
+      { returnDocument: 'after' }
+    );
+    if (!claimed) {
+      throw new ApiError(
+        429,
+        'A verification transfer is already on its way. Check your account, then enter the amount received.',
+        'PENNY_DROP_PENDING'
+      );
+    }
+
     const { minPennyPaise, maxPennyPaise } = config.kyc;
     // crypto.randomInt, not Math.random: the amount is a secret to be guessed.
     const amountPaise = crypto.randomInt(minPennyPaise, maxPennyPaise + 1);
     const referenceId = `kyc_${kyc._id.toHexString()}_${crypto.randomUUID().slice(0, 8)}`;
 
-    const result = await payouts.sendPennyDrop({
-      vpa: kyc.upiVpa,
-      amountPaise,
-      referenceId,
-      contactName: kyc.legalName,
-      contactPhone: req.user.phone,
-    });
+    let result;
+    try {
+      result = await payouts.sendPennyDrop({
+        vpa: claimed.upiVpa,
+        amountPaise,
+        referenceId,
+        contactName: claimed.legalName,
+        contactPhone: req.user.phone,
+      });
+    } catch (err) {
+      await VendorKyc.updateOne(
+        { _id: kyc._id, 'pennyDrop.sendingAt': now },
+        { $set: { 'pennyDrop.sendingAt': null } }
+      );
+      throw err;
+    }
 
-    kyc.status = 'penny_sent';
-    kyc.pennyDrop = {
-      amountHash: hashAmount(kyc._id.toHexString(), amountPaise),
-      referenceId,
-      providerRef: result.providerRef,
-      utr: result.utr,
-      sentAt: new Date(),
-      expiresAt: new Date(Date.now() + config.kyc.pennyTtlSeconds * 1000),
-      attempts: 0,
-      maxAttempts: config.kyc.pennyMaxAttempts,
-    };
-    await kyc.save();
+    // Guarded on our own lock: if the vendor re-submitted their details while
+    // the transfer was in flight, that reset wins and this transfer is void.
+    const sent = await VendorKyc.findOneAndUpdate(
+      { _id: kyc._id, 'pennyDrop.sendingAt': now },
+      {
+        $set: {
+          status: 'penny_sent',
+          pennyDrop: {
+            amountHash: hashAmount(kyc._id.toHexString(), amountPaise),
+            referenceId,
+            providerRef: result.providerRef,
+            utr: result.utr,
+            sentAt: new Date(),
+            expiresAt: new Date(Date.now() + config.kyc.pennyTtlSeconds * 1000),
+            attempts: 0,
+            maxAttempts: config.kyc.pennyMaxAttempts,
+            sendingAt: null,
+          },
+        },
+      },
+      { returnDocument: 'after' }
+    );
+    if (!sent) {
+      throw new ApiError(
+        409,
+        'Your bank details changed while the transfer was being sent. Request a new transfer.',
+        'KYC_CHANGED'
+      );
+    }
 
-    const response = { data: kyc.toPublicJSON() };
+    const response = { data: sent.toPublicJSON() };
 
     // Returned only under test, so suites can complete the flow without a bank
     // account. Never populated in development or production responses — the

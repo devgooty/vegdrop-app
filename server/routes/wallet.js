@@ -205,8 +205,9 @@ router.post(
         expectedBuf.length === actualBuf.length && crypto.timingSafeEqual(expectedBuf, actualBuf);
 
       if (!signatureValid) {
-        intent.status = 'failed';
-        await intent.save();
+        // Conditional, never save(): a stale read must not paint `failed`
+        // over an intent another request has just settled as paid.
+        await PaymentIntent.updateOne({ _id: intent._id, status: 'created' }, { $set: { status: 'failed' } });
         throw new ApiError(400, 'Payment signature verification failed.', 'INVALID_SIGNATURE');
       }
 
@@ -283,12 +284,13 @@ async function settleIntent(intent, paymentId) {
     })
   );
 
-  if (intent.status !== 'paid') {
-    intent.status = 'paid';
-    intent.razorpayPaymentId = paymentId;
-    intent.settledAt = new Date();
-    await intent.save();
-  }
+  // Paid is terminal and outranks `failed`: a payment.failed webhook for an
+  // earlier attempt may have landed first, and money did arrive. Conditional
+  // on not-yet-paid so the first settlement's paymentId and time are kept.
+  await PaymentIntent.updateOne(
+    { _id: intent._id, status: { $ne: 'paid' } },
+    { $set: { status: 'paid', razorpayPaymentId: paymentId, settledAt: new Date() } }
+  );
 
   return result;
 }
@@ -357,10 +359,9 @@ router.post('/webhook', async (req, res) => {
   }
 
   if (event === 'payment.failed') {
-    if (intent.status === 'created') {
-      intent.status = 'failed';
-      await intent.save();
-    }
+    // Guarded in the write, not on the read above: the browser's verify can
+    // settle this intent as paid between our read and this line.
+    await PaymentIntent.updateOne({ _id: intent._id, status: 'created' }, { $set: { status: 'failed' } });
     return res.json({ data: { handled: true, event } });
   }
 

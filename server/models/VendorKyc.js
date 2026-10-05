@@ -64,6 +64,9 @@ const vendorKycSchema = new mongoose.Schema(
       expiresAt: { type: Date, default: null },
       attempts: { type: Number, default: 0 },
       maxAttempts: { type: Number, default: 5 },
+      // Held while a transfer is being requested from the provider, so two taps
+      // cannot both pay for one. See POST /kyc/me/penny-drop.
+      sendingAt: { type: Date, default: null },
     },
 
     verifiedAt: { type: Date, default: null },

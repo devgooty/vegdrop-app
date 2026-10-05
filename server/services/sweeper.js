@@ -287,7 +287,13 @@ async function sweepSettlements() {
  */
 async function sweepPendingRefunds() {
   const owed = await Order.find({
-    'fulfillment.status': { $in: ['cancelled', 'failed'] },
+    // A marketless order has no fulfillment state; its coarse status is the
+    // terminal one. PATCH /orders/:id/status cancels those in the same
+    // write-then-refund order, so it leaves the same window to close.
+    $or: [
+      { 'fulfillment.status': { $in: ['cancelled', 'failed'] } },
+      { market: null, status: 'Cancelled' },
+    ],
     paymentMethod: 'wallet',
     paymentStatus: 'paid',
   })

@@ -93,6 +93,41 @@ function deliver(body, { secret = config.razorpay.webhookSecret, signature = nul
 }
 
 // ---------------------------------------------------------------------------
+// Races on the intent's status
+// ---------------------------------------------------------------------------
+
+test('a payment.failed webhook read before settlement cannot mark a paid intent failed', async () => {
+  const { user } = await authenticatedUser('customer');
+  const intent = await seedIntent(user);
+
+  // Land the settlement between the webhook's read of the intent and its write.
+  const original = PaymentIntent.findOne;
+  PaymentIntent.findOne = function patched(...args) {
+    PaymentIntent.findOne = original;
+    const query = original.apply(this, args);
+    const exec = query.exec.bind(query);
+    query.exec = async (...rest) => {
+      const doc = await exec(...rest);
+      await PaymentIntent.updateOne({ _id: intent._id }, { $set: { status: 'paid' } });
+      return doc;
+    };
+    return query;
+  };
+
+  try {
+    const body = capturedBody(intent);
+    body.event = 'payment.failed';
+    const res = await deliver(body);
+    assert.equal(res.status, 200);
+  } finally {
+    PaymentIntent.findOne = original;
+  }
+
+  const after = await PaymentIntent.findById(intent._id).lean();
+  assert.equal(after.status, 'paid', 'a stale failure must not overwrite a settled payment');
+});
+
+// ---------------------------------------------------------------------------
 // The signature is the only gate
 // ---------------------------------------------------------------------------
 

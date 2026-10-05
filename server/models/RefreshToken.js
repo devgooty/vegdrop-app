@@ -23,6 +23,13 @@ const refreshTokenSchema = new mongoose.Schema(
     // — which is how the reaper came to be silently absent.
     expiresAt: { type: Date, required: true },
     revokedAt: { type: Date, default: null },
+    // Set when revokedAt came from rotation rather than revocation; only these
+    // qualify for the reuse grace window in services/tokens.js.
+    rotatedAt: { type: Date, default: null },
+    // Set on every token in a family that was deliberately ended (logout,
+    // reuse detected, suspension) — including already-rotated ones, which is
+    // what keeps the grace window from reviving it.
+    familyRevokedAt: { type: Date, default: null },
     replacedByHash: { type: String, default: null },
 
     // Captured for audit only; never used as an authorization signal.

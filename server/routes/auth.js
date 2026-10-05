@@ -919,8 +919,9 @@ router.post('/refresh', async (req, res) => {
   }
 
   // Rotate: the presented token is retired and replaced within the same family.
+  // A grace replay gets a sibling and leaves the original's successor alone.
   const next = await tokens.issueRefreshToken(user, req, result.record.family);
-  await tokens.markRotated(result.record, next.token);
+  if (!result.graceReplay) await tokens.markRotated(result.record, next.token);
   tokens.setRefreshCookie(res, next.token, next.expiresAt);
 
   return res.json(sessionPayload(user, tokens.signAccessToken(user)));

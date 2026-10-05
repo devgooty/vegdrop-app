@@ -15,7 +15,6 @@ const {
   deliveryVerifyLimiter,
   handoverReissueLimiter,
 } = require('../middleware/rateLimit');
-const wallet = require('../services/wallet');
 const sourcing = require('../services/sourcing');
 const checkout = require('../services/checkout');
 const settlement = require('../services/settlement');
@@ -688,13 +687,14 @@ router.patch(
      * consequence of getting it wrong is one agent closing another's delivery
      * and, for a COD order, flipping it to paid.
      */
+    // Completing an unclaimed order claims it, so the record shows who did.
+    let claimsAssignment = false;
     if (req.user.role === 'delivery') {
       const assignee = order.assignedTo ? order.assignedTo.toString() : null;
       if (assignee && assignee !== req.user._id.toHexString()) {
         throw new ApiError(404, 'Order not found.', 'NOT_FOUND');
       }
-      // Completing an unclaimed order claims it, so the record shows who did.
-      if (!assignee) order.assignedTo = req.user._id;
+      claimsAssignment = !assignee;
     }
 
     // A customer may only cancel their own order, and only before preparation.
@@ -715,36 +715,65 @@ router.patch(
       );
     }
 
-    // Refund a wallet-paid order when it is cancelled, idempotently.
-    if (status === 'Cancelled' && order.paymentStatus === 'paid') {
-      await wallet.credit({
-        userId: order.customer,
-        amountPaise: order.totalAmountPaise,
-        reason: 'order_refund',
-        idempotencyKey: `refund:${order._id.toHexString()}`,
-        note: `Refund for ${order.orderNumber}`,
-      });
-      order.paymentStatus = 'refunded';
-
-      await Promise.all(
-        order.items.map((item) =>
-          Product.updateOne({ _id: item.product }, { $inc: { stock: item.quantity } }).catch(() => {})
-        )
-      );
-    }
-
-    if (status === 'Delivered' && order.paymentMethod === 'cod') {
-      order.paymentStatus = 'paid';
-    }
-
     // NOTE: there was an auto-assign branch here for a `delivery` caller moving
     // an order to 'Out for Delivery'. It was unreachable — that transition is
     // restricted to staff by TRANSITION_PERMISSIONS above — and assignment is
     // now handled by /claim and by the Delivered branch.
 
-    order.status = status;
-    order.statusHistory.push({ status, at: new Date(), by: req.user._id });
-    await order.save();
+    /**
+     * The transition is ONE conditional write, guarded on the status every
+     * check above was made against.
+     *
+     * It used to be read → check → `order.save()`, and save() overwrites
+     * whatever the checks did not see. The rider's routes (services/dispatch.js)
+     * all write conditionally, so this was the one writer that could clobber
+     * them: a shopkeeper cancelling an Out for Delivery order while the rider
+     * typed the customer's code saved `Cancelled` over `Delivered` — refunding
+     * the customer for goods they had, after the shop had already been settled.
+     * A customer cancel racing a shopkeeper accept refunded the wallet and then
+     * let the order proceed to delivery. Two concurrent cancels restocked twice.
+     *
+     * Now whoever writes second matches nothing and gets a 409, and the refund
+     * and restock run only for the request whose write actually landed — the
+     * same shape as cancelMarketOrder above.
+     */
+    const now = new Date();
+    const changed = await Order.findOneAndUpdate(
+      {
+        _id: order._id,
+        status: order.status,
+        ...(claimsAssignment ? { assignedTo: null } : {}),
+      },
+      {
+        $set: {
+          status,
+          ...(claimsAssignment ? { assignedTo: req.user._id } : {}),
+          ...(status === 'Delivered' && order.paymentMethod === 'cod' ? { paymentStatus: 'paid' } : {}),
+        },
+        $push: { statusHistory: { status, at: now, by: req.user._id } },
+      },
+      { returnDocument: 'after' }
+    );
+
+    if (!changed) {
+      throw new ApiError(
+        409,
+        'This order was updated by someone else just now. Refresh to see where it stands.',
+        'ORDER_CHANGED'
+      );
+    }
+
+    if (status === 'Cancelled') {
+      // Credits and flips paid → refunded, keyed on the order; a crash between
+      // the write above and this is completed by sweeper.sweepPendingRefunds.
+      await sourcing.refundToWallet(changed);
+      await Promise.all(
+        changed.items.map((item) =>
+          Product.updateOne({ _id: item.product }, { $inc: { stock: item.quantity } }).catch(() => {})
+        )
+      );
+    }
+
 
     /**
      * The customer has the goods, so the shop has earned its money.
@@ -785,7 +814,9 @@ router.patch(
       }
     }
 
-    return res.json({ data: redactForViewer(order.toJSON(), req.user) });
+    // Re-read so the response carries the refund's paymentStatus as well.
+    const updated = (await Order.findById(changed._id)) || changed;
+    return res.json({ data: redactForViewer(updated.toJSON(), req.user) });
   }
 );
 

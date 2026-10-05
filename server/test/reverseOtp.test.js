@@ -904,6 +904,37 @@ test('wrong pair is capped; stolen QR stays inert until correct pair', async () 
   assert.equal(await ReverseOtpChallenge.countDocuments(), 0);
 });
 
+test('a burst of parallel wrong pairs still gets only three tries', async () => {
+  const started = await startHandover();
+  await scanHandover(started.sessionId);
+  const session = await loadHandoverRow(started.sessionId);
+  const wrongs = ['0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999']
+    .filter((n) => n !== session.pairNumber)
+    .slice(0, 8);
+
+  const results = await Promise.all(
+    wrongs.map((pairNumber) =>
+      pairHandover({ sessionId: started.sessionId, claimToken: started.claimToken, pairNumber })
+    )
+  );
+  const statuses = results.map((r) => r.status);
+  assert.equal(statuses.filter((s) => s === 400).length, 2, `statuses: ${statuses}`);
+  assert.equal(statuses.filter((s) => s === 429).length, wrongs.length - 2);
+
+  const after = await loadHandoverRow(started.sessionId);
+  assert.equal(after.pairAttempts, 3, 'no increment may be lost or exceed the cap');
+  assert.equal(after.state, 'failed');
+
+  // The right number, once the cap is spent, gets nothing.
+  const right = await pairHandover({
+    sessionId: started.sessionId,
+    claimToken: started.claimToken,
+    pairNumber: session.pairNumber,
+  });
+  assert.notEqual(right.status, 200);
+  assert.equal(await ReverseOtpChallenge.countDocuments(), 0);
+});
+
 test('correct pair mints reverse OTP; phone status gets channels; SMS stays low assurance', async () => {
   await createUser({ phone: '9876543210', role: 'customer', name: 'Asha' });
   const started = await startHandover();

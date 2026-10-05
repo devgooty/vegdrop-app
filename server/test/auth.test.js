@@ -15,6 +15,19 @@ const {
 } = require('./helpers');
 
 const User = require('../models/User');
+const RefreshToken = require('../models/RefreshToken');
+const { sha256 } = require('../services/tokens');
+
+/** Cookie header value → the token's stored hash. */
+const hashOfCookie = (cookie) => sha256(decodeURIComponent(cookie.split(';')[0].split('=').slice(1).join('=')));
+
+/** Move a rotation outside the reuse grace window, as if it happened a minute ago. */
+async function ageRotation(cookie) {
+  await RefreshToken.updateOne(
+    { tokenHash: hashOfCookie(cookie) },
+    { $set: { rotatedAt: new Date(Date.now() - 60 * 1000) } }
+  );
+}
 
 test.before(startTestServer);
 test.after(stopTestServer);
@@ -281,7 +294,8 @@ test('refresh rotates the token and detects reuse', async () => {
   assert.ok(rotated, 'refresh must issue a replacement cookie');
   assert.notEqual(rotated, refreshCookie, 'the refresh token must change on use');
 
-  // Presenting the retired token signals theft.
+  // Presenting the retired token, past the grace window, signals theft.
+  await ageRotation(refreshCookie);
   const reuse = await api().post('/api/auth/refresh').set('Cookie', refreshCookie);
   assert.equal(reuse.status, 401);
   assert.equal(reuse.body.error.code, 'REFRESH_INVALID');
@@ -289,6 +303,55 @@ test('refresh rotates the token and detects reuse', async () => {
   // Reuse detection revokes the whole family, so the rotated token dies too.
   const afterBreach = await api().post('/api/auth/refresh').set('Cookie', rotated);
   assert.equal(afterBreach.status, 401, 'the entire token family must be revoked');
+});
+
+test('a token replayed moments after rotation gets a sibling, not a family revocation', async () => {
+  // The lost-response case: the server rotated, the client never saw the
+  // successor, and retries with the cookie it still has.
+  const { refreshCookie } = await authenticatedUser('customer');
+
+  const first = await api().post('/api/auth/refresh').set('Cookie', refreshCookie);
+  assert.equal(first.status, 200);
+  const successor = first.headers['set-cookie'].find((c) => c.startsWith('vb_rt='));
+
+  const retry = await api().post('/api/auth/refresh').set('Cookie', refreshCookie);
+  assert.equal(retry.status, 200, 'a just-rotated token is still honoured');
+  const sibling = retry.headers['set-cookie'].find((c) => c.startsWith('vb_rt='));
+
+  // Neither branch was killed.
+  assert.equal((await api().post('/api/auth/refresh').set('Cookie', successor)).status, 200);
+  assert.equal((await api().post('/api/auth/refresh').set('Cookie', sibling)).status, 200);
+});
+
+test('concurrent refreshes with one cookie retire it exactly once', async () => {
+  const { refreshCookie } = await authenticatedUser('customer');
+
+  const responses = await Promise.all(
+    Array.from({ length: 5 }, () => api().post('/api/auth/refresh').set('Cookie', refreshCookie))
+  );
+  assert.ok(responses.every((r) => r.status === 200), 'no tab is signed out by its sibling');
+
+  // Exactly one request won the rotation; the rest were grace replays, so the
+  // presented token names exactly one successor.
+  const presented = await RefreshToken.findOne({ tokenHash: hashOfCookie(refreshCookie) }).lean();
+  assert.ok(presented.rotatedAt);
+  assert.ok(presented.replacedByHash);
+  const winners = responses.filter((r) =>
+    r.headers['set-cookie'].some((c) => c.startsWith('vb_rt=') && hashOfCookie(c) === presented.replacedByHash)
+  );
+  assert.equal(winners.length, 1);
+});
+
+test('the grace window never revives a family that was logged out', async () => {
+  const { refreshCookie } = await authenticatedUser('customer');
+
+  const first = await api().post('/api/auth/refresh').set('Cookie', refreshCookie);
+  const successor = first.headers['set-cookie'].find((c) => c.startsWith('vb_rt='));
+  await api().post('/api/auth/logout').set('Cookie', successor).expect(204);
+
+  // Still inside the window, but the family has been ended deliberately.
+  const replay = await api().post('/api/auth/refresh').set('Cookie', refreshCookie);
+  assert.equal(replay.status, 401);
 });
 
 test('the refresh cookie is httpOnly and SameSite=Strict', async () => {

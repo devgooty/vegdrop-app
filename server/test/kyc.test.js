@@ -418,3 +418,57 @@ test('vendor registration cannot smuggle a privileged role through the body', as
   assert.equal(res.status, 400);
   assert.equal(res.body.error.code, 'VALIDATION_ERROR');
 });
+
+test('two taps on "send transfer" pay for exactly one penny drop', async () => {
+  const payouts = require('../services/payouts');
+  const { accessToken } = await authenticatedUser('shopkeeper');
+  await api().post('/api/kyc/me').set(auth(accessToken)).send(VALID_DETAILS).expect(201);
+
+  // Slow the provider down so both requests are in flight at once.
+  const real = payouts.sendPennyDrop;
+  let calls = 0;
+  payouts.sendPennyDrop = async (args) => {
+    calls += 1;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    return real(args);
+  };
+
+  try {
+    const [a, b] = await Promise.all([
+      api().post('/api/kyc/me/penny-drop').set(auth(accessToken)).send(),
+      api().post('/api/kyc/me/penny-drop').set(auth(accessToken)).send(),
+    ]);
+    assert.deepEqual([a.status, b.status].sort(), [202, 429]);
+    assert.equal(calls, 1, 'only one real transfer may be requested');
+
+    // And the amount on record is the one that was actually sent.
+    const sentAmount = (a.status === 202 ? a : b).body.devAmountPaise;
+    const verify = await api()
+      .post('/api/kyc/me/penny-drop/verify')
+      .set(auth(accessToken))
+      .send({ amountPaise: sentAmount });
+    assert.equal(verify.status, 200);
+  } finally {
+    payouts.sendPennyDrop = real;
+  }
+});
+
+test('a provider failure releases the send lock', async () => {
+  const payouts = require('../services/payouts');
+  const { accessToken } = await authenticatedUser('shopkeeper');
+  await api().post('/api/kyc/me').set(auth(accessToken)).send(VALID_DETAILS).expect(201);
+
+  const real = payouts.sendPennyDrop;
+  payouts.sendPennyDrop = async () => {
+    throw Object.assign(new Error('provider down'), { statusCode: 502, expose: true });
+  };
+  try {
+    const failed = await api().post('/api/kyc/me/penny-drop').set(auth(accessToken)).send();
+    assert.notEqual(failed.status, 202);
+  } finally {
+    payouts.sendPennyDrop = real;
+  }
+
+  const retry = await api().post('/api/kyc/me/penny-drop').set(auth(accessToken)).send();
+  assert.equal(retry.status, 202, 'a failed send must not leave the vendor locked out');
+});
