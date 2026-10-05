@@ -295,7 +295,7 @@ export default function MapLocationPicker({ onClose, onConfirm, reverseGeocodeGP
     <div className="fixed inset-0 bg-[#FFFDF9] z-[1000] flex flex-col animate-fade-in h-[100dvh] w-full">
 
       {/* FLOATING BACK BUTTON */}
-      <div className="absolute top-6 left-4 z-[500]">
+      <div className="absolute top-[calc(1.5rem+env(safe-area-inset-top,0px))] left-4 z-[500]">
         <button
           onClick={onClose}
           className="bg-white p-3 rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.15)] text-[#1B4D3E] hover:bg-gray-50 transition-colors shrink-0 cursor-pointer active:scale-95 border border-gray-100"

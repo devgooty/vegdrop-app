@@ -235,7 +235,7 @@ export default function CookingAssistant({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full bg-[#FAF7F2] animate-fade-in">
-      <div className="shrink-0 px-4 pt-3 pb-2 border-b border-[#E8E2D6] bg-[#FAF7F2]/95">
+      <div className="shrink-0 px-4 pt-safe-3 pb-2 border-b border-[#E8E2D6] bg-[#FAF7F2]/95">
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-xl bg-[#1B4D3E] text-white flex items-center justify-center">
             <ChefHat className="w-4 h-4" />

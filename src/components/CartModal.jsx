@@ -231,7 +231,7 @@ export default function CartModal({ isOpen, onClose, cartItems, onUpdateQuantity
           cards on a warmer ground, so the header is already read as a header —
           a rule across the top only added a seam.
         */}
-        <div className="px-4 pt-5 pb-3 shrink-0">
+        <div className="px-4 pt-safe-5 pb-3 shrink-0">
           <h3 className="font-black text-[#123B2F] text-[1.35rem] tracking-tight">
             {/* Counts items, not lines — the bottom-nav badge always has, and the
                 two disagreeing ("9" on the tab, "(6)" here) reads as a bug. */}

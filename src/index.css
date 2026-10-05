@@ -1505,6 +1505,12 @@
 .pt-safe-3\.5 {
   padding-top: calc(0.875rem + env(safe-area-inset-top, 0px));
 }
+.pt-safe-4 {
+  padding-top: calc(1rem + env(safe-area-inset-top, 0px));
+}
+.pt-safe-5 {
+  padding-top: calc(1.25rem + env(safe-area-inset-top, 0px));
+}
 .pt-safe-6 {
   padding-top: calc(1.5rem + env(safe-area-inset-top, 0px));
 }

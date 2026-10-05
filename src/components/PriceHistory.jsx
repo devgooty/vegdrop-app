@@ -286,7 +286,7 @@ export default function PriceHistory({ products = [], categories = [], market = 
   const steady = tracked.length - rising - falling;
 
   return (
-    <section className="px-4 pb-24 space-y-4 animate-fade-in">
+    <section className="px-4 pt-safe-3 pb-24 space-y-4 animate-fade-in">
       {/*
         A light mint card carrying dark-green ink, not a solid saturated
         gradient carrying white — the latter was the only full-bleed dark

@@ -357,7 +357,7 @@ export default function WalletModal({ isOpen, onClose, balance, onRazorpayPaymen
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center z-[200] animate-fade-in">
       <div className="bg-[#FAFAF8] w-full max-w-md h-[100dvh] flex flex-col shadow-2xl overflow-hidden relative animate-slide-up">
         {/* Handle */}
-        <div className="flex-shrink-0 pt-4 pb-3 px-6 flex items-center justify-between border-b border-gray-100 bg-white z-10">
+        <div className="flex-shrink-0 pt-safe-4 pb-3 px-6 flex items-center justify-between border-b border-gray-100 bg-white z-10">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-emerald-100 rounded-xl flex items-center justify-center">
               <Wallet className="w-4 h-4 text-[#1B4D3E]" />
