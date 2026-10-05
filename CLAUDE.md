@@ -164,7 +164,7 @@ for everything addressed to an inbox; keyed by channel, an unconfigured or broke
 channel only affects what is addressed to it. Codes go to `sms` only — `email`
 now carries stall notices and nothing else.
 
-The `sms` channel is WhatsApp (or the console stub); the `email` channel is SMTP
+The `sms` channel is WhatsApp or Fast2SMS (or the console stub); the `email` channel is SMTP
 via nodemailer (`services/transports/email.js`), active only when `SMTP_HOST` and
 `SMTP_FROM` are set. Neither transport ever logs the code, and both mask the
 destination — only the console stub prints codes, and production refuses to boot
@@ -176,6 +176,14 @@ Phone transports, via `NOTIFY_TRANSPORT`:
 |---|---|
 | `console` | dev stub, prints codes; **production refuses to boot on it** |
 | `whatsapp` | official Cloud API; approved template, paid per message |
+| `fast2sms` | Fast2SMS `otp` route; plain SMS to Indian numbers, no template or DLT approval, wording fixed by Fast2SMS |
+
+`fast2sms` is the cheap option (about ₹0.35 a code without DLT). It is selected
+automatically when `FAST2SMS_API_KEY` is set and WhatsApp is not; with both set,
+WhatsApp wins unless `NOTIFY_TRANSPORT=fast2sms`. There is no failover between
+the two — the failover chain is email-only. `services/transports/fast2sms.js`
+judges success on the response body (`return: true`), not the HTTP status,
+because Fast2SMS can reject with a 200.
 
 There is no `OTP_CHANNEL` setting — it was removed rather than left as a knob
 that can no longer change anything.

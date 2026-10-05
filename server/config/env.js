@@ -136,6 +136,9 @@ const whatsappAccessToken = optional('WHATSAPP_ACCESS_TOKEN', '');
 const whatsappTemplateName = optional('WHATSAPP_OTP_TEMPLATE_NAME', '');
 const whatsappConfigured = Boolean(whatsappPhoneNumberId && whatsappAccessToken && whatsappTemplateName);
 
+const fast2smsApiKey = optional('FAST2SMS_API_KEY', '');
+const fast2smsConfigured = Boolean(fast2smsApiKey);
+
 // --- Inbound verification (reverse OTP) --------------------------------------
 
 /**
@@ -248,6 +251,8 @@ if (smtpHost && !smtpFrom && emailProviders.length === 0) {
 /**
  * console  — dev stub, prints codes to stdout
  * whatsapp — official WhatsApp Cloud API (approved template, paid per message)
+ * fast2sms — Fast2SMS `otp` route, plain SMS to Indian numbers (no template
+ *            approval or DLT needed; Fast2SMS fixes the wording)
  *
  * An unofficial WhatsApp Web client used to be a third option. It was removed:
  * sign-in here is passwordless, so the OTP transport IS the authentication
@@ -255,16 +260,21 @@ if (smtpHost && !smtpFrom && emailProviders.length === 0) {
  * Service means a ban locks every user out at once with no way back in. That
  * is not a risk a payments app gets to take to save on message fees.
  */
-const VALID_TRANSPORTS = ['console', 'whatsapp'];
+const VALID_TRANSPORTS = ['console', 'whatsapp', 'fast2sms'];
 
 /**
  * Which transport delivers codes to phone numbers.
  *
- * Defaults to whatsapp once credentials exist, so configuring the provider is
- * enough to switch over — no second flag to remember. `console` is a development
- * stub that prints codes to stdout and is refused in production below.
+ * Defaults to whatsapp once its credentials exist, else fast2sms once its key
+ * does, so configuring a provider is enough to switch over — no second flag to
+ * remember. With BOTH configured WhatsApp wins; set NOTIFY_TRANSPORT=fast2sms to
+ * choose the other. `console` is a development stub that prints codes to stdout
+ * and is refused in production below.
  */
-const notifyTransport = optional('NOTIFY_TRANSPORT', whatsappConfigured ? 'whatsapp' : 'console');
+const notifyTransport = optional(
+  'NOTIFY_TRANSPORT',
+  whatsappConfigured ? 'whatsapp' : fast2smsConfigured ? 'fast2sms' : 'console'
+);
 
 if (!VALID_TRANSPORTS.includes(notifyTransport)) {
   fatal.push(`NOTIFY_TRANSPORT must be one of ${VALID_TRANSPORTS.join(', ')} (got "${notifyTransport}").`);
@@ -276,12 +286,15 @@ if (notifyTransport === 'whatsapp' && !whatsappConfigured) {
   );
 }
 
+if (notifyTransport === 'fast2sms' && !fast2smsConfigured) {
+  fatal.push('NOTIFY_TRANSPORT=fast2sms requires FAST2SMS_API_KEY.');
+}
 
 // Shipping the console stub to production means verification codes are written
 // to server logs instead of being delivered. Fail at boot, not at first send.
 if (requireRealServices && notifyTransport === 'console') {
   fatal.push(
-    'A real notification transport is required in production. Configure WhatsApp (WHATSAPP_*) or implement another transport in server/services/notify.js.'
+    'A real notification transport is required in production. Configure WhatsApp (WHATSAPP_*) or Fast2SMS (FAST2SMS_API_KEY), or implement another transport in server/services/notify.js.'
   );
 }
 
@@ -532,6 +545,12 @@ const config = Object.freeze({
   // which caps its own attempts — see services/otp.js and middleware/rateLimit.js.
 
   notifyTransport,
+
+  fast2sms: Object.freeze({
+    configured: fast2smsConfigured,
+    apiKey: fast2smsApiKey,
+    timeoutMs: int('FAST2SMS_TIMEOUT_MS', 10000),
+  }),
 
   whatsapp: Object.freeze({
     configured: whatsappConfigured,
