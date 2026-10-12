@@ -177,6 +177,7 @@ Phone transports, via `NOTIFY_TRANSPORT`:
 | `console` | dev stub, prints codes; **production refuses to boot on it** |
 | `whatsapp` | official Cloud API; approved template, paid per message |
 | `fast2sms` | Fast2SMS `otp` route; plain SMS to Indian numbers, no template or DLT approval, wording fixed by Fast2SMS |
+| `smsgate` | SMS Gateway for Android: an Android phone sends the code from its own SIM via the app's cloud relay. **Stopgap only** |
 
 `fast2sms` is the cheap option (about ₹0.35 a code without DLT). It is selected
 automatically when `FAST2SMS_API_KEY` is set and WhatsApp is not; with both set,
@@ -184,6 +185,16 @@ WhatsApp wins unless `NOTIFY_TRANSPORT=fast2sms`. There is no failover between
 the two — the failover chain is email-only. `services/transports/fast2sms.js`
 judges success on the response body (`return: true`), not the HTTP status,
 because Fast2SMS can reject with a 200.
+
+**`smsgate` is a person's SIM doing a business's job, and is documented as a
+stopgap for that reason.** Operators cap SMS per SIM per day and flag machine-like
+traffic; a blocked SIM is every code undelivered at once — the same failure that
+removed the unofficial WhatsApp client. Its 2xx means the relay *accepted* the
+message, not that the phone sent it, so keep a reverse-OTP channel configured: a
+code that never arrives is exactly what "verify by sending us a message" is for.
+The transport sends the composed `text` (it has no template), and like the others
+never logs it, because it contains the code. `OTP_OUTBOUND_FIRST` defaults on for
+it, as for fast2sms.
 
 Two Fast2SMS routes: the default `otp` route (`/dev/bulkV2`), which Fast2SMS
 refuses with `status_code 996` until the account's website is verified, and the

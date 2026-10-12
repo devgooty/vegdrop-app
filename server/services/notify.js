@@ -8,7 +8,8 @@ const config = require('../config/env');
  * A single narrow interface with a development stub. Wiring a real provider
  * (Twilio/MSG91 for SMS, SES/SendGrid/SMTP for email) means implementing
  * `send` in a new transport and selecting it here — no caller changes. Phone
- * transports so far: WhatsApp Cloud API and Fast2SMS (see resolvePhoneTransport).
+ * transports so far: WhatsApp Cloud API, Fast2SMS and SMS Gateway for Android
+ * (see resolvePhoneTransport).
  */
 
 /**
@@ -98,6 +99,21 @@ function resolvePhoneTransport() {
     });
   }
 
+  if (config.notifyTransport === 'smsgate') {
+    // Credentials are validated at boot in config/env.js.
+    const { createSmsGateTransport } = require('./transports/smsGate');
+    const gate = config.smsGate;
+
+    console.info(`[notify] transport=smsgate relay=${new URL(gate.baseUrl).host}`);
+
+    return createSmsGateTransport({
+      username: gate.username,
+      password: gate.password,
+      baseUrl: gate.baseUrl,
+      timeoutMs: gate.timeoutMs,
+    });
+  }
+
   if (config.notifyTransport === 'fast2sms') {
     // FAST2SMS_API_KEY presence is validated at boot in config/env.js.
     const { createFast2smsTransport } = require('./transports/fast2sms');
@@ -117,7 +133,7 @@ function resolvePhoneTransport() {
     // instead of delivering them. Keyed on isProduction this was inert on a
     // host with NODE_ENV unset - the one case a backstop exists for.
     throw new Error(
-      'No production notification transport is configured. Set WHATSAPP_* credentials or FAST2SMS_API_KEY, or implement another transport in server/services/notify.js before deploying.'
+      'No production notification transport is configured. Set WHATSAPP_* credentials, FAST2SMS_API_KEY or SMSGATE_*, or implement another transport in server/services/notify.js before deploying.'
     );
   }
 
