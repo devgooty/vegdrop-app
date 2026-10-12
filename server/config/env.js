@@ -143,6 +143,12 @@ const fast2smsConfigured = Boolean(fast2smsApiKey);
 // `otp` route. See services/transports/fast2sms.js.
 const fast2smsOtpId = optional('FAST2SMS_OTP_ID', '');
 
+// "SMS Gateway for Android": an Android phone sends the code from its own SIM.
+// Credentials are the ones the app shows under "Cloud Server".
+const smsGateUsername = optional('SMSGATE_USERNAME', '');
+const smsGatePassword = optional('SMSGATE_PASSWORD', '');
+const smsGateConfigured = Boolean(smsGateUsername && smsGatePassword);
+
 // --- Inbound verification (reverse OTP) --------------------------------------
 
 /**
@@ -255,6 +261,8 @@ if (smtpHost && !smtpFrom && emailProviders.length === 0) {
 /**
  * console  — dev stub, prints codes to stdout
  * whatsapp — official WhatsApp Cloud API (approved template, paid per message)
+ * smsgate  — SMS Gateway for Android: an Android phone sends the code from its
+ *            own SIM. A stopgap — see services/transports/smsGate.js for why.
  * fast2sms — Fast2SMS `otp` route, plain SMS to Indian numbers (no template
  *            approval or DLT needed; Fast2SMS fixes the wording)
  *
@@ -264,7 +272,7 @@ if (smtpHost && !smtpFrom && emailProviders.length === 0) {
  * Service means a ban locks every user out at once with no way back in. That
  * is not a risk a payments app gets to take to save on message fees.
  */
-const VALID_TRANSPORTS = ['console', 'whatsapp', 'fast2sms'];
+const VALID_TRANSPORTS = ['console', 'whatsapp', 'fast2sms', 'smsgate'];
 
 /**
  * Which transport delivers codes to phone numbers.
@@ -277,7 +285,13 @@ const VALID_TRANSPORTS = ['console', 'whatsapp', 'fast2sms'];
  */
 const notifyTransport = optional(
   'NOTIFY_TRANSPORT',
-  whatsappConfigured ? 'whatsapp' : fast2smsConfigured ? 'fast2sms' : 'console'
+  whatsappConfigured
+    ? 'whatsapp'
+    : fast2smsConfigured
+      ? 'fast2sms'
+      : smsGateConfigured
+        ? 'smsgate'
+        : 'console'
 );
 
 if (!VALID_TRANSPORTS.includes(notifyTransport)) {
@@ -294,6 +308,17 @@ if (notifyTransport === 'fast2sms' && !fast2smsConfigured) {
   fatal.push('NOTIFY_TRANSPORT=fast2sms requires FAST2SMS_API_KEY.');
 }
 
+if (notifyTransport === 'smsgate' && !smsGateConfigured) {
+  fatal.push('NOTIFY_TRANSPORT=smsgate requires SMSGATE_USERNAME and SMSGATE_PASSWORD.');
+}
+
+try {
+  // eslint-disable-next-line no-new
+  new URL(optional('SMSGATE_URL', 'https://api.sms-gate.app/3rdparty/v1'));
+} catch {
+  fatal.push(`SMSGATE_URL must be an absolute URL (got "${process.env.SMSGATE_URL}").`);
+}
+
 /**
  * Send the outbound code FIRST, with reverse OTP as the fallback.
  *
@@ -305,18 +330,19 @@ if (notifyTransport === 'fast2sms' && !fast2smsConfigured) {
  *
  * With this on, /auth/otp/start and /register/start try the transport; the
  * sign-in screen shows the code box, and offers reverse OTP when the send failed
- * or the user did not receive the code. Defaults on for fast2sms, off for
+ * or the user did not receive the code. Defaults on for fast2sms and smsgate, off for
  * everything else, so an existing WhatsApp + reverse-OTP deployment behaves
  * exactly as before until it opts in with OTP_OUTBOUND_FIRST=true.
  */
 const outboundFirst =
-  optional('OTP_OUTBOUND_FIRST', notifyTransport === 'fast2sms' ? 'true' : 'false').toLowerCase() === 'true';
+  optional('OTP_OUTBOUND_FIRST', ['fast2sms', 'smsgate'].includes(notifyTransport) ? 'true' : 'false').toLowerCase() ===
+  'true';
 
 // Shipping the console stub to production means verification codes are written
 // to server logs instead of being delivered. Fail at boot, not at first send.
 if (requireRealServices && notifyTransport === 'console') {
   fatal.push(
-    'A real notification transport is required in production. Configure WhatsApp (WHATSAPP_*) or Fast2SMS (FAST2SMS_API_KEY), or implement another transport in server/services/notify.js.'
+    'A real notification transport is required in production. Configure WhatsApp (WHATSAPP_*), Fast2SMS (FAST2SMS_API_KEY) or SMS Gateway (SMSGATE_*), or implement another transport in server/services/notify.js.'
   );
 }
 
@@ -569,6 +595,15 @@ const config = Object.freeze({
   // which caps its own attempts — see services/otp.js and middleware/rateLimit.js.
 
   notifyTransport,
+
+  smsGate: Object.freeze({
+    configured: smsGateConfigured,
+    username: smsGateUsername,
+    password: smsGatePassword,
+    // The project's free cloud relay by default; point at a self-hosted one if run.
+    baseUrl: optional('SMSGATE_URL', 'https://api.sms-gate.app/3rdparty/v1'),
+    timeoutMs: int('SMSGATE_TIMEOUT_MS', 10000),
+  }),
 
   fast2sms: Object.freeze({
     configured: fast2smsConfigured,
