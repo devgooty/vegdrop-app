@@ -7,8 +7,11 @@
  * decide that no other may be tried at all, and that was a live outage: this
  * project's own host had WhatsApp fully configured and was pinned to
  * `fast2sms`, Fast2SMS answered `status_code 996` to every send, and because
- * sign-in here is passwordless that is every customer locked out — with a
- * working transport one `if` away.
+ * sign-in here is passwordless that pushed every customer onto reverse OTP —
+ * with a working transport one `if` away. (`routes/auth.js` degrades to
+ * `challengeId: null` rather than throwing when an inbound channel exists, so
+ * it was not a total lockout — only everyone who did not pick "verify by
+ * sending us a message".)
  *
  * No database and no server: these are the two pure parts (which transports
  * exist, and what the chain does when one refuses). Credentials are set before

@@ -193,8 +193,14 @@ WhatsApp wins unless `NOTIFY_TRANSPORT=fast2sms`.
 be tried.** It used to mean both, and that was a live outage: this project's own
 host had WhatsApp fully configured and was pinned to `fast2sms`, Fast2SMS
 answered `status_code 996` ("complete website verification") to every send, and
-because sign-in here is passwordless that is every customer locked out — with a
-paid-for, working transport one `if` away. `configuredPhoneTransports()` now puts
+because sign-in here is passwordless that is every customer pushed onto reverse
+OTP — the one path that survives it — while a paid-for, working transport sat
+one `if` away, never tried. (Not a total lockout, and worth stating precisely:
+`routes/auth.js` catches `OTP_DELIVERY_FAILED`, and because
+`WHATSAPP_INBOX_NUMBER` and `WHATSAPP_APP_SECRET` are both set it answers
+`challengeId: null` rather than throwing, so the sign-in screen offers
+`ReverseOtpPanel`. Everyone who did not choose "verify by sending us a message"
+got nothing.) `configuredPhoneTransports()` now puts
 the chosen transport first and every OTHER transport holding credentials after
 it, and `failoverTransport()` walks the chain until one accepts.
 

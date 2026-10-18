@@ -147,8 +147,12 @@ function buildPhoneTransport(name) {
  * others may never be tried at all. That distinction was a live outage: a
  * deployment with WhatsApp fully configured was pinned to `fast2sms`, Fast2SMS
  * answered `status_code 996` ("complete website verification") to every send,
- * and because sign-in here is passwordless that is every customer locked out —
- * while a working, paid-for transport sat one `if` away, unused.
+ * and because sign-in here is passwordless that pushed every customer onto
+ * reverse OTP — the one path that survives an outbound outage — while a working,
+ * paid-for transport sat one `if` away, unused. Not a total lockout, because
+ * `routes/auth.js` answers `challengeId: null` rather than throwing when an
+ * inbound channel is configured; everyone who did not pick "verify by sending
+ * us a message" simply got nothing.
  *
  * Order after the primary is fixed rather than configurable: there is no second
  * preference worth a setting, only "something rather than nothing".
