@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChefHat, Send, Loader2, Check, ShoppingBasket } from 'lucide-react';
+import { ChefHat, Send, Loader2, Check, ShoppingBasket, ShoppingCart } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
 import { sendAssistantMessage, confirmAssistantOrder } from '../services/agent';
 import { ApiRequestError, NetworkError } from '../services/apiClient';
 import useAssistantChat, { updateAssistantChat, historyForServer, liveProposal } from '../hooks/useAssistantChat';
@@ -143,7 +144,12 @@ export default function CookingAssistant({
   deliveryLng,
   onOrderPlaced,
   onRequireSignIn,
+  onAddToCart,
+  onCartFilled,
+  opener,
+  onOpenerTaken,
 }) {
+  const { t } = useLanguage();
   const userId = user?.id;
   const chat = useAssistantChat(userId);
   const { messages, busy } = chat;
@@ -233,6 +239,63 @@ export default function CookingAssistant({
     }
   };
 
+  /**
+   * The helper's basket into the real cart, and the cart opened over it.
+   *
+   * This is where the conversation hands control back. Up to here the helper
+   * has been asking and deciding; from here the shopper checks the cart and
+   * goes to payment, which is the existing flow and not something the helper
+   * should be driving. So it adds, says what it added — and what it could not,
+   * because a line silently dropped is one the shopper discovers at the door —
+   * and opens the cart.
+   *
+   * No order is placed. `handleConfirm` above is still the path for "order it
+   * now without looking", which the server also reaches when the customer types
+   * "confirm"; this one stops at a full cart.
+   */
+  const handleAddLinesToCart = () => {
+    if (!proposedOrder || busy || !userId || !onAddToCart) return;
+    setError('');
+
+    const { added, missing } = onAddToCart(proposedOrder.lines || []);
+
+    const message =
+      added.length === 0
+        ? t('assistant.addedNothing')
+        : missing.length > 0
+          ? t('assistant.addedSome', { items: added.join(', '), missing: missing.join(', ') })
+          : t('assistant.addedToCart', { items: added.join(', ') });
+
+    updateAssistantChat(
+      userId,
+      (prev) => ({
+        // The preview is spent either way: its lines are in the cart now, and
+        // leaving it on screen would invite a second tap that doubled them.
+        proposedOrder: null,
+        messages: [...prev.messages, { role: 'assistant', content: message }],
+      }),
+      { claim: true }
+    );
+
+    // Only when something actually landed. Opening an empty cart over a message
+    // explaining that nothing could be added is two contradictory answers.
+    if (added.length > 0) onCartFilled?.();
+  };
+
+  /**
+   * A question the home card asked for the shopper. Sent once, then cleared by
+   * the parent — the chat unmounts on every tab switch, so a prop left in place
+   * would re-ask it each time they came back.
+   */
+  useEffect(() => {
+    if (!opener || !userId || busy) return;
+    onOpenerTaken?.();
+    send(opener);
+    // `send` and `busy` are read at call time; re-running on either would
+    // re-send the question the moment the reply landed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opener, userId]);
+
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full bg-[#FAF7F2] animate-fade-in">
       <div className="shrink-0 px-4 pt-safe-3 pb-2 border-b border-[#E8E2D6] bg-[#FAF7F2]/95">
@@ -241,8 +304,8 @@ export default function CookingAssistant({
             <ChefHat className="w-4 h-4" />
           </div>
           <div>
-            <h2 className="text-[15px] font-black text-[#1B4D3E]">Cooking helper</h2>
-            <p className="text-[11px] text-[#8A7E6B] font-semibold">Dish or veggies → steps → order</p>
+            <h2 className="text-[15px] font-black text-[#1B4D3E]">{t('assistant.title')}</h2>
+            <p className="text-[11px] text-[#8A7E6B] font-semibold">{t('assistant.subtitle')}</p>
           </div>
         </div>
       </div>
@@ -260,7 +323,10 @@ export default function CookingAssistant({
                     : 'bg-white border border-[#E8E2D6] text-[#1F2937] rounded-bl-md shadow-sm'
                 }`}
               >
-                {formatChatText(m.content)}
+                {/* The opener is the one line the app wrote rather than the
+                    model, so it is the one line that has to follow the language
+                    setting — including a change made after the chat started. */}
+                {formatChatText(m.greeting ? t('assistant.greeting') : m.content)}
                 {matches.length > 0 && (
                   <ul className="mt-2 space-y-1.5 whitespace-normal">
                     {matches.map((c) => (
@@ -293,7 +359,7 @@ export default function CookingAssistant({
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3 space-y-2 shadow-sm">
             <div className="flex items-center gap-2 text-emerald-900">
               <ShoppingBasket className="w-4 h-4" />
-              <span className="text-[12.5px] font-black">Order preview</span>
+              <span className="text-[12.5px] font-black">{t('assistant.basketTitle')}</span>
             </div>
             <ul className="text-[12px] text-emerald-950 space-y-1">
               {(proposedOrder.lines || [])
@@ -311,7 +377,7 @@ export default function CookingAssistant({
             </ul>
             {proposedOrder.deliveryFeePaise > 0 && (
               <p className="text-[11.5px] text-emerald-900 flex justify-between">
-                <span>Delivery</span>
+                <span>{t('assistant.deliveryFee')}</span>
                 <span>₹{rupees(proposedOrder.deliveryFeePaise)}</span>
               </p>
             )}
@@ -331,34 +397,56 @@ export default function CookingAssistant({
               <p className="text-[11.5px] text-emerald-800/80">From your kitchen: {proposedOrder.fromYourKitchen.join(', ')}</p>
             )}
             <p className="text-[12.5px] font-black text-emerald-950 flex justify-between">
-              <span>Total</span>
+              <span>{t('assistant.total')}</span>
               <span>₹{rupees(proposedOrder.totalPaise)}</span>
             </p>
-            <div className="flex gap-2 pt-1">
+            {/*
+              Adding to the cart is the primary act, not placing the order.
+
+              The shopper gets to see the helper's work in the basket they
+              already know, change it, and start the payment flow that every
+              other route into checkout uses — rather than the helper buying on
+              their behalf from a preview. "Order now" is kept, quieter, because
+              the server still honours a typed "confirm" and a screen that
+              offered no such button while the chat accepted the word would be
+              two different answers to the same question.
+            */}
+            <div className="pt-1 space-y-2">
               <button
                 type="button"
-                onClick={() => updateAssistantChat(userId, () => ({ proposedOrder: null }), { claim: true })}
+                onClick={handleAddLinesToCart}
                 disabled={busy}
-                className="flex-1 py-2.5 rounded-xl border border-emerald-200 text-[12.5px] font-bold text-emerald-900"
+                className="w-full py-3 rounded-xl bg-[#1B4D3E] text-white text-[13px] font-black flex items-center justify-center gap-1.5 disabled:opacity-60"
               >
-                Cancel
+                {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShoppingCart className="w-4 h-4" />}
+                {t('assistant.addToCart')}
               </button>
-              <button
-                type="button"
-                onClick={handleConfirm}
-                disabled={busy}
-                className="flex-1 py-2.5 rounded-xl bg-[#1B4D3E] text-white text-[12.5px] font-bold flex items-center justify-center gap-1.5"
-              >
-                {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                Confirm order
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => updateAssistantChat(userId, () => ({ proposedOrder: null }), { claim: true })}
+                  disabled={busy}
+                  className="flex-1 py-2.5 rounded-xl border border-emerald-200 text-[12.5px] font-bold text-emerald-900 disabled:opacity-60"
+                >
+                  {t('assistant.cancel')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  disabled={busy}
+                  className="flex-1 py-2.5 rounded-xl border border-emerald-300 bg-white/70 text-[12.5px] font-bold text-emerald-900 flex items-center justify-center gap-1.5 disabled:opacity-60"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  {t('assistant.orderNow')}
+                </button>
+              </div>
             </div>
           </div>
         )}
 
         {busy && (
           <p className="text-[12px] text-[#8A7E6B] flex items-center gap-2 px-1">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Thinking…
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('assistant.thinking')}
           </p>
         )}
         {error && (
@@ -386,7 +474,7 @@ export default function CookingAssistant({
 
       {!userId ? (
         <div className="shrink-0 p-3 border-t border-[#E8E2D6] bg-[#FAF7F2] flex items-center gap-2">
-          <p className="flex-1 text-[12.5px] font-semibold text-[#5C5343]">Sign in to chat with the cooking helper.</p>
+          <p className="flex-1 text-[12.5px] font-semibold text-[#5C5343]">{t('assistant.signInPrompt')}</p>
           <button
             type="button"
             onClick={() => onRequireSignIn?.()}
@@ -406,7 +494,12 @@ export default function CookingAssistant({
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Gutti vankaya… or I have potato, beans…"
+          placeholder={busy ? t('assistant.working') : t('assistant.placeholder')}
+          /* The input is closed while the helper is explaining, asking or
+             putting things in the cart, and opens again the moment it is done —
+             a reply sent into the middle of a turn arrives as the answer to the
+             question before last. `busy` lives in the store, not here, so
+             leaving the tab mid-reply and coming back still shows it closed. */
           disabled={busy}
           className="flex-1 min-w-0 bg-white border border-[#DCD5C6] rounded-xl px-3.5 py-3 text-[13px] outline-none focus:border-[#1B4D3E]"
         />

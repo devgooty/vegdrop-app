@@ -255,7 +255,7 @@ async function proposeFor(user, session, recipeId, context) {
       `Here's a cart for **${detail.name}** (for ${preview.servings}).\n` +
         `Total ₹${preview.total}${preview.deliveryFee ? ` including ₹${preview.deliveryFee} delivery` : ' (free delivery)'}.\n` +
         (notes.length ? `\n${notes.join('\n')}\n` : '') +
-        `\nTap **Confirm order** below (or reply **confirm**) to place it.`,
+        `\nTap **Add to cart** below to put these in your cart \u2014 you can check it and go to payment from there. Or reply **confirm** to order them straight away.`,
       { cards: [{ type: 'proposal', ...preview }], proposedOrder: preview }
     );
   } catch (err) {

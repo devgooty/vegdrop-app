@@ -15,6 +15,7 @@ import SearchDiscovery from './components/SearchDiscovery';
 import ProductDetailView from './components/ProductDetailView';
 import CustomerOrders from './components/CustomerOrders';
 import CookingAssistant from './components/CookingAssistant';
+import AssistantHomeCard from './components/AssistantHomeCard';
 import { clearAssistantChat } from './hooks/useAssistantChat';
 import LoginPage from './components/LoginPage';
 import FlyToCartOverlay from './components/FlyToCartOverlay';
@@ -2095,6 +2096,121 @@ export default function App() {
   }, [cartItems]);
 
   /**
+   * The cooking helper putting its basket into the real cart.
+   *
+   * The helper's preview is built by `propose_order` on the server, which
+   * already resolved every vegetable to a product id and a whole number of that
+   * seller's packs. So this does not re-decide anything — it maps each line back
+   * to the product row the shopper would have tapped and adds it, which is the
+   * only way the cart ends up holding lines indistinguishable from hand-picked
+   * ones. Anything else (a line shaped by the helper rather than the catalog)
+   * would be a second definition of what a basket row is, and `catalogKeyOf`
+   * would stop folding the two together.
+   *
+   * It deliberately does NOT place an order. The cart is where the shopper
+   * checks the helper's work and where the existing payment flow starts, so the
+   * helper's job ends at a full cart and an open sheet.
+   *
+   * Quantities are applied in one updater rather than by calling
+   * `handleAddToCart` per pack: that one adds a single unit and fires the
+   * fly-to-cart animation, so a five-pack line would queue five animations and
+   * five separate state updates reading the same `prev`.
+   *
+   * @returns {{ added: string[], missing: string[] }} what landed, and what this
+   *   market turned out not to sell — the helper says both out loud, because a
+   *   line quietly dropped is one the shopper finds out about at the door.
+   */
+  const handleAssistantAddToCart = useCallback((lines) => {
+    const wanted = (Array.isArray(lines) ? lines : []).filter(
+      (line) => line && line.productId && !line.missingFromCatalog
+    );
+
+    // The market's own sheet first, for the same reason every other screen
+    // prefers it: it is what checkout will bill. The platform catalog is the
+    // fallback for a preview built without a market.
+    const findProduct = (productId) => {
+      const id = String(productId);
+      const matches = (list) =>
+        list.find((p) => String(p.originalId ?? p.id) === id || String(p.id) === id);
+      return matches(browseProducts) || matches(products) || null;
+    };
+
+    const added = [];
+    const missing = [];
+    const resolved = [];
+
+    for (const line of wanted) {
+      const product = findProduct(line.productId);
+      // Present in the helper's preview but not in the sheet this screen is
+      // showing — a market switched since the preview was built, or a listing
+      // pulled. Named rather than skipped.
+      if (!product || product.stock === 0) {
+        missing.push(line.name || '');
+        continue;
+      }
+      const quantity = Math.max(1, Math.round(Number(line.quantity)) || 1);
+      resolved.push({ product, quantity });
+      added.push(productName(product, language));
+    }
+
+    for (const line of (Array.isArray(lines) ? lines : [])) {
+      if (line?.missingFromCatalog) missing.push(line.name || '');
+    }
+
+    if (resolved.length > 0) {
+      const setTargetCart = shoppingMode === 'scheduled' ? setScheduledCartItems : setCartItems;
+      setTargetCart((prev) => {
+        // One pass over `prev`, exactly as handleAddToCart does and for the same
+        // reason — it is the only view that reflects updates already queued.
+        let next = prev;
+        for (const { product, quantity } of resolved) {
+          const key = cartLineKeyOf(product);
+          const existing = next.find((item) => cartLineKeyOf(item) === key);
+          if (existing) {
+            next = next.map((item) =>
+              cartLineKeyOf(item) === key ? { ...item, quantity: item.quantity + quantity } : item
+            );
+            continue;
+          }
+          next = [...next, {
+            id: product.id,
+            // Every one of these fields is named for the reason spelled out at
+            // length in handleAddToCart: a line rebuilt from a fixed list drops
+            // anything not mentioned, and each of these has been dropped once.
+            originalId: product.originalId ?? product.id,
+            name: product.name,
+            nameTe: product.nameTe || '',
+            nameHi: product.nameHi || '',
+            catalogItem: product.catalogItem || null,
+            units: unitsOf(product),
+            price: product.price,
+            quantity,
+            image: product.image,
+          }];
+        }
+        return next;
+      });
+    }
+
+    return { added, missing: [...new Set(missing.filter(Boolean))] };
+  }, [browseProducts, products, shoppingMode, setCartItems, setScheduledCartItems, language]);
+
+  /**
+   * A question the home card asked on the shopper's behalf, waiting for the
+   * chat to open and send it.
+   *
+   * Held here rather than passed as a prop the chat sends on mount: the chat is
+   * unmounted on every tab switch, so a prop would re-send the same question
+   * each time the shopper came back to the tab. Taking it clears it.
+   */
+  const [assistantOpener, setAssistantOpener] = useState(null);
+
+  const openAssistantWith = useCallback((question) => {
+    setAssistantOpener(question || null);
+    setActiveTab('assistant');
+  }, []);
+
+  /**
    * Everything that opens over a tab gets a history entry, so the back button
    * closes it instead of changing the tab underneath — see lib/backStack.js.
    * Declared here, where the state lives, rather than inside each overlay:
@@ -2375,6 +2491,15 @@ export default function App() {
                       nothing once answered, or if permission is already settled
                       either way.
                     */}
+                    {/* The helper's greeting, before the aisles: it is the one
+                        thing on this screen that can turn "what do I cook
+                        tonight" into a full cart, and below the categories
+                        nobody scrolling for tomatoes would ever meet it. */}
+                    <AssistantHomeCard
+                      onOpen={() => openAssistantWith(null)}
+                      onAsk={openAssistantWith}
+                    />
+
                     <LocationPrimer onLocated={setCustomerCoords} />
 
                     {/* Location refused or switched off: switch it on, or pick
@@ -2479,6 +2604,10 @@ export default function App() {
                     fetchOrders({ limit: 100 }).then(setOrders).catch(() => {});
                   }}
                   onRequireSignIn={() => setActiveTab('login')}
+                  onAddToCart={handleAssistantAddToCart}
+                  onCartFilled={() => setIsCartOpen(true)}
+                  opener={assistantOpener}
+                  onOpenerTaken={() => setAssistantOpener(null)}
                 />
               ) : (
                 /* ACCOUNT & ROLE SWITCHER TAB.
