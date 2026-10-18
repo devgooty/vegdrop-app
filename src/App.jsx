@@ -2141,10 +2141,20 @@ export default function App() {
 
     for (const line of wanted) {
       const product = findProduct(line.productId);
-      // Present in the helper's preview but not in the sheet this screen is
-      // showing — a market switched since the preview was built, or a listing
-      // pulled. Named rather than skipped.
-      if (!product || product.stock === 0) {
+      /*
+        Present in the helper's preview but not in the sheet this screen is
+        showing — a market switched since the preview was built, or a listing
+        pulled. Named rather than skipped.
+
+        Stock is taken from the LINE, not from the product row, whenever the
+        line carries it: the helper read it from the shop's records on the turn
+        that built this basket, while the catalog this screen holds was served
+        with a 30-second cache and up to two minutes of stale-while-revalidate
+        behind it. Of the two numbers the fresher one decides, and it is not the
+        one in the browser.
+      */
+      const liveStock = typeof line.stock === 'number' ? line.stock : product?.stock;
+      if (!product || liveStock === 0) {
         missing.push(line.name || '');
         continue;
       }

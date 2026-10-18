@@ -11,7 +11,53 @@ const proposals = require('./proposals');
 const DELIVERY_FEE_PAISE = 2500;
 const FREE_DELIVERY_THRESHOLD_PAISE = 30000;
 
-const SELECT = 'name weight pricePaise stock owner sku catalogItem';
+/*
+  What the helper is allowed to know about a product.
+
+  Read fresh from Mongo on every turn, never cached: a vendor quoting
+  yesterday's rate or selling what sold out an hour ago is the one thing this
+  assistant must not do, and the HTTP catalog's 30-second cache deliberately
+  does not apply here — these are per-turn queries, not a public GET.
+
+  `rating` and `reviews` are on the model and were simply not projected, so the
+  helper could not answer "is it any good" about produce the storefront rates on
+  every card. Adding a field here is all it takes to let the helper speak about
+  it; keep this list to facts a customer may be told, since every one of them
+  can reach the chat.
+*/
+const SELECT = 'name weight pricePaise stock owner sku catalogItem rating reviews';
+
+/** Packs at or below which the helper says "running low" rather than a count. */
+const LOW_STOCK_PACKS = 3;
+
+/**
+ * One product as the helper may describe it: live price, live stock, and how
+ * other customers rated it.
+ *
+ * `inStock` and `stockLevel` are both here on purpose. The helper needs the
+ * boolean to decide whether to offer the item at all, and the word to say
+ * something a vendor would say — "only two packs left" is useful, the raw count
+ * invites it to quote inventory depth at people, which is the shop's business
+ * and not the customer's.
+ */
+function productView(p) {
+  const stock = Number(p.stock) || 0;
+  return {
+    productId: String(p._id),
+    name: p.name,
+    weight: p.weight,
+    pricePaise: p.pricePaise,
+    price: p.pricePaise / 100,
+    stock,
+    inStock: stock > 0,
+    stockLevel: stock === 0 ? 'out' : stock <= LOW_STOCK_PACKS ? 'low' : 'ok',
+    // Zero reviews is not a rating of zero, and a helper told `rating: 0` will
+    // say the tomatoes are rated nought out of five. Null means unrated.
+    rating: Number(p.reviews) > 0 && Number(p.rating) > 0 ? Number(p.rating) : null,
+    reviews: Number(p.reviews) || 0,
+  };
+}
+
 
 function escapeRegex(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -116,15 +162,7 @@ async function searchCatalog({ query, limit = 8 }) {
       .lean();
   }
 
-  return rows.map((p) => ({
-    productId: String(p._id),
-    name: p.name,
-    weight: p.weight,
-    pricePaise: p.pricePaise,
-    price: p.pricePaise / 100,
-    stock: p.stock,
-    inStock: p.stock > 0,
-  }));
+  return rows.map(productView);
 }
 
 async function listMatchingRecipesTool({ vegetables, servings }) {
@@ -163,7 +201,7 @@ async function proposeOrderTool(user, { recipeId, servings, items, marketId, sho
       if (!/^[0-9a-f]{24}$/i.test(id) || seen.has(id)) continue;
       seen.add(id);
       const product = await Product.findOne({ _id: id, isActive: true })
-        .select('name weight pricePaise stock')
+        .select(SELECT)
         .lean();
       if (!product) continue;
       const quantity = Math.min(99, Math.max(1, Math.round(Number(item.quantity)) || 1));
@@ -174,6 +212,13 @@ async function proposeOrderTool(user, { recipeId, servings, items, marketId, sho
         quantity,
         unitPricePaise: product.pricePaise,
         lineTotalPaise: product.pricePaise * quantity,
+        // Live, as of this turn. The basket card shows it, and the client's
+        // add-to-cart trusts it over its own catalog copy, which is served with
+        // a 30-second cache and can be older than this answer.
+        stock: Number(product.stock) || 0,
+        rating: Number(product.reviews) > 0 && Number(product.rating) > 0 ? Number(product.rating) : null,
+        reviews: Number(product.reviews) || 0,
+        ...(Number(product.stock) < quantity ? { lowStock: true } : {}),
       });
     }
   } else if (recipeId) {
@@ -221,6 +266,9 @@ async function proposeOrderTool(user, { recipeId, servings, items, marketId, sho
         neededGrams: grams,
         unitPricePaise: product.pricePaise,
         lineTotalPaise: product.pricePaise * quantity,
+        stock: Number(product.stock) || 0,
+        rating: Number(product.reviews) > 0 && Number(product.rating) > 0 ? Number(product.rating) : null,
+        reviews: Number(product.reviews) || 0,
         ...(product.stock < quantity ? { lowStock: true } : {}),
       });
     }

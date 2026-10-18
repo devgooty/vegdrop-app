@@ -369,7 +369,27 @@ export default function CookingAssistant({
                     <span>
                       {l.name} × {l.quantity}
                       {l.weight ? <span className="text-emerald-800/70"> ({l.weight})</span> : null}
-                      {l.lowStock ? <span className="text-amber-700 font-bold"> · low stock</span> : null}
+                      {/* Read from the shop's records on the turn that built
+                          this basket, so it is worth showing: a shopper looking
+                          at "only 2 left" decides differently from one looking
+                          at a bare price. `reviews` travels with the rating
+                          because 4.5 from two people is not 4.5 from two
+                          hundred, and a rating with no count invites the
+                          shopper to read it as the latter. */}
+                      {l.rating ? (
+                        <span className="text-emerald-800/70">
+                          {' '}· ★{l.rating.toFixed(1)}
+                          {l.reviews ? ` (${l.reviews})` : ''}
+                        </span>
+                      ) : null}
+                      {l.lowStock ? (
+                        <span className="text-amber-700 font-bold">
+                          {/* `lowStock` means the shop holds fewer than this
+                              line asks for, which includes holding none —
+                              "only 0 left" is not a sentence. */}
+                          {l.stock > 0 ? ` · only ${l.stock} left` : ' · out of stock'}
+                        </span>
+                      ) : null}
                     </span>
                     <span className="font-bold">₹{rupees(l.lineTotalPaise)}</span>
                   </li>

@@ -21,7 +21,7 @@ const {
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const { listMatchingRecipes, extractVegetables } = require('../services/agent/recipes');
-const { getOrderStatusTool } = require('../services/agent/tools');
+const { getOrderStatusTool, searchCatalog, proposeOrderTool } = require('../services/agent/tools');
 
 test.before(startTestServer);
 test.after(stopTestServer);
@@ -174,6 +174,77 @@ test('propose then confirm places exactly one order', async () => {
  * The tool is called directly rather than through `/agent/chat`: the route
  * needs a model to decide to call it, and the scoping is the thing under test.
  */
+test('the catalog the helper reads is live, and carries stock level and rating', async () => {
+  const tomato = await Product.create({
+    sku: `TOM-LIVE-${Date.now()}`,
+    categoryId: 2,
+    name: 'Desi Tomatoes (Tamatar)',
+    weight: '1kg',
+    pricePaise: 4000,
+    stock: 50,
+    rating: 4.3,
+    reviews: 18,
+    owner: null,
+  });
+
+  const [first] = await searchCatalog({ query: 'tomato' });
+  assert.equal(first.productId, String(tomato._id));
+  assert.equal(first.pricePaise, 4000);
+  assert.equal(first.inStock, true);
+  assert.equal(first.stockLevel, 'ok');
+  assert.equal(first.rating, 4.3);
+  assert.equal(first.reviews, 18);
+
+  // The price and the stock are read on the call, not cached from the last one:
+  // a vendor quoting a rate that moved an hour ago is the failure this tool
+  // exists to avoid.
+  await Product.updateOne({ _id: tomato._id }, { $set: { pricePaise: 5500, stock: 2 } });
+  const [again] = await searchCatalog({ query: 'tomato' });
+  assert.equal(again.pricePaise, 5500);
+  assert.equal(again.stockLevel, 'low');
+  assert.equal(again.inStock, true);
+
+  await Product.updateOne({ _id: tomato._id }, { $set: { stock: 0 } });
+  const [sold] = await searchCatalog({ query: 'tomato' });
+  assert.equal(sold.inStock, false);
+  assert.equal(sold.stockLevel, 'out');
+});
+
+test('an unrated product is not reported as rated zero', async () => {
+  // `rating` defaults to 0 on the model, and a helper handed 0 says the
+  // tomatoes are rated nought out of five. Unrated has to be absent, not zero.
+  await Product.create({
+    sku: `TOM-NEW-${Date.now()}`,
+    categoryId: 2,
+    name: 'Desi Tomatoes (Tamatar)',
+    weight: '1kg',
+    pricePaise: 4000,
+    stock: 10,
+    owner: null,
+  });
+  const [row] = await searchCatalog({ query: 'tomato' });
+  assert.equal(row.rating, null);
+  assert.equal(row.reviews, 0);
+});
+
+test('a basket line carries the stock and rating it was priced against', async () => {
+  const { tomato } = await seedTomatoPotato();
+  await Product.updateOne({ _id: tomato._id }, { $set: { stock: 1, rating: 4.1, reviews: 7 } });
+  const { user } = await authenticatedUser('customer');
+
+  const preview = await proposeOrderTool(user, {
+    items: [{ productId: String(tomato._id), quantity: 3 }],
+  });
+  const line = preview.lines.find((l) => l.productId === String(tomato._id));
+
+  // The client adds to the cart from these numbers rather than from its own
+  // catalog copy, which is served with a 30-second cache.
+  assert.equal(line.stock, 1);
+  assert.equal(line.rating, 4.1);
+  assert.equal(line.reviews, 7);
+  assert.equal(line.lowStock, true, 'three packs asked of a shop holding one');
+});
+
 test('the order-status tool refuses an order belonging to someone else', async () => {
   const mine = await authenticatedUser('customer');
   const theirs = await authenticatedUser('customer');
