@@ -2012,6 +2012,14 @@ export default function App() {
   const handleOpenProductFromSearch = useCallback((product) => {
     setSearchQuery('');
     setSearchVal('');
+    // The discovery overlay has to be closed here too, not just emptied.
+    // `searchScreenOpen` hides it while a product is open, so leaving this
+    // true looked fine — but its back-stack layer stayed registered behind
+    // the product page, and backing out of the product reopened the search
+    // overlay instead of returning to the tab underneath. Only the second
+    // press got out. `handleOpenCategoryFromSearch` always closed it; this
+    // path was the one that did not.
+    setSearchDiscoveryOpen(false);
     setActiveCategoryDetail(null);
     handleOpenProductDetail(product);
   }, [handleOpenProductDetail]);
@@ -2093,11 +2101,29 @@ export default function App() {
    * the sign-in screen unmounts this whole tree, and a basket still open
    * behind it must keep its entry.
    */
-  useBackLayer(searchDiscoveryOpen, handleClearSearch);
-  useBackLayer(Boolean(searchQuery), handleClearSearch);
+  /*
+    One entry for search, not one per state. The overlay and the results screen
+    are two phases of the same thing and `handleClearSearch` leaves both, so two
+    layers meant submitting a query churned history on every search — the
+    overlay's layer closing with a go(-1) while the results layer pushed, the
+    push waiting on an asynchronous traversal to land. One layer spans the
+    phases: nothing is pushed or popped between them.
+  */
+  useBackLayer(searchDiscoveryOpen || Boolean(searchQuery), handleClearSearch);
   useBackLayer(Boolean(activeCategoryDetail), () => setActiveCategoryDetail(null));
   useBackLayer(Boolean(activeProductDetail), () => setActiveProductDetail(null));
   useBackLayer(activeTab === 'account' && activeAccountView !== 'menu', () => setActiveAccountView('menu'));
+  /*
+    The edit form replaces the profile card, so back has to leave the form
+    before it leaves the section. Without its own entry the section's layer
+    fired first and jumped straight to the account menu, throwing away whatever
+    had been typed. Declared after that layer so it sits above it: back closes
+    the form, and the next press leaves the section.
+  */
+  useBackLayer(
+    activeTab === 'account' && activeAccountView === 'profile' && isEditingProfile,
+    () => setIsEditingProfile(false),
+  );
   useBackLayer(isCartOpen, () => setIsCartOpen(false));
   useBackLayer(isScheduledCartOpen, () => setIsScheduledCartOpen(false));
   useBackLayer(isWalletOpen, () => setIsWalletOpen(false));
@@ -2480,7 +2506,13 @@ export default function App() {
                         */
                         <div className="relative flex items-center mb-4">
                           <button
-                            onClick={() => setActiveAccountView('menu')}
+                            onClick={() => {
+                              // Leaving the section ends the edit, or its layer
+                              // outlives the screen that showed it — a history
+                              // entry with nothing on screen to close.
+                              setIsEditingProfile(false);
+                              setActiveAccountView('menu');
+                            }}
                             className="p-2 bg-white rounded-xl shadow-sm border border-slate-100 text-slate-600 hover:text-[#1B4D3E] transition-colors cursor-pointer active:scale-95"
                           >
                             <ArrowLeft className="w-5 h-5" />
