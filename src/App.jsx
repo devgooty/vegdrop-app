@@ -2125,14 +2125,25 @@ export default function App() {
       (line) => line && line.productId && !line.missingFromCatalog
     );
 
-    // The market's own sheet first, for the same reason every other screen
-    // prefers it: it is what checkout will bill. The platform catalog is the
-    // fallback for a preview built without a market.
+    /*
+      The sheet this screen is showing, and nothing behind it.
+
+      This used to fall back to the platform catalog when a line was not in the
+      sheet. That fallback is redundant when no market or shop is chosen —
+      `browseProducts` IS the platform catalog then — and wrong when one is:
+      it would put a platform-priced row into a basket checkout bills from the
+      market's own sheet, which is the "shows one price and charges another"
+      failure this codebase already fixed once when a basket was carried to a
+      shop. A line the chosen seller does not sell is reported missing, which
+      is what the preview already says about it.
+    */
     const findProduct = (productId) => {
       const id = String(productId);
-      const matches = (list) =>
-        list.find((p) => String(p.originalId ?? p.id) === id || String(p.id) === id);
-      return matches(browseProducts) || matches(products) || null;
+      return (
+        browseProducts.find(
+          (p) => String(p.originalId ?? p.id) === id || String(p.id) === id
+        ) || null
+      );
     };
 
     const added = [];
@@ -2215,7 +2226,7 @@ export default function App() {
     }
 
     return { added, missing: [...new Set(missing.filter(Boolean))] };
-  }, [browseProducts, products, shoppingMode, setCartItems, setScheduledCartItems, language]);
+  }, [browseProducts, shoppingMode, setCartItems, setScheduledCartItems, language]);
 
   /**
    * The translation KEY of the question the home card put to the shopper,
@@ -2629,7 +2640,13 @@ export default function App() {
                   }}
                   onRequireSignIn={() => setActiveTab('login')}
                   onAddToCart={handleAssistantAddToCart}
-                  onCartFilled={() => setIsCartOpen(true)}
+                  /* The cart the lines actually went INTO. `handleAssistantAddToCart`
+                     writes to the scheduled basket in scheduled mode, so opening
+                     the regular one would show the shopper an unchanged basket
+                     and the helper would look like it had done nothing. */
+                  onCartFilled={() =>
+                    shoppingMode === 'scheduled' ? setIsScheduledCartOpen(true) : setIsCartOpen(true)
+                  }
                   opener={assistantOpener}
                   onOpenerTaken={() => setAssistantOpener(null)}
                 />
