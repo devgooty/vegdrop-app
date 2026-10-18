@@ -60,6 +60,17 @@ test('the chosen transport is first, and the others are still reachable', () => 
   assert.deepEqual(configuredPhoneTransports(), ['fast2sms', 'whatsapp']);
 });
 
+test('a chain reports whether it can reach anyone, rather than assuming it can', () => {
+  const reaching = { name: 'whatsapp', transport: { reachesRecipient: true, async send() {} } };
+  const stub = { name: 'console', transport: { reachesRecipient: false, async send() {} } };
+
+  // `reachesRecipient` decides whether routes/auth.js attempts an outbound code
+  // at all. A chain that claims delivery it cannot make hands back a
+  // challengeId for a code nobody received, instead of offering reverse OTP.
+  assert.equal(failoverTransport([stub, reaching]).reachesRecipient, true);
+  assert.equal(failoverTransport([stub, stub]).reachesRecipient, false);
+});
+
 test('a refusing primary hands the SAME code to the next transport', async () => {
   const primary = spy('fast2sms', { fails: true });
   const backup = spy('whatsapp');

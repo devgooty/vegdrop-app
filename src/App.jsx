@@ -2192,7 +2192,19 @@ export default function App() {
             nameTe: product.nameTe || '',
             nameHi: product.nameHi || '',
             catalogItem: product.catalogItem || null,
-            units: unitsOf(product),
+            /*
+              One, always — not `unitsOf(product)`.
+
+              `propose_order` already counted the seller's packs, so `quantity`
+              IS the pack count and checkout multiplies by `units` on top of it
+              (`quantity * unitsOf(line)`). Reading units off the product row is
+              correct only while nothing in `browseProducts` is a size variant,
+              which is true today and is an assumption about data rather than a
+              fact about this line. Stating 1 makes the arithmetic right however
+              that array is later filled — the same trap as the 250g pack billed
+              as 1kg, in the other direction.
+            */
+            units: 1,
             price: product.price,
             quantity,
             image: product.image,

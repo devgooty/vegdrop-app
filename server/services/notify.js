@@ -159,6 +159,18 @@ function buildPhoneTransport(name) {
  */
 function configuredPhoneTransports() {
   const primary = config.notifyTransport;
+
+  /*
+    The console stub never falls over to anything, and nothing falls over to it.
+
+    Choosing it is a deliberate "print codes, do not send them" — a developer
+    with WhatsApp credentials in their .env has not asked to message real phones
+    from their laptop, and a chain would do exactly that the first time the stub
+    was skipped. It cannot be a FALLBACK either: it swallows every send, so it
+    would end the chain by succeeding without delivering anything.
+  */
+  if (primary === 'console') return [primary];
+
   const rest = ['whatsapp', 'fast2sms', 'smsgate'].filter(
     (name) => name !== primary && config.transportCredentials[name]
   );
@@ -183,7 +195,15 @@ function configuredPhoneTransports() {
 function failoverTransport(entries) {
   return {
     name: entries.map((e) => e.name).join('>'),
-    reachesRecipient: true,
+    /*
+      Asked of the CHAIN, not assumed of it.
+
+      `reachesRecipient` decides whether `routes/auth.js` attempts an outbound
+      code at all, so hardcoding true here would claim delivery a chain of
+      stubs cannot make — and the caller would hand back a challengeId for a
+      code nobody received, instead of offering reverse OTP.
+    */
+    reachesRecipient: entries.some((e) => e.transport.reachesRecipient !== false),
     async send(message) {
       let lastError = null;
       for (const { name, transport } of entries) {
