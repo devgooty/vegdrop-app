@@ -38,8 +38,22 @@ const MAX_KEPT_MESSAGES = 100;
 /** Server-side proposal lifetime, used when a preview does not state its own. */
 const DEFAULT_PROPOSAL_MINUTES = 10;
 
+/**
+ * The first thing the helper says.
+ *
+ * `greeting: true` is what makes it translatable. The store is persisted, and
+ * the customer can change language after the conversation has started, so
+ * baking the text in would leave an English opener above a Telugu chat (and
+ * would need a migration to fix the copies already in sessionStorage). The flag
+ * says "this line is the opener"; `CookingAssistant` renders it from
+ * `assistant.greeting` in whatever language is current. `content` is kept as
+ * the English text so the line is still readable to anything that reads the
+ * store without a translator — including the history sent to the server, which
+ * filters on `content` being a non-empty string.
+ */
 export const GREETING = Object.freeze({
   role: 'assistant',
+  greeting: true,
   content:
     "Hi! Name a dish — gutti vankaya, aloo gobi, palak paneer — or tell me the vegetables you have. I'll give you a tested recipe and can put the vegetables in your cart.",
 });

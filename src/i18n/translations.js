@@ -1956,6 +1956,76 @@ const STRINGS = {
   'splash.greetMorning': { en: 'Good morning', hi: 'सुप्रभात', te: 'శుభోదయం' },
   'splash.greetAfternoon': { en: 'Good afternoon', hi: 'नमस्कार', te: 'శుభ మధ్యాహ్నం' },
   'splash.greetEvening': { en: 'Good evening', hi: 'शुभ संध्या', te: 'శుభ సాయంత్రం' },
+  // --- Cooking assistant: the home greeting card and the cart handover ------
+  // The greeting is translated because it is the first thing the app says to
+  // someone, and a greeting in a language the reader did not choose is the one
+  // string where English is actively unwelcoming. The chat's own chrome below
+  // is translated for the same reason; the model's replies come back in
+  // whatever language the customer writes in, which is handled in the prompt,
+  // not here.
+  'assistant.hello': { en: 'Hello!', hi: 'नमस्ते!', te: 'నమస్కారం!' },
+  'assistant.homeIntro': {
+    en: 'I can find a recipe and put the vegetables straight into your cart.',
+    hi: 'मैं रेसिपी ढूँढकर सब्ज़ियाँ सीधे आपके कार्ट में डाल सकता हूँ।',
+    te: 'నేను వంటకం వెతికి కూరగాయలను నేరుగా మీ కార్ట్‌లో వేయగలను.',
+  },
+  'assistant.askVeggies': {
+    en: 'Which vegetables do you want to buy?',
+    hi: 'आप कौन सी सब्ज़ियाँ ख़रीदना चाहते हैं?',
+    te: 'మీరు ఏమేం కూరగాయలు కొనాలనుకుంటున్నారు?',
+  },
+  'assistant.askCook': {
+    en: 'What do you want to cook?',
+    hi: 'आप क्या बनाना चाहते हैं?',
+    te: 'మీరు ఏం వంటకం చేయాలనుకుంటున్నారు?',
+  },
+  'assistant.openCta': { en: 'Ask the helper', hi: 'सहायक से पूछें', te: 'సహాయకుడిని అడగండి' },
+  'assistant.title': { en: 'Cooking helper', hi: 'रसोई सहायक', te: 'వంట సహాయకుడు' },
+  'assistant.subtitle': {
+    en: 'Dish or vegetables → recipe → cart',
+    hi: 'व्यंजन या सब्ज़ियाँ → रेसिपी → कार्ट',
+    te: 'వంటకం లేదా కూరగాయలు → రెసిపీ → కార్ట్',
+  },
+  'assistant.greeting': {
+    en: "Name a dish \u2014 gutti vankaya, aloo gobi, palak paneer \u2014 or tell me which vegetables you have. I'll give you a tested recipe and can put the vegetables in your cart.",
+    hi: 'कोई व्यंजन बताइए \u2014 गुट्टी वंकाया, आलू गोभी, पालक पनीर \u2014 या बताइए आपके पास कौन सी सब्ज़ियाँ हैं। मैं परखी हुई रेसिपी दूँगा और सब्ज़ियाँ आपके कार्ट में डाल सकता हूँ।',
+    te: 'ఒక వంటకం పేరు చెప్పండి \u2014 గుత్తి వంకాయ, ఆలూ గోబీ, పాలక్ పనీర్ \u2014 లేదా మీ దగ్గర ఏమేం కూరగాయలు ఉన్నాయో చెప్పండి. పరీక్షించిన రెసిపీ ఇస్తాను, కూరగాయలను మీ కార్ట్‌లో వేయగలను.',
+  },
+  'assistant.placeholder': {
+    en: 'Gutti vankaya\u2026 or I have potato, beans\u2026',
+    hi: 'गुट्टी वंकाया\u2026 या मेरे पास आलू, बीन्स हैं\u2026',
+    te: 'గుత్తి వంకాయ\u2026 లేదా నా దగ్గర బంగాళాదుంప, బీన్స్ ఉన్నాయి\u2026',
+  },
+  'assistant.thinking': { en: 'Thinking\u2026', hi: 'सोच रहा हूँ\u2026', te: 'ఆలోచిస్తున్నాను\u2026' },
+  'assistant.working': { en: 'Working on it\u2026', hi: 'कर रहा हूँ\u2026', te: 'చేస్తున్నాను\u2026' },
+  'assistant.basketTitle': { en: 'Your basket', hi: 'आपकी टोकरी', te: 'మీ బాస్కెట్' },
+  'assistant.addToCart': { en: 'Add to cart', hi: 'कार्ट में डालें', te: 'కార్ట్‌లో వేయి' },
+  'assistant.orderNow': { en: 'Order now', hi: 'अभी ऑर्डर करें', te: 'ఇప్పుడే ఆర్డర్ చేయి' },
+  'assistant.cancel': { en: 'Cancel', hi: 'रद्द करें', te: 'రద్దు చేయి' },
+  'assistant.total': { en: 'Total', hi: 'कुल', te: 'మొత్తం' },
+  'assistant.deliveryFee': { en: 'Delivery', hi: 'डिलीवरी', te: 'డెలివరీ' },
+  // {items} is a comma-joined list, so it carries its own separators and the
+  // sentence has to read naturally around a list of any length.
+  'assistant.addedToCart': {
+    en: 'Added to your cart: {items}. Your cart is open \u2014 check it, then carry on to payment. Anything else you need?',
+    hi: 'आपके कार्ट में डाल दिया: {items}. कार्ट खुला है \u2014 देख लीजिए, फिर भुगतान पर आगे बढ़िए। कुछ और चाहिए?',
+    te: 'మీ కార్ట్‌లో వేశాను: {items}. కార్ట్ తెరిచి ఉంది \u2014 చూసుకుని, తర్వాత పేమెంట్‌కి కొనసాగండి. ఇంకేమైనా కావాలా?',
+  },
+  'assistant.addedNothing': {
+    en: 'I could not put those in the cart \u2014 this market is not selling them right now. Ask me for something else and I will check again.',
+    hi: 'मैं उन्हें कार्ट में नहीं डाल सका \u2014 यह बाज़ार उन्हें अभी नहीं बेच रहा। कुछ और पूछिए, मैं फिर देखता हूँ।',
+    te: 'వాటిని కార్ట్‌లో వేయలేకపోయాను \u2014 ఈ మార్కెట్ ఇప్పుడు వాటిని అమ్మడం లేదు. వేరే ఏదైనా అడగండి, మళ్ళీ చూస్తాను.',
+  },
+  'assistant.addedSome': {
+    en: 'Added: {items}. I could not find {missing} in this market, so that is not in the cart. Your cart is open \u2014 carry on to payment when you are ready.',
+    hi: 'डाल दिया: {items}. {missing} इस बाज़ार में नहीं मिला, इसलिए वह कार्ट में नहीं है। कार्ट खुला है \u2014 तैयार हों तो भुगतान पर बढ़िए।',
+    te: 'వేశాను: {items}. {missing} ఈ మార్కెట్‌లో దొరకలేదు, అది కార్ట్‌లో లేదు. కార్ట్ తెరిచి ఉంది \u2014 సిద్ధంగా ఉన్నప్పుడు పేమెంట్‌కి కొనసాగండి.',
+  },
+  'assistant.signInPrompt': {
+    en: 'Sign in to chat with the cooking helper.',
+    hi: 'रसोई सहायक से बात करने के लिए साइन इन करें।',
+    te: 'వంట సహాయకుడితో మాట్లాడటానికి సైన్ ఇన్ చేయండి.',
+  },
 };
 
 /**

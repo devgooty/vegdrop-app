@@ -15,6 +15,7 @@ import SearchDiscovery from './components/SearchDiscovery';
 import ProductDetailView from './components/ProductDetailView';
 import CustomerOrders from './components/CustomerOrders';
 import CookingAssistant from './components/CookingAssistant';
+import AssistantHomeCard from './components/AssistantHomeCard';
 import { clearAssistantChat } from './hooks/useAssistantChat';
 import LoginPage from './components/LoginPage';
 import FlyToCartOverlay from './components/FlyToCartOverlay';
@@ -2012,6 +2013,14 @@ export default function App() {
   const handleOpenProductFromSearch = useCallback((product) => {
     setSearchQuery('');
     setSearchVal('');
+    // The discovery overlay has to be closed here too, not just emptied.
+    // `searchScreenOpen` hides it while a product is open, so leaving this
+    // true looked fine — but its back-stack layer stayed registered behind
+    // the product page, and backing out of the product reopened the search
+    // overlay instead of returning to the tab underneath. Only the second
+    // press got out. `handleOpenCategoryFromSearch` always closed it; this
+    // path was the one that did not.
+    setSearchDiscoveryOpen(false);
     setActiveCategoryDetail(null);
     handleOpenProductDetail(product);
   }, [handleOpenProductDetail]);
@@ -2087,17 +2096,185 @@ export default function App() {
   }, [cartItems]);
 
   /**
+   * The cooking helper putting its basket into the real cart.
+   *
+   * The helper's preview is built by `propose_order` on the server, which
+   * already resolved every vegetable to a product id and a whole number of that
+   * seller's packs. So this does not re-decide anything — it maps each line back
+   * to the product row the shopper would have tapped and adds it, which is the
+   * only way the cart ends up holding lines indistinguishable from hand-picked
+   * ones. Anything else (a line shaped by the helper rather than the catalog)
+   * would be a second definition of what a basket row is, and `catalogKeyOf`
+   * would stop folding the two together.
+   *
+   * It deliberately does NOT place an order. The cart is where the shopper
+   * checks the helper's work and where the existing payment flow starts, so the
+   * helper's job ends at a full cart and an open sheet.
+   *
+   * Quantities are applied in one updater rather than by calling
+   * `handleAddToCart` per pack: that one adds a single unit and fires the
+   * fly-to-cart animation, so a five-pack line would queue five animations and
+   * five separate state updates reading the same `prev`.
+   *
+   * @returns {{ added: string[], missing: string[] }} what landed, and what this
+   *   market turned out not to sell — the helper says both out loud, because a
+   *   line quietly dropped is one the shopper finds out about at the door.
+   */
+  const handleAssistantAddToCart = useCallback((lines) => {
+    const wanted = (Array.isArray(lines) ? lines : []).filter(
+      (line) => line && line.productId && !line.missingFromCatalog
+    );
+
+    /*
+      The sheet this screen is showing, and nothing behind it.
+
+      This used to fall back to the platform catalog when a line was not in the
+      sheet. That fallback is redundant when no market or shop is chosen —
+      `browseProducts` IS the platform catalog then — and wrong when one is:
+      it would put a platform-priced row into a basket checkout bills from the
+      market's own sheet, which is the "shows one price and charges another"
+      failure this codebase already fixed once when a basket was carried to a
+      shop. A line the chosen seller does not sell is reported missing, which
+      is what the preview already says about it.
+    */
+    const findProduct = (productId) => {
+      const id = String(productId);
+      return (
+        browseProducts.find(
+          (p) => String(p.originalId ?? p.id) === id || String(p.id) === id
+        ) || null
+      );
+    };
+
+    const added = [];
+    const missing = [];
+    const resolved = [];
+
+    for (const line of wanted) {
+      const product = findProduct(line.productId);
+      /*
+        Present in the helper's preview but not in the sheet this screen is
+        showing — a market switched since the preview was built, or a listing
+        pulled. Named rather than skipped.
+
+        Stock is taken from the LINE, not from the product row, whenever the
+        line carries it: the helper read it from the shop's records on the turn
+        that built this basket, while the catalog this screen holds was served
+        with a 30-second cache and up to two minutes of stale-while-revalidate
+        behind it. Of the two numbers the fresher one decides, and it is not the
+        one in the browser.
+      */
+      const liveStock = typeof line.stock === 'number' ? line.stock : product?.stock;
+      if (!product || liveStock === 0) {
+        missing.push(line.name || '');
+        continue;
+      }
+      const quantity = Math.max(1, Math.round(Number(line.quantity)) || 1);
+      resolved.push({ product, quantity });
+      added.push(productName(product, language));
+    }
+
+    for (const line of (Array.isArray(lines) ? lines : [])) {
+      if (line?.missingFromCatalog) missing.push(line.name || '');
+    }
+
+    if (resolved.length > 0) {
+      const setTargetCart = shoppingMode === 'scheduled' ? setScheduledCartItems : setCartItems;
+      setTargetCart((prev) => {
+        // One pass over `prev`, exactly as handleAddToCart does and for the same
+        // reason — it is the only view that reflects updates already queued.
+        let next = prev;
+        for (const { product, quantity } of resolved) {
+          const key = cartLineKeyOf(product);
+          const existing = next.find((item) => cartLineKeyOf(item) === key);
+          if (existing) {
+            next = next.map((item) =>
+              cartLineKeyOf(item) === key ? { ...item, quantity: item.quantity + quantity } : item
+            );
+            continue;
+          }
+          next = [...next, {
+            id: product.id,
+            // Every one of these fields is named for the reason spelled out at
+            // length in handleAddToCart: a line rebuilt from a fixed list drops
+            // anything not mentioned, and each of these has been dropped once.
+            originalId: product.originalId ?? product.id,
+            name: product.name,
+            nameTe: product.nameTe || '',
+            nameHi: product.nameHi || '',
+            catalogItem: product.catalogItem || null,
+            /*
+              One, always — not `unitsOf(product)`.
+
+              `propose_order` already counted the seller's packs, so `quantity`
+              IS the pack count and checkout multiplies by `units` on top of it
+              (`quantity * unitsOf(line)`). Reading units off the product row is
+              correct only while nothing in `browseProducts` is a size variant,
+              which is true today and is an assumption about data rather than a
+              fact about this line. Stating 1 makes the arithmetic right however
+              that array is later filled — the same trap as the 250g pack billed
+              as 1kg, in the other direction.
+            */
+            units: 1,
+            price: product.price,
+            quantity,
+            image: product.image,
+          }];
+        }
+        return next;
+      });
+    }
+
+    return { added, missing: [...new Set(missing.filter(Boolean))] };
+  }, [browseProducts, shoppingMode, setCartItems, setScheduledCartItems, language]);
+
+  /**
+   * The translation KEY of the question the home card put to the shopper,
+   * waiting for the chat to open and ask it.
+   *
+   * A key rather than a sentence, so the chat draws it in whatever language is
+   * current rather than freezing the one it was tapped in. Held here rather
+   * than passed as a standing prop: the chat is unmounted on every tab switch,
+   * so a prop would re-ask the same question each time the shopper came back.
+   * Taking it clears it.
+   */
+  const [assistantOpener, setAssistantOpener] = useState(null);
+
+  const openAssistantWith = useCallback((questionKey) => {
+    setAssistantOpener(questionKey || null);
+    setActiveTab('assistant');
+  }, []);
+
+  /**
    * Everything that opens over a tab gets a history entry, so the back button
    * closes it instead of changing the tab underneath — see lib/backStack.js.
    * Declared here, where the state lives, rather than inside each overlay:
    * the sign-in screen unmounts this whole tree, and a basket still open
    * behind it must keep its entry.
    */
-  useBackLayer(searchDiscoveryOpen, handleClearSearch);
-  useBackLayer(Boolean(searchQuery), handleClearSearch);
+  /*
+    One entry for search, not one per state. The overlay and the results screen
+    are two phases of the same thing and `handleClearSearch` leaves both, so two
+    layers meant submitting a query churned history on every search — the
+    overlay's layer closing with a go(-1) while the results layer pushed, the
+    push waiting on an asynchronous traversal to land. One layer spans the
+    phases: nothing is pushed or popped between them.
+  */
+  useBackLayer(searchDiscoveryOpen || Boolean(searchQuery), handleClearSearch);
   useBackLayer(Boolean(activeCategoryDetail), () => setActiveCategoryDetail(null));
   useBackLayer(Boolean(activeProductDetail), () => setActiveProductDetail(null));
   useBackLayer(activeTab === 'account' && activeAccountView !== 'menu', () => setActiveAccountView('menu'));
+  /*
+    The edit form replaces the profile card, so back has to leave the form
+    before it leaves the section. Without its own entry the section's layer
+    fired first and jumped straight to the account menu, throwing away whatever
+    had been typed. Declared after that layer so it sits above it: back closes
+    the form, and the next press leaves the section.
+  */
+  useBackLayer(
+    activeTab === 'account' && activeAccountView === 'profile' && isEditingProfile,
+    () => setIsEditingProfile(false),
+  );
   useBackLayer(isCartOpen, () => setIsCartOpen(false));
   useBackLayer(isScheduledCartOpen, () => setIsScheduledCartOpen(false));
   useBackLayer(isWalletOpen, () => setIsWalletOpen(false));
@@ -2349,6 +2526,15 @@ export default function App() {
                       nothing once answered, or if permission is already settled
                       either way.
                     */}
+                    {/* The helper's greeting, before the aisles: it is the one
+                        thing on this screen that can turn "what do I cook
+                        tonight" into a full cart, and below the categories
+                        nobody scrolling for tomatoes would ever meet it. */}
+                    <AssistantHomeCard
+                      onOpen={() => openAssistantWith(null)}
+                      onAsk={openAssistantWith}
+                    />
+
                     <LocationPrimer onLocated={setCustomerCoords} />
 
                     {/* Location refused or switched off: switch it on, or pick
@@ -2453,6 +2639,16 @@ export default function App() {
                     fetchOrders({ limit: 100 }).then(setOrders).catch(() => {});
                   }}
                   onRequireSignIn={() => setActiveTab('login')}
+                  onAddToCart={handleAssistantAddToCart}
+                  /* The cart the lines actually went INTO. `handleAssistantAddToCart`
+                     writes to the scheduled basket in scheduled mode, so opening
+                     the regular one would show the shopper an unchanged basket
+                     and the helper would look like it had done nothing. */
+                  onCartFilled={() =>
+                    shoppingMode === 'scheduled' ? setIsScheduledCartOpen(true) : setIsCartOpen(true)
+                  }
+                  opener={assistantOpener}
+                  onOpenerTaken={() => setAssistantOpener(null)}
                 />
               ) : (
                 /* ACCOUNT & ROLE SWITCHER TAB.
@@ -2480,7 +2676,13 @@ export default function App() {
                         */
                         <div className="relative flex items-center mb-4">
                           <button
-                            onClick={() => setActiveAccountView('menu')}
+                            onClick={() => {
+                              // Leaving the section ends the edit, or its layer
+                              // outlives the screen that showed it — a history
+                              // entry with nothing on screen to close.
+                              setIsEditingProfile(false);
+                              setActiveAccountView('menu');
+                            }}
                             className="p-2 bg-white rounded-xl shadow-sm border border-slate-100 text-slate-600 hover:text-[#1B4D3E] transition-colors cursor-pointer active:scale-95"
                           >
                             <ArrowLeft className="w-5 h-5" />
