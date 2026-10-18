@@ -404,6 +404,59 @@ test('the prices answer comes from the live catalog', async () => {
   assert.match(res.reply, /Fresh Okra \(Bhindi\).*₹35 per 500g/);
 });
 
+test('the prices answer says what a vendor would say: short stock and ratings', async () => {
+  // This is the path production actually runs: without OPENAI_API_KEY the model
+  // path never executes, so whatever a customer is told about a rate comes from
+  // here.
+  await Product.create({
+    sku: 'T-OKRA-LOW',
+    categoryId: 2,
+    name: 'Fresh Okra (Bhindi)',
+    weight: '500g',
+    pricePaise: 3500,
+    stock: 2,
+    rating: 4.4,
+    reviews: 23,
+    owner: null,
+  });
+  const res = await ask('bhindi price entha');
+  assert.match(res.reply, /₹35 per 500g/);
+  assert.match(res.reply, /only 2 left/, res.reply);
+  assert.match(res.reply, /★4\.4 from 23/, res.reply);
+});
+
+test('a healthy stock level and an unrated product are left unsaid, not reported', async () => {
+  // "Plenty in stock" on every line of every answer is noise, and a rating
+  // nobody has given is not a rating of zero.
+  await Product.create({
+    sku: 'T-OKRA-OK',
+    categoryId: 2,
+    name: 'Fresh Okra (Bhindi)',
+    weight: '500g',
+    pricePaise: 3500,
+    stock: 40,
+    owner: null,
+  });
+  const res = await ask('bhindi price entha');
+  assert.match(res.reply, /₹35 per 500g/);
+  assert.doesNotMatch(res.reply, /left|stock|★|0\.0/, res.reply);
+});
+
+test('a price asked about something sold out says so instead of quoting a rate alone', async () => {
+  await Product.create({
+    sku: 'T-OKRA-OUT',
+    categoryId: 2,
+    name: 'Fresh Okra (Bhindi)',
+    weight: '500g',
+    pricePaise: 3500,
+    stock: 0,
+    owner: null,
+  });
+  const res = await ask('bhindi price entha');
+  assert.match(res.reply, /out of stock/, res.reply);
+  assert.match(res.reply, /ask me for something else/i, res.reply);
+});
+
 test('"order missing ingredients" leaves out what the customer said they have', async () => {
   await Product.create([
     { sku: 'T-POT2', categoryId: 2, name: 'Fresh Potato (Aloo)', weight: '1kg', pricePaise: 3000, stock: 10, owner: null },

@@ -250,7 +250,19 @@ async function proposeFor(user, session, recipeId, context) {
     if (preview.alreadyHave?.length) notes.push(`Left out what you have: ${preview.alreadyHave.join(', ')}.`);
     const unavailable = preview.lines.filter((l) => l.missingFromCatalog).map((l) => l.name);
     if (unavailable.length) notes.push(`Not sold on VegDrop right now: ${unavailable.join(', ')}.`);
-    if (preview.lines.some((l) => l.lowStock)) notes.push('Some items are running low and may be short.');
+    /*
+      Name what is short, and by how much.
+
+      "Some items are running low and may be short" tells a shopper there is a
+      problem and nothing about which line or whether it matters — so the only
+      way to act on it was to read the whole basket and guess. Each line now
+      carries the stock it was priced against, so the warning can say the thing
+      a vendor would: this one, this many, against what you asked for.
+    */
+    const short = preview.lines
+      .filter((l) => l.lowStock)
+      .map((l) => (l.stock > 0 ? `${l.name} (${l.stock} of ${l.quantity} packs)` : `${l.name} (none left)`));
+    if (short.length) notes.push(`Running short: ${short.join(', ')}.`);
     return reply(
       `Here's a cart for **${detail.name}** (for ${preview.servings}).\n` +
         `Total ₹${preview.total}${preview.deliveryFee ? ` including ₹${preview.deliveryFee} delivery` : ' (free delivery)'}.\n` +
@@ -440,15 +452,40 @@ async function runLocalTurn(user, messages, context = {}) {
     return reply(base);
   }
 
-  // 8. Prices from the live catalog.
+  /*
+    8. Prices from the live catalog.
+
+    This branch is what most customers actually get: without OPENAI_API_KEY the
+    model path never runs, so the rate a shopper is quoted comes from here. It
+    reads through `searchCatalog`, which queries the shop's records on the call
+    rather than any cache — so the only question is how much of what comes back
+    is said out loud, and it used to be the price alone.
+
+    A vendor answering "tomato entha?" says the rate, what a pack is, whether
+    it is nearly gone, and whether people like it. All four are now on the row,
+    so all four are said, in that order and only when there is something to
+    say: a rating nobody has given is left out rather than reported as zero,
+    and a healthy stock level is simply not mentioned, because "plenty in
+    stock" is noise on every line of every answer.
+  */
   if ((RE.price.test(norm) || asksAvailability(norm, text)) && !confident) {
     if (!vegetables.length) return reply('Which vegetable? e.g. *price of tomato*.');
     const rows = await tools.searchCatalog({ query: text, limit: 6 });
     if (!rows.length) return reply(`I couldn't find ${vegetables.join(', ')} on VegDrop right now.`);
-    const lines = rows.map(
-      (r) => `• **${r.name}** — ₹${r.price} per ${r.weight}${r.inStock ? '' : ' (out of stock)'}`
+    const lines = rows.map((r) => {
+      const notes = [];
+      if (!r.inStock) notes.push('out of stock');
+      else if (r.stockLevel === 'low') notes.push(`only ${r.stock} left`);
+      if (r.rating) notes.push(`★${r.rating.toFixed(1)} from ${r.reviews}`);
+      return `• **${r.name}** — ₹${r.price} per ${r.weight}${notes.length ? ` (${notes.join(', ')})` : ''}`;
+    });
+    const anyStocked = rows.some((r) => r.inStock);
+    return reply(
+      `Current prices:\n${lines.join('\n')}\n\n` +
+        (anyStocked
+          ? 'Prices can differ slightly by market.'
+          : 'None of that is in stock right now — ask me for something else and I will check.')
     );
-    return reply(`Current prices:\n${lines.join('\n')}\n\nPrices can differ slightly by market.`);
   }
 
   // 9. Technique questions with a known, accurate answer.
