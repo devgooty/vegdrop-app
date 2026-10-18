@@ -275,6 +275,27 @@ test('vegetables the customer says they do NOT have are never counted as had', (
   assert.deepEqual(recipes.extractVegetables('vengayam illai, thakkali irukku'), ['tomato']);
 });
 
+test('an English plural on a transliterated name resolves, and a real plural alias is untouched', () => {
+  // "tamatos" is two edits from every alias — one for the vowel, one for the
+  // `s` — so it resolved to nothing while "tamato" and "tomatos" both worked.
+  // It is also the spelling this audience actually types.
+  assert.deepEqual(recipes.extractVegetables('tamatos'), ['tomato']);
+  assert.deepEqual(recipes.extractVegetables('naa dagara tamatos unnai'), ['tomato']);
+  assert.deepEqual(recipes.extractVegetables('bendakayas unnai'), ['okra']);
+  assert.deepEqual(recipes.extractVegetables('aloos hain'), ['potato']);
+
+  // Aliases that genuinely end in `s` must not be singularised into something
+  // else: these are matched exactly, before the fuzzy pass can reach them.
+  assert.deepEqual(recipes.extractVegetables('beans unnai'), ['french beans']);
+  assert.deepEqual(recipes.extractVegetables('peas unnai'), ['peas']);
+  assert.deepEqual(recipes.extractVegetables('asparagus'), ['asparagus']);
+
+  // And the suffix must not become a licence to correct anything: a word that
+  // was not a vegetable before is not one now.
+  assert.deepEqual(recipes.extractVegetables('samosas'), []);
+  assert.deepEqual(recipes.extractVegetables('idlis and dosas'), []);
+});
+
 test('meat and fish are recognised even when a vegetable name is one letter away', async () => {
   // `keema` is one edit from `keera` (cucumber) and was corrected into it.
   for (const text of ['keema matar kaise banaye', 'chicken curry', 'fish fry', 'prawns masala', 'meen kuzhambu']) {
