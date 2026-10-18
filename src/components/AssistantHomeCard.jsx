@@ -57,7 +57,9 @@ export default function AssistantHomeCard({ onOpen, onAsk }) {
           <button
             key={key}
             type="button"
-            onClick={() => onAsk(t(key))}
+            /* The key, not `t(key)`: the chat re-renders it in whatever
+               language is current, so changing language later moves it. */
+            onClick={() => onAsk(key)}
             className="w-full flex items-center gap-2.5 text-left rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 px-3 py-2.5 transition-colors cursor-pointer active:scale-[0.99]"
           >
             <Icon className="w-4 h-4 shrink-0 text-emerald-200" />

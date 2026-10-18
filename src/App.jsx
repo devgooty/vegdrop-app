@@ -2218,17 +2218,19 @@ export default function App() {
   }, [browseProducts, products, shoppingMode, setCartItems, setScheduledCartItems, language]);
 
   /**
-   * A question the home card asked on the shopper's behalf, waiting for the
-   * chat to open and send it.
+   * The translation KEY of the question the home card put to the shopper,
+   * waiting for the chat to open and ask it.
    *
-   * Held here rather than passed as a prop the chat sends on mount: the chat is
-   * unmounted on every tab switch, so a prop would re-send the same question
-   * each time the shopper came back to the tab. Taking it clears it.
+   * A key rather than a sentence, so the chat draws it in whatever language is
+   * current rather than freezing the one it was tapped in. Held here rather
+   * than passed as a standing prop: the chat is unmounted on every tab switch,
+   * so a prop would re-ask the same question each time the shopper came back.
+   * Taking it clears it.
    */
   const [assistantOpener, setAssistantOpener] = useState(null);
 
-  const openAssistantWith = useCallback((question) => {
-    setAssistantOpener(question || null);
+  const openAssistantWith = useCallback((questionKey) => {
+    setAssistantOpener(questionKey || null);
     setActiveTab('assistant');
   }, []);
 

@@ -57,7 +57,17 @@ async function queryStatus(name) {
  * `requestLocation`, where the phone can still be sent to its own settings.
  */
 function askable(state) {
-  return state === 'prompt' || state === 'unsupported' || state == null;
+  /*
+    `null` is "not answered yet", NOT "unknown".
+
+    Both rows start null and resolve a tick later, so treating null as askable
+    rendered an Allow button on mount and took it away again the moment a
+    `granted` came back — a control that appears and vanishes under the thumb,
+    and a tap landing in that window fires a permission request for something
+    already granted. A state that is genuinely unreadable is reported as
+    `unsupported`, which IS askable; waiting is not.
+  */
+  return state === 'prompt' || state === 'unsupported';
 }
 
 function StatusBadge({ state, t }) {
@@ -114,7 +124,13 @@ export default function AccountPermissions() {
             geolocation: status?.granted && status?.enabled ? 'granted' : status?.blocked ? 'denied' : 'prompt',
           }));
         })
-        .catch(() => {});
+        .catch(() => {
+          // The plugin is there but would not answer. That is not a denial and
+          // not a grant; leaving it null would leave the row with no badge and
+          // no button, so it is reported as unreadable — which offers Allow,
+          // and the attempt is what produces the real answer.
+          if (!cancelled) setStates((prev) => ({ ...prev, geolocation: 'unsupported' }));
+        });
     }
 
     CHECKS.forEach(({ key }) => {

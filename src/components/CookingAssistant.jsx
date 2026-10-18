@@ -283,18 +283,41 @@ export default function CookingAssistant({
   };
 
   /**
-   * A question the home card asked for the shopper. Sent once, then cleared by
-   * the parent — the chat unmounts on every tab switch, so a prop left in place
-   * would re-ask it each time they came back.
+   * A question the home card put to the shopper, carried into the chat.
+   *
+   * It is seeded as the HELPER's line, not sent as the shopper's. The card's
+   * two prompts are questions the helper asks — "which vegetables do you want
+   * to buy?" — so sending one as a user message had the shopper asking the
+   * assistant which vegetables IT wanted, and the model answering a question
+   * nobody meant. Tapping the card is the shopper accepting the question, so
+   * the chat opens with it already asked and the box waiting for the answer.
+   *
+   * App-authored, exactly like the greeting above it, and it travels in the
+   * history so the model knows what was asked. `prompt: true` marks it so the
+   * language setting still moves it if the shopper changes language later —
+   * the same reason `greeting: true` exists.
    */
   useEffect(() => {
     if (!opener || !userId || busy) return;
     onOpenerTaken?.();
-    send(opener);
-    // `send` and `busy` are read at call time; re-running on either would
-    // re-send the question the moment the reply landed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opener, userId]);
+    updateAssistantChat(
+      userId,
+      (prev) => ({
+        messages: [
+          ...prev.messages,
+          // `content` is the rendered sentence, because that is what travels to
+          // the server in the history and the model must read a question, not a
+          // translation key. `promptKey` is kept beside it so the line is drawn
+          // in whatever language is current, the same split as the greeting.
+          { role: 'assistant', content: t(opener), promptKey: opener },
+        ],
+      }),
+      { claim: true }
+    );
+    // `busy` guards this AND is watched: a question arriving mid-reply used to
+    // be dropped and never retried, so the shopper tapped a prompt, landed in
+    // the chat, and found nothing asked.
+  }, [opener, userId, busy, onOpenerTaken]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full bg-[#FAF7F2] animate-fade-in">
@@ -326,7 +349,9 @@ export default function CookingAssistant({
                 {/* The opener is the one line the app wrote rather than the
                     model, so it is the one line that has to follow the language
                     setting — including a change made after the chat started. */}
-                {formatChatText(m.greeting ? t('assistant.greeting') : m.content)}
+                {formatChatText(
+                  m.greeting ? t('assistant.greeting') : m.promptKey ? t(m.promptKey) : m.content
+                )}
                 {matches.length > 0 && (
                   <ul className="mt-2 space-y-1.5 whitespace-normal">
                     {matches.map((c) => (
