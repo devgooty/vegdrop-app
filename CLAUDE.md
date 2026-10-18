@@ -2,6 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Talking to the owner
+
+Write back in **short, plain English**. Small sentences. No jargon, no long
+paragraphs, no essays. A table or a short list beats prose.
+
+The owner reads English as a second language and writes in Telugu-English, so
+a long technical reply does not land however correct it is. Say what broke,
+what you changed, and what they have to do — in that order, in as few words as
+the facts allow. Keep the detail in the code comments and commit messages,
+which is where it belongs; a chat reply is not the place to prove the work was
+thorough.
+
+This is about the chat only. It does not shorten comments, commit messages or
+this file.
+
 ## Project
 
 VegDrop — a React PWA for a hyperlocal grocery delivery service, with an Express + MongoDB backend and Razorpay payments.
