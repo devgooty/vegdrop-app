@@ -792,4 +792,16 @@ async function runTurn(user, messages, context = {}) {
   return runLocalTurn(user, messages, context);
 }
 
-module.exports = { runTurn, runLocalTurn, parseServings, parsePick, resetProviderBreaker };
+module.exports = {
+  runTurn,
+  runLocalTurn,
+  parseServings,
+  parsePick,
+  // The breaker is module state guarding a paid provider, so it is exported to
+  // be driven directly: the alternative is a test that reaches the real
+  // provider, and `config.isTest` short-circuits that path anyway.
+  resetProviderBreaker,
+  providerAvailable,
+  noteProviderFailure,
+  noteProviderSuccess,
+};

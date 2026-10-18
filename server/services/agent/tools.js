@@ -570,6 +570,10 @@ async function executeTool(user, name, args) {
 module.exports = {
   TOOL_DEFS,
   executeTool,
+  // Pure: it takes a product row and returns what the helper may say about it.
+  // Exported so the rules it encodes — unrated is not zero, a low stock level
+  // is a word and not a count — can be pinned without a database.
+  productView,
   findCatalogProduct,
   approxPackGrams,
   packsFor,
