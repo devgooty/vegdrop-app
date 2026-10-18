@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { MapPin, Mic, CircleCheck, CircleX, CircleHelp } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { currentPosition } from '../services/markets';
+import { hasNativeLocation, enableNativeLocation, nativeLocationStatus } from '../services/nativeLocation';
 
 /**
  * What this screen shows is only what the app actually asks the browser for.
@@ -35,6 +36,28 @@ async function queryStatus(name) {
     // Unsupported permission name or browser (Safari has no 'microphone' query).
   }
   return null;
+}
+
+/**
+ * Whether there is any point offering an Allow button.
+ *
+ * `prompt` alone was the condition, which is right for what it says and wrong
+ * for everything it leaves out. `navigator.permissions.query` throws for
+ * 'microphone' on Safari and is missing altogether in older Android WebViews,
+ * and this screen rendered that as 'unsupported' with no button — so on exactly
+ * the browsers where the state cannot be read, the one control that could
+ * settle it was hidden. Unsupported means *we do not know*, which is when
+ * asking is most useful: `getUserMedia` and `getCurrentPosition` prompt
+ * perfectly well on browsers that cannot report on them beforehand, and the
+ * attempt is what produces the answer.
+ *
+ * `denied` stays buttonless, for the original reason: the browser will not
+ * re-show a dialog the user dismissed, so a button there would do nothing and
+ * read as broken. In the Android app that case is not dead end — see
+ * `requestLocation`, where the phone can still be sent to its own settings.
+ */
+function askable(state) {
+  return state === 'prompt' || state === 'unsupported' || state == null;
 }
 
 function StatusBadge({ state, t }) {
@@ -79,7 +102,25 @@ export default function AccountPermissions() {
     let cancelled = false;
     const cleanups = [];
 
+    // Inside the Android app the phone's own answer wins over the page's, for
+    // the reason spelled out on `requestLocation`.
+    const native = hasNativeLocation();
+    if (native) {
+      nativeLocationStatus()
+        .then((status) => {
+          if (cancelled) return;
+          setStates((prev) => ({
+            ...prev,
+            geolocation: status?.granted && status?.enabled ? 'granted' : status?.blocked ? 'denied' : 'prompt',
+          }));
+        })
+        .catch(() => {});
+    }
+
     CHECKS.forEach(({ key }) => {
+      // Both answers are in flight at once, and the page's would otherwise land
+      // last and paint over the phone's — which is the stale one of the two.
+      if (native && key === 'geolocation') return;
       queryStatus(key).then((status) => {
         if (cancelled) return;
         if (!status) {
@@ -99,11 +140,40 @@ export default function AccountPermissions() {
     };
   }, []);
 
+  /**
+   * In the Android app the page's own answer is not the whole answer.
+   *
+   * The app loads the live site in a WebView, so `navigator.permissions` reports
+   * what the *page* has been granted — which can read `granted` while Android's
+   * own runtime permission is refused or the device's location is switched off,
+   * and then every fix fails with the screen still saying it is allowed. The
+   * plugin is the only thing that can see those two facts, and the only thing
+   * that can fix them: it asks for the runtime permission, shows Android's
+   * "Turn on location", and opens the app's settings page when the permission
+   * was blocked with "don't ask again" (which the browser cannot re-prompt).
+   *
+   * In a browser `hasNativeLocation()` is false and this is the ordinary
+   * `getCurrentPosition` prompt it always was.
+   */
   const requestLocation = useCallback(async () => {
     setBusy('geolocation');
-    const found = await currentPosition();
-    setStates((prev) => ({ ...prev, geolocation: found ? 'granted' : 'denied' }));
-    setBusy(null);
+    try {
+      if (hasNativeLocation()) {
+        const result = await enableNativeLocation();
+        setStates((prev) => ({
+          ...prev,
+          geolocation: result?.granted && result?.enabled ? 'granted' : result?.blocked ? 'denied' : 'prompt',
+        }));
+        return;
+      }
+      const found = await currentPosition();
+      setStates((prev) => ({ ...prev, geolocation: found ? 'granted' : 'denied' }));
+    } catch {
+      // A plugin call that failed tells us nothing new about the permission,
+      // so the row is left as it was rather than asserting a denial.
+    } finally {
+      setBusy(null);
+    }
   }, []);
 
   const requestMicrophone = useCallback(async () => {
@@ -142,7 +212,7 @@ export default function AccountPermissions() {
                 </div>
                 <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{t(hintKey)}</p>
 
-                {state === 'prompt' && (
+                {askable(state) && (
                   <button
                     onClick={requestFns[key]}
                     disabled={busy === key}
