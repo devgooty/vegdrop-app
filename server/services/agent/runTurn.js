@@ -702,6 +702,60 @@ async function runOpenAiTurn(user, messages, context = {}) {
   };
 }
 
+/*
+  How long the model path stays switched off after it keeps failing.
+
+  `config.agent.configured` is only "the key string is not empty", which is a
+  claim about configuration rather than a fact about the account behind it. A
+  key whose billing has run out, been revoked, or belongs to an organisation
+  with no credit answers every single call with a rejection — and without this,
+  every customer message would spend a round trip to the provider, log an error
+  and then be answered by the local router anyway. The chat still works, which
+  is exactly what makes it easy to miss: the only symptom is that every reply
+  got slower and the log filled up.
+
+  So repeated failures stop the attempts for a while. Three in a row, because
+  one is a blip and two can be a bad minute; five minutes to start, doubling to
+  an hour, because a billing problem is not fixed in seconds and there is no
+  point rediscovering it on every message. Any success clears it — a key that
+  starts working is used again within the minute, with nothing to restart.
+*/
+const PROVIDER_FAILURES_BEFORE_PAUSE = 3;
+const PROVIDER_PAUSE_MS = 5 * 60 * 1000;
+const PROVIDER_PAUSE_CEILING_MS = 60 * 60 * 1000;
+
+let providerFailures = 0;
+let providerPausedUntil = 0;
+
+function providerAvailable() {
+  return config.agent.configured && Date.now() >= providerPausedUntil;
+}
+
+function noteProviderFailure() {
+  providerFailures += 1;
+  if (providerFailures < PROVIDER_FAILURES_BEFORE_PAUSE) return;
+  const pause = Math.min(
+    PROVIDER_PAUSE_CEILING_MS,
+    PROVIDER_PAUSE_MS * 2 ** (providerFailures - PROVIDER_FAILURES_BEFORE_PAUSE)
+  );
+  providerPausedUntil = Date.now() + pause;
+  console.warn(
+    `[agent] provider failed ${providerFailures} times in a row; using the local router for ${Math.round(pause / 60000)} min`
+  );
+}
+
+function noteProviderSuccess() {
+  if (providerFailures === 0 && providerPausedUntil === 0) return;
+  providerFailures = 0;
+  providerPausedUntil = 0;
+}
+
+/** Test-only: the breaker is module state and outlives a single case. */
+function resetProviderBreaker() {
+  providerFailures = 0;
+  providerPausedUntil = 0;
+}
+
 async function runTurn(user, messages, context = {}) {
   if (!Array.isArray(messages) || messages.length === 0) {
     throw new ApiError(400, 'Send at least one message.', 'VALIDATION_ERROR');
@@ -719,13 +773,16 @@ async function runTurn(user, messages, context = {}) {
   const pending = proposals.getSession(user._id).lastProposalId;
   const settles = pending && (RE.confirm.test(recipes.normalize(lastUserText(messages))) || RE.cancel.test(recipes.normalize(lastUserText(messages))));
 
-  if (config.agent.configured && !config.isTest && !settles) {
+  if (providerAvailable() && !config.isTest && !settles) {
     try {
-      return await runOpenAiTurn(user, messages, context);
+      const answer = await runOpenAiTurn(user, messages, context);
+      noteProviderSuccess();
+      return answer;
     } catch (err) {
       if (err instanceof ApiError && err.code === 'AGENT_PROVIDER_ERROR') {
         // Fall through to local so the user is not stuck mid-chat.
         console.warn('[agent] falling back to local turn', err.message);
+        noteProviderFailure();
       } else {
         throw err;
       }
@@ -735,4 +792,4 @@ async function runTurn(user, messages, context = {}) {
   return runLocalTurn(user, messages, context);
 }
 
-module.exports = { runTurn, runLocalTurn, parseServings, parsePick };
+module.exports = { runTurn, runLocalTurn, parseServings, parsePick, resetProviderBreaker };
