@@ -166,9 +166,13 @@ for everything addressed to an inbox; keyed by channel, an unconfigured or broke
 channel only affects what is addressed to it. Codes go to `sms` only — `email`
 now carries stall notices and nothing else.
 
-The `sms` channel is WhatsApp or Fast2SMS (or the console stub); the `email` channel is SMTP
-via nodemailer (`services/transports/email.js`), active only when `SMTP_HOST` and
-`SMTP_FROM` are set. Neither transport ever logs the code, and both mask the
+The `sms` channel is WhatsApp or Fast2SMS (or the console stub). The `email`
+channel is a chain of **HTTP** providers — Brevo, SendGrid, MailerSend, Mailtrap,
+Plunk, Resend — tried in `EMAIL_PROVIDER_ORDER` until one delivers, with SMTP via
+nodemailer (`SMTP_HOST` + `SMTP_FROM`) as one more option rather than the only
+one. HTTP is not a preference: **Railway blocks outbound SMTP on its Hobby and
+Trial plans**, so nodemailer fails with `ESOCKET` before it reaches a credential,
+and a host configured with SMTP alone silently sends nothing. Neither transport ever logs the code, and both mask the
 destination — only the console stub prints codes, and production refuses to boot
 on it.
 
@@ -183,8 +187,32 @@ Phone transports, via `NOTIFY_TRANSPORT`:
 
 `fast2sms` is the cheap option (about ₹0.35 a code without DLT). It is selected
 automatically when `FAST2SMS_API_KEY` is set and WhatsApp is not; with both set,
-WhatsApp wins unless `NOTIFY_TRANSPORT=fast2sms`. There is no failover between
-the two — the failover chain is email-only. `services/transports/fast2sms.js`
+WhatsApp wins unless `NOTIFY_TRANSPORT=fast2sms`.
+
+**`NOTIFY_TRANSPORT` chooses which transport is tried FIRST, not which may ever
+be tried.** It used to mean both, and that was a live outage: this project's own
+host had WhatsApp fully configured and was pinned to `fast2sms`, Fast2SMS
+answered `status_code 996` ("complete website verification") to every send, and
+because sign-in here is passwordless that is every customer locked out — with a
+paid-for, working transport one `if` away. `configuredPhoneTransports()` now puts
+the chosen transport first and every OTHER transport holding credentials after
+it, and `failoverTransport()` walks the chain until one accepts.
+
+**A fallback send carries the SAME code**, because the code is generated in
+`services/otp.js` and passed down — so the worst case is one person receiving the
+same six digits twice, never two codes of which only one works. That property is
+what makes failing over safe here, and it is the first thing to re-check if a
+code is ever generated inside a transport instead. A transport that throws has
+already exhausted its own retries (fast2sms retries 408/429/5xx internally), so
+reaching the next one means the previous is done trying, not busy. When all of
+them refuse, the last error is rethrown so the caller still answers one generic
+`503 OTP_DELIVERY_FAILED` — provider detail must never reach the client, or
+"not a WhatsApp user" becomes an account-enumeration oracle.
+
+A host with one transport gets no wrapper and behaves exactly as before.
+`test/notifyFailover.test.js` pins the order and all three outcomes, including
+that a SUCCESSFUL primary never triggers a second send — every fallback costs
+money and arrives on somebody's phone. `services/transports/fast2sms.js`
 judges success on the response body (`return: true`), not the HTTP status,
 because Fast2SMS can reject with a 200.
 

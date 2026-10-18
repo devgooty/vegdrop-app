@@ -75,8 +75,8 @@ const nullTransport = {
  * or the other, never both. Routing an email address into a phone transport used
  * to be possible and threw at send time — see resolveRegistry below.
  */
-function resolvePhoneTransport() {
-  if (config.notifyTransport === 'whatsapp') {
+function buildPhoneTransport(name) {
+  if (name === 'whatsapp') {
     // Required config is validated at boot in config/env.js, so reaching here
     // with incomplete credentials is impossible.
     const { createWhatsappTransport } = require('./transports/whatsapp');
@@ -99,7 +99,7 @@ function resolvePhoneTransport() {
     });
   }
 
-  if (config.notifyTransport === 'smsgate') {
+  if (name === 'smsgate') {
     // Credentials are validated at boot in config/env.js.
     const { createSmsGateTransport } = require('./transports/smsGate');
     const gate = config.smsGate;
@@ -114,7 +114,7 @@ function resolvePhoneTransport() {
     });
   }
 
-  if (config.notifyTransport === 'fast2sms') {
+  if (name === 'fast2sms') {
     // FAST2SMS_API_KEY presence is validated at boot in config/env.js.
     const { createFast2smsTransport } = require('./transports/fast2sms');
 
@@ -138,6 +138,75 @@ function resolvePhoneTransport() {
   }
 
   return consoleTransport;
+}
+
+/**
+ * The phone transports this host actually has credentials for, chosen one first.
+ *
+ * `NOTIFY_TRANSPORT` picks which is tried first; it no longer decides that the
+ * others may never be tried at all. That distinction was a live outage: a
+ * deployment with WhatsApp fully configured was pinned to `fast2sms`, Fast2SMS
+ * answered `status_code 996` ("complete website verification") to every send,
+ * and because sign-in here is passwordless that is every customer locked out —
+ * while a working, paid-for transport sat one `if` away, unused.
+ *
+ * Order after the primary is fixed rather than configurable: there is no second
+ * preference worth a setting, only "something rather than nothing".
+ */
+function configuredPhoneTransports() {
+  const primary = config.notifyTransport;
+  const rest = ['whatsapp', 'fast2sms', 'smsgate'].filter(
+    (name) => name !== primary && config.transportCredentials[name]
+  );
+  return [primary, ...rest];
+}
+
+/**
+ * Try each transport until one accepts the message.
+ *
+ * **A fallback send carries the SAME code**, because the code is generated in
+ * `services/otp.js` and passed down — so the worst case is one person receiving
+ * the same six digits twice, not two codes of which only one works. That is the
+ * property that makes failing over safe here, and it is the first thing to
+ * re-check if the code ever starts being generated inside a transport.
+ *
+ * A transport that throws has already exhausted its own retries (fast2sms
+ * retries 408/429/5xx internally), so reaching here means it is done trying,
+ * not that it is busy. The last error is rethrown when every transport fails,
+ * so the caller still sees one generic delivery failure rather than a list —
+ * `routes/auth.js` must not turn provider detail into an enumeration oracle.
+ */
+function failoverTransport(entries) {
+  return {
+    name: entries.map((e) => e.name).join('>'),
+    reachesRecipient: true,
+    async send(message) {
+      let lastError = null;
+      for (const { name, transport } of entries) {
+        try {
+          await transport.send(message);
+          if (lastError) console.warn(`[notify] delivered on fallback transport=${name}`);
+          return;
+        } catch (err) {
+          lastError = err;
+          // The code is never in these messages; the transports redact it.
+          console.error(`[notify] transport=${name} failed, trying the next: ${err.message}`);
+        }
+      }
+      throw lastError;
+    },
+  };
+}
+
+function resolvePhoneTransport() {
+  const names = configuredPhoneTransports();
+  // One transport (or the console stub) behaves exactly as it always did —
+  // no wrapper, no extra log line, nothing to re-reason about.
+  if (names.length <= 1) return buildPhoneTransport(names[0]);
+
+  const entries = names.map((name) => ({ name, transport: buildPhoneTransport(name) }));
+  console.info(`[notify] phone transports, in order: ${names.join(' then ')}`);
+  return failoverTransport(entries);
 }
 
 /**
@@ -351,4 +420,8 @@ module.exports = {
   setTransport,
   consoleTransport,
   nullTransport,
+  // Exported to be tested directly: building the real chain needs provider
+  // credentials and a non-test config, so the ORDER is the part worth pinning.
+  configuredPhoneTransports,
+  failoverTransport,
 };
