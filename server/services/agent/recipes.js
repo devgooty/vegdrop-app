@@ -191,12 +191,34 @@ function tokenize(text, { fuzzy = true } = {}) {
     const budget = fuzzy && !DISH_VOCABULARY.has(word) && !REAL_WORDS.has(word) ? typoBudget(word) : 0;
     if (budget > 0) {
       let best = null;
+      /*
+        An English plural on a transliterated name is not a typo, and must not
+        be charged as one.
+
+        "tamatos" is how a Telugu speaker writing in English pluralises tomato,
+        and it is edit distance TWO from every alias we hold — one for the
+        vowel, one for the `s` — so it fell outside a budget of one and resolved
+        to nothing, while "tamato" and "tomatos" (one edit each) both worked.
+        Spending the whole budget on a suffix that carries no meaning here is
+        what made the plural the unlucky spelling.
+
+        So the singular is tried as well, at the same budget, and the better of
+        the two wins. Only from six letters up, which keeps a five-letter
+        singular as the shortest thing a correction can land on — and the
+        four-letter rule below is untouched, because nothing this short reaches
+        here. Aliases that genuinely end in `s` (beans, peas, asparagus,
+        mustard greens) never get this far: an exact alias is substituted before
+        the fuzzy pass begins.
+      */
+      const forms = word.endsWith('s') && word.length >= 6 ? [word, word.slice(0, -1)] : [word];
       for (const [alias, key] of SINGLE_WORD_PRODUCE) {
         // Four-letter words are only corrected toward a vegetable sharing their
         // first letter ("plak" → palak), never toward anything else.
         if (word.length === 4 && alias[0] !== word[0]) continue;
-        const d = levenshtein(word, alias, budget);
-        if (d <= budget && (!best || d < best.d)) best = { d, token: `veg:${key}` };
+        for (const form of forms) {
+          const d = levenshtein(form, alias, budget);
+          if (d <= budget && (!best || d < best.d)) best = { d, token: `veg:${key}` };
+        }
       }
       if (word.length === 4) {
         if (best) resolved = best.token;
