@@ -45,6 +45,7 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         // Before super: Capacitor reads the plugin list while creating the bridge.
         registerPlugin(LocationPlugin.class);
+        registerPlugin(SpeechPlugin.class);
         super.onCreate(savedInstanceState);
         // Draw behind a transparent status bar so each screen's own header colour
         // runs to the top. The site pads for it with env(safe-area-inset-top)
