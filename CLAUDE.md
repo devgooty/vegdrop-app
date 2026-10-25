@@ -540,6 +540,38 @@ Ordering from a recipe resolves each vegetable by SKU first and then by name wit
 
 **Every tool argument is attacker-influenced, because the customer's own message steers the tool call.** An id in a tool call is not a capability — scope the query to `user._id` exactly as a route handler would. `get_order_status` filtered `{ _id: orderId, user: user._id }` and `Order` has no `user` path (it is `customer`), so `strictQuery` dropped the clause and the tool reported **any** order in the database — number, status, payment status, total and date — to any signed-in customer who asked about an id. Nothing failed and nothing logged; see the `strictQuery` discussion under Server layout for why this whole class is silent.
 
+### The voice agent
+
+Three steps, chosen by the shopper in **Account → Voice assistant** and stored in `vegdrop_voice_mode`: `low` is the AI Cook tab and nothing else, `medium` adds reading the screen and the cart aloud and changes nothing, `high` drives the app — opening screens, adding and removing lines, clearing the cart. **`payment` is in no step's list, and that is enforced in the mode table rather than at each handler.** Every payment phrasing is matched *before* the intents that act, so no wording of "buy it now" can reach one.
+
+Four files, and the split between them is the design:
+
+| File | What it decides |
+|---|---|
+| `lib/voiceCommands.js` | what an utterance MEANS (pure) |
+| `lib/voiceScreen.js` | what a screen SAYS about itself (pure) |
+| `hooks/useVoiceAgent.js` | one spoken turn: listen, decide, do, answer |
+| `App.jsx` (`voiceActions`) | what a command DOES in this app |
+
+The hook knows nothing of the catalog, the cart or the tabs, and the two `lib/` halves are pure — which is why both are tested without a browser and the agent is not.
+
+**The matcher is a keyword table, not a model call**, and the three reasons are in that order of weight: "remove everything from my cart" must be reached the same way every time; it answers offline and instantly, which is the only thing voice has to beat; and anything it does *not* recognise is not a failure — it falls through to the cooking assistant, which IS the model path. So the matcher only has to be sure about the small set of utterances that touch the screen.
+
+Things that are easy to get wrong here:
+
+- **Every keyword carries three spellings**: the Latin transliteration people speak ("vanta", "chupu"), plus Telugu and Devanagari, because a phone without the language pack returns romanised text while one with it returns script. Matching only one makes the feature work on one handset and not the next. Latin phrases match on word boundaries and the two scripts match as substrings — correct for them, since they agglutinate.
+- **A refusal is a removal.** "I do not want tomato" added two tomatoes: romanised "do" was read as the Hindi count, and a negated want as a purchase. That is the worst shape this file has — `do` is gone from the counts (Devanagari `दो` has no collision) and negation routes to removal.
+- **Naming a screen is not asking to go there.** "tomato price enta" opened the price sheet instead of asking the assistant, which answers prices. Navigation needs a go-word or nothing but the tab's own name.
+- **Counts are split per vegetable before they are read**, or "2 kg tomato and 1 kg onion" asks for two of a thing called "tomato 1 onion".
+- **Spoken lines go into the cart through the same `handleAddToCart` a tap uses**, capped at ten packs. A second path into the cart is a second place for the pack arithmetic — a billing contract — to go wrong, and a misheard number must not fill a basket.
+- **Names resolve against `browseProducts`, never the platform catalog.** The market or shop on screen is the one being quoted; resolving wider adds a line the seller cannot fill. Exact, then prefix, then contained — a spoken "tomato" must not land on "Tomato Ketchup" while a plain Tomato row exists.
+- **There is no spoken list of offers, deliberately.** They change and carry conditions, and reciting them from memory is how someone is told about a discount that has expired — so a question *about* offers opens the offers screen.
+- **The screen is described from app state, not from the DOM.** Reading markup answers with whatever happens to be rendered: a spinner, a toast, a list still loading. A layer open over a tab is what the shopper is looking at, so layers are checked topmost-first, and a product says its name.
+- **It is a button, not a wake word.** A mic listening for its name is always on, in a pocket, among other people's conversations. One tap, one command, mic closed — and the shopper can see whether it is listening.
+- **Every answer is shown as well as spoken.** `speak()` honestly fails on a phone with no voice for the language, and speech is gone the moment it is made; the bubble carries the answer and what was heard, which is the only way to tell a misheard word from a refused command.
+- **The mic button renders outside every `PageTransition`** — a transform is a containing block for `position: fixed`, the same trap `LocationRequiredSheet` portals around.
+- The tests assert translation **keys**, not English: the wording lives in `translations.js`, and asserting it there makes every copy edit a failing test, which teaches everyone to re-record a snapshot without reading it.
+
 ### Money
 
 **All amounts are integer paise on the server** (`pricePaise`, `amountPaise`, `totalAmountPaise`). Rupees exist only at the API boundary and as presentation virtuals. Floats invite rounding drift that surfaces as unreconcilable balances.

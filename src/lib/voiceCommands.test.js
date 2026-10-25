@@ -35,6 +35,17 @@ describe('navigation', () => {
     expect(parseVoiceCommand('ऑफर दिखाओ')).toEqual({ intent: 'navigate', target: 'offers' });
   });
 
+  it('answers a question about offers by opening them', () => {
+    // There is no spoken list of offers, deliberately: they change and carry
+    // conditions, and reciting them from memory is how someone is told about a
+    // discount that has expired.
+    expect(parseVoiceCommand('what offers are there')).toEqual({ intent: 'navigate', target: 'offers' });
+    expect(parseVoiceCommand('ఆఫర్లు ఏమున్నాయి')).toEqual({
+      intent: 'navigate',
+      target: 'offers',
+    });
+  });
+
   it('does not read a named screen as a request to go there', () => {
     // Both of these mention a screen and want an answer, not a journey. The
     // assistant answers a price; the price sheet does not answer "how much".

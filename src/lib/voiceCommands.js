@@ -80,7 +80,7 @@ const REMOVE_WORDS = ['remove', 'delete', 'drop', 'take out', 'teesey', 'teeseyi
 
 const CLEAR_WORDS = ['clear', 'empty', 'clear everything', 'khali', 'ఖాళీ', 'అన్నీ తీసేయి', 'खाली', 'सब हटाओ'];
 
-const READ_WORDS = ['what is this', 'what', 'where am i', 'read', 'tell me', 'describe', 'em', 'emi', 'emundi', 'ekkada', 'ఏమి', 'ఏముంది', 'ఎక్కడ', 'చదువు', 'చెప్పు', 'kya', 'kahan', 'क्या', 'कहाँ', 'कहां', 'बताओ', 'पढ़ो'];
+const READ_WORDS = ['what is this', 'what', 'where am i', 'read', 'tell me', 'describe', 'em', 'emi', 'emundi', 'ekkada', 'ఏమి', 'ఏముంది', 'ఏమున్న', 'ఏవి', 'ఎక్కడ', 'చదువు', 'చెప్పు', 'kya', 'kahan', 'क्या', 'कहाँ', 'कहां', 'बताओ', 'पढ़ो'];
 
 const SCREEN_WORDS = ['screen', 'page', 'here', 'this', 'స్క్రీన్', 'పేజీ', 'ఇక్కడ', 'ఇది', 'स्क्रीन', 'पेज', 'पृष्ठ', 'यहाँ', 'यहां', 'यह'];
 
@@ -257,6 +257,17 @@ export function parseVoiceCommand(utterance) {
     const items = namedItems(text, ADD_WORDS);
     if (items.length > 0) return { intent: 'add_item', items };
   }
+
+  /*
+   * "What offers are there?" is answered by opening the offers.
+   *
+   * There is no spoken list of offers and there should not be: they change,
+   * they carry conditions, and reading them aloud from memory is how a shopper
+   * is told about a discount that has expired. Showing the screen is the honest
+   * answer to the question, so a question ABOUT offers navigates rather than
+   * falling through to the assistant, which knows nothing about them.
+   */
+  if (reading && target === 'offers') return { intent: 'navigate', target: 'offers' };
 
   if (reading && hasAny(text, SCREEN_WORDS)) return { intent: 'read_screen' };
   if (hasAny(text, ['where am i', 'ekkada unnanu', 'ఎక్కడ ఉన్నాను', 'कहाँ हूँ', 'कहां हूं'])) {
