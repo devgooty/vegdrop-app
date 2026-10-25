@@ -2,6 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Talking to the owner
+
+Write back in **short, plain English**. Small sentences. No jargon, no long
+paragraphs, no essays. A table or a short list beats prose.
+
+The owner reads English as a second language and writes in Telugu-English, so
+a long technical reply does not land however correct it is. Say what broke,
+what you changed, and what they have to do — in that order, in as few words as
+the facts allow. Keep the detail in the code comments and commit messages,
+which is where it belongs; a chat reply is not the place to prove the work was
+thorough.
+
+This is about the chat only. It does not shorten comments, commit messages or
+this file.
+
 ## Project
 
 VegDrop — a React PWA for a hyperlocal grocery delivery service, with an Express + MongoDB backend and Razorpay payments.
@@ -52,6 +67,8 @@ Copy `.env.example` to `.env`. Notes that are easy to get wrong:
   That last one was the worst of the set and is worth stating plainly, because it is the shape the next such bug will take: on a deployed host with `NODE_ENV` unset and Razorpay unconfigured, boot succeeded, `POST /wallet/topup/create` minted a **mock** payment intent, and `/topup/verify` then credited real wallet balance — a mock intent carries no signature to check. Three separate guards were supposed to stop that and all three asked `isProduction`.
 
   **So: never write a new `isProduction` guard for something whose danger comes from being deployed — ask `requireRealServices`.** `isProduction` is still right for things that genuinely track the NODE_ENV build distinction, and for nothing else.
+
+- **The live API is `vegdrop-api`, in the Railway project `miraculous-inspiration`, on an account the Railway MCP token cannot see.** The token *can* see a different account holding a project called `vegbazzar` with a service called `vegbazzar-api`, which is configured like this app and is not what serves production. That is a trap rather than a curiosity: listing variables there returns a plausible, complete-looking set, so "is X configured in production?" can be answered confidently and wrongly without anything failing. It has already happened once — `OPENAI_API_KEY` was read as absent, and a whole round of work was justified on the belief that the model path never ran, when the live service had it set all along. **Treat any Railway reading as being about `vegbazzar-api` unless the project id says `miraculous-inspiration`, and answer questions about production config from the running service — `GET /api/health`, or the person's own dashboard — not from the variable list the token happens to reach.**
 
 - **`GET /api/health` reports the running commit**, so a deploy can be confirmed without dashboard access — which matters here, because the Railway MCP token cannot see this service's deployments at all. `config.revision` reads whichever variable the host injects (`RAILWAY_GIT_COMMIT_SHA`, `VERCEL_GIT_COMMIT_SHA`, `RENDER_GIT_COMMIT`, …), falls back to reading `.git/HEAD` for a local checkout, and is `null` when neither exists — a normal state for a hand-built image, not an error. `uptimeSeconds` travels with it because the SHA alone cannot tell a rollout from a container that has been up since yesterday: a redeploy of an unchanged commit reports the same string. Neither feeds the `status` field — a health check answers "can this serve traffic", and taking a service out of rotation over a missing label would be worse than not knowing.
 
@@ -164,9 +181,13 @@ for everything addressed to an inbox; keyed by channel, an unconfigured or broke
 channel only affects what is addressed to it. Codes go to `sms` only — `email`
 now carries stall notices and nothing else.
 
-The `sms` channel is WhatsApp or Fast2SMS (or the console stub); the `email` channel is SMTP
-via nodemailer (`services/transports/email.js`), active only when `SMTP_HOST` and
-`SMTP_FROM` are set. Neither transport ever logs the code, and both mask the
+The `sms` channel is WhatsApp or Fast2SMS (or the console stub). The `email`
+channel is a chain of **HTTP** providers — Brevo, SendGrid, MailerSend, Mailtrap,
+Plunk, Resend — tried in `EMAIL_PROVIDER_ORDER` until one delivers, with SMTP via
+nodemailer (`SMTP_HOST` + `SMTP_FROM`) as one more option rather than the only
+one. HTTP is not a preference: **Railway blocks outbound SMTP on its Hobby and
+Trial plans**, so nodemailer fails with `ESOCKET` before it reaches a credential,
+and a host configured with SMTP alone silently sends nothing. Neither transport ever logs the code, and both mask the
 destination — only the console stub prints codes, and production refuses to boot
 on it.
 
@@ -181,8 +202,38 @@ Phone transports, via `NOTIFY_TRANSPORT`:
 
 `fast2sms` is the cheap option (about ₹0.35 a code without DLT). It is selected
 automatically when `FAST2SMS_API_KEY` is set and WhatsApp is not; with both set,
-WhatsApp wins unless `NOTIFY_TRANSPORT=fast2sms`. There is no failover between
-the two — the failover chain is email-only. `services/transports/fast2sms.js`
+WhatsApp wins unless `NOTIFY_TRANSPORT=fast2sms`.
+
+**`NOTIFY_TRANSPORT` chooses which transport is tried FIRST, not which may ever
+be tried.** It used to mean both, and that was a live outage: this project's own
+host had WhatsApp fully configured and was pinned to `fast2sms`, Fast2SMS
+answered `status_code 996` ("complete website verification") to every send, and
+because sign-in here is passwordless that is every customer pushed onto reverse
+OTP — the one path that survives it — while a paid-for, working transport sat
+one `if` away, never tried. (Not a total lockout, and worth stating precisely:
+`routes/auth.js` catches `OTP_DELIVERY_FAILED`, and because
+`WHATSAPP_INBOX_NUMBER` and `WHATSAPP_APP_SECRET` are both set it answers
+`challengeId: null` rather than throwing, so the sign-in screen offers
+`ReverseOtpPanel`. Everyone who did not choose "verify by sending us a message"
+got nothing.) `configuredPhoneTransports()` now puts
+the chosen transport first and every OTHER transport holding credentials after
+it, and `failoverTransport()` walks the chain until one accepts.
+
+**A fallback send carries the SAME code**, because the code is generated in
+`services/otp.js` and passed down — so the worst case is one person receiving the
+same six digits twice, never two codes of which only one works. That property is
+what makes failing over safe here, and it is the first thing to re-check if a
+code is ever generated inside a transport instead. A transport that throws has
+already exhausted its own retries (fast2sms retries 408/429/5xx internally), so
+reaching the next one means the previous is done trying, not busy. When all of
+them refuse, the last error is rethrown so the caller still answers one generic
+`503 OTP_DELIVERY_FAILED` — provider detail must never reach the client, or
+"not a WhatsApp user" becomes an account-enumeration oracle.
+
+A host with one transport gets no wrapper and behaves exactly as before.
+`test/notifyFailover.test.js` pins the order and all three outcomes, including
+that a SUCCESSFUL primary never triggers a second send — every fallback costs
+money and arrives on somebody's phone. `services/transports/fast2sms.js`
 judges success on the response body (`return: true`), not the HTTP status,
 because Fast2SMS can reject with a 200.
 

@@ -596,6 +596,21 @@ const config = Object.freeze({
 
   notifyTransport,
 
+  /**
+   * Which phone transports this host holds credentials for, regardless of which
+   * one `NOTIFY_TRANSPORT` names first.
+   *
+   * `notifyTransport` answers "which do we try first", and used to be read as
+   * "which may we ever try" — so a host with WhatsApp fully configured and
+   * pinned to fast2sms had no way to deliver anything once Fast2SMS started
+   * refusing. `services/notify.js` reads this to build the fallback chain.
+   */
+  transportCredentials: Object.freeze({
+    whatsapp: whatsappConfigured,
+    fast2sms: fast2smsConfigured,
+    smsgate: smsGateConfigured,
+  }),
+
   smsGate: Object.freeze({
     configured: smsGateConfigured,
     username: smsGateUsername,
