@@ -26,6 +26,8 @@ import AccountRewards from './components/AccountRewards';
 import AccountAddress from './components/AccountAddress';
 import AccountWishlist from './components/AccountWishlist';
 import AccountPermissions from './components/AccountPermissions';
+import AccountVoiceSettings from './components/AccountVoiceSettings';
+import VoiceAgentButton from './components/VoiceAgentButton';
 import ProfileAvatar from './components/ProfileAvatar';
 import { avatarPreset } from './data/avatars';
 import AvatarPicker from './components/AvatarPicker';
@@ -42,7 +44,7 @@ import { useLanguage } from './i18n/LanguageContext';
 import { LANGUAGES } from './i18n/translations';
 import { productName, dateLocale } from './i18n/catalog';
 import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
-import { rememberSearch } from './services/search';
+import { rememberSearch, normalize } from './services/search';
 import { fetchShopsForBasket, linesForShop } from './services/shops';
 import { savedCustomerAddress } from './services/address';
 import { productSkuFromHash, shareApp } from './services/share';
@@ -51,7 +53,7 @@ import { unitsOf } from './services/packs';
 import { createSchedule, fetchSchedules, recurrenceFromDates, describeRecurrence } from './services/schedules';
 import { HomeSkeleton } from './components/LoadingSkeleton';
 import { useToast } from './components/Toast';
-import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon, MapPin as MapPinIcon, Heart as HeartIcon, Settings as SettingsIcon, Wallet as WalletIcon, Package as PackageIcon, Camera as CameraIcon, Mail as MailIcon, Phone as PhoneIcon, Pencil as PencilIcon, BadgeCheck as BadgeCheckIcon, Share2 as ShareIcon, Star as StarIcon } from 'lucide-react';
+import { ChevronRight, ArrowLeft, User as UserIcon, History as HistoryIcon, Coins as CoinsIcon, Languages as LanguagesIcon, MapPin as MapPinIcon, Heart as HeartIcon, Settings as SettingsIcon, Wallet as WalletIcon, Package as PackageIcon, Camera as CameraIcon, Mail as MailIcon, Phone as PhoneIcon, Pencil as PencilIcon, BadgeCheck as BadgeCheckIcon, Share2 as ShareIcon, Star as StarIcon, Mic as MicIcon } from 'lucide-react';
 import {
   logout,
   logoutEverywhere,
@@ -59,6 +61,8 @@ import {
   verifyPhoneChange,
 } from './services/auth';
 import useLocalStorage from './hooks/useLocalStorage';
+import useVoiceAgent from './hooks/useVoiceAgent';
+import { DEFAULT_VOICE_MODE } from './lib/voiceCommands';
 import useSessionUser from './hooks/useSessionUser';
 import { useBackLayer } from './hooks/useBackLayer';
 import { setTab as syncTabHistory, startBackStack, resetBackStack } from './lib/backStack';
@@ -145,6 +149,7 @@ const ACCOUNT_VIEW_TITLES = {
   address: 'account.savedAddress',
   language: 'settings.language',
   permissions: 'permissions.title',
+  voice: 'voice.settings.title',
 };
 
 /**
@@ -2245,6 +2250,208 @@ export default function App() {
     setActiveTab('assistant');
   }, []);
 
+  /*
+   * ---------------------------------------------------------------------------
+   * The voice agent
+   * ---------------------------------------------------------------------------
+   *
+   * `useVoiceAgent` holds the microphone, decides what an utterance meant
+   * (lib/voiceCommands.js) and says the answer. Everything it DOES, it does
+   * through the handlers below — so the agent carries no knowledge of this
+   * app's catalog, cart or tabs, and this file carries none of the parsing.
+   *
+   * The mode is the ceiling the shopper set in Account. It is enforced inside
+   * the agent, in one table, rather than by each handler below remembering to
+   * check — and `payment` is in no mode's list at all.
+   */
+  const [voiceMode, setVoiceMode] = useLocalStorage('vegdrop_voice_mode', DEFAULT_VOICE_MODE);
+
+  /** A question the shopper spoke that the cooking assistant should answer. */
+  const [voiceAsk, setVoiceAsk] = useState(null);
+
+  /**
+   * A spoken vegetable name, against whatever sheet is being browsed.
+   *
+   * `browseProducts`, not the platform catalog: the market or shop on screen is
+   * the one whose prices the shopper is being quoted, and resolving against
+   * anything wider adds a line the seller cannot fill. Exact name first, then a
+   * prefix, then a contained word — a spoken "tomato" must not land on
+   * "Tomato Ketchup" while a plain Tomato row exists.
+   */
+  const findSpokenProduct = useCallback(
+    (spoken) => {
+      const wanted = normalize(spoken);
+      if (!wanted) return null;
+
+      const named = browseProducts.map((product) => ({
+        product,
+        /* Both names are searched: the shopper speaks Telugu to a screen
+           showing English, and `productName` is what they are reading. */
+        names: [normalize(product.name), normalize(productName(product, language))].filter(Boolean),
+      }));
+
+      return (
+        named.find((row) => row.names.includes(wanted))?.product ||
+        named.find((row) => row.names.some((name) => name.startsWith(wanted)))?.product ||
+        named.find((row) => row.names.some((name) => name.includes(wanted)))?.product ||
+        null
+      );
+    },
+    [browseProducts, language]
+  );
+
+  const voiceActions = useMemo(
+    () => ({
+      /** @returns {boolean} whether this app has such a screen at all. */
+      navigate: (target) => {
+        if (target === 'cart') {
+          setIsCartOpen(true);
+          return true;
+        }
+        if (target === 'search') {
+          setSearchDiscoveryOpen(true);
+          return true;
+        }
+        if (target === 'offers') {
+          // Offers live inside the account section rather than on a tab of
+          // their own, so this is two moves, not one.
+          setActiveAccountView('rewards');
+          setActiveTab('account');
+          return true;
+        }
+        const tab = { home: 'home', prices: 'prices', cook: 'assistant', orders: 'orders', account: 'account' }[target];
+        if (!tab) return false;
+        if (tab === 'account') setActiveAccountView('menu');
+        setActiveTab(tab);
+        return true;
+      },
+
+      openCart: () => setIsCartOpen(true),
+
+      /**
+       * Spoken lines into the cart, through the SAME handler a tap uses.
+       *
+       * `handleAddToCart` carries the sold-out check, the pack arithmetic and
+       * the fly-to-cart animation; a second path into the cart would be a
+       * second place for the pack rules to go wrong, and those rules are a
+       * billing contract (server/test/packs.test.js).
+       */
+      addItems: (items) => {
+        const added = [];
+        const missing = [];
+        for (const item of items) {
+          const product = findSpokenProduct(item.text);
+          if (!product || product.stock === 0) {
+            missing.push(item.text);
+            continue;
+          }
+          /* One call per pack, so the pack arithmetic and the sold-out check
+             run exactly as they do for a tap. Capped at ten: a misheard number
+             must not fill a basket, and nobody buys eleven packs by voice. */
+          for (let i = 0; i < Math.min(item.quantity || 1, 10); i += 1) handleAddToCart(product);
+          added.push(productName(product, language));
+        }
+        return { added, missing };
+      },
+
+      removeItems: (items) => {
+        const removed = [];
+        const missing = [];
+        for (const item of items) {
+          const wanted = normalize(item.text);
+          const line = activeCartItems.find((row) => normalize(row.name).includes(wanted));
+          if (!line) {
+            missing.push(item.text);
+            continue;
+          }
+          // The whole line, not the spoken count: "remove tomato" means the
+          // tomatoes are gone, and leaving one behind is a line the shopper
+          // then discovers at the door.
+          handleUpdateQuantity(line.id, -line.quantity);
+          removed.push(line.name);
+        }
+        return { removed, missing };
+      },
+
+      clearCart: () => (shoppingMode === 'scheduled' ? setScheduledCartItems([]) : setCartItems([])),
+
+      /** Hand the sentence to the cooking assistant, which answers it. */
+      ask: (text) => {
+        setVoiceAsk({ text, at: Date.now() });
+        setActiveTab('assistant');
+      },
+    }),
+    [
+      findSpokenProduct,
+      handleAddToCart,
+      handleUpdateQuantity,
+      activeCartItems,
+      shoppingMode,
+      setCartItems,
+      setScheduledCartItems,
+      language,
+    ]
+  );
+
+  /**
+   * What is on screen, for "what am I looking at?".
+   *
+   * Assembled from the state the app already holds rather than read off the
+   * DOM — the reasoning is on `lib/voiceScreen.js`. The cart total is computed
+   * the way CartModal computes it, from the same line prices, so the spoken
+   * figure and the printed one cannot drift.
+   */
+  const voiceView = useMemo(
+    () => ({
+      tab: activeTab === 'assistant' ? 'cook' : activeTab,
+      signIn: activeTab === 'login' || activeTab === 'signup',
+      product: Boolean(activeProductDetail),
+      productName: activeProductDetail ? productName(activeProductDetail, language) : null,
+      category: Boolean(activeCategoryDetail),
+      categoryName: activeCategoryDetail?.title || null,
+      search: searchDiscoveryOpen || Boolean(searchQuery),
+      query: searchQuery || null,
+      wallet: isWalletOpen,
+      basket: isCartOpen,
+      marketName: selectedShop?.name || selectedMarket?.name || null,
+      cartLines: activeCartItems.map((item) => ({ name: item.name, quantity: item.quantity })),
+      cartTotalPaise: Math.round(
+        activeCartItems.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0) * 100
+      ),
+    }),
+    [
+      activeTab,
+      activeProductDetail,
+      activeCategoryDetail,
+      searchDiscoveryOpen,
+      searchQuery,
+      isWalletOpen,
+      isCartOpen,
+      selectedShop,
+      selectedMarket,
+      activeCartItems,
+      language,
+    ]
+  );
+
+  const voice = useVoiceAgent({ mode: voiceMode, view: voiceView, actions: voiceActions });
+
+  /*
+   * Where the mic button appears, which is the modes made visible.
+   *
+   * `low` is the cooking tab and nowhere else — that is what the shopper chose,
+   * and a button on every screen that answered "voice is set to low" on every
+   * tap would be a worse way of saying the same thing. `medium` and `high`
+   * ride every tab. It is hidden while signing in: a password screen is not a
+   * place to add a listening microphone, and the agent has nothing to do there.
+   */
+  const voiceButtonVisible =
+    voiceMode !== 'off' &&
+    Boolean(user) &&
+    activeTab !== 'login' &&
+    activeTab !== 'signup' &&
+    (voiceMode !== 'low' || activeTab === 'assistant');
+
   /**
    * Everything that opens over a tab gets a history entry, so the back button
    * closes it instead of changing the tab underneath — see lib/backStack.js.
@@ -2649,6 +2856,13 @@ export default function App() {
                   }
                   opener={assistantOpener}
                   onOpenerTaken={() => setAssistantOpener(null)}
+                  /* A question the shopper SPOKE, which the voice agent could
+                     not answer itself and handed over. It travels as the
+                     shopper's own message, unlike `opener`, which is a question
+                     the helper asks — so it carries a timestamp rather than a
+                     key, and taking it clears it, the same way the opener does. */
+                  spokenAsk={voiceAsk}
+                  onSpokenAskTaken={() => setVoiceAsk(null)}
                 />
               ) : (
                 /* ACCOUNT & ROLE SWITCHER TAB.
@@ -2834,6 +3048,27 @@ export default function App() {
                             </div>
                           </button>
 
+                          {/* Voice sits beside Language because it is the same
+                              kind of setting — how the app talks to this
+                              person — and its subtitle is the current step, so
+                              the row answers "how much can it do" without
+                              being opened. */}
+                          <button
+                            onClick={() => setActiveAccountView('voice')}
+                            className="w-full p-4 flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer group"
+                          >
+                            <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[inset_1px_1px_2px_rgba(255,255,255,1),2px_2px_4px_rgba(0,0,0,0.06)]">
+                              <MicIcon className="w-5 h-5 drop-shadow-sm" />
+                            </div>
+                            <div className="flex-1">
+                              <h3 className="font-extrabold text-slate-600 text-sm tracking-tight">{t('voice.settings.title')}</h3>
+                              <p className="text-[11.5px] font-bold text-slate-400 mt-0.5">{t(`voice.settings.${voiceMode}`)}</p>
+                            </div>
+                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-[#1B4D3E] group-hover:text-white transition-colors">
+                              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
+                            </div>
+                          </button>
+
                           {/* Language is a destination like the rows above it,
                               rather than a card repeated at the foot of every
                               account screen, which is what it was. The subtitle
@@ -2914,6 +3149,12 @@ export default function App() {
                         </div>
                       ) : activeAccountView === 'permissions' ? (
                         <AccountPermissions />
+                      ) : activeAccountView === 'voice' ? (
+                        <AccountVoiceSettings
+                          mode={voiceMode}
+                          onChange={setVoiceMode}
+                          supported={voice.supported}
+                        />
                       ) : (
                         <>
                           {!isEditingProfile && (
@@ -3273,6 +3514,24 @@ export default function App() {
             </PageTransition>
           </main>
         </>
+      )}
+
+      {/*
+        The voice agent's mic, above the nav.
+
+        Rendered here, outside every PageTransition, for the reason spelled out
+        in CLAUDE.md: a transform is a containing block for `position: fixed`,
+        so a fixed button inside a transitioning page is positioned against the
+        page rather than the viewport and slides off-screen with it.
+      */}
+      {voiceButtonVisible && (
+        <VoiceAgentButton
+          status={voice.status}
+          heard={voice.heard}
+          said={voice.said}
+          onListen={voice.listen}
+          onStop={voice.stop}
+        />
       )}
 
       {/* 5. FIXED BOTTOM NAVIGATION BAR */}

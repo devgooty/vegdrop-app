@@ -2053,6 +2053,17 @@ const STRINGS = {
   'voice.screen.searchFor': { en: 'You searched for {query}.', hi: 'आपने {query} खोजा।', te: 'మీరు {query} కోసం వెతికారు.' },
   'voice.screen.unknown': { en: 'I am not sure which screen this is.', hi: 'मुझे पक्का नहीं कि यह कौन सी स्क्रीन है।', te: 'ఇది ఏ స్క్రీన్ అని నాకు స్పష్టంగా తెలియదు.' },
 
+  // Screen names, spoken after "Opening ..." — the nav labels read oddly in a
+  // sentence ("Opening AI Cook"), so these are the names people say.
+  'voice.target.home': { en: 'the home screen', hi: 'होम स्क्रीन', te: 'హోమ్ స్క్రీన్' },
+  'voice.target.prices': { en: "today's prices", hi: 'आज के भाव', te: 'ఈ రోజు ధరలు' },
+  'voice.target.cook': { en: 'the cooking helper', hi: 'रसोई सहायक', te: 'వంట సహాయకుడు' },
+  'voice.target.cart': { en: 'your cart', hi: 'आपका कार्ट', te: 'మీ కార్ట్' },
+  'voice.target.orders': { en: 'your orders', hi: 'आपके ऑर्डर', te: 'మీ ఆర్డర్లు' },
+  'voice.target.account': { en: 'your account', hi: 'आपका खाता', te: 'మీ ఖాతా' },
+  'voice.target.offers': { en: 'the offers', hi: 'ऑफर', te: 'ఆఫర్లు' },
+  'voice.target.search': { en: 'the search', hi: 'खोज', te: 'వెతుకుడు' },
+
   'voice.cart.empty': { en: 'Your cart is empty.', hi: 'आपका कार्ट खाली है।', te: 'మీ కార్ట్ ఖాళీగా ఉంది.' },
   'voice.cart.line': { en: '{name}, {count} packs', hi: '{name}, {count} पैक', te: '{name}, {count} ప్యాక్‌లు' },
   'voice.cart.all': { en: 'Your cart has {items}. Total {total} rupees.', hi: 'आपके कार्ट में {items} है। कुल {total} रुपये।', te: 'మీ కార్ట్‌లో {items} ఉంది. మొత్తం {total} రూపాయలు.' },
@@ -2078,6 +2089,12 @@ const STRINGS = {
     hi: 'वॉइस {mode} पर है। यह करने देने के लिए खाते में बदलें।',
     te: 'వాయిస్ {mode} లో ఉంది. ఇది చేయనివ్వాలంటే ఖాతాలో మార్చండి.',
   },
+  'voice.micBlocked': {
+    en: 'The microphone is blocked. Allow it in your phone settings.',
+    hi: 'माइक्रोफ़ोन बंद है। फ़ोन की सेटिंग में इसकी अनुमति दें।',
+    te: 'మైక్రోఫోన్ బ్లాక్ అయింది. ఫోన్ సెట్టింగ్స్‌లో అనుమతి ఇవ్వండి.',
+  },
+  'voice.offline': { en: 'No connection, so I could not listen.', hi: 'कनेक्शन नहीं है, मैं सुन नहीं पाया।', te: 'కనెక్షన్ లేదు, నేను వినలేకపోయాను.' },
   'voice.notHeard': { en: 'I did not catch that.', hi: 'मैं समझ नहीं पाया।', te: 'నాకు అర్థం కాలేదు.' },
   'voice.signInFirst': { en: 'Please sign in first.', hi: 'पहले साइन इन करें।', te: 'ముందు సైన్ ఇన్ చేయండి.' },
 
@@ -2125,6 +2142,11 @@ const STRINGS = {
     en: 'This device cannot listen. Voice needs a microphone the browser can use.',
     hi: 'यह डिवाइस सुन नहीं सकता। वॉइस के लिए ब्राउज़र को माइक चाहिए।',
     te: 'ఈ పరికరం వినలేదు. వాయిస్‌కి బ్రౌజర్ వాడగల మైక్ కావాలి.',
+  },
+  'voice.settings.payNote': {
+    en: 'Payment is never done by voice, in any setting.',
+    hi: 'भुगतान किसी भी सेटिंग में वॉइस से नहीं होता।',
+    te: 'ఏ సెట్టింగ్‌లోనూ చెల్లింపు వాయిస్‌తో జరగదు.',
   },
   'voice.listen': { en: 'Speak', hi: 'बोलें', te: 'మాట్లాడండి' },
   'voice.listening': { en: 'Listening\u2026', hi: 'सुन रहा हूँ\u2026', te: 'వింటున్నాను\u2026' },
