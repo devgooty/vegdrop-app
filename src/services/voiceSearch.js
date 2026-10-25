@@ -1,4 +1,5 @@
 import { buildSuggestions, normalize } from './search';
+import { createNativeSpeechRecognition, hasNativeSpeech } from './nativeSpeech';
 
 /**
  * Voice search — turn a spoken phrase into the same suggestion a typed
@@ -26,10 +27,22 @@ export function speechLocale(language) {
  * opened the panel. Starting it from a `useEffect` (or after `getUserMedia`)
  * drops the user-activation token; Chrome then reports `network` even when
  * the phone is online. StrictMode abort-and-restart does the same.
+ *
+ * In the Android app there is no browser API at all, so this falls through to
+ * the native recogniser (`nativeSpeech.js`), which wears the same interface.
+ * The browser one is preferred where both exist: it is what every call site
+ * was written against, and a WebView that grew the API would be the better
+ * of the two. `null` still means "this device cannot listen", which is the
+ * only thing the call sites branch on.
  */
 export function createSpeechRecognition(language) {
   const SpeechRecognition = speechRecognitionCtor();
-  if (!SpeechRecognition) return null;
+  if (!SpeechRecognition) {
+    if (!hasNativeSpeech()) return null;
+    const native = createNativeSpeechRecognition();
+    native.lang = speechLocale(language);
+    return native;
+  }
   const recognition = new SpeechRecognition();
   recognition.lang = speechLocale(language);
   recognition.interimResults = true;

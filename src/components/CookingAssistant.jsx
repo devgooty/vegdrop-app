@@ -148,6 +148,8 @@ export default function CookingAssistant({
   onCartFilled,
   opener,
   onOpenerTaken,
+  spokenAsk,
+  onSpokenAskTaken,
 }) {
   const { t } = useLanguage();
   const userId = user?.id;
@@ -318,6 +320,30 @@ export default function CookingAssistant({
     // be dropped and never retried, so the shopper tapped a prompt, landed in
     // the chat, and found nothing asked.
   }, [opener, userId, busy, onOpenerTaken]);
+
+  /**
+   * A question the voice agent handed over, sent as the shopper's own message.
+   *
+   * The opposite of `opener` above, and deliberately so: the opener is a
+   * question the HELPER asks and is seeded as its line, while this is something
+   * the shopper actually said out loud, so it belongs in the chat as theirs and
+   * goes to the server as a turn to answer.
+   *
+   * Keyed on `spokenAsk.at` rather than its text, because asking the same thing
+   * twice is an ordinary thing to do out loud — keyed on the words, the second
+   * "what can I make with brinjal" would be silently dropped as a repeat.
+   */
+  const spokenRef = useRef(null);
+  useEffect(() => {
+    if (!spokenAsk?.text || !userId) return;
+    if (spokenRef.current === spokenAsk.at) return;
+    // Mid-reply is the one case to wait out rather than drop: `busy` is watched,
+    // so this runs again the moment the previous turn finishes.
+    if (busy) return;
+    spokenRef.current = spokenAsk.at;
+    onSpokenAskTaken?.();
+    send(spokenAsk.text);
+  }, [spokenAsk, userId, busy, onSpokenAskTaken]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full bg-[#FAF7F2] animate-fade-in">

@@ -42,4 +42,19 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+
+    <!--
+      Package visibility for the speech service (Android 11+).
+
+      Holding RECORD_AUDIO is not enough: from API 30 an app sees only the other
+      packages it declares an interest in, and SpeechRecognizer has to resolve
+      one that serves android.speech.RecognitionService. Without this,
+      isRecognitionAvailable() answers false on every modern phone and the mic
+      is reported unsupported with the permission already granted.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
 </manifest>
