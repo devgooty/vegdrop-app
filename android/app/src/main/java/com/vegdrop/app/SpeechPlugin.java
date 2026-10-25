@@ -6,6 +6,8 @@ import android.os.Bundle;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -15,6 +17,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import java.util.ArrayList;
+import java.util.Locale;
 
 /**
  * The microphone, for a WebView that has none.
@@ -45,12 +48,98 @@ public class SpeechPlugin extends Plugin {
     private SpeechRecognizer recognizer;
     private boolean listening = false;
 
+    private TextToSpeech tts;
+    private boolean ttsReady = false;
+
     @PluginMethod
     public void available(PluginCall call) {
         JSObject out = new JSObject();
         out.put("available", SpeechRecognizer.isRecognitionAvailable(getContext()));
         out.put("granted", getPermissionState("microphone") == com.getcapacitor.PermissionState.GRANTED);
+        out.put("canSpeak", true);
         call.resolve(out);
+    }
+
+    /**
+     * Say something out loud.
+     *
+     * Speaking is HALF of a voice agent, and the WebView cannot do this half
+     * either: `speechSynthesis` is as absent as `SpeechRecognition`, so a page
+     * that narrated the screen would be answering in silence.
+     *
+     * A language the phone has no voice for resolves `spoken: false` rather
+     * than rejecting. Telugu and Hindi voices are downloaded packs and plenty
+     * of handsets lack them — the page then shows the same sentence as text,
+     * which is a complete answer, where an error would read as a broken
+     * feature.
+     */
+    @PluginMethod
+    public void speak(PluginCall call) {
+        final String text = call.getString("text", "");
+        final String locale = call.getString("locale", "en-IN");
+        if (text.trim().isEmpty()) {
+            call.reject("Nothing to say.");
+            return;
+        }
+
+        withTts(call, engine -> {
+            int set = engine.setLanguage(Locale.forLanguageTag(locale));
+            if (set == TextToSpeech.LANG_MISSING_DATA || set == TextToSpeech.LANG_NOT_SUPPORTED) {
+                // Try the language without its region ("te" for "te-IN") before
+                // giving up: a phone may hold a generic voice and no Indian one.
+                String base = locale.split("-")[0];
+                set = engine.setLanguage(Locale.forLanguageTag(base));
+            }
+            if (set == TextToSpeech.LANG_MISSING_DATA || set == TextToSpeech.LANG_NOT_SUPPORTED) {
+                JSObject out = new JSObject();
+                out.put("spoken", false);
+                out.put("reason", "language-unavailable");
+                call.resolve(out);
+                return;
+            }
+
+            // FLUSH, not ADD: the newest sentence is the one the shopper is
+            // waiting on, and a queue of stale narration read out over a screen
+            // they have already left is worse than saying nothing.
+            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "vegdrop");
+            JSObject out = new JSObject();
+            out.put("spoken", true);
+            call.resolve(out);
+        });
+    }
+
+    @PluginMethod
+    public void stopSpeaking(PluginCall call) {
+        if (tts != null && ttsReady) tts.stop();
+        call.resolve();
+    }
+
+    /** Run something once the engine is up, creating it on first use. */
+    private void withTts(PluginCall call, java.util.function.Consumer<TextToSpeech> ready) {
+        if (tts != null && ttsReady) {
+            ready.accept(tts);
+            return;
+        }
+        if (tts != null) {
+            call.reject("Still starting the voice engine.");
+            return;
+        }
+
+        tts = new TextToSpeech(getContext(), status -> {
+            if (status != TextToSpeech.SUCCESS) {
+                tts = null;
+                ttsReady = false;
+                call.reject("No voice engine on this device.");
+                return;
+            }
+            ttsReady = true;
+            tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                @Override public void onStart(String id) {}
+                @Override public void onDone(String id) { notifyListeners("speakEnd", new JSObject()); }
+                @Override public void onError(String id) { notifyListeners("speakEnd", new JSObject()); }
+            });
+            ready.accept(tts);
+        });
     }
 
     /**
@@ -240,5 +329,11 @@ public class SpeechPlugin extends Plugin {
     @Override
     protected void handleOnDestroy() {
         stopRecognizer();
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+            tts = null;
+            ttsReady = false;
+        }
     }
 }

@@ -2026,6 +2026,108 @@ const STRINGS = {
     hi: 'रसोई सहायक से बात करने के लिए साइन इन करें।',
     te: 'వంట సహాయకుడితో మాట్లాడటానికి సైన్ ఇన్ చేయండి.',
   },
+
+  // --- The voice agent (lib/voiceScreen.js, hooks/useVoiceAgent.js) ---------
+  // Spoken aloud, so these are written to be HEARD: short sentences, no
+  // brackets, no abbreviations a text-to-speech engine reads as letters.
+  'voice.screen.home': { en: 'You are on the home screen.', hi: 'आप होम स्क्रीन पर हैं।', te: 'మీరు హోమ్ స్క్రీన్‌లో ఉన్నారు.' },
+  'voice.screen.homeAt': {
+    en: 'You are on the home screen, shopping at {market}.',
+    hi: 'आप होम स्क्रीन पर हैं, {market} से खरीद रहे हैं।',
+    te: 'మీరు హోమ్ స్క్రీన్‌లో ఉన్నారు, {market} నుంచి కొంటున్నారు.',
+  },
+  'voice.screen.prices': { en: "You are on today's prices.", hi: 'आप आज के भाव देख रहे हैं।', te: 'మీరు ఈ రోజు ధరలు చూస్తున్నారు.' },
+  'voice.screen.cook': { en: 'You are with the cooking helper.', hi: 'आप रसोई सहायक के साथ हैं।', te: 'మీరు వంట సహాయకుడితో ఉన్నారు.' },
+  'voice.screen.orders': { en: 'You are on your orders.', hi: 'आप अपने ऑर्डर देख रहे हैं।', te: 'మీరు మీ ఆర్డర్లు చూస్తున్నారు.' },
+  'voice.screen.account': { en: 'You are on your account.', hi: 'आप अपने खाते में हैं।', te: 'మీరు మీ ఖాతాలో ఉన్నారు.' },
+  'voice.screen.cart': { en: 'You are looking at your cart.', hi: 'आप अपना कार्ट देख रहे हैं।', te: 'మీరు మీ కార్ట్ చూస్తున్నారు.' },
+  'voice.screen.offers': { en: 'You are looking at the offers.', hi: 'आप ऑफर देख रहे हैं।', te: 'మీరు ఆఫర్లు చూస్తున్నారు.' },
+  'voice.screen.wallet': { en: 'You are looking at your wallet.', hi: 'आप अपना वॉलेट देख रहे हैं।', te: 'మీరు మీ వాలెట్ చూస్తున్నారు.' },
+  'voice.screen.signIn': { en: 'The sign in screen is open.', hi: 'साइन इन स्क्रीन खुली है।', te: 'సైన్ ఇన్ స్క్రీన్ తెరిచి ఉంది.' },
+  'voice.screen.mapPicker': { en: 'You are choosing your delivery location on the map.', hi: 'आप नक्शे पर अपनी डिलीवरी जगह चुन रहे हैं।', te: 'మీరు మ్యాప్‌లో డెలివరీ స్థలం ఎంచుకుంటున్నారు.' },
+  'voice.screen.product': { en: 'A vegetable page is open.', hi: 'एक सब्ज़ी का पेज खुला है।', te: 'ఒక కూరగాయ పేజీ తెరిచి ఉంది.' },
+  'voice.screen.productNamed': { en: 'You are looking at {name}.', hi: 'आप {name} देख रहे हैं।', te: 'మీరు {name} చూస్తున్నారు.' },
+  'voice.screen.category': { en: 'A category is open.', hi: 'एक श्रेणी खुली है।', te: 'ఒక విభాగం తెరిచి ఉంది.' },
+  'voice.screen.categoryNamed': { en: 'You are looking at {name}.', hi: 'आप {name} देख रहे हैं।', te: 'మీరు {name} చూస్తున్నారు.' },
+  'voice.screen.search': { en: 'The search is open.', hi: 'खोज खुली है।', te: 'వెతుకుడు తెరిచి ఉంది.' },
+  'voice.screen.searchFor': { en: 'You searched for {query}.', hi: 'आपने {query} खोजा।', te: 'మీరు {query} కోసం వెతికారు.' },
+  'voice.screen.unknown': { en: 'I am not sure which screen this is.', hi: 'मुझे पक्का नहीं कि यह कौन सी स्क्रीन है।', te: 'ఇది ఏ స్క్రీన్ అని నాకు స్పష్టంగా తెలియదు.' },
+
+  'voice.cart.empty': { en: 'Your cart is empty.', hi: 'आपका कार्ट खाली है।', te: 'మీ కార్ట్ ఖాళీగా ఉంది.' },
+  'voice.cart.line': { en: '{name}, {count} packs', hi: '{name}, {count} पैक', te: '{name}, {count} ప్యాక్‌లు' },
+  'voice.cart.all': { en: 'Your cart has {items}. Total {total} rupees.', hi: 'आपके कार्ट में {items} है। कुल {total} रुपये।', te: 'మీ కార్ట్‌లో {items} ఉంది. మొత్తం {total} రూపాయలు.' },
+  'voice.cart.someAndMore': {
+    en: 'Your cart has {items}, and {more} more. Total {total} rupees.',
+    hi: 'आपके कार्ट में {items}, और {more} चीज़ें हैं। कुल {total} रुपये।',
+    te: 'మీ కార్ట్‌లో {items}, మరో {more} ఉన్నాయి. మొత్తం {total} రూపాయలు.',
+  },
+
+  'voice.added': { en: 'Added {items} to your cart.', hi: '{items} कार्ट में डाल दिया।', te: '{items} కార్ట్‌లో వేశాను.' },
+  'voice.removed': { en: 'Removed {items} from your cart.', hi: '{items} कार्ट से हटा दिया।', te: '{items} కార్ట్ నుంచి తీసేశాను.' },
+  'voice.cleared': { en: 'Your cart is empty now.', hi: 'आपका कार्ट अब खाली है।', te: 'మీ కార్ట్ ఇప్పుడు ఖాళీ.' },
+  'voice.notFound': { en: 'I could not find {items} here.', hi: 'मुझे यहाँ {items} नहीं मिला।', te: 'ఇక్కడ {items} దొరకలేదు.' },
+  'voice.notInCart': { en: '{items} is not in your cart.', hi: '{items} आपके कार्ट में नहीं है।', te: '{items} మీ కార్ట్‌లో లేదు.' },
+  'voice.opening': { en: 'Opening {screen}.', hi: '{screen} खोल रहा हूँ।', te: '{screen} తెరుస్తున్నాను.' },
+  'voice.payment': {
+    en: 'Payment has to be done by you. I have opened the cart, please check and pay.',
+    hi: 'भुगतान आपको ही करना होगा। मैंने कार्ट खोल दिया है, देख कर भुगतान करें।',
+    te: 'చెల్లింపు మీరే చేయాలి. కార్ట్ తెరిచాను, చూసి చెల్లించండి.',
+  },
+  'voice.blocked': {
+    en: 'Voice is set to {mode}. Change it in Account to let me do that.',
+    hi: 'वॉइस {mode} पर है। यह करने देने के लिए खाते में बदलें।',
+    te: 'వాయిస్ {mode} లో ఉంది. ఇది చేయనివ్వాలంటే ఖాతాలో మార్చండి.',
+  },
+  'voice.notHeard': { en: 'I did not catch that.', hi: 'मैं समझ नहीं पाया।', te: 'నాకు అర్థం కాలేదు.' },
+  'voice.signInFirst': { en: 'Please sign in first.', hi: 'पहले साइन इन करें।', te: 'ముందు సైన్ ఇన్ చేయండి.' },
+
+  'voice.help.off': { en: 'Voice is switched off. Turn it on in Account.', hi: 'वॉइस बंद है। खाते में चालू करें।', te: 'వాయిస్ ఆఫ్‌లో ఉంది. ఖాతాలో ఆన్ చేయండి.' },
+  'voice.help.low': {
+    en: 'I can talk about cooking. Ask me a dish, or tell me which vegetables you have.',
+    hi: 'मैं खाना पकाने की बात कर सकता हूँ। कोई व्यंजन पूछें, या बताएं आपके पास कौन सी सब्ज़ियाँ हैं।',
+    te: 'నేను వంట గురించి మాట్లాడగలను. ఒక వంటకం అడగండి, లేదా మీ దగ్గర ఏ కూరగాయలు ఉన్నాయో చెప్పండి.',
+  },
+  'voice.help.medium': {
+    en: 'I can tell you what is on the screen, read your cart, and talk about cooking.',
+    hi: 'मैं बता सकता हूँ स्क्रीन पर क्या है, कार्ट पढ़ सकता हूँ, और खाना पकाने की बात कर सकता हूँ।',
+    te: 'స్క్రీన్‌లో ఏముందో చెప్పగలను, కార్ట్ చదవగలను, వంట గురించి మాట్లాడగలను.',
+  },
+  'voice.help.high': {
+    en: 'I can open screens, add and remove vegetables, read your cart and the offers, and talk about cooking. Payment you do yourself.',
+    hi: 'मैं स्क्रीन खोल सकता हूँ, सब्ज़ियाँ डाल और हटा सकता हूँ, कार्ट और ऑफर पढ़ सकता हूँ, और खाना पकाने की बात कर सकता हूँ। भुगतान आप खुद करें।',
+    te: 'నేను స్క్రీన్‌లు తెరవగలను, కూరగాయలు వేయగలను తీసేయగలను, కార్ట్ ఆఫర్లు చదవగలను, వంట గురించి మాట్లాడగలను. చెల్లింపు మీరే చేయాలి.',
+  },
+
+  // --- Voice settings (AccountVoiceSettings.jsx) ----------------------------
+  'voice.settings.title': { en: 'Voice assistant', hi: 'वॉइस सहायक', te: 'వాయిస్ సహాయకుడు' },
+  'voice.settings.subtitle': {
+    en: 'How much of the app the voice assistant may control.',
+    hi: 'वॉइस सहायक ऐप का कितना हिस्सा चला सकता है।',
+    te: 'వాయిస్ సహాయకుడు యాప్‌లో ఎంత వరకు నడపగలడు.',
+  },
+  'voice.settings.off': { en: 'Off', hi: 'बंद', te: 'ఆఫ్' },
+  'voice.settings.offHint': { en: 'No voice anywhere.', hi: 'कहीं भी वॉइस नहीं।', te: 'ఎక్కడా వాయిస్ లేదు.' },
+  'voice.settings.low': { en: 'Low', hi: 'कम', te: 'తక్కువ' },
+  'voice.settings.lowHint': { en: 'Only in the AI Cook tab.', hi: 'सिर्फ़ AI रसोई में।', te: 'AI వంటలో మాత్రమే.' },
+  'voice.settings.medium': { en: 'Medium', hi: 'मध्यम', te: 'మధ్యస్థం' },
+  'voice.settings.mediumHint': {
+    en: 'Also tells you what is on the screen and reads your cart.',
+    hi: 'स्क्रीन पर क्या है यह भी बताता है और कार्ट पढ़ता है।',
+    te: 'స్క్రీన్‌లో ఏముందో చెబుతుంది, కార్ట్ చదువుతుంది.',
+  },
+  'voice.settings.high': { en: 'High', hi: 'पूरा', te: 'పూర్తి' },
+  'voice.settings.highHint': {
+    en: 'Also opens screens and changes your cart. Never payment.',
+    hi: 'स्क्रीन भी खोलता है और कार्ट बदलता है। भुगतान कभी नहीं।',
+    te: 'స్క్రీన్‌లు తెరుస్తుంది, కార్ట్ మారుస్తుంది. చెల్లింపు ఎప్పుడూ కాదు.',
+  },
+  'voice.settings.unsupported': {
+    en: 'This device cannot listen. Voice needs a microphone the browser can use.',
+    hi: 'यह डिवाइस सुन नहीं सकता। वॉइस के लिए ब्राउज़र को माइक चाहिए।',
+    te: 'ఈ పరికరం వినలేదు. వాయిస్‌కి బ్రౌజర్ వాడగల మైక్ కావాలి.',
+  },
+  'voice.listen': { en: 'Speak', hi: 'बोलें', te: 'మాట్లాడండి' },
+  'voice.listening': { en: 'Listening\u2026', hi: 'सुन रहा हूँ\u2026', te: 'వింటున్నాను\u2026' },
 };
 
 /**
