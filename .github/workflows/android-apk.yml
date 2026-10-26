@@ -38,9 +38,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 22, not 20: the Capacitor CLI refuses to run below it —
+      # "[fatal] The Capacitor CLI requires NodeJS >=22.0.0" — and it is `cap
+      # sync` that copies the web build in and refreshes the native plugin
+      # list, so the APK cannot be built without it.
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       # JDK 21: what Capacitor 8's Android Gradle Plugin expects.
