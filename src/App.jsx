@@ -3529,6 +3529,7 @@ export default function App() {
           status={voice.status}
           heard={voice.heard}
           said={voice.said}
+          silent={voice.silent}
           onListen={voice.listen}
           onStop={voice.stop}
         />

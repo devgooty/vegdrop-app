@@ -33,6 +33,7 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
   const [status, setStatus] = useState('idle');
   const [heard, setHeard] = useState('');
   const [said, setSaid] = useState('');
+  const [silent, setSilent] = useState(null);
 
   const recognitionRef = useRef(null);
   const viewRef = useRef(view);
@@ -65,8 +66,21 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
 
   const answer = useCallback((sentence) => {
     setSaid(sentence);
+    setSilent(null);
     setStatus('spoke');
-    speak(sentence, languageRef.current);
+
+    /*
+     * Why it stayed quiet, when it did.
+     *
+     * A phone with no voice for the chosen language is quiet, not broken —
+     * but the two look identical to the shopper, who reasonably reports the
+     * whole feature as not working. So the reason goes on screen under the
+     * answer, and the commonest one names the fix (install the voice, or turn
+     * the media volume up).
+     */
+    speak(sentence, languageRef.current).then((result) => {
+      if (!result?.spoken) setSilent(result?.reason || 'engine');
+    });
 
     // The bubble is a transcript of something already said, not a notice to be
     // dismissed. Left up it becomes furniture, and furniture over the nav is
@@ -75,6 +89,7 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
     fadeRef.current = setTimeout(() => {
       setSaid('');
       setHeard('');
+      setSilent(null);
       setStatus((current) => (current === 'spoke' ? 'idle' : current));
     }, ANSWER_VISIBLE_MS);
   }, []);
@@ -213,6 +228,7 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
 
     setHeard('');
     setSaid('');
+    setSilent(null);
 
     recognition.onstart = () => {
       if (recognitionRef.current !== recognition) return;
@@ -285,5 +301,5 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
 
   useEffect(() => stop, [stop]);
 
-  return { supported, status, heard, said, listen, stop };
+  return { supported, status, heard, said, silent, listen, stop };
 }
