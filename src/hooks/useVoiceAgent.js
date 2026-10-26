@@ -3,7 +3,8 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { createSpeechRecognition, mapSpeechError, speechRecognitionCtor } from '../services/voiceSearch';
 import { hasNativeSpeech } from '../services/nativeSpeech';
 import { speak, stopSpeaking } from '../services/voiceOut';
-import { parseVoiceCommand, routeVoiceCommand } from '../lib/voiceCommands';
+import { parseVoiceCommand, routeVoiceCommand, voiceModeAllows } from '../lib/voiceCommands';
+import { classifySpokenCommand } from '../services/agent';
 import { describeScreen, describeCart, describeHelp } from '../lib/voiceScreen';
 
 /**
@@ -107,12 +108,20 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
     setStatus('idle');
   }, []);
 
-  /** Carry out one command, in whatever mode is current. */
-  const act = useCallback(
-    (utterance) => {
-      const command = routeVoiceCommand(utterance, modeRef.current);
+  /**
+   * Carry out one ALREADY-ROUTED command, in whatever mode is current.
+   *
+   * `spokenReply` is the model's own wording when the command came from it:
+   * the app's fixed sentence is correct but flat, and a sentence written for
+   * this shopper in their own words is the whole point of asking a model what
+   * they meant. It is only ever the WORDING — what happens is this switch,
+   * every time.
+   */
+  const perform = useCallback(
+    (command, spokenReply) => {
       const run = actionsRef.current;
       const screen = viewRef.current;
+      const say = (fallback) => answer(spokenReply || fallback);
 
       if (command.verdict === 'payment') {
         // Opening the cart is the most help that can be given here: the shopper
@@ -156,7 +165,7 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
           }
           // The screen named, not the screen described: this answers "I am
           // taking you there", and the shopper can then see it for themselves.
-          answer(t('voice.opening', { screen: t(`voice.target.${command.target}`) }));
+          say(t('voice.opening', { screen: t(`voice.target.${command.target}`) }));
           return;
         }
 
@@ -166,11 +175,14 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
             answer(t('voice.notFound', { items: missing.join(', ') || command.text || '' }));
             return;
           }
-          answer(
-            missing.length > 0
-              ? `${t('voice.added', { items: added.join(', ') })} ${t('voice.notFound', { items: missing.join(', ') })}`
-              : t('voice.added', { items: added.join(', ') })
-          );
+          // The model's wording is used only when everything asked for landed.
+          // A partial result has to name what did NOT, and the model does not
+          // know — it never saw this market's sheet.
+          if (missing.length > 0) {
+            answer(`${t('voice.added', { items: added.join(', ') })} ${t('voice.notFound', { items: missing.join(', ') })}`);
+            return;
+          }
+          say(t('voice.added', { items: added.join(', ') }));
           return;
         }
 
@@ -180,32 +192,97 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
             answer(t('voice.notInCart', { items: missing.join(', ') || command.text || '' }));
             return;
           }
-          answer(t('voice.removed', { items: removed.join(', ') }));
+          say(t('voice.removed', { items: removed.join(', ') }));
           return;
         }
 
         case 'clear_cart':
           run.clearCart?.();
-          answer(t('voice.cleared'));
+          say(t('voice.cleared'));
           return;
 
         case 'cook':
         default:
           /*
-           * The fall-through, and the reason the matcher may be narrow.
+           * To the cooking assistant, which holds a real conversation.
            *
-           * Anything it did not recognise is handed to the cooking assistant,
-           * which is the model path and holds a real conversation. The agent
-           * says nothing of its own here — two voices answering one question is
-           * worse than one — so the reply the shopper hears is the assistant's.
+           * The agent says nothing of its own here — two voices answering one
+           * question is worse than one — so the reply the shopper hears is the
+           * assistant's.
            */
-          run.ask?.(command.text || utterance);
+          run.ask?.(command.text || '');
           setStatus('idle');
           setSaid('');
           return;
       }
     },
     [answer, stop, t]
+  );
+
+  /**
+   * Work out what was said, then do it.
+   *
+   * Two stages, in this order for a reason. The keyword table answers
+   * instantly and with no connection, so a command it recognises never waits
+   * on a network — and the commands people repeat all day are exactly the ones
+   * it covers. Only a sentence it cannot place is sent to the model, which is
+   * the half a table cannot do: people do not say "add two kg tomato", they
+   * say "tomato konchem veyyi" and "put a couple of those in".
+   *
+   * **The model names a command. It never runs one.** Whatever it returns goes
+   * back through the same mode gate and the same switch above, so the ceiling
+   * the shopper set still holds, the catalog lookup and pack arithmetic are
+   * unchanged, and `payment` stays unreachable. A wrong answer from it is a
+   * wrong screen, never a wrong price.
+   *
+   * Every failure — no key, provider down, no connection — falls through to
+   * the cooking assistant, which is exactly where an unrecognised sentence
+   * went before any of this existed.
+   */
+  const act = useCallback(
+    async (utterance) => {
+      const routed = routeVoiceCommand(utterance, modeRef.current);
+      if (routed.intent !== 'cook') {
+        perform({ ...routed, text: routed.text ?? utterance });
+        return;
+      }
+
+      const screen = viewRef.current;
+      let guess = null;
+      try {
+        guess = await classifySpokenCommand({
+          utterance,
+          language: languageRef.current,
+          screen: {
+            ...(screen.tab ? { tab: screen.tab } : {}),
+            ...(screen.productName ? { productName: screen.productName } : {}),
+            cartCount: Array.isArray(screen.cartLines) ? screen.cartLines.length : 0,
+          },
+        });
+      } catch {
+        // Offline, signed out, rate limited: the assistant still answers.
+        guess = null;
+      }
+
+      // Nothing was heard back, or it is conversation: the assistant's job.
+      if (!guess || guess.intent === 'chat' || !guess.intent) {
+        perform({ ...routed, text: utterance });
+        return;
+      }
+
+      const allowed = voiceModeAllows(modeRef.current, guess.intent);
+      perform(
+        {
+          intent: guess.intent,
+          target: guess.target,
+          items: guess.items,
+          text: utterance,
+          verdict: allowed ? 'allow' : 'blocked',
+        },
+        guess.reply
+      );
+    },
+    [perform]
   );
 
   /**
