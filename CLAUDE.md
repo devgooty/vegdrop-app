@@ -548,14 +548,19 @@ Four files, and the split between them is the design:
 
 | File | What it decides |
 |---|---|
-| `lib/voiceCommands.js` | what an utterance MEANS (pure) |
+| `lib/voiceCommands.js` | what a RECOGNISED utterance means (pure, offline, first) |
+| `services/agent/voiceIntent.js` | what an unrecognised one meant (model, server, fallback) |
 | `lib/voiceScreen.js` | what a screen SAYS about itself (pure) |
 | `hooks/useVoiceAgent.js` | one spoken turn: listen, decide, do, answer |
 | `App.jsx` (`voiceActions`) | what a command DOES in this app |
 
 The hook knows nothing of the catalog, the cart or the tabs, and the two `lib/` halves are pure — which is why both are tested without a browser and the agent is not.
 
-**The matcher is a keyword table, not a model call**, and the three reasons are in that order of weight: "remove everything from my cart" must be reached the same way every time; it answers offline and instantly, which is the only thing voice has to beat; and anything it does *not* recognise is not a failure — it falls through to the cooking assistant, which IS the model path. So the matcher only has to be sure about the small set of utterances that touch the screen.
+**Understanding is two stages; acting is one.** The keyword table is tried first, offline and instantly, and a sentence it recognises never waits on a network — the commands people repeat all day are exactly the ones it covers. Only a sentence it cannot place reaches `POST /api/agent/voice`, which is the half a table cannot do: people do not say "add two kg tomato", they say "tomato konchem veyyi".
+
+**The model names a command; it never runs one.** Whatever it returns goes back through the same mode gate and the same switch, so the ceiling the shopper set still holds, the catalog lookup and pack arithmetic are untouched, and `payment` is not in the list it may return at all. A wrong answer from it is a wrong *screen*, never a wrong *price*. `sanitizeSpokenIntent` in `services/agent/voiceIntent.js` is the gate — an unknown intent, a quantity of 200, a list of forty items and a `payment` that slipped through all become `chat` there, and `test/voiceIntent.test.js` drives it with the shapes a model actually produces. Its wording is used for the reply, and only when everything asked for landed: a partial result has to name what did not, and the model never saw this market's sheet. Every failure — no key, provider down, no connection — falls through to the cooking assistant, which is where an unrecognised sentence already went.
+
+**The matcher itself is a keyword table, not a model call**, and the three reasons are in that order of weight: "remove everything from my cart" must be reached the same way every time; it answers offline and instantly, which is the only thing voice has to beat; and anything it does *not* recognise is not a failure — it falls through to the cooking assistant, which IS the model path. So the matcher only has to be sure about the small set of utterances that touch the screen.
 
 Things that are easy to get wrong here:
 

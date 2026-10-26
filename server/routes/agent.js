@@ -7,6 +7,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { agentChatLimiter } = require('../middleware/rateLimit');
 const { runTurn } = require('../services/agent/runTurn');
 const tools = require('../services/agent/tools');
+const { classifySpoken } = require('../services/agent/voiceIntent');
 
 const router = express.Router();
 
@@ -51,6 +52,45 @@ router.post(
   }),
   async (req, res) => {
     const result = await runTurn(req.user, req.valid.body.messages, req.valid.body.context || {});
+    return res.json({ data: result });
+  }
+);
+
+/**
+ * What one SPOKEN sentence meant.
+ *
+ * Separate from `/chat` because it answers a different question and must
+ * answer it fast: one short classification, no tools, no conversation history,
+ * no recipe book. The client has already tried its own keyword table offline
+ * and only asks here for the phrasings that table does not recognise.
+ *
+ * It returns a NAME and some vegetables, never an action. The app runs the
+ * same handler a tap runs, under the mode the shopper chose, through the same
+ * catalog lookup and pack arithmetic — so a wrong answer here is a wrong
+ * screen, not a wrong price.
+ */
+router.post(
+  '/voice',
+  ...customerGate,
+  validate({
+    body: z
+      .object({
+        utterance: z.string().min(1).max(500),
+        language: z.enum(['en', 'hi', 'te']).optional(),
+        screen: z
+          .object({
+            tab: z.string().max(40).optional(),
+            productName: z.string().max(120).optional(),
+            cartCount: z.number().int().min(0).max(500).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict(),
+  }),
+  async (req, res) => {
+    const { utterance, language, screen } = req.valid.body;
+    const result = await classifySpoken(utterance, { language: language || 'en', screen: screen || null });
     return res.json({ data: result });
   }
 );
