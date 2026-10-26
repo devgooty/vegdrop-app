@@ -702,3 +702,5 @@ Tailwind CSS v4 via `@tailwindcss/vite`. No `tailwind.config.js` is used or need
 - Icons come from `resources/` via `npx @capacitor/assets generate --android`.
 
 `npm run android:sync` rebuilds and syncs; `npm run android:open` opens Android Studio (needs JDK 21 + Android SDK) to build the APK/AAB.
+
+**Studio is not required to build one.** `cd android && ./gradlew assembleDebug` (`gradlew.bat` on Windows) writes `android/app/build/outputs/apk/debug/app-debug.apk` and needs only the JDK and the SDK — which matters, because a broken Studio install otherwise blocks shipping a native change entirely. `gradle-wrapper.properties` is raised from Capacitor's generated defaults for the same reason: its 10 s `networkTimeout` is a *connect* timeout, so the first build on a slow link dies before any of the distribution arrives and reads as a broken build, and `-bin` fetches the same Gradle without the sources only an IDE reads.
