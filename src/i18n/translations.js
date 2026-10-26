@@ -2095,6 +2095,16 @@ const STRINGS = {
     te: 'మైక్రోఫోన్ బ్లాక్ అయింది. ఫోన్ సెట్టింగ్స్‌లో అనుమతి ఇవ్వండి.',
   },
   'voice.offline': { en: 'No connection, so I could not listen.', hi: 'कनेक्शन नहीं है, मैं सुन नहीं पाया।', te: 'కనెక్షన్ లేదు, నేను వినలేకపోయాను.' },
+  'voice.silent.language': {
+    en: 'Your phone has no voice for this language. Install it in Settings, or switch the app language.',
+    hi: 'आपके फ़ोन में इस भाषा की आवाज़ नहीं है। सेटिंग में इंस्टॉल करें, या ऐप की भाषा बदलें।',
+    te: 'మీ ఫోన్‌లో ఈ భాషకు వాయిస్ లేదు. సెట్టింగ్స్‌లో ఇన్‌స్టాల్ చేయండి, లేదా యాప్ భాష మార్చండి.',
+  },
+  'voice.silent.engine': {
+    en: 'Could not speak. Check the media volume, and that a speech engine is installed.',
+    hi: 'बोल नहीं सका। मीडिया वॉल्यूम देखें, और स्पीच इंजन इंस्टॉल है या नहीं।',
+    te: 'మాట్లాడలేకపోయాను. మీడియా వాల్యూమ్ చూడండి, స్పీచ్ ఇంజన్ ఉందో లేదో చూడండి.',
+  },
   'voice.notHeard': { en: 'I did not catch that.', hi: 'मैं समझ नहीं पाया।', te: 'నాకు అర్థం కాలేదు.' },
   'voice.signInFirst': { en: 'Please sign in first.', hi: 'पहले साइन इन करें।', te: 'ముందు సైన్ ఇన్ చేయండి.' },
 

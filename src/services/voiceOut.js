@@ -58,31 +58,47 @@ function pickVoice(locale) {
   );
 }
 
+/** A hung bridge call must not look the same as a phone that is merely quiet. */
+const SPEAK_TIMEOUT_MS = 4000;
+
+function withTimeout(promise) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve({ spoken: false, reason: 'timeout' }), SPEAK_TIMEOUT_MS)),
+  ]);
+}
+
 /**
  * Say something in the shopper's language.
  *
- * @returns {Promise<boolean>} true when the words were handed to a voice.
+ * Returns WHY it stayed quiet, not just that it did. Silence has several
+ * causes a shopper can act on — no voice installed for this language, media
+ * volume at zero, no speech engine at all — and they are indistinguishable
+ * from a broken feature unless the app says which one it was. The caller puts
+ * that line on screen under the answer.
+ *
+ * @returns {Promise<{ spoken: boolean, reason: string|null }>}
  */
 export async function speak(text, language) {
   const sentence = String(text || '').trim();
-  if (!sentence) return false;
+  if (!sentence) return { spoken: false, reason: null };
   const locale = speechLocale(language);
 
   const cap = nativeSpeaker();
   if (cap) {
     try {
-      const result = await cap.nativePromise(PLUGIN, 'speak', { text: sentence, locale });
-      if (result?.spoken) return true;
+      const result = await withTimeout(cap.nativePromise(PLUGIN, 'speak', { text: sentence, locale }));
+      if (result?.spoken) return { spoken: true, reason: null };
+      return { spoken: false, reason: result?.reason || 'engine' };
     } catch {
-      // No engine, or it is still starting. The browser path below is not
-      // available inside the app, so this is simply a quiet answer.
-      return false;
+      // The plugin rejected: no speech engine on the device, or it could not
+      // be started. The browser path below does not exist inside the app.
+      return { spoken: false, reason: 'engine' };
     }
-    return false;
   }
 
   const engine = synth();
-  if (!engine) return false;
+  if (!engine) return { spoken: false, reason: 'engine' };
 
   try {
     // Anything still being read is about a screen the shopper has left.
@@ -92,9 +108,9 @@ export async function speak(text, language) {
     const voice = pickVoice(locale);
     if (voice) utterance.voice = voice;
     engine.speak(utterance);
-    return true;
+    return { spoken: true, reason: null };
   } catch {
-    return false;
+    return { spoken: false, reason: 'engine' };
   }
 }
 

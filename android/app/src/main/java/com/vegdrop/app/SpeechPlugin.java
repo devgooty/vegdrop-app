@@ -125,20 +125,39 @@ public class SpeechPlugin extends Plugin {
             return;
         }
 
-        tts = new TextToSpeech(getContext(), status -> {
-            if (status != TextToSpeech.SUCCESS) {
+        /*
+         * The engine is held in a one-slot array, NOT read back off the field.
+         *
+         * `OnInitListener` can fire before `new TextToSpeech(...)` has returned,
+         * so the assignment to `tts` may not have happened yet when the callback
+         * runs. Reading the field there gives null, the first
+         * `setOnUtteranceProgressListener` throws inside the listener, and the
+         * PluginCall is never resolved — the page's `speak()` promise hangs and
+         * the phone simply stays silent, with nothing logged and no error for
+         * anyone to read. The local reference cannot be null.
+         */
+        final TextToSpeech[] engine = new TextToSpeech[1];
+        engine[0] = new TextToSpeech(getContext(), status -> {
+            if (status != TextToSpeech.SUCCESS || engine[0] == null) {
                 tts = null;
                 ttsReady = false;
                 call.reject("No voice engine on this device.");
                 return;
             }
+            tts = engine[0];
             ttsReady = true;
-            tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-                @Override public void onStart(String id) {}
-                @Override public void onDone(String id) { notifyListeners("speakEnd", new JSObject()); }
-                @Override public void onError(String id) { notifyListeners("speakEnd", new JSObject()); }
-            });
-            ready.accept(tts);
+            try {
+                engine[0].setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    @Override public void onStart(String id) {}
+                    @Override public void onDone(String id) { notifyListeners("speakEnd", new JSObject()); }
+                    @Override public void onError(String id) { notifyListeners("speakEnd", new JSObject()); }
+                });
+                ready.accept(engine[0]);
+            } catch (Exception e) {
+                // Whatever went wrong, the call must be answered: an unresolved
+                // one is indistinguishable from a phone that is merely quiet.
+                call.reject("Could not start the voice engine.", e);
+            }
         });
     }
 

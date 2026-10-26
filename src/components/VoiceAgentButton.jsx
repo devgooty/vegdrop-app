@@ -17,7 +17,7 @@ import { useLanguage } from '../i18n/LanguageContext';
  * the safe-area inset, so it rides above the gesture bar on a phone that has
  * one and sits lower on a phone that does not.
  */
-export default function VoiceAgentButton({ status, heard, said, onListen, onStop }) {
+export default function VoiceAgentButton({ status, heard, said, silent, onListen, onStop }) {
   const { t } = useLanguage();
 
   const listening = status === 'listening';
@@ -56,6 +56,15 @@ export default function VoiceAgentButton({ status, heard, said, onListen, onStop
             <p className="text-[11px] font-bold text-[#8A7E6B] mb-1">“{heard}”</p>
           ) : null}
           {bubble}
+          {/* Why nothing was heard out loud. Shown only when the answer WAS
+              produced but no voice said it — the shopper otherwise reads a
+              silent phone as a dead feature and reports the whole thing
+              broken, which is exactly what happened. */}
+          {silent && said ? (
+            <p className="mt-1.5 text-[11px] font-bold text-amber-700 leading-snug">
+              {silent === 'language-unavailable' ? t('voice.silent.language') : t('voice.silent.engine')}
+            </p>
+          ) : null}
         </div>
       )}
 
