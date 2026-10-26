@@ -1,0 +1,70 @@
+# Build the Android APK on GitHub, not on a laptop.
+#
+# Native changes — the speech plugin, the location plugin, the back button —
+# reach a phone only in a new APK; a Vercel deploy cannot carry them. That made
+# shipping one depend on a working Android toolchain AND a connection fast
+# enough to fetch Gradle, the SDK and the dependencies, and both have already
+# blocked a release: a broken Studio install, then a network that would not
+# open a connection to services.gradle.org at all.
+#
+# A runner has all three and keeps them warm. Run it from the Actions tab and
+# download `vegdrop-debug-apk`.
+#
+# DEBUG signing, deliberately: it installs by sideload for testing and nothing
+# more. A release build needs an upload key, which belongs in repository
+# secrets and is a separate, deliberate step — not something a CI file should
+# quietly start doing.
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    # Only when something that reaches the APK changed. The web app updates
+    # itself through Vercel, so a CSS tweak has no business spending ten
+    # minutes of runner time.
+    paths:
+      - 'android/**'
+      - 'src/**'
+      - 'capacitor.config.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/android-apk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # JDK 21: what Capacitor 8's Android Gradle Plugin expects.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: npm ci
+
+      # The web build AND `cap sync` together: the APK ships dist/offline.html
+      # (the error page the WebView falls back to), and sync is what copies it
+      # and refreshes the native plugin list.
+      - run: npm run android:sync
+
+      - run: ./gradlew assembleDebug --no-daemon
+        working-directory: android
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vegdrop-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          # Long enough to still be there when someone comes back to a build
+          # from a couple of weeks ago; short enough not to hoard binaries.
+          retention-days: 30
