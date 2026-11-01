@@ -73,7 +73,7 @@ afterEach(() => {
 });
 
 describe('tabs', () => {
-  it('puts one entry above Home for any bottom-nav tab, and back returns Home', async () => {
+  it('returns through previously visited bottom-nav tabs before Home', async () => {
     const onPop = vi.fn();
     stack.startBackStack(onPop);
 
@@ -81,25 +81,35 @@ describe('tabs', () => {
     await settle();
     expect(win.index).toBe(1);
 
-    // Tab to tab replaces rather than stacking.
+    // Each destination preserves the tab it was opened from.
     stack.setTab('assistant');
     await settle();
-    expect(win.index).toBe(1);
+    expect(win.index).toBe(2);
     expect(win.history.state.vegdropTab).toBe('assistant');
 
     win.history.back();
     await settle();
+    expect(win.index).toBe(1);
+    expect(onPop).toHaveBeenLastCalledWith('prices');
+
+    win.history.back();
+    await settle();
     expect(win.index).toBe(0);
-    expect(onPop).toHaveBeenCalledWith('home');
+    expect(onPop).toHaveBeenLastCalledWith('home');
   });
 
-  it('choosing Home steps back rather than pushing', async () => {
-    stack.startBackStack(() => {});
+  it('choosing Home preserves the previous tab for Back', async () => {
+    const onPop = vi.fn();
+    stack.startBackStack(onPop);
     stack.setTab('account');
     await settle();
     stack.setTab('home');
     await settle();
-    expect(win.index).toBe(0);
+    expect(win.index).toBe(2);
+    win.history.back();
+    await settle();
+    expect(onPop).toHaveBeenLastCalledWith('account');
+    expect(win.index).toBe(1);
   });
 
   it('stacks a page opened from a tab, so back returns to that tab', async () => {
@@ -126,6 +136,25 @@ describe('tabs', () => {
 });
 
 describe('layers', () => {
+  it('returns from settings to Account, then the previous tab', async () => {
+    const onPop = vi.fn();
+    stack.startBackStack(onPop);
+    stack.setTab('prices');
+    stack.setTab('account');
+    const closeSettings = vi.fn();
+    stack.openLayer(closeSettings);
+    await settle();
+    win.history.back();
+    await settle();
+    expect(closeSettings).toHaveBeenCalledTimes(1);
+    expect(onPop).not.toHaveBeenCalled();
+    expect(win.index).toBe(2);
+    win.history.back();
+    await settle();
+    expect(onPop).toHaveBeenLastCalledWith('prices');
+    expect(win.index).toBe(1);
+  });
+
   it('back closes the newest layer and nothing else', async () => {
     stack.startBackStack(() => {});
     const closeCategory = vi.fn();
@@ -219,5 +248,58 @@ describe('edges', () => {
     stack.setTab('prices');
     await settle();
     expect(win.index).toBe(1);
+  });
+});
+
+
+describe('screen ordering', () => {
+  it('backs out of a tab opened above an overlay before closing that overlay', async () => {
+    const onPop = vi.fn();
+    const close = vi.fn();
+    stack.startBackStack(onPop);
+    stack.setTab('prices');
+    stack.openLayer(close);
+    stack.setTab('account');
+    await settle();
+    win.history.back();
+    await settle();
+    expect(onPop).toHaveBeenLastCalledWith('prices');
+    expect(close).not.toHaveBeenCalled();
+    win.history.back();
+    await settle();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes a covered layer without losing the top screen history', async () => {
+    stack.startBackStack(() => {});
+    const lower = stack.openLayer(vi.fn());
+    const closeUpper = vi.fn();
+    stack.openLayer(closeUpper);
+    await settle();
+    stack.closeLayer(lower);
+    await settle();
+    expect(win.index).toBe(1);
+    expect(win.history.state.vegdropIdx).toBe(1);
+    win.history.back();
+    await settle();
+    expect(closeUpper).toHaveBeenCalledTimes(1);
+    expect(win.index).toBe(0);
+  });
+
+  it('handles a browser jump across several screens in one traversal', async () => {
+    const onPop = vi.fn();
+    const close = vi.fn();
+    stack.startBackStack(onPop);
+    stack.setTab('account');
+    stack.openLayer(close);
+    stack.setTab('orders');
+    await settle();
+    win.history.go(-3);
+    await settle();
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(onPop).toHaveBeenLastCalledWith('home');
+    stack.setTab('prices');
+    await settle();
+    expect(win.history.state.vegdropIdx).toBe(1);
   });
 });

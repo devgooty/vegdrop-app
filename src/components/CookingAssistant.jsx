@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChefHat, Send, Loader2, Check, ShoppingBasket, ShoppingCart } from 'lucide-react';
-import { useLanguage } from '../i18n/LanguageContext';
+import { ChefHat, Send, Loader2, Check, ShoppingBasket, ShoppingCart, Mic } from 'lucide-react';
 import { sendAssistantMessage, confirmAssistantOrder } from '../services/agent';
+import { createSpeechRecognition, speechLocale } from '../services/voiceSearch';
+import { useLanguage } from '../i18n/LanguageContext';
 import { ApiRequestError, NetworkError } from '../services/apiClient';
 import useAssistantChat, { updateAssistantChat, historyForServer, liveProposal } from '../hooks/useAssistantChat';
 
@@ -158,6 +159,81 @@ export default function CookingAssistant({
   const proposedOrder = liveProposal(chat.proposedOrder);
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
+  const { language } = useLanguage();
+  const [voiceLanguage, setVoiceLanguage] = useState(language === 'te' ? 'te' : 'en');
+  const [listening, setListening] = useState(false);
+  const [readReplies, setReadReplies] = useState(false);
+  const recognitionRef = useRef(null);
+  const mountedRef = useRef(true);
+  const spokenReplyRef = useRef(null);
+
+  const stopListening = () => {
+    const recognition = recognitionRef.current;
+    recognitionRef.current = null;
+    if (recognition) {
+      recognition.onresult = recognition.onerror = recognition.onend = null;
+      recognition.abort();
+    }
+    setListening(false);
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const recognition = recognitionRef.current;
+      recognitionRef.current = null;
+      if (recognition) {
+        recognition.onresult = recognition.onerror = recognition.onend = null;
+        recognition.abort();
+      }
+      window.speechSynthesis?.cancel();
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    const latest = messages[messages.length - 1];
+    if (!readReplies || busy || latest?.role !== 'assistant' || latest === spokenReplyRef.current) return;
+    spokenReplyRef.current = latest;
+    if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
+    const utterance = new window.SpeechSynthesisUtterance(latest.content.replace(/[*#]/g, ''));
+    utterance.lang = speechLocale(voiceLanguage);
+    const voice = window.speechSynthesis.getVoices().find((v) => v.lang.toLowerCase().startsWith(voiceLanguage));
+    if (voice) utterance.voice = voice;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }, [messages, busy, readReplies, voiceLanguage]);
+
+  const startListening = () => {
+    if (listening) { stopListening(); return; }
+    window.speechSynthesis?.cancel();
+    const recognition = createSpeechRecognition(voiceLanguage);
+    if (!recognition) {
+      setError(voiceLanguage === 'te' ? 'ఈ పరికరంలో వాయిస్ అందుబాటులో లేదు. దయచేసి టైప్ చేయండి.' : 'Voice input is unavailable here. Please type your message.');
+      return;
+    }
+    setError('');
+    recognitionRef.current = recognition;
+    recognition.onresult = (event) => {
+      if (!mountedRef.current || recognitionRef.current !== recognition) return;
+      const text = Array.from(event.results).map((result) => result[0].transcript).join(' ');
+      setInput(text);
+    };
+    recognition.onerror = (event) => {
+      if (recognitionRef.current !== recognition) return;
+      setError(event.error === 'not-allowed' ? 'Microphone access was denied. Allow it in device settings, or type your message.' : 'Could not hear you. Tap the microphone to try again, or type.');
+      setListening(false);
+      recognitionRef.current = null;
+    };
+    recognition.onend = () => {
+      if (recognitionRef.current !== recognition) return;
+      recognitionRef.current = null;
+      setListening(false);
+    };
+    try { recognition.start(); setListening(true); }
+    catch { stopListening(); setError('Could not start the microphone. Please try again.'); }
+  };
+
   const bottomRef = useRef(null);
   const hasScrolledRef = useRef(false);
 
@@ -180,6 +256,8 @@ export default function CookingAssistant({
   };
 
   const send = async (text) => {
+    stopListening();
+    window.speechSynthesis?.cancel();
     const content = String(text || '').trim();
     if (!content || busy || !userId) return;
 
@@ -555,6 +633,15 @@ export default function CookingAssistant({
           </button>
         </div>
       ) : (
+      <div className="shrink-0">
+      <div className="px-3 pt-2 flex flex-wrap items-center gap-3 text-xs">
+        <select aria-label="Voice language" value={voiceLanguage} disabled={listening || busy} onChange={(e) => { window.speechSynthesis?.cancel(); setVoiceLanguage(e.target.value); }} className="rounded-lg border p-2 bg-white">
+          <option value="en">English</option>
+          <option value="te">తెలుగు</option>
+        </select>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={readReplies} onChange={(e) => { setReadReplies(e.target.checked); if (!e.target.checked) window.speechSynthesis?.cancel(); }} />{voiceLanguage === 'te' ? 'సమాధానాలు వినండి' : 'Read replies aloud'}</label>
+        <p role="status">{listening ? (voiceLanguage === 'te' ? 'వింటున్నాను…' : 'Listening…') : (voiceLanguage === 'te' ? 'మాట్లాడి, సందేశాన్ని చూసి పంపండి.' : 'Speak, review your message, then send.')}</p>
+      </div>
       <form
         className="shrink-0 p-3 border-t border-[#E8E2D6] bg-[#FAF7F2] flex gap-2"
         onSubmit={(e) => {
@@ -562,6 +649,9 @@ export default function CookingAssistant({
           send(input);
         }}
       >
+        <button type="button" aria-label={listening ? 'Stop listening' : 'Speak to assistant'} aria-pressed={listening} disabled={busy} onClick={startListening} className="w-11 h-11 shrink-0 rounded-xl border border-emerald-300 flex items-center justify-center disabled:opacity-50">
+          <Mic className={listening ? 'w-5 h-5 text-red-600 animate-pulse' : 'w-5 h-5 text-emerald-900'} />
+        </button>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -583,6 +673,7 @@ export default function CookingAssistant({
           <Send className="w-4 h-4" />
         </button>
       </form>
+      </div>
       )}
     </div>
   );

@@ -11,13 +11,8 @@
  *
  * Two kinds of entry sit above the first one, which is Home:
  *
- *  - TABS. The bottom-nav destinations are one entry above Home and replace
- *    each other, so back from any of them returns Home and back on Home leaves
- *    the app — the Android convention, rather than replaying every tab tap. A
- *    page opened from a tab (Orders, from Account) is pushed on top of it.
- *  - LAYERS. Anything opened over a tab — a product, a category, search, the
- *    basket, a sheet, the sign-in screen — pushes one entry, and back closes the
- *    newest. `useBackLayer` is the way in.
+ * Tabs and layers share one ordered stack. Back always removes the newest
+ * screen, even when a tab was opened over an existing layer.
  *
  * Entries mean nothing but their count. That is what lets a layer closed by its
  * own button consume an entry with history.go(-1) — leaving it would give back
@@ -28,15 +23,11 @@
  * back over. Closing the basket and switching tab in one tap is exactly that.
  */
 
-/** Bottom-nav destinations: they replace each other rather than stacking. */
-const TOP_LEVEL_TABS = new Set(['home', 'prices', 'assistant', 'account']);
-
 // A history.go() with nothing to go back to fires no popstate.
 const TRAVERSAL_TIMEOUT_MS = 700;
 
-const layers = []; // open layers, oldest first: { id, close }
+const entries = []; // tabs and layers in actual opening order
 let nextLayerId = 1;
-let tabStack = []; // tab entries above Home, oldest first
 const queue = []; // history operations not yet applied
 let traversing = false; // one of our own history.go() calls is in flight
 let traversalTimer = null;
@@ -49,11 +40,11 @@ let enabled = true;
 const win = typeof window === 'undefined' ? null : window;
 
 function depth() {
-  return tabStack.length + layers.length;
+  return entries.length;
 }
 
 function currentTab() {
-  return tabStack.length > 0 ? tabStack[tabStack.length - 1] : 'home';
+  return entries.findLast((entry) => entry.type === 'tab')?.tab || 'home';
 }
 
 function scheduleDrain() {
@@ -121,15 +112,13 @@ function onPopState(event) {
     return;
   }
 
-  const top = layers.pop();
-  if (top) {
-    top.close();
-    return;
+  const previousTab = currentTab();
+  const target = typeof position === 'number' ? Math.max(0, position) : depth() - 1;
+  while (entries.length > target) {
+    const top = entries.pop();
+    if (top.type === 'layer') top.close();
   }
-  if (tabStack.length > 0) {
-    tabStack.pop();
-    onTabPop?.(currentTab());
-  }
+  if (currentTab() !== previousTab) onTabPop?.(currentTab());
 }
 
 if (win) {
@@ -145,17 +134,17 @@ if (win) {
 export function openLayer(close) {
   const id = nextLayerId++;
   if (!enabled) return id;
-  layers.push({ id, close });
+  entries.push({ type: 'layer', id, close });
   enqueue({ type: 'push', state: { vegdropIdx: depth() }, layerId: id });
   return id;
 }
 
 /** It closed by its own control (or unmounted): consume its entry. */
 export function closeLayer(id) {
-  const index = layers.findIndex((layer) => layer.id === id);
+  const index = entries.findIndex((entry) => entry.type === 'layer' && entry.id === id);
   // Back already closed it, and took its entry with it.
   if (index === -1) return;
-  layers.splice(index, 1);
+  entries.splice(index, 1);
 
   // Opened and closed before history ever saw it.
   const last = queue[queue.length - 1];
@@ -163,34 +152,23 @@ export function closeLayer(id) {
     queue.pop();
     return;
   }
-  enqueueBack(1);
+  // Removing a covered layer must preserve every screen above it. Rebuild
+  // that suffix after traversal; consuming only one entry would remove the top.
+  const above = entries.slice(index);
+  enqueueBack(above.length + 1);
+  above.forEach((entry, offset) => {
+    enqueue({ type: 'push', state: {
+      vegdropIdx: index + offset + 1,
+      ...(entry.type === 'tab' ? { vegdropTab: entry.tab } : {}),
+    }, ...(entry.type === 'layer' ? { layerId: entry.id } : {}) });
+  });
 }
 
 /** Keep history in step with the tab on screen. Calling it with the current tab is a no-op. */
 export function setTab(tab) {
   if (!enabled || tab === currentTab()) return;
 
-  if (tab === 'home') {
-    const n = tabStack.length;
-    tabStack = [];
-    enqueueBack(n);
-    return;
-  }
-
-  if (TOP_LEVEL_TABS.has(tab)) {
-    if (tabStack.length === 0) {
-      tabStack = [tab];
-      enqueue({ type: 'push', state: { vegdropIdx: depth(), vegdropTab: tab } });
-    } else {
-      // Collapse whatever was stacked on the previous destination.
-      enqueueBack(tabStack.length - 1);
-      tabStack = [tab];
-      enqueue({ type: 'replace', state: { vegdropIdx: depth(), vegdropTab: tab } });
-    }
-    return;
-  }
-
-  tabStack.push(tab);
+  entries.push({ type: 'tab', tab });
   enqueue({ type: 'push', state: { vegdropIdx: depth(), vegdropTab: tab } });
 }
 
@@ -206,8 +184,9 @@ export function startBackStack(onPop) {
  */
 export function resetBackStack() {
   enabled = false;
-  layers.length = 0;
-  tabStack = [];
+  entries.length = 0;
+  clearTimeout(traversalTimer);
+  traversing = false;
   queue.length = 0;
   onTabPop = null;
 }

@@ -2890,13 +2890,7 @@ export default function App() {
                         */
                         <div className="relative flex items-center mb-4">
                           <button
-                            onClick={() => {
-                              // Leaving the section ends the edit, or its layer
-                              // outlives the screen that showed it — a history
-                              // entry with nothing on screen to close.
-                              setIsEditingProfile(false);
-                              setActiveAccountView('menu');
-                            }}
+                            onClick={() => isEditingProfile ? setIsEditingProfile(false) : setActiveAccountView('menu')}
                             className="p-2 bg-white rounded-xl shadow-sm border border-slate-100 text-slate-600 hover:text-[#1B4D3E] transition-colors cursor-pointer active:scale-95"
                           >
                             <ArrowLeft className="w-5 h-5" />
