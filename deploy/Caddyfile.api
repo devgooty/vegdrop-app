@@ -1,0 +1,67 @@
+# VegDrop — Caddy config for a VM that serves the API ONLY.
+#
+# Use this instead of deploy/Caddyfile when the website stays on Vercel and
+# Vercel forwards /api/* to this VM (the `rewrites` entry in vercel.json).
+#
+# Why keep the website on Vercel: the Android app loads a fixed URL
+# (`server.url` in capacitor.config.json, currently the vercel.app address).
+# Moving the website onto this VM's domain would change that URL, and every
+# installed APK would go on opening the old one until a new APK ships. With the
+# website left where it is, switching the API host is one line in vercel.json
+# and the phones never notice.
+#
+# Install:  sudo cp deploy/Caddyfile.api /etc/caddy/Caddyfile
+#           sudo sed -i 's/api.your-domain.com/YOUR_API_DOMAIN/' /etc/caddy/Caddyfile
+#           sudo caddy validate --config /etc/caddy/Caddyfile   # needs Caddy 2.6+
+#           sudo systemctl reload caddy
+#
+# A real hostname is required, not the bare IP: Vercel must reach this box over
+# HTTPS, because every request it forwards carries a session token and every
+# sign-in carries a code. A free DuckDNS subdomain pointed at the VM's public IP
+# is enough — Caddy fetches and renews the certificate on its own.
+
+{
+	servers {
+		# THE CLIENT IP. Read this before changing it.
+		#
+		# Caddy discards an incoming X-Forwarded-For by default and replaces it
+		# with the address that connected to it. Here that address is always one
+		# of Vercel's, so without this line every customer would reach Express as
+		# "Vercel": the per-IP rate limiters would put the whole user base in one
+		# bucket, and a busy morning would read as one client flooding the API
+		# and lock everyone out at once.
+		#
+		# Vercel publishes no fixed address range for rewrites, so there is no
+		# narrower list to trust. Trusting all of them means a caller who skips
+		# Vercel and hits this host directly can write their own
+		# X-Forwarded-For. That is the same exposure the Railway host has today
+		# (anyone can call its public URL directly), not a new one.
+		#
+		# Pair this with TRUST_PROXY=2 in .env — two hops, Vercel then Caddy —
+		# which is the same hop count as Vercel then Railway's edge. Copy the
+		# value the Railway service uses rather than the 1 in
+		# deploy/.env.production.example, which assumes nothing sits in front
+		# of Caddy.
+		trusted_proxies static 0.0.0.0/0 ::/0
+	}
+}
+
+api.your-domain.com {
+	encode gzip
+
+	# Untouched pass-through to Express. /api/whatsapp/webhook authenticates
+	# Meta with an HMAC over the exact request bytes (see server/app.js), so
+	# nothing here may rewrite the body.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:5000
+	}
+
+	# Nothing else lives on this host. Answering 404 rather than proxying keeps
+	# Express's surface to /api, exactly as it is behind Vercel.
+	handle {
+		respond 404
+	}
+}
+
+# Express on :5000 is the only upstream. Do not open 5000 in the Oracle
+# security list — Caddy on 80/443 is the only public surface.
