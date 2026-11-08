@@ -21,16 +21,36 @@
  * it in ways a shopper never types — "Organic Spinach (Palak)" has to be
  * reachable by "palak", and "Coriander/Dhania" by "dhania".
  *
- * The output is limited to [a-z0-9 ], which is what lets the scorer below use
- * plain index arithmetic instead of a RegExp built from user input.
+ * Letters of EVERY script survive, with their vowel signs (`\p{M}`): Telugu
+ * and Devanagari names are names, and the catalog carries them on every row.
+ * This used to keep `[a-z0-9]` and nothing else, so a Telugu or Hindi query
+ * folded to an empty string and found nothing, and the suggestion chips
+ * offered in those languages came out empty. Only Latin accents go
+ * ("jalapeño" → "jalapeno"); zero-width joiners go because Telugu writes
+ * "బీట్‌రూట్" with or without one.
+ *
+ * The output is letters, digits and single spaces only, which is what lets
+ * the scorer below use plain index arithmetic instead of a RegExp built from
+ * user input.
  */
 export function normalize(value) {
   return String(value ?? '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
+    .normalize('NFC')
+    .replace(/[\u200b-\u200d\u2060\ufeff]/g, '')
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ')
     .trim();
+}
+
+/**
+ * Every name a product answers to: the catalog's English name and the Telugu
+ * and Hindi names the seed and vendors give it. A shopper reading the app in
+ * Telugu types what they read.
+ */
+function namesOf(product) {
+  return [product?.name, product?.nameTe, product?.nameHi].filter((name) => String(name ?? '').trim());
 }
 
 /**
@@ -49,7 +69,9 @@ const WEAK_TERMS = new Set([
 /** Significant words of a name, in the casing the catalog used. */
 function significantWords(name) {
   return String(name ?? '')
-    .split(/[^\p{L}\p{N}]+/u)
+    // \p{M} too: Telugu and Devanagari vowel signs are marks, and splitting
+    // on them cut every word in those scripts into fragments.
+    .split(/[^\p{L}\p{M}\p{N}]+/u)
     .filter((word) => {
       const key = normalize(word);
       return key.length >= 3 && !WEAK_TERMS.has(key) && !/^\d+$/.test(key);
@@ -110,8 +132,10 @@ export function buildSuggestions({ products = [], categories = [], query, limit 
   };
 
   for (const product of products) {
-    addTerm(product.name, product);
-    for (const word of significantWords(product.name)) addTerm(word, product);
+    for (const name of namesOf(product)) {
+      addTerm(name, product);
+      for (const word of significantWords(name)) addTerm(word, product);
+    }
   }
 
   const suggestions = [];
@@ -184,7 +208,10 @@ export function searchProducts({ products = [], categories = [], query }) {
 
   return products
     .map((product) => {
-      const byName = score(product.name, normalizedQuery);
+      const ranks = namesOf(product)
+        .map((name) => score(name, normalizedQuery))
+        .filter((rank) => rank !== null);
+      const byName = ranks.length ? Math.min(...ranks) : null;
       const byCategory = score(titleById.get(product.categoryId), normalizedQuery);
       if (byName === null && byCategory === null) return null;
 

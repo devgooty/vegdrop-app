@@ -2363,9 +2363,18 @@ export default function App() {
         return { added, missing };
       },
 
+      /**
+       * Each of these returns `restore` with what it took out, for the Undo
+       * in the voice bubble. A removal is the one voice action that loses
+       * something, and the one a misheard word is most likely to trigger:
+       * a shopper who heard the wrong line go had no way back but to find and
+       * re-add it by hand. Restoring merges, so anything added in between
+       * survives.
+       */
       removeItems: (items) => {
         const removed = [];
         const missing = [];
+        const taken = [];
         const gone = new Set();
         for (const item of items) {
           /* `findCartLine` matches nothing for a name it cannot read. The
@@ -2382,12 +2391,20 @@ export default function App() {
           // then discovers at the door.
           handleUpdateQuantity(line.id, -line.quantity);
           gone.add(line.id);
+          taken.push(line);
           removed.push(productName(line, language));
         }
-        return { removed, missing };
+        const setTarget = shoppingMode === 'scheduled' ? setScheduledCartItems : setCartItems;
+        const restore = taken.length ? () => setTarget((now) => mergeCartLines([...now, ...taken])) : null;
+        return { removed, missing, restore };
       },
 
-      clearCart: () => (shoppingMode === 'scheduled' ? setScheduledCartItems([]) : setCartItems([])),
+      clearCart: () => {
+        const setTarget = shoppingMode === 'scheduled' ? setScheduledCartItems : setCartItems;
+        const before = activeCartItems;
+        setTarget([]);
+        return before.length ? () => setTarget((now) => mergeCartLines([...before, ...now])) : null;
+      },
 
       /** Hand the sentence to the cooking assistant, which answers it. */
       ask: (text) => {
@@ -2458,20 +2475,24 @@ export default function App() {
   const voice = useVoiceAgent({ mode: voiceMode, view: voiceView, actions: voiceActions });
 
   /*
-   * Where the mic button appears, which is the modes made visible.
+   * Where the floating mic appears, which is the modes made visible.
    *
-   * `low` is the cooking tab and nowhere else — that is what the shopper chose,
-   * and a button on every screen that answered "voice is set to low" on every
-   * tap would be a worse way of saying the same thing. `medium` and `high`
-   * ride every tab. It is hidden while signing in: a password screen is not a
-   * place to add a listening microphone, and the agent has nothing to do there.
+   * Never on the AI Cook tab. That tab has its own mic, beside the message
+   * box, which writes the words in for the shopper to check before sending —
+   * and two mics on one screen, each with its own idea of the language, was
+   * one too many. The floating one only ever handed the question to the
+   * assistant there anyway. So `low` ("only in the AI Cook tab") is that mic
+   * and nothing else, and `medium` and `high` add this one on every other tab.
+   *
+   * Hidden while signing in: a sign-in screen is not a place to add a
+   * listening microphone, and the agent has nothing to do there.
    */
   const voiceButtonVisible =
-    voiceMode !== 'off' &&
+    (voiceMode === 'medium' || voiceMode === 'high') &&
     Boolean(user) &&
     activeTab !== 'login' &&
     activeTab !== 'signup' &&
-    (voiceMode !== 'low' || activeTab === 'assistant');
+    activeTab !== 'assistant';
 
   /**
    * Everything that opens over a tab gets a history entry, so the back button
@@ -2884,6 +2905,7 @@ export default function App() {
                      key, and taking it clears it, the same way the opener does. */
                   spokenAsk={voiceAsk}
                   onSpokenAskTaken={() => setVoiceAsk(null)}
+                  voiceEnabled={voiceMode !== 'off'}
                 />
               ) : (
                 /* ACCOUNT & ROLE SWITCHER TAB.
@@ -3545,6 +3567,8 @@ export default function App() {
           heard={voice.heard}
           said={voice.said}
           silent={voice.silent}
+          canUndo={voice.canUndo}
+          onUndo={voice.undoLast}
           onListen={voice.listen}
           onStop={voice.stop}
         />

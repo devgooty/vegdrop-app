@@ -35,6 +35,12 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
   const [heard, setHeard] = useState('');
   const [said, setSaid] = useState('');
   const [silent, setSilent] = useState(null);
+  /**
+   * How to put back what the last spoken removal took out, while its answer
+   * is still on screen. Shown as Undo in the bubble; gone when the bubble
+   * fades or the next turn starts. See `removeItems` / `clearCart` in App.jsx.
+   */
+  const [undo, setUndo] = useState(null);
 
   const recognitionRef = useRef(null);
   /**
@@ -100,12 +106,14 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
       setSaid('');
       setHeard('');
       setSilent(null);
+      setUndo(null);
       setStatus((current) => (current === 'spoke' ? 'idle' : current));
     }, ANSWER_VISIBLE_MS);
   }, []);
 
   const stop = useCallback(() => {
     turnRef.current += 1;
+    setUndo(null);
     clearTimeout(fadeRef.current);
     const recognition = recognitionRef.current;
     recognitionRef.current = null;
@@ -200,20 +208,23 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
         }
 
         case 'remove_item': {
-          const { removed = [], missing = [] } = run.removeItems?.(command.items || []) || {};
+          const { removed = [], missing = [], restore = null } = run.removeItems?.(command.items || []) || {};
           if (removed.length === 0) {
             if (deferMiss) return false;
             answer(t('voice.notInCart', { items: missing.join(', ') || command.text || '' }));
             return;
           }
           say(t('voice.removed', { items: removed.join(', ') }));
+          if (restore) setUndo(() => restore);
           return;
         }
 
-        case 'clear_cart':
-          run.clearCart?.();
+        case 'clear_cart': {
+          const restore = run.clearCart?.() || null;
           say(t('voice.cleared'));
+          if (restore) setUndo(() => restore);
           return;
+        }
 
         case 'cook':
         default:
@@ -331,6 +342,7 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
   const listen = useCallback(() => {
     if (modeRef.current === 'off') return;
     turnRef.current += 1;
+    setUndo(null);
     stopSpeaking();
 
     const recognition = createSpeechRecognition(languageRef.current);
@@ -414,5 +426,13 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
 
   useEffect(() => stop, [stop]);
 
-  return { supported, status, heard, said, silent, listen, stop };
+  /** Put back what the last spoken removal took out, and say so. */
+  const undoLast = useCallback(() => {
+    if (!undo) return;
+    undo();
+    setUndo(null);
+    answer(t('voice.undone'));
+  }, [undo, answer, t]);
+
+  return { supported, status, heard, said, silent, canUndo: Boolean(undo), undoLast, listen, stop };
 }

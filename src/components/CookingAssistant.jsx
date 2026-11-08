@@ -163,6 +163,10 @@ export default function CookingAssistant({
   onOpenerTaken,
   spokenAsk,
   onSpokenAskTaken,
+  /* Whether the shopper allows voice at all (Account → Voice assistant). The
+     mic, its language and "read replies aloud" all hide when it is Off — the
+     setting promises "no voice anywhere", and this tab used to ignore it. */
+  voiceEnabled = true,
 }) {
   const { t } = useLanguage();
   const userId = user?.id;
@@ -172,7 +176,8 @@ export default function CookingAssistant({
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
   const { language } = useLanguage();
-  const [voiceLanguage, setVoiceLanguage] = useState(language === 'te' ? 'te' : 'en');
+  // Starts in the app's language; Hindi used to fall back to English.
+  const [voiceLanguage, setVoiceLanguage] = useState(['te', 'hi'].includes(language) ? language : 'en');
   const [listening, setListening] = useState(false);
   const [readReplies, setReadReplies] = useState(false);
   const recognitionRef = useRef(null);
@@ -232,7 +237,7 @@ export default function CookingAssistant({
     stopSpeaking();
     const recognition = createSpeechRecognition(voiceLanguage);
     if (!recognition) {
-      setError(voiceLanguage === 'te' ? 'ఈ పరికరంలో వాయిస్ అందుబాటులో లేదు. దయచేసి టైప్ చేయండి.' : 'Voice input is unavailable here. Please type your message.');
+      setError(t('assistant.voice.unavailable'));
       return;
     }
     setError('');
@@ -244,7 +249,7 @@ export default function CookingAssistant({
     };
     recognition.onerror = (event) => {
       if (recognitionRef.current !== recognition) return;
-      setError(event.error === 'not-allowed' ? 'Microphone access was denied. Allow it in device settings, or type your message.' : 'Could not hear you. Tap the microphone to try again, or type.');
+      setError(t(event.error === 'not-allowed' || event.error === 'service-not-allowed' ? 'assistant.voice.denied' : 'assistant.voice.notHeard'));
       setListening(false);
       recognitionRef.current = null;
     };
@@ -254,7 +259,7 @@ export default function CookingAssistant({
       setListening(false);
     };
     try { recognition.start(); setListening(true); }
-    catch { stopListening(); setError('Could not start the microphone. Please try again.'); }
+    catch { stopListening(); setError(t('assistant.voice.startFailed')); }
   };
 
   const bottomRef = useRef(null);
@@ -659,14 +664,17 @@ export default function CookingAssistant({
         </div>
       ) : (
       <div className="shrink-0">
+      {voiceEnabled && (
       <div className="px-3 pt-2 flex flex-wrap items-center gap-3 text-xs">
-        <select aria-label="Voice language" value={voiceLanguage} disabled={listening || busy} onChange={(e) => { stopSpeaking({ owner: SPEAKER }); setVoiceLanguage(e.target.value); }} className="rounded-lg border p-2 bg-white">
+        <select aria-label={t('assistant.voice.language')} value={voiceLanguage} disabled={listening || busy} onChange={(e) => { stopSpeaking({ owner: SPEAKER }); setVoiceLanguage(e.target.value); }} className="rounded-lg border p-2 bg-white">
           <option value="en">English</option>
           <option value="te">తెలుగు</option>
+          <option value="hi">हिन्दी</option>
         </select>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={readReplies} onChange={(e) => { setReadReplies(e.target.checked); if (!e.target.checked) stopSpeaking({ owner: SPEAKER }); }} />{voiceLanguage === 'te' ? 'సమాధానాలు వినండి' : 'Read replies aloud'}</label>
-        <p role="status">{listening ? (voiceLanguage === 'te' ? 'వింటున్నాను…' : 'Listening…') : (voiceLanguage === 'te' ? 'మాట్లాడి, సందేశాన్ని చూసి పంపండి.' : 'Speak, review your message, then send.')}</p>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={readReplies} onChange={(e) => { setReadReplies(e.target.checked); if (!e.target.checked) stopSpeaking({ owner: SPEAKER }); }} />{t('assistant.voice.readAloud')}</label>
+        <p role="status">{listening ? t('assistant.voice.listening') : t('assistant.voice.hint')}</p>
       </div>
+      )}
       <form
         className="shrink-0 p-3 border-t border-[#E8E2D6] bg-[#FAF7F2] flex gap-2"
         onSubmit={(e) => {
@@ -674,9 +682,11 @@ export default function CookingAssistant({
           send(input);
         }}
       >
-        <button type="button" aria-label={listening ? 'Stop listening' : 'Speak to assistant'} aria-pressed={listening} disabled={busy} onClick={startListening} className="w-11 h-11 shrink-0 rounded-xl border border-emerald-300 flex items-center justify-center disabled:opacity-50">
+        {voiceEnabled && (
+        <button type="button" aria-label={t(listening ? 'assistant.voice.stop' : 'assistant.voice.speak')} aria-pressed={listening} disabled={busy} onClick={startListening} className="w-11 h-11 shrink-0 rounded-xl border border-emerald-300 flex items-center justify-center disabled:opacity-50">
           <Mic className={listening ? 'w-5 h-5 text-red-600 animate-pulse' : 'w-5 h-5 text-emerald-900'} />
         </button>
+        )}
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
