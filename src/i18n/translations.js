@@ -2027,6 +2027,40 @@ const STRINGS = {
     te: 'వంట సహాయకుడితో మాట్లాడటానికి సైన్ ఇన్ చేయండి.',
   },
 
+  // --- The cooking assistant's own mic (CookingAssistant.jsx) ---------------
+  // It dictates into the message box for the shopper to check before sending.
+  // These were hard-coded in English and Telugu, so a Hindi shopper got English.
+  'assistant.voice.language': { en: 'Voice language', hi: 'आवाज़ की भाषा', te: 'వాయిస్ భాష' },
+  'assistant.voice.readAloud': { en: 'Read replies aloud', hi: 'जवाब सुनाएं', te: 'సమాధానాలు వినండి' },
+  'assistant.voice.listening': { en: 'Listening\u2026', hi: 'सुन रहा हूँ\u2026', te: 'వింటున్నాను\u2026' },
+  'assistant.voice.hint': {
+    en: 'Speak, check your message, then send.',
+    hi: 'बोलें, संदेश देखें, फिर भेजें।',
+    te: 'మాట్లాడి, సందేశాన్ని చూసి పంపండి.',
+  },
+  'assistant.voice.unavailable': {
+    en: 'Voice input is not available here. Please type your message.',
+    hi: 'यहाँ आवाज़ से लिखना उपलब्ध नहीं है। कृपया टाइप करें।',
+    te: 'ఈ పరికరంలో వాయిస్ అందుబాటులో లేదు. దయచేసి టైప్ చేయండి.',
+  },
+  'assistant.voice.denied': {
+    en: 'Microphone access was denied. Allow it in your phone settings, or type your message.',
+    hi: 'माइक की अनुमति नहीं मिली। फ़ोन की सेटिंग में अनुमति दें, या टाइप करें।',
+    te: 'మైక్ అనుమతి లేదు. ఫోన్ సెట్టింగ్స్‌లో అనుమతించండి, లేదా టైప్ చేయండి.',
+  },
+  'assistant.voice.notHeard': {
+    en: 'Could not hear you. Tap the microphone to try again, or type.',
+    hi: 'आवाज़ सुनाई नहीं दी। माइक दबाकर फिर कोशिश करें, या टाइप करें।',
+    te: 'మీ మాట వినబడలేదు. మళ్ళీ మైక్ నొక్కండి, లేదా టైప్ చేయండి.',
+  },
+  'assistant.voice.startFailed': {
+    en: 'Could not start the microphone. Please try again.',
+    hi: 'माइक शुरू नहीं हो सका। फिर कोशिश करें।',
+    te: 'మైక్ మొదలవలేదు. మళ్ళీ ప్రయత్నించండి.',
+  },
+  'assistant.voice.speak': { en: 'Speak to the cooking helper', hi: 'रसोई सहायक से बोलें', te: 'వంట సహాయకుడితో మాట్లాడండి' },
+  'assistant.voice.stop': { en: 'Stop listening', hi: 'सुनना बंद करें', te: 'వినడం ఆపండి' },
+
   // --- The voice agent (lib/voiceScreen.js, hooks/useVoiceAgent.js) ---------
   // Spoken aloud, so these are written to be HEARD: short sentences, no
   // brackets, no abbreviations a text-to-speech engine reads as letters.
@@ -2076,6 +2110,8 @@ const STRINGS = {
   'voice.added': { en: 'Added {items} to your cart.', hi: '{items} कार्ट में डाल दिया।', te: '{items} కార్ట్‌లో వేశాను.' },
   'voice.removed': { en: 'Removed {items} from your cart.', hi: '{items} कार्ट से हटा दिया।', te: '{items} కార్ట్ నుంచి తీసేశాను.' },
   'voice.cleared': { en: 'Your cart is empty now.', hi: 'आपका कार्ट अब खाली है।', te: 'మీ కార్ట్ ఇప్పుడు ఖాళీ.' },
+  'voice.undo': { en: 'Undo', hi: 'वापस लाएं', te: 'వెనక్కి తెచ్చు' },
+  'voice.undone': { en: 'Your cart is back as it was.', hi: 'कार्ट पहले जैसा कर दिया।', te: 'కార్ట్ మళ్ళీ మునుపటిలా ఉంది.' },
   'voice.notFound': { en: 'I could not find {items} here.', hi: 'मुझे यहाँ {items} नहीं मिला।', te: 'ఇక్కడ {items} దొరకలేదు.' },
   'voice.notInCart': { en: '{items} is not in your cart.', hi: '{items} आपके कार्ट में नहीं है।', te: '{items} మీ కార్ట్‌లో లేదు.' },
   'voice.opening': { en: 'Opening {screen}.', hi: '{screen} खोल रहा हूँ।', te: '{screen} తెరుస్తున్నాను.' },

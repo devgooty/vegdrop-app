@@ -44,7 +44,7 @@ import { useLanguage } from './i18n/LanguageContext';
 import { LANGUAGES } from './i18n/translations';
 import { productName, dateLocale } from './i18n/catalog';
 import { fetchMarketCatalog, savedCustomerCoords } from './services/markets';
-import { rememberSearch, normalize } from './services/search';
+import { rememberSearch } from './services/search';
 import { fetchShopsForBasket, linesForShop } from './services/shops';
 import { savedCustomerAddress } from './services/address';
 import { productSkuFromHash, shareApp } from './services/share';
@@ -62,7 +62,8 @@ import {
 } from './services/auth';
 import useLocalStorage from './hooks/useLocalStorage';
 import useVoiceAgent from './hooks/useVoiceAgent';
-import { DEFAULT_VOICE_MODE } from './lib/voiceCommands';
+import { DEFAULT_VOICE_MODE, MAX_SPOKEN_QUANTITY } from './lib/voiceCommands';
+import { findSpokenProduct, findCartLine } from './lib/voiceProducts';
 import useSessionUser from './hooks/useSessionUser';
 import { useBackLayer } from './hooks/useBackLayer';
 import { setTab as syncTabHistory, startBackStack, resetBackStack } from './lib/backStack';
@@ -2270,42 +2271,43 @@ export default function App() {
   const [voiceAsk, setVoiceAsk] = useState(null);
 
   /**
-   * A spoken vegetable name, against whatever sheet is being browsed.
+   * Change tab the way the bottom nav does — closing what is open over it.
    *
-   * `browseProducts`, not the platform catalog: the market or shop on screen is
-   * the one whose prices the shopper is being quoted, and resolving against
-   * anything wider adds a line the seller cannot fill. Exact name first, then a
-   * prefix, then a contained word — a spoken "tomato" must not land on
-   * "Tomato Ketchup" while a plain Tomato row exists.
+   * Voice used to call `setActiveTab` alone, which is the bug the nav's own
+   * comment describes: "go home" with the basket open switched the tab
+   * UNDERNEATH the basket, so the agent said "opening the home screen" and the
+   * screen did not change. A question handed to the assistant was answered
+   * behind a product page the same way. One definition, so the two ways of
+   * changing tab cannot drift apart again.
    */
-  const findSpokenProduct = useCallback(
-    (spoken) => {
-      const wanted = normalize(spoken);
-      if (!wanted) return null;
-
-      const named = browseProducts.map((product) => ({
-        product,
-        /* Both names are searched: the shopper speaks Telugu to a screen
-           showing English, and `productName` is what they are reading. */
-        names: [normalize(product.name), normalize(productName(product, language))].filter(Boolean),
-      }));
-
-      return (
-        named.find((row) => row.names.includes(wanted))?.product ||
-        named.find((row) => row.names.some((name) => name.startsWith(wanted)))?.product ||
-        named.find((row) => row.names.some((name) => name.includes(wanted)))?.product ||
-        null
-      );
+  const switchTab = useCallback(
+    (tab) => {
+      setActiveProductDetail(null);
+      setActiveCategoryDetail(null);
+      handleClearSearch();
+      setIsCartOpen(false);
+      setIsScheduledCartOpen(false);
+      setActiveTab(tab);
     },
-    [browseProducts, language]
+    [handleClearSearch, setActiveTab]
   );
+
+  /**
+   * The basket being filled. In scheduled shopping the lines go into the
+   * scheduled basket, so "open my cart" has to open that one — opening the
+   * regular basket showed the shopper an unchanged cart after a spoken add.
+   */
+  const openActiveCart = useCallback(() => {
+    if (shoppingMode === 'scheduled') setIsScheduledCartOpen(true);
+    else setIsCartOpen(true);
+  }, [shoppingMode]);
 
   const voiceActions = useMemo(
     () => ({
       /** @returns {boolean} whether this app has such a screen at all. */
       navigate: (target) => {
         if (target === 'cart') {
-          setIsCartOpen(true);
+          openActiveCart();
           return true;
         }
         if (target === 'search') {
@@ -2315,18 +2317,18 @@ export default function App() {
         if (target === 'offers') {
           // Offers live inside the account section rather than on a tab of
           // their own, so this is two moves, not one.
+          switchTab('account');
           setActiveAccountView('rewards');
-          setActiveTab('account');
           return true;
         }
         const tab = { home: 'home', prices: 'prices', cook: 'assistant', orders: 'orders', account: 'account' }[target];
         if (!tab) return false;
         if (tab === 'account') setActiveAccountView('menu');
-        setActiveTab(tab);
+        switchTab(tab);
         return true;
       },
 
-      openCart: () => setIsCartOpen(true),
+      openCart: openActiveCart,
 
       /**
        * Spoken lines into the cart, through the SAME handler a tap uses.
@@ -2335,31 +2337,51 @@ export default function App() {
        * the fly-to-cart animation; a second path into the cart would be a
        * second place for the pack rules to go wrong, and those rules are a
        * billing contract (server/test/packs.test.js).
+       *
+       * Names resolve against `browseProducts`, not the platform catalog: the
+       * market or shop on screen is the one whose prices the shopper is being
+       * quoted, and resolving against anything wider adds a line the seller
+       * cannot fill. The matching itself — every script, plurals, "Tomato"
+       * before "Tomato Ketchup" — is `lib/voiceProducts.js`.
        */
       addItems: (items) => {
         const added = [];
         const missing = [];
         for (const item of items) {
-          const product = findSpokenProduct(item.text);
+          const product = findSpokenProduct(item.text, browseProducts);
           if (!product || product.stock === 0) {
             missing.push(item.text);
             continue;
           }
           /* One call per pack, so the pack arithmetic and the sold-out check
-             run exactly as they do for a tap. Capped at ten: a misheard number
-             must not fill a basket, and nobody buys eleven packs by voice. */
-          for (let i = 0; i < Math.min(item.quantity || 1, 10); i += 1) handleAddToCart(product);
+             run exactly as they do for a tap. Capped: a misheard number must
+             not fill a basket, and nobody buys eleven packs by voice. */
+          const packs = Math.min(item.quantity || 1, MAX_SPOKEN_QUANTITY);
+          for (let i = 0; i < packs; i += 1) handleAddToCart(product);
           added.push(productName(product, language));
         }
         return { added, missing };
       },
 
+      /**
+       * Each of these returns `restore` with what it took out, for the Undo
+       * in the voice bubble. A removal is the one voice action that loses
+       * something, and the one a misheard word is most likely to trigger:
+       * a shopper who heard the wrong line go had no way back but to find and
+       * re-add it by hand. Restoring merges, so anything added in between
+       * survives.
+       */
       removeItems: (items) => {
         const removed = [];
         const missing = [];
+        const taken = [];
+        const gone = new Set();
         for (const item of items) {
-          const wanted = normalize(item.text);
-          const line = activeCartItems.find((row) => normalize(row.name).includes(wanted));
+          /* `findCartLine` matches nothing for a name it cannot read. The
+             lookup it replaced matched EVERYTHING for one — an empty string is
+             inside every name — so a removal spoken in Telugu or Hindi deleted
+             the first line in the cart. */
+          const line = findCartLine(item.text, activeCartItems.filter((row) => !gone.has(row.id)));
           if (!line) {
             missing.push(item.text);
             continue;
@@ -2368,27 +2390,38 @@ export default function App() {
           // tomatoes are gone, and leaving one behind is a line the shopper
           // then discovers at the door.
           handleUpdateQuantity(line.id, -line.quantity);
-          removed.push(line.name);
+          gone.add(line.id);
+          taken.push(line);
+          removed.push(productName(line, language));
         }
-        return { removed, missing };
+        const setTarget = shoppingMode === 'scheduled' ? setScheduledCartItems : setCartItems;
+        const restore = taken.length ? () => setTarget((now) => mergeCartLines([...now, ...taken])) : null;
+        return { removed, missing, restore };
       },
 
-      clearCart: () => (shoppingMode === 'scheduled' ? setScheduledCartItems([]) : setCartItems([])),
+      clearCart: () => {
+        const setTarget = shoppingMode === 'scheduled' ? setScheduledCartItems : setCartItems;
+        const before = activeCartItems;
+        setTarget([]);
+        return before.length ? () => setTarget((now) => mergeCartLines([...before, ...now])) : null;
+      },
 
       /** Hand the sentence to the cooking assistant, which answers it. */
       ask: (text) => {
         setVoiceAsk({ text, at: Date.now() });
-        setActiveTab('assistant');
+        switchTab('assistant');
       },
     }),
     [
-      findSpokenProduct,
+      browseProducts,
       handleAddToCart,
       handleUpdateQuantity,
       activeCartItems,
       shoppingMode,
       setCartItems,
       setScheduledCartItems,
+      switchTab,
+      openActiveCart,
       language,
     ]
   );
@@ -2412,21 +2445,26 @@ export default function App() {
       search: searchDiscoveryOpen || Boolean(searchQuery),
       query: searchQuery || null,
       wallet: isWalletOpen,
-      basket: isCartOpen,
+      offers: activeTab === 'account' && activeAccountView === 'rewards',
+      basket: isCartOpen || isScheduledCartOpen,
       marketName: selectedShop?.name || selectedMarket?.name || null,
-      cartLines: activeCartItems.map((item) => ({ name: item.name, quantity: item.quantity })),
+      // Named in the shopper's language: the cart is read back in Telugu to a
+      // shopper using the app in Telugu, not in the catalog's English.
+      cartLines: activeCartItems.map((item) => ({ name: productName(item, language), quantity: item.quantity })),
       cartTotalPaise: Math.round(
         activeCartItems.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0) * 100
       ),
     }),
     [
       activeTab,
+      activeAccountView,
       activeProductDetail,
       activeCategoryDetail,
       searchDiscoveryOpen,
       searchQuery,
       isWalletOpen,
       isCartOpen,
+      isScheduledCartOpen,
       selectedShop,
       selectedMarket,
       activeCartItems,
@@ -2437,20 +2475,24 @@ export default function App() {
   const voice = useVoiceAgent({ mode: voiceMode, view: voiceView, actions: voiceActions });
 
   /*
-   * Where the mic button appears, which is the modes made visible.
+   * Where the floating mic appears, which is the modes made visible.
    *
-   * `low` is the cooking tab and nowhere else — that is what the shopper chose,
-   * and a button on every screen that answered "voice is set to low" on every
-   * tap would be a worse way of saying the same thing. `medium` and `high`
-   * ride every tab. It is hidden while signing in: a password screen is not a
-   * place to add a listening microphone, and the agent has nothing to do there.
+   * Never on the AI Cook tab. That tab has its own mic, beside the message
+   * box, which writes the words in for the shopper to check before sending —
+   * and two mics on one screen, each with its own idea of the language, was
+   * one too many. The floating one only ever handed the question to the
+   * assistant there anyway. So `low` ("only in the AI Cook tab") is that mic
+   * and nothing else, and `medium` and `high` add this one on every other tab.
+   *
+   * Hidden while signing in: a sign-in screen is not a place to add a
+   * listening microphone, and the agent has nothing to do there.
    */
   const voiceButtonVisible =
-    voiceMode !== 'off' &&
+    (voiceMode === 'medium' || voiceMode === 'high') &&
     Boolean(user) &&
     activeTab !== 'login' &&
     activeTab !== 'signup' &&
-    (voiceMode !== 'low' || activeTab === 'assistant');
+    activeTab !== 'assistant';
 
   /**
    * Everything that opens over a tab gets a history entry, so the back button
@@ -2863,6 +2905,7 @@ export default function App() {
                      key, and taking it clears it, the same way the opener does. */
                   spokenAsk={voiceAsk}
                   onSpokenAskTaken={() => setVoiceAsk(null)}
+                  voiceEnabled={voiceMode !== 'off'}
                 />
               ) : (
                 /* ACCOUNT & ROLE SWITCHER TAB.
@@ -3524,6 +3567,8 @@ export default function App() {
           heard={voice.heard}
           said={voice.said}
           silent={voice.silent}
+          canUndo={voice.canUndo}
+          onUndo={voice.undoLast}
           onListen={voice.listen}
           onStop={voice.stop}
         />
@@ -3533,23 +3578,17 @@ export default function App() {
       {activeTab !== 'login' && activeTab !== 'signup' && !searchScreenOpen && (
         <BottomNav
           activeTab={activeTab}
-          setActiveTab={(tab) => {
-            setActiveProductDetail(null);
-            setActiveCategoryDetail(null);
-            handleClearSearch();
-            /**
-             * The basket closes with the tab change.
-             *
-             * It sits at z-25, deliberately below this nav, so the tabs stay
-             * reachable while it is open — but nothing was dismissing it, so
-             * tapping Account switched the tab *underneath* and left the basket
-             * covering the whole screen. Every other route reset on this line
-             * exists for the same reason.
-             */
-            setIsCartOpen(false);
-            setIsScheduledCartOpen(false);
-            setActiveTab(tab);
-          }}
+          /**
+           * The basket closes with the tab change, as does everything else
+           * open over a tab.
+           *
+           * It sits at z-25, deliberately below this nav, so the tabs stay
+           * reachable while it is open — but nothing was dismissing it, so
+           * tapping Account switched the tab *underneath* and left the basket
+           * covering the whole screen. `switchTab` is shared with the voice
+           * agent, which had the same bug.
+           */
+          setActiveTab={switchTab}
           cartCount={totalCartCount}
           // Tapping Cart with the basket already open closes it. It is the same
           // control in the same place, and leaving it inert made it read as

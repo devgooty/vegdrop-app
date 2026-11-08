@@ -29,31 +29,80 @@ export const VOICE_MODES = ['off', 'low', 'medium', 'high'];
 
 export const DEFAULT_VOICE_MODE = 'low';
 
+/** The most packs one spoken line may ask for. A misheard number must not fill a basket. */
+export const MAX_SPOKEN_QUANTITY = 10;
+
 /**
  * Fold an utterance into comparable words.
  *
  * Punctuation goes, case goes, and runs of whitespace collapse — but nothing
  * is transliterated: Telugu and Devanagari survive as themselves, because the
  * keyword tables hold both scripts.
+ *
+ * Three things here have each broken a command:
+ *
+ * - **"n't" becomes " not"** rather than losing its apostrophe to a space.
+ *   "don't" used to fold to "don t", which no negation matched, so "I don't
+ *   want tomato" went looking for a vegetable called "don t tomato".
+ * - **Curly quotes and the Hindi full stop (।) are punctuation.** Recognisers
+ *   emit both; left in, "हटाओ।" is a different word from "हटाओ".
+ * - **Zero-width joiners go.** Telugu writes "కార్ట్‌లో" with or without a
+ *   ZWNJ depending on the keyboard or recogniser, and the two must be one word.
  */
 export function normalizeSpoken(value) {
   return String(value ?? '')
+    .normalize('NFC')
     .toLowerCase()
-    .replace(/[.,!?;:"'`()\[\]{}…]+/g, ' ')
+    .replace(/[​-‍⁠﻿]/g, '')
+    .replace(/n['’]t\b/g, ' not')
+    .replace(/[.,!?;:"'’‘“”`()\[\]{}…।॥]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-/** A phrase appears as whole words, not as a fragment inside a longer one. */
+/**
+ * Telugu and Devanagari phrases that must stand alone as a whole word.
+ *
+ * Everything else in those scripts matches at the START of a word, so a suffix
+ * is allowed ("కార్ట్‌లో", "डालना") but a phrase buried inside a longer word is
+ * not. These are the few where even a word-start match is wrong: "बिलकुल"
+ * (absolutely) is not a bill, "बंदगोभी" (cabbage) is not "stop", and
+ * "వేయించు" (fry) is not "వేయి" (put in).
+ * Anything two code units or shorter is also whole-word only — "मत" (don't),
+ * "ना", "सब" are too short to be anything but themselves.
+ */
+const WHOLE_WORD = new Set(['बिल', 'कुल', 'बंद', 'వేయి']);
+
+const patterns = new Map();
+
+/**
+ * The one definition of "this phrase appears in this text", shared by `has`
+ * and `strip` so that what is matched and what is removed cannot disagree.
+ *
+ * - Latin: whole words ("add" must not match "address").
+ * - Telugu/Devanagari: from the start of a word, suffix allowed. These used to
+ *   match ANYWHERE, and Hindi paid for it: कीमत (price) contains मत (don't), so
+ *   "टमाटर की कीमत क्या है" was a removal; डालना (to put) contains ना, so
+ *   "दो किलो टमाटर डालना" removed the tomatoes it asked for.
+ */
+function patternFor(phrase) {
+  let pattern = patterns.get(phrase);
+  if (pattern) return pattern;
+
+  const folded = normalizeSpoken(phrase);
+  const escaped = folded.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const wholeWord = /^[a-z0-9 ]+$/.test(folded) || folded.length <= 2 || WHOLE_WORD.has(folded);
+  pattern = folded ? new RegExp(`(^| )${escaped}${wholeWord ? '(?= |$)' : '\\S*'}`, 'g') : null;
+  patterns.set(phrase, pattern);
+  return pattern;
+}
+
+/** A phrase appears as a word (or, in Telugu and Hindi, the start of one). */
 function has(text, phrase) {
-  if (!phrase) return false;
-  // Latin needs a word boundary ("add" must not match "address"); Telugu and
-  // Devanagari have no \b that works, so those match as substrings — which is
-  // correct for them, since they agglutinate ("కార్ట్‌లో" contains "కార్ట్").
-  if (/^[a-z0-9 ]+$/.test(phrase)) {
-    return new RegExp(`(^| )${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}( |$)`).test(text);
-  }
-  return text.includes(phrase);
+  const pattern = patternFor(phrase);
+  if (!pattern) return false;
+  pattern.lastIndex = 0;
+  return pattern.test(text);
 }
 
 function hasAny(text, phrases) {
@@ -72,11 +121,27 @@ const TARGETS = [
   { target: 'search', words: ['search', 'वेतुकु', 'వెతుకు', 'వెతకు', 'खोज', 'सर्च', 'ढूंढ'] },
 ];
 
+const CART_WORDS = ['cart', 'basket', 'cartlo', 'కార్ట్', 'బాస్కెట్', 'बास्केट', 'कार्ट', 'टोकरी'];
+
 const GO_WORDS = ['open', 'go', 'go to', 'show', 'show me', 'take me', 'view', 'chupu', 'చూపు', 'చూపించు', 'తెరువు', 'వెళ్ళు', 'వెళ్లు', 'kholo', 'खोलो', 'खोल', 'दिखाओ', 'दिखा', 'जाओ', 'चलो'];
 
-const ADD_WORDS = ['add', 'put', 'buy', 'want', 'kalupu', 'veyi', 'vey', 'కలుపు', 'వేయి', 'వెయ్యి', 'చేర్చు', 'కావాలి', 'डालो', 'डाल', 'जोड़ो', 'जोड़', 'चाहिए', 'खरीद'];
+/**
+ * Words that only say the shopper WANTS something.
+ *
+ * Kept apart from the other add words because wanting is not always buying:
+ * "I want to make sambar" carries one and is a cooking question. A want-word
+ * with a cooking word beside it goes to the assistant; "add", "veyi" and
+ * "डालो" add whatever else is in the sentence.
+ */
+const WANT_WORDS = ['want', 'need', 'kavali', 'kaavali', 'chahiye', 'chaiye', 'కావాలి', 'चाहिए'];
 
-const REMOVE_WORDS = ['remove', 'delete', 'drop', 'take out', 'teesey', 'teeseyi', 'tolaginchu', 'vaddu', 'venda', 'తీసేయి', 'తీసెయ్యి', 'తొలగించు', 'వద్దు', 'हटाओ', 'हटा', 'निकालो', 'निकाल', 'मत', 'नहीं चाहिए'];
+const ADD_WORDS = [
+  'add', 'put', 'buy', 'kalupu', 'veyi', 'vey', 'veyyi', 'veyandi', 'veyyandi', 'veseyi', 'daalo', 'dalo', 'jodo', 'kharido',
+  'కలుపు', 'వేయి', 'వెయ్యి', 'వేయండి', 'చేర్చు', 'डालो', 'डाल', 'जोड़ो', 'जोड़', 'खरीद',
+  ...WANT_WORDS,
+];
+
+const REMOVE_WORDS = ['remove', 'delete', 'drop', 'take out', 'teesey', 'teeseyi', 'teeseyyi', 'tiseyi', 'tolaginchu', 'vaddu', 'venda', 'hatao', 'nikalo', 'తీసేయి', 'తీసెయ్యి', 'తొలగించు', 'వద్దు', 'हटाओ', 'हटा', 'निकालो', 'निकाल', 'मत', 'नहीं चाहिए'];
 
 const CLEAR_WORDS = ['clear', 'empty', 'clear everything', 'khali', 'ఖాళీ', 'అన్నీ తీసేయి', 'खाली', 'सब हटाओ'];
 
@@ -85,16 +150,35 @@ const READ_WORDS = ['what is this', 'what', 'where am i', 'read', 'tell me', 'de
 const SCREEN_WORDS = ['screen', 'page', 'here', 'this', 'స్క్రీన్', 'పేజీ', 'ఇక్కడ', 'ఇది', 'स्क्रीन', 'पेज', 'पृष्ठ', 'यहाँ', 'यहां', 'यह'];
 
 /**
+ * Words about cooking a dish rather than buying produce.
+ *
+ * They do not route anywhere by themselves. They stop a want-word from being
+ * read as a purchase and "this" from being read as a question about the
+ * screen: "what can I make with this" asks for a recipe.
+ */
+const COOK_WORDS = ['make', 'cook', 'cooking', 'recipe', 'recipes', 'prepare', 'dish', 'vandali', 'vandu', 'vanta', 'వండ', 'వంట', 'రెసిపీ', 'बना', 'पका', 'रेसिपी'];
+
+/**
  * Anything that would spend money. Matched BEFORE the intents that act, so
  * "place the order" can never be routed to something that acts on it.
  */
-const PAY_WORDS = ['pay', 'payment', 'checkout', 'check out', 'place order', 'place the order', 'order now', 'buy now', 'upi', 'card', 'chellinpu', 'చెల్లింపు', 'చెల్లించు', 'డబ్బు', 'ఆర్డర్ చెయ్యి', 'ఆర్డర్ పెట్టు', 'भुगतान', 'पेमेंट', 'पैसा', 'ऑर्डर करो', 'ऑर्डर कर'];
+const PAY_WORDS = ['pay', 'payment', 'checkout', 'check out', 'place order', 'place the order', 'order now', 'buy now', 'upi', 'card', 'chellinpu', 'order pettu', 'order cheyyi', 'order chey', 'order cheyi', 'order karo', 'order kar do', 'చెల్లింపు', 'చెల్లించు', 'డబ్బు', 'ఆర్డర్ చెయ్యి', 'ఆర్డర్ పెట్టు', 'भुगतान', 'पेमेंट', 'पैसा', 'ऑर्डर करो', 'ऑर्डर कर'];
 
 const STOP_WORDS = ['stop', 'cancel', 'quiet', 'shut up', 'never mind', 'aapu', 'ఆపు', 'ఆపండి', 'రద్దు', 'వద్దు ఆపు', 'रुको', 'रुक', 'बंद', 'चुप', 'रद्द'];
 
 const HELP_WORDS = ['help', 'what can you do', 'sahayam', 'సహాయం', 'ఏం చేయగలవు', 'मदद', 'सहायता', 'क्या कर सकते'];
 
-const TOTAL_WORDS = ['total', 'how much', 'bill', 'amount', 'enta', 'ఎంత', 'మొత్తం', 'బిల్లు', 'कितना', 'कुल', 'बिल'];
+/** Words that name the bill itself — "bill enta" asks about the cart. */
+const BILL_WORDS = ['total', 'bill', 'amount', 'మొత్తం', 'బిల్లు', 'कुल', 'बिल'];
+
+/**
+ * "How much" — about the bill ONLY when nothing else is named.
+ *
+ * "tomato enta" is the price of tomatoes, which the assistant answers. It was
+ * read as a question about the cart, and the shopper heard their basket total
+ * instead of a price.
+ */
+const HOW_MUCH_WORDS = ['how much', 'enta', 'entha', 'kitna', 'ఎంత', 'कितना'];
 
 /**
  * Spoken counts, 1–10, in the three languages people use here.
@@ -115,21 +199,44 @@ const NUMBER_WORDS = {
 /** Words that carry no produce and would otherwise end up in the item name. */
 const FILLER = new Set([
   'please', 'na', 'naa', 'nenu', 'nuvvu', 'ki', 'lo', 'loki', 'cart', 'cartlo', 'basket', 'me', 'mein', 'my',
-  'i', 'is', 'are', 'of', 'for', 'some', 'that', 'those',
-  'to', 'the', 'a', 'an', 'in', 'into', 'kg', 'kilo', 'kilos', 'gram', 'grams', 'pack', 'packs', 'piece', 'pieces',
+  'i', 'is', 'are', 'of', 'for', 'some', 'that', 'those', 'from', 'more', 'just',
+  // "can you add okra" went looking for a vegetable called "can you okra".
+  'can', 'could', 'would', 'you',
+  'to', 'the', 'a', 'an', 'in', 'into', 'kg', 'kgs', 'kilo', 'kilos', 'kilolu', 'gram', 'grams', 'pack', 'packs',
+  'packet', 'packets', 'piece', 'pieces', 'bunch', 'bunches',
+  // An amount is a count of the seller's packs, never a weight (services/packs.mjs):
+  // "half kg tomato" is one pack of tomatoes, not something called "half tomato".
+  'half', 'quarter', 'dozen', 'ara', 'aadha', 'pav',
+  // "a bit", "also", "to me" — said around the name, never part of it.
+  'konchem', 'koncham', 'kuda', 'kooda', 'inka', 'naaku', 'thoda', 'mujhe',
   // Telugu/Hindi "do it" — a polite tail on almost every spoken command.
   'chey', 'cheyi', 'chei', 'cheyyi', 'karo', 'kar', 'do', 'it',
-  'కార్ట్', 'బాస్కెట్', 'లో', 'కి', 'కేజీ', 'కిలో', 'కార్ట్‌లో', 'చెయ్యి', 'చేయి',
-  'कार्ट', 'टोकरी', 'में', 'मेरे', 'किलो', 'केजी', 'ग्राम', 'करो', 'कर',
+  'కార్ట్', 'బాస్కెట్', 'లో', 'కి', 'కేజీ', 'కిలో', 'కిలోలు', 'కార్ట్లో', 'చెయ్యి', 'చేయి', 'కొంచెం', 'ఇంకా', 'నాకు',
+  'कार्ट', 'टोकरी', 'में', 'मेरे', 'किलो', 'केजी', 'ग्राम', 'करो', 'कर', 'थोड़ा', 'थोड़े', 'मुझे', 'और',
 ]);
 
 /** "and" in all three — one command can name more than one vegetable. */
-const SEPARATORS = ['and', 'also', 'plus', 'mariyu', 'మరియు', 'తో', 'aur', 'और', 'भी'];
+const SEPARATORS = ['and', 'also', 'plus', 'mariyu', 'aur', 'మరియు', 'తో', 'और', 'भी'];
 
 /** A refusal reads as a removal, not an addition. */
-const NEGATIONS = ['not', "don't", 'dont', 'do not', 'no', 'never', 'vaddu', 'వద్దు', 'వాడు కాదు', 'नहीं', 'नही', 'मत', 'ना'];
+const NEGATIONS = ['not', 'dont', 'do not', 'no', 'never', 'nahi', 'nahin', 'mat', 'vaddu', 'వద్దు', 'వాడు కాదు', 'नहीं', 'नही', 'मत', 'ना'];
 
 const EVERYTHING_WORDS = ['everything', 'all', 'all of it', 'anni', 'అన్ని', 'అన్నీ', 'sab', 'sab kuch', 'सब', 'सबकुछ', 'सब कुछ'];
+
+/**
+ * Whether the sentence refuses something.
+ *
+ * Two positions are not refusals, and both turned an addition into a removal:
+ * a LEADING "no" corrects what came before ("no, add two tomatoes"), and a
+ * TRAILING "ना" is Hindi's polite tag ("टमाटर डालो ना" — do add tomatoes).
+ * "ना" before the verb ("टमाटर ना डालो") is still "don't".
+ */
+function isNegated(text) {
+  const words = text.split(' ');
+  while (words.length > 1 && words[0] === 'no') words.shift();
+  if (words.length > 1 && words[words.length - 1] === 'ना') words.pop();
+  return hasAny(words.join(' '), NEGATIONS);
+}
 
 /**
  * The quantity, and what is left once it is taken out.
@@ -157,16 +264,30 @@ export function extractQuantity(text) {
   return { quantity: quantity && quantity > 0 ? quantity : 1, rest: rest.join(' ') };
 }
 
+/** Take every listed phrase out of the text, by the same rule `has` matches it. */
 function strip(text, words) {
-  let rest = ` ${text} `;
+  let rest = text;
   for (const word of [...words].sort((a, b) => b.length - a.length)) {
-    if (/^[a-z0-9' ]+$/.test(word)) {
-      rest = rest.replace(new RegExp(`(^| )${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}( |$)`, 'g'), ' ');
-    } else {
-      rest = rest.split(word).join(' ');
-    }
+    const pattern = patternFor(word);
+    if (pattern) rest = rest.replace(pattern, ' ');
   }
   return rest.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * What a piece of a sentence is FOR, which is not something to buy.
+ *
+ * "add tomatoes for sambar" asks for tomatoes; left in, it asked for a
+ * vegetable called "tomatoes sambar" and found nothing. English puts the
+ * purpose after "for"; Telugu and Hindi put the dish BEFORE the postposition
+ * ("సాంబార్ కోసం", "सांबर के लिए"), so the word in front of it goes too.
+ */
+function withoutPurpose(piece) {
+  return piece
+    .replace(/(^| )for( .*)?$/, ' ')
+    .replace(/(^| )\S+ (kosam|కోసం|के लिए|ke liye|ke liya)(?= |$)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -184,9 +305,9 @@ function namedItems(text, verbs) {
   return rest
     .split(pattern)
     .map((piece) => {
-      const { quantity, rest: named } = extractQuantity(piece);
+      const { quantity, rest: named } = extractQuantity(withoutPurpose(piece));
       const words = named.split(' ').filter((word) => word && !FILLER.has(word));
-      return { quantity, text: words.join(' ') };
+      return { quantity: Math.min(quantity, MAX_SPOKEN_QUANTITY), text: words.join(' ') };
     })
     .filter((item) => item.text);
 }
@@ -198,13 +319,17 @@ function namedTarget(text) {
   return null;
 }
 
+/** Nothing of substance once the given words and filler are taken out. */
+function onlyThese(text, words) {
+  return strip(text, words)
+    .split(' ')
+    .every((word) => !word || FILLER.has(word));
+}
+
 /** The matched target word and nothing else of substance — "offers", "my cart". */
 function isBareTarget(text, target) {
   const words = TARGETS.find((entry) => entry.target === target)?.words || [];
-  const rest = strip(text, [...words, ...GO_WORDS])
-    .split(' ')
-    .filter((word) => word && !FILLER.has(word));
-  return rest.length === 0;
+  return onlyThese(text, [...words, ...GO_WORDS]);
 }
 
 /**
@@ -226,21 +351,41 @@ export function parseVoiceCommand(utterance) {
 
   const target = namedTarget(text);
 
+  /*
+   * Is this a purchase? An add word does it, unless the only one is a WANT
+   * and the sentence is about cooking — "I want to make sambar" answered
+   * "couldn't find make sambar", in the one mode where the shopper could not
+   * reach the assistant they were asking.
+   */
+  const cooking = hasAny(text, COOK_WORDS);
+  const explicitAdd = hasAny(text, ADD_WORDS.filter((word) => !WANT_WORDS.includes(word)));
+  const buying = explicitAdd || (hasAny(text, WANT_WORDS) && !cooking);
+
   // "stop" has to work while the agent is talking, so it is early — but only
   // as a command of its own. "Cancel my order" is a question about an order,
-  // not a request for silence, and belongs to the assistant.
-  if (hasAny(text, STOP_WORDS) && !target && text.split(' ').length <= 3) return { intent: 'stop' };
+  // not a request for silence, and belongs to the assistant; "बंद गोभी डालो"
+  // (add cabbage) carries a stop word and an add word, and is an addition.
+  if (hasAny(text, STOP_WORDS) && !target && !explicitAdd && text.split(' ').length <= 3) return { intent: 'stop' };
   if (hasAny(text, HELP_WORDS)) return { intent: 'help' };
 
-  const cartNamed = hasAny(text, ['cart', 'basket', 'కార్ట్', 'బాస్కెట్', 'बास्केट', 'कार्ट', 'टोकरी']);
+  /*
+   * "Empty the cart" and "remove all the tomatoes" both pair a removal with
+   * "all"; only the first is about the whole cart. Whatever survives once the
+   * verbs, "all" and the cart are taken out is a vegetable, and naming one
+   * means that line goes — not the basket. Reading "all" alone emptied the
+   * whole cart to take out one item, in every language.
+   */
+  const cartNamed = hasAny(text, CART_WORDS);
   const everything = hasAny(text, EVERYTHING_WORDS);
-  if ((hasAny(text, CLEAR_WORDS) || hasAny(text, REMOVE_WORDS)) && (cartNamed || everything)) {
-    if (everything || hasAny(text, CLEAR_WORDS)) return { intent: 'clear_cart' };
+  const clearing = hasAny(text, CLEAR_WORDS);
+  if ((clearing || hasAny(text, REMOVE_WORDS)) && (cartNamed || everything)) {
+    const items = namedItems(text, [...REMOVE_WORDS, ...CLEAR_WORDS, ...EVERYTHING_WORDS, ...CART_WORDS]);
+    if (items.length > 0) return { intent: 'remove_item', items };
+    if (everything || clearing) return { intent: 'clear_cart' };
   }
 
   // A refusal is a removal: "I don't want tomato" must never add one.
-  const negated = hasAny(text, NEGATIONS);
-  if (hasAny(text, REMOVE_WORDS) || (negated && hasAny(text, ADD_WORDS))) {
+  if (hasAny(text, REMOVE_WORDS) || (isNegated(text) && buying)) {
     const items = namedItems(text, [...REMOVE_WORDS, ...ADD_WORDS]);
     if (items.length > 0) return { intent: 'remove_item', items };
     return { intent: 'remove_item', items: [] };
@@ -250,10 +395,13 @@ export function parseVoiceCommand(utterance) {
   // are tested before `add`: "I want to know what is in the cart" carries a
   // want-word and would otherwise try to add "know what is".
   const reading = hasAny(text, READ_WORDS);
-  if ((reading || hasAny(text, TOTAL_WORDS)) && cartNamed) return { intent: 'read_cart' };
-  if (hasAny(text, TOTAL_WORDS) && !target) return { intent: 'read_cart' };
+  const billNamed = hasAny(text, BILL_WORDS);
+  const howMuch = hasAny(text, HOW_MUCH_WORDS);
+  if ((reading || billNamed || howMuch) && cartNamed) return { intent: 'read_cart' };
+  if (billNamed && !target) return { intent: 'read_cart' };
+  if (howMuch && !target && onlyThese(text, [...HOW_MUCH_WORDS, ...READ_WORDS])) return { intent: 'read_cart' };
 
-  if (hasAny(text, ADD_WORDS)) {
+  if (buying) {
     const items = namedItems(text, ADD_WORDS);
     if (items.length > 0) return { intent: 'add_item', items };
   }
@@ -269,7 +417,7 @@ export function parseVoiceCommand(utterance) {
    */
   if (reading && target === 'offers') return { intent: 'navigate', target: 'offers' };
 
-  if (reading && hasAny(text, SCREEN_WORDS)) return { intent: 'read_screen' };
+  if (reading && !cooking && hasAny(text, SCREEN_WORDS)) return { intent: 'read_screen' };
   if (hasAny(text, ['where am i', 'ekkada unnanu', 'ఎక్కడ ఉన్నాను', 'कहाँ हूँ', 'कहां हूं'])) {
     return { intent: 'read_screen' };
   }
@@ -323,4 +471,63 @@ export function routeVoiceCommand(utterance, mode) {
   if (command.intent === 'payment') return { ...command, verdict: 'payment' };
   if (!voiceModeAllows(mode, command.intent)) return { ...command, verdict: 'blocked' };
   return { ...command, verdict: 'allow' };
+}
+
+/**
+ * Whether asking the model what a sentence meant could change anything in
+ * this mode.
+ *
+ * In `low` it cannot: everything the model may name beyond conversation is
+ * blocked there, and the table already catches "stop" and "help". Asking
+ * anyway put a round trip in front of every spoken cooking question — and
+ * when the model read one as a command, the shopper was told the setting was
+ * too low instead of getting an answer from the only thing `low` is for.
+ */
+export function modelCanHelp(mode) {
+  return ['read_screen', 'read_cart', 'navigate', 'add_item', 'remove_item', 'clear_cart'].some((intent) =>
+    voiceModeAllows(mode, intent)
+  );
+}
+
+/**
+ * What the model's answer means as a command, in this mode — or null when it
+ * is conversation and belongs to the assistant.
+ *
+ * The server names vegetables `{ name, quantity }`, because that is the shape
+ * a model is asked for; the app resolves `{ text, quantity }`, because that is
+ * what the keyword table produces. Handing the model's items through
+ * unconverted made every model-understood add say "couldn't find", and every
+ * model-understood removal resolve an EMPTY name — which matched the first
+ * line in the cart and deleted it. So the conversion lives here, in one pure
+ * function, with the tests beside it.
+ *
+ * Everything is re-checked rather than trusted: the server already sanitises,
+ * but this is the last step before a handler that changes a cart.
+ */
+export function routeModelGuess(guess, mode, utterance = '') {
+  if (!guess || typeof guess.intent !== 'string') return null;
+  const intent = guess.intent;
+  if (intent === 'chat' || intent === 'payment' || !voiceModeAllows('high', intent)) return null;
+
+  const command = { intent, text: utterance };
+
+  if (intent === 'navigate') {
+    if (typeof guess.target !== 'string' || !guess.target) return null;
+    command.target = guess.target;
+  }
+
+  if (intent === 'add_item' || intent === 'remove_item') {
+    const items = (Array.isArray(guess.items) ? guess.items : [])
+      .map((item) => {
+        const text = normalizeSpoken(item?.name ?? item?.text ?? '');
+        const asked = Number(item?.quantity);
+        const quantity = Number.isFinite(asked) && asked >= 1 ? Math.min(Math.round(asked), MAX_SPOKEN_QUANTITY) : 1;
+        return { quantity, text };
+      })
+      .filter((item) => item.text);
+    if (items.length === 0) return null;
+    command.items = items;
+  }
+
+  return { ...command, verdict: voiceModeAllows(mode, intent) ? 'allow' : 'blocked' };
 }
