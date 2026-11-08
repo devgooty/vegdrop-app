@@ -197,6 +197,23 @@ line and phones never notice.
 
   and never build the website on it (the API-only setup below does not).
 
+### The one-command way
+
+`deploy/setup-oracle-api.sh` does every step below that happens on the VM —
+swap, the VM firewall, Node, PM2, Caddy, the code, the `.env` fix-ups, start,
+and a health check from outside — and refuses to touch a VM that is already
+serving another app. On a fresh Ubuntu VM, as the `ubuntu` user:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/devgooty/vegdrop-app/main/deploy/setup-oracle-api.sh | bash -s -- --domain YOUR_API_DOMAIN
+```
+
+The first run stops after writing `/var/www/vegdrop/.env`; paste the Railway
+variables into it and run the same command again. What it cannot do, because
+each needs a login it does not have: upgrade the Oracle account, open the
+Security List, create the DuckDNS name, allow the VM in Atlas, and change
+`vercel.json`.
+
 ### Steps that differ from the guide above
 
 1. **Open 80 and 443 in both places.** The subnet's Security List needs ingress
@@ -229,9 +246,10 @@ line and phones never notice.
    Then make sure of two more: `NODE_ENV=production` (Railway tells the app it
    is live by itself; this VM cannot, so this line is what keeps the payment
    and OTP safety checks on — see `requireRealServices` in
-   `server/config/env.js`), and `TRUST_PROXY` copied from Railway — see the
-   comment in `deploy/Caddyfile.api` for why the example file's `1` is wrong
-   behind Vercel.
+   `server/config/env.js`), and `TRUST_PROXY=2` — see the comment in
+   `deploy/Caddyfile.api` for why the example file's `1` is wrong behind
+   Vercel. Drop any `RAILWAY_*` line that came across with the paste: a stale
+   `RAILWAY_GIT_COMMIT_SHA` makes `/api/health` report Railway's commit.
 
 5. **Use `deploy/Caddyfile.api` instead of `deploy/Caddyfile`.** It proxies
    `/api/*` only and keeps the real client IP visible behind Vercel.

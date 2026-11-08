@@ -38,10 +38,8 @@
 		# (anyone can call its public URL directly), not a new one.
 		#
 		# Pair this with TRUST_PROXY=2 in .env — two hops, Vercel then Caddy —
-		# which is the same hop count as Vercel then Railway's edge. Copy the
-		# value the Railway service uses rather than the 1 in
-		# deploy/.env.production.example, which assumes nothing sits in front
-		# of Caddy.
+		# not the 1 in deploy/.env.production.example, which assumes nothing
+		# sits in front of Caddy. deploy/setup-oracle-api.sh sets it.
 		trusted_proxies static 0.0.0.0/0 ::/0
 	}
 }
