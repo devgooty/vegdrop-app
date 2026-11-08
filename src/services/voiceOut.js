@@ -77,11 +77,15 @@ function withTimeout(promise) {
  * from a broken feature unless the app says which one it was. The caller puts
  * that line on screen under the answer.
  *
+ * `owner` names who is talking, so that whoever stops speech on the way out
+ * stops only its own — see `stopSpeaking`.
+ *
  * @returns {Promise<{ spoken: boolean, reason: string|null }>}
  */
-export async function speak(text, language) {
+export async function speak(text, language, { owner = null } = {}) {
   const sentence = String(text || '').trim();
   if (!sentence) return { spoken: false, reason: null };
+  lastSpeaker = owner;
   const locale = speechLocale(language);
 
   const cap = nativeSpeaker();
@@ -114,8 +118,24 @@ export async function speak(text, language) {
   }
 }
 
-/** Stop mid-sentence — the shopper said something else, or said "stop". */
-export function stopSpeaking() {
+/**
+ * Who said the last sentence. There is one speech engine for the whole app,
+ * so "stop talking" means stop whatever is being said — unless the caller
+ * names itself, and then only if it was the one talking.
+ */
+let lastSpeaker = null;
+
+/**
+ * Stop mid-sentence — the shopper said something else, or said "stop".
+ *
+ * With `owner`, only that speaker's sentence is stopped. The cooking
+ * assistant stops its own reading when it closes, and without this it also
+ * silenced the voice agent: asked by voice to open another tab, the agent
+ * said "opening your orders", the tab change unmounted the assistant, and its
+ * cleanup cancelled the sentence a few syllables in.
+ */
+export function stopSpeaking({ owner } = {}) {
+  if (owner && lastSpeaker !== owner) return;
   const cap = nativeSpeaker();
   if (cap) {
     cap.nativePromise(PLUGIN, 'stopSpeaking', {}).catch(() => {});

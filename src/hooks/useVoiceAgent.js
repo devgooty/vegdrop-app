@@ -3,7 +3,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { createSpeechRecognition, mapSpeechError, speechRecognitionCtor } from '../services/voiceSearch';
 import { hasNativeSpeech } from '../services/nativeSpeech';
 import { speak, stopSpeaking } from '../services/voiceOut';
-import { parseVoiceCommand, routeVoiceCommand, voiceModeAllows } from '../lib/voiceCommands';
+import { parseVoiceCommand, routeVoiceCommand, routeModelGuess, modelCanHelp } from '../lib/voiceCommands';
 import { classifySpokenCommand } from '../services/agent';
 import { describeScreen, describeCart, describeHelp } from '../lib/voiceScreen';
 
@@ -37,6 +37,15 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
   const [silent, setSilent] = useState(null);
 
   const recognitionRef = useRef(null);
+  /**
+   * Which spoken turn is current. Bumped by every listen and every stop.
+   *
+   * A turn that waits on the model can outlive the shopper's patience: they
+   * tap stop while it is "thinking", and the answer used to arrive anyway and
+   * act — adding to the cart or changing the screen after being told to stop.
+   * Anything that resumes after an `await` checks this first.
+   */
+  const turnRef = useRef(0);
   const viewRef = useRef(view);
   const actionsRef = useRef(actions);
   const modeRef = useRef(mode);
@@ -96,6 +105,7 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
   }, []);
 
   const stop = useCallback(() => {
+    turnRef.current += 1;
     clearTimeout(fadeRef.current);
     const recognition = recognitionRef.current;
     recognitionRef.current = null;
@@ -118,7 +128,7 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
    * every time.
    */
   const perform = useCallback(
-    (command, spokenReply) => {
+    (command, { reply: spokenReply, deferMiss = false } = {}) => {
       const run = actionsRef.current;
       const screen = viewRef.current;
       const say = (fallback) => answer(spokenReply || fallback);
@@ -172,6 +182,9 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
         case 'add_item': {
           const { added = [], missing = [] } = run.addItems?.(command.items || []) || {};
           if (added.length === 0) {
+            // Nothing changed, so the caller may ask the model what the
+            // vegetable was before answering "couldn't find".
+            if (deferMiss) return false;
             answer(t('voice.notFound', { items: missing.join(', ') || command.text || '' }));
             return;
           }
@@ -189,6 +202,7 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
         case 'remove_item': {
           const { removed = [], missing = [] } = run.removeItems?.(command.items || []) || {};
           if (removed.length === 0) {
+            if (deferMiss) return false;
             answer(t('voice.notInCart', { items: missing.join(', ') || command.text || '' }));
             return;
           }
@@ -241,46 +255,67 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
    */
   const act = useCallback(
     async (utterance) => {
+      const turn = turnRef.current;
       const routed = routeVoiceCommand(utterance, modeRef.current);
+      const command = { ...routed, text: routed.text ?? utterance };
+      const askable = modelCanHelp(modeRef.current);
+
+      /** The model's reading of the sentence as a command, or null. Never throws. */
+      const understand = async () => {
+        const screen = viewRef.current;
+        try {
+          const guess = await classifySpokenCommand({
+            utterance,
+            language: languageRef.current,
+            screen: {
+              ...(screen.tab ? { tab: screen.tab } : {}),
+              ...(screen.productName ? { productName: screen.productName } : {}),
+              cartCount: Array.isArray(screen.cartLines) ? screen.cartLines.length : 0,
+            },
+          });
+          // Converted, not passed through: the server names vegetables
+          // `{ name }`, the cart handlers read `{ text }` — see routeModelGuess.
+          const understood = routeModelGuess(guess, modeRef.current, utterance);
+          return understood ? { ...understood, reply: typeof guess?.reply === 'string' ? guess.reply : '' } : null;
+        } catch {
+          // Offline, signed out, rate limited: the caller answers without it.
+          return null;
+        }
+      };
+
       if (routed.intent !== 'cook') {
-        perform({ ...routed, text: routed.text ?? utterance });
+        /*
+         * A second chance for the vegetable, not for the verb.
+         *
+         * The table knew it was an add ("vankaya veyyi") but no row on the
+         * sheet is called "vankaya" — the model knows it is brinjal. Nothing
+         * was written by the first try, so asking costs nothing but time, and
+         * only an answer with the SAME verb is used: a model that hears a
+         * removal in what the table heard as an addition is overruled.
+         */
+        const writes = routed.verdict === 'allow' && (routed.intent === 'add_item' || routed.intent === 'remove_item');
+        if (perform(command, { deferMiss: writes && askable }) !== false) return;
+
+        const second = await understand();
+        if (turnRef.current !== turn) return;
+        if (second && second.verdict === 'allow' && second.intent === routed.intent) {
+          perform(second, { reply: second.reply });
+          return;
+        }
+        perform(command);
         return;
       }
 
-      const screen = viewRef.current;
-      let guess = null;
-      try {
-        guess = await classifySpokenCommand({
-          utterance,
-          language: languageRef.current,
-          screen: {
-            ...(screen.tab ? { tab: screen.tab } : {}),
-            ...(screen.productName ? { productName: screen.productName } : {}),
-            cartCount: Array.isArray(screen.cartLines) ? screen.cartLines.length : 0,
-          },
-        });
-      } catch {
-        // Offline, signed out, rate limited: the assistant still answers.
-        guess = null;
-      }
-
-      // Nothing was heard back, or it is conversation: the assistant's job.
-      if (!guess || guess.intent === 'chat' || !guess.intent) {
-        perform({ ...routed, text: utterance });
+      // Conversation, or a mode where the model could not be acted on anyway:
+      // straight to the assistant, with no round trip in front of it.
+      if (!askable) {
+        perform(command);
         return;
       }
 
-      const allowed = voiceModeAllows(modeRef.current, guess.intent);
-      perform(
-        {
-          intent: guess.intent,
-          target: guess.target,
-          items: guess.items,
-          text: utterance,
-          verdict: allowed ? 'allow' : 'blocked',
-        },
-        guess.reply
-      );
+      const guess = await understand();
+      if (turnRef.current !== turn) return;
+      perform(guess || command, { reply: guess?.reply });
     },
     [perform]
   );
@@ -295,6 +330,7 @@ export default function useVoiceAgent({ mode = 'off', view = {}, actions = {} })
    */
   const listen = useCallback(() => {
     if (modeRef.current === 'off') return;
+    turnRef.current += 1;
     stopSpeaking();
 
     const recognition = createSpeechRecognition(languageRef.current);

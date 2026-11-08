@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   parseVoiceCommand,
   routeVoiceCommand,
+  routeModelGuess,
+  modelCanHelp,
   voiceModeAllows,
   extractQuantity,
   normalizeSpoken,
@@ -128,6 +130,175 @@ describe('cart writes', () => {
     // "cancel" is a stop word, but not when it is about something.
     expect(intent('cancel my order')).toBe('cook');
   });
+
+  it('removes one vegetable when "all" is about that vegetable, not the cart', () => {
+    // "all the tomatoes" names tomatoes. Reading "all" as "everything" emptied
+    // the whole cart to take out one line, in every language.
+    expect(parseVoiceCommand('remove all the tomatoes')).toEqual({
+      intent: 'remove_item',
+      items: [{ quantity: 1, text: 'tomatoes' }],
+    });
+    expect(parseVoiceCommand('remove all onions from cart')).toEqual({
+      intent: 'remove_item',
+      items: [{ quantity: 1, text: 'onions' }],
+    });
+    expect(parseVoiceCommand('tomato anni teesey')).toEqual({
+      intent: 'remove_item',
+      items: [{ quantity: 1, text: 'tomato' }],
+    });
+    expect(parseVoiceCommand('सब टमाटर हटाओ')).toEqual({
+      intent: 'remove_item',
+      items: [{ quantity: 1, text: 'टमाटर' }],
+    });
+    // With nothing named, "all" still means the cart.
+    expect(intent('remove all')).toBe('clear_cart');
+    expect(intent('అన్నీ తీసేయి')).toBe('clear_cart');
+  });
+
+  it('hears "don\'t" as a refusal, whichever apostrophe the recogniser used', () => {
+    for (const said of ["i don't want tomato", 'i don’t want tomato']) {
+      expect(parseVoiceCommand(said)).toEqual({
+        intent: 'remove_item',
+        items: [{ quantity: 1, text: 'tomato' }],
+      });
+    }
+  });
+
+  it('reads a leading "no" as a correction, not a refusal', () => {
+    expect(parseVoiceCommand('no, add two tomatoes')).toEqual({
+      intent: 'add_item',
+      items: [{ quantity: 2, text: 'tomatoes' }],
+    });
+    expect(intent('add no onion')).toBe('remove_item');
+  });
+
+  it('keeps Hindi additions as additions', () => {
+    // "डालना" (to put) contains ना, and "डालो ना" ends with the polite tag ना.
+    // Both were read as "don't put" — an addition turned into a removal.
+    expect(parseVoiceCommand('दो किलो टमाटर डालना')).toEqual({
+      intent: 'add_item',
+      items: [{ quantity: 2, text: 'टमाटर' }],
+    });
+    expect(parseVoiceCommand('टमाटर डालो ना')).toEqual({
+      intent: 'add_item',
+      items: [{ quantity: 1, text: 'टमाटर' }],
+    });
+    // A ना before the verb is still "don't".
+    expect(intent('टमाटर ना डालो')).toBe('remove_item');
+    expect(intent('टमाटर मत डालो')).toBe('remove_item');
+  });
+
+  it('does not find a Hindi word inside a longer one', () => {
+    // कीमत (price) contains मत (don't): a price question became a removal.
+    expect(intent('टमाटर की कीमत क्या है')).toBe('cook');
+    // बंद गोभी is cabbage, not "stop".
+    expect(parseVoiceCommand('बंद गोभी डालो')).toMatchObject({ intent: 'add_item' });
+    // बिलकुल (absolutely) is not a bill.
+    expect(intent('बिलकुल सही')).toBe('cook');
+  });
+
+  it('takes romanised Telugu verbs and drops chatter around the name', () => {
+    expect(parseVoiceCommand('onions kavali')).toEqual({
+      intent: 'add_item',
+      items: [{ quantity: 1, text: 'onions' }],
+    });
+    expect(parseVoiceCommand('rendu tomato konchem veyyi')).toEqual({
+      intent: 'add_item',
+      items: [{ quantity: 2, text: 'tomato' }],
+    });
+    expect(parseVoiceCommand('can you add some okra')).toEqual({
+      intent: 'add_item',
+      items: [{ quantity: 1, text: 'okra' }],
+    });
+    expect(parseVoiceCommand('vankaya rendu kilolu veyyi')).toEqual({
+      intent: 'add_item',
+      items: [{ quantity: 2, text: 'vankaya' }],
+    });
+  });
+
+  it('does not read "fry" as "put in"', () => {
+    // వేయించు (fry) starts with వేయి (put in). A recipe question added tomatoes.
+    expect(intent('టమాటా వేయించు')).toBe('cook');
+    expect(intent('టమాటా వేయి')).toBe('add_item');
+  });
+
+  it('sends a cooking wish to the assistant rather than the cart', () => {
+    // "want" is an add word, but "I want to make sambar" is not a purchase —
+    // it answered "couldn't find make sambar".
+    expect(intent('i want to make sambar')).toBe('cook');
+    expect(intent('i want to cook biryani')).toBe('cook');
+    expect(intent('what can i make with this')).toBe('cook');
+    // An explicit add still adds, cooking word or not.
+    expect(intent('add tomato for curry')).toBe('add_item');
+  });
+
+  it('drops what the vegetables are for', () => {
+    // Left in, these asked for vegetables called "tomatoes sambar".
+    expect(parseVoiceCommand('add 2 tomatoes for sambar')).toEqual({
+      intent: 'add_item',
+      items: [{ quantity: 2, text: 'tomatoes' }],
+    });
+    expect(parseVoiceCommand('సాంబార్ కోసం టమాటా వేయి')).toEqual({
+      intent: 'add_item',
+      items: [{ quantity: 1, text: 'టమాటా' }],
+    });
+    expect(parseVoiceCommand('सांबर के लिए टमाटर डालो')).toEqual({
+      intent: 'add_item',
+      items: [{ quantity: 1, text: 'टमाटर' }],
+    });
+  });
+
+  it('never asks for more than ten packs of one thing', () => {
+    expect(parseVoiceCommand('add 50 tomatoes')).toEqual({
+      intent: 'add_item',
+      items: [{ quantity: 10, text: 'tomatoes' }],
+    });
+  });
+});
+
+describe('what the model understood', () => {
+  it('turns its { name } items into the { text } items the app resolves', () => {
+    // Passed through unconverted, every model-understood add said "couldn't
+    // find", and every removal resolved an empty name — which matched, and
+    // deleted, the first line in the cart.
+    expect(
+      routeModelGuess({ intent: 'add_item', items: [{ name: 'Brinjal', quantity: 2 }] }, 'high', 'vankaya rendu veyyi')
+    ).toEqual({
+      intent: 'add_item',
+      items: [{ quantity: 2, text: 'brinjal' }],
+      text: 'vankaya rendu veyyi',
+      verdict: 'allow',
+    });
+  });
+
+  it('clamps a misheard count and drops nameless items', () => {
+    const routed = routeModelGuess(
+      { intent: 'remove_item', items: [{ name: 'onion', quantity: 400 }, { name: '  ' }, { quantity: 3 }] },
+      'high'
+    );
+    expect(routed.items).toEqual([{ quantity: 10, text: 'onion' }]);
+  });
+
+  it('hands conversation, payment and anything unknown back to the assistant', () => {
+    expect(routeModelGuess({ intent: 'chat', reply: 'hi' }, 'high')).toBeNull();
+    expect(routeModelGuess({ intent: 'payment' }, 'high')).toBeNull();
+    expect(routeModelGuess({ intent: 'place_order' }, 'high')).toBeNull();
+    expect(routeModelGuess({ intent: 'add_item', items: [] }, 'high')).toBeNull();
+    expect(routeModelGuess({ intent: 'navigate' }, 'high')).toBeNull();
+    expect(routeModelGuess(null, 'high')).toBeNull();
+  });
+
+  it('is not asked at all where nothing it could say would be allowed', () => {
+    expect(modelCanHelp('off')).toBe(false);
+    expect(modelCanHelp('low')).toBe(false);
+    expect(modelCanHelp('medium')).toBe(true);
+    expect(modelCanHelp('high')).toBe(true);
+  });
+
+  it('is held to the same mode ceiling as the keyword table', () => {
+    expect(routeModelGuess({ intent: 'navigate', target: 'cart' }, 'medium')).toMatchObject({ verdict: 'blocked' });
+    expect(routeModelGuess({ intent: 'read_cart' }, 'medium')).toMatchObject({ verdict: 'allow' });
+  });
 });
 
 describe('reads', () => {
@@ -147,6 +318,16 @@ describe('reads', () => {
   it('prefers reading the cart over adding to it', () => {
     // Carries a want-word ("want"), which the add branch would have claimed.
     expect(intent('i want to know what is in the cart')).toBe('read_cart');
+  });
+
+  it('reads the bill only when the bill is what was asked about', () => {
+    expect(intent('how much')).toBe('read_cart');
+    expect(intent('bill enta')).toBe('read_cart');
+    expect(intent('how much is my bill')).toBe('read_cart');
+    // "how much is tomato" asks a price, which the assistant answers. It used
+    // to read out the cart.
+    expect(intent('tomato enta')).toBe('cook');
+    expect(intent('how much is onion today')).toBe('cook');
   });
 });
 
@@ -206,6 +387,10 @@ describe('helpers', () => {
   it('normalizes without transliterating', () => {
     expect(normalizeSpoken('  Open   my CART! ')).toBe('open my cart');
     expect(normalizeSpoken('కార్ట్ చూపు.')).toBe('కార్ట్ చూపు');
+    // The Hindi full stop, and the joiners Telugu keyboards and recognisers
+    // put in or leave out of the same word.
+    expect(normalizeSpoken('टमाटर हटाओ।')).toBe('टमाटर हटाओ');
+    expect(normalizeSpoken('కార్ట్‌లో')).toBe(normalizeSpoken('కార్ట్లో'));
   });
 
   it('takes a count from digits or words', () => {

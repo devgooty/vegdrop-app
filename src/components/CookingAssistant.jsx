@@ -1,10 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChefHat, Send, Loader2, Check, ShoppingBasket, ShoppingCart, Mic } from 'lucide-react';
 import { sendAssistantMessage, confirmAssistantOrder } from '../services/agent';
-import { createSpeechRecognition, speechLocale } from '../services/voiceSearch';
+import { createSpeechRecognition } from '../services/voiceSearch';
+import { speak, stopSpeaking } from '../services/voiceOut';
 import { useLanguage } from '../i18n/LanguageContext';
 import { ApiRequestError, NetworkError } from '../services/apiClient';
 import useAssistantChat, { updateAssistantChat, historyForServer, liveProposal } from '../hooks/useAssistantChat';
+
+/**
+ * Who the shared speech engine is talking for, when it is this screen. The
+ * assistant stops only its OWN reading when it closes — see `stopSpeaking`.
+ */
+const SPEAKER = 'assistant';
+
+/** A reply as a sentence to say: the markdown marks are for the eye. */
+function speakable(text) {
+  return String(text || '').replace(/[*#_`>]/g, '').replace(/\s+/g, ' ').trim();
+}
 
 /**
  * Customer cooking assistant.
@@ -187,26 +199,37 @@ export default function CookingAssistant({
         recognition.onresult = recognition.onerror = recognition.onend = null;
         recognition.abort();
       }
-      window.speechSynthesis?.cancel();
+      stopSpeaking({ owner: SPEAKER });
     };
   }, [userId]);
 
+  /**
+   * The message index from which a reply is owed out loud, or null.
+   *
+   * Set when the voice agent hands over a question the shopper SPOKE. The
+   * agent deliberately says nothing itself so that one voice answers, which
+   * meant that with "Read replies aloud" off (its default) nobody answered at
+   * all: the shopper asked out loud and got silence. A spoken question is now
+   * answered out loud once, whatever the checkbox says.
+   */
+  const speakFromRef = useRef(null);
+
   useEffect(() => {
     const latest = messages[messages.length - 1];
-    if (!readReplies || busy || latest?.role !== 'assistant' || latest === spokenReplyRef.current) return;
+    const owed = speakFromRef.current != null && messages.length - 1 > speakFromRef.current;
+    if ((!readReplies && !owed) || busy || latest?.role !== 'assistant' || latest === spokenReplyRef.current) return;
     spokenReplyRef.current = latest;
-    if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
-    const utterance = new window.SpeechSynthesisUtterance(latest.content.replace(/[*#]/g, ''));
-    utterance.lang = speechLocale(voiceLanguage);
-    const voice = window.speechSynthesis.getVoices().find((v) => v.lang.toLowerCase().startsWith(voiceLanguage));
-    if (voice) utterance.voice = voice;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
-  }, [messages, busy, readReplies, voiceLanguage]);
+    speakFromRef.current = null;
+    /* Through voiceOut, not window.speechSynthesis: the Android app's WebView
+       has no speechSynthesis, so reading aloud was silent there. A spoken
+       question is answered in the language it was heard in — the app's. */
+    speak(speakable(latest.content), owed && !readReplies ? language : voiceLanguage, { owner: SPEAKER });
+  }, [messages, busy, readReplies, voiceLanguage, language]);
 
   const startListening = () => {
     if (listening) { stopListening(); return; }
-    window.speechSynthesis?.cancel();
+    // Anything being said, by anyone: the mic would hear it.
+    stopSpeaking();
     const recognition = createSpeechRecognition(voiceLanguage);
     if (!recognition) {
       setError(voiceLanguage === 'te' ? 'ఈ పరికరంలో వాయిస్ అందుబాటులో లేదు. దయచేసి టైప్ చేయండి.' : 'Voice input is unavailable here. Please type your message.');
@@ -257,7 +280,7 @@ export default function CookingAssistant({
 
   const send = async (text) => {
     stopListening();
-    window.speechSynthesis?.cancel();
+    stopSpeaking({ owner: SPEAKER });
     const content = String(text || '').trim();
     if (!content || busy || !userId) return;
 
@@ -420,6 +443,8 @@ export default function CookingAssistant({
     if (busy) return;
     spokenRef.current = spokenAsk.at;
     onSpokenAskTaken?.();
+    // Asked out loud, so the reply is owed out loud — see speakFromRef.
+    speakFromRef.current = messages.length;
     send(spokenAsk.text);
   }, [spokenAsk, userId, busy, onSpokenAskTaken]);
 
@@ -635,11 +660,11 @@ export default function CookingAssistant({
       ) : (
       <div className="shrink-0">
       <div className="px-3 pt-2 flex flex-wrap items-center gap-3 text-xs">
-        <select aria-label="Voice language" value={voiceLanguage} disabled={listening || busy} onChange={(e) => { window.speechSynthesis?.cancel(); setVoiceLanguage(e.target.value); }} className="rounded-lg border p-2 bg-white">
+        <select aria-label="Voice language" value={voiceLanguage} disabled={listening || busy} onChange={(e) => { stopSpeaking({ owner: SPEAKER }); setVoiceLanguage(e.target.value); }} className="rounded-lg border p-2 bg-white">
           <option value="en">English</option>
           <option value="te">తెలుగు</option>
         </select>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={readReplies} onChange={(e) => { setReadReplies(e.target.checked); if (!e.target.checked) window.speechSynthesis?.cancel(); }} />{voiceLanguage === 'te' ? 'సమాధానాలు వినండి' : 'Read replies aloud'}</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={readReplies} onChange={(e) => { setReadReplies(e.target.checked); if (!e.target.checked) stopSpeaking({ owner: SPEAKER }); }} />{voiceLanguage === 'te' ? 'సమాధానాలు వినండి' : 'Read replies aloud'}</label>
         <p role="status">{listening ? (voiceLanguage === 'te' ? 'వింటున్నాను…' : 'Listening…') : (voiceLanguage === 'te' ? 'మాట్లాడి, సందేశాన్ని చూసి పంపండి.' : 'Speak, review your message, then send.')}</p>
       </div>
       <form

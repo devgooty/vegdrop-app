@@ -28,6 +28,17 @@ const MAX_QUANTITY = 10;
 const MAX_ITEMS = 8;
 const MAX_REPLY = 200;
 
+/**
+ * How long a spoken sentence may wait on the model before the cooking
+ * assistant gets it instead.
+ *
+ * There was no limit, so a slow provider left the mic button spinning on
+ * "thinking" until the connection itself gave up — minutes, for a command
+ * whose whole point is beating a tap. Past this the sentence is treated as
+ * conversation, which is exactly what happens when there is no model at all.
+ */
+const CLASSIFY_TIMEOUT_MS = 6000;
+
 const LANGUAGE_NAMES = { en: 'English', hi: 'Hindi', te: 'Telugu' };
 
 function systemPrompt(language, screen) {
@@ -124,6 +135,7 @@ async function classifySpoken(utterance, { language = 'en', screen = null } = {}
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
+      signal: AbortSignal.timeout(CLASSIFY_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${config.agent.apiKey}`,
         'Content-Type': 'application/json',
@@ -164,4 +176,4 @@ async function classifySpoken(utterance, { language = 'en', screen = null } = {}
   }
 }
 
-module.exports = { classifySpoken, sanitizeSpokenIntent, SPOKEN_INTENTS, MAX_QUANTITY };
+module.exports = { classifySpoken, sanitizeSpokenIntent, SPOKEN_INTENTS, MAX_QUANTITY, CLASSIFY_TIMEOUT_MS };
