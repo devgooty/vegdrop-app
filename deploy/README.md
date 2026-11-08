@@ -174,6 +174,28 @@ line and phones never notice.
   Always Free A1 allowance in 2026 (from 4 / 24). Above it, a Free Tier
   instance is shut down and a Pay As You Go one is billed. One Express process
   and Caddy fit easily.
+- **Prefer A1 over the AMD `VM.Standard.E2.1.Micro`.** The Micro is also
+  Always Free, but it has 1 GB of memory and a fraction of one core as its
+  sustained baseline, bursting above it only briefly. The API fits — it sits at
+  about 135 MB resident once every route is loaded, measured with runtime
+  dependencies only — but a busy morning runs into the CPU baseline long before
+  the database limit, and `npm run build` will not finish in 1 GB. If the
+  Micro is what Hyderabad will give you, it is fine to start on, with three
+  changes:
+
+  ```bash
+  # 2 GB of swap, so an install or a traffic spike slows down instead of
+  # the kernel killing the API
+  sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+  sudo mkswap /swapfile && sudo swapon /swapfile
+  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+  # runtime dependencies only: no test tooling, and no mongodb-memory-server
+  # downloading a whole mongod binary onto the box
+  npm ci --omit=dev
+  ```
+
+  and never build the website on it (the API-only setup below does not).
 
 ### Steps that differ from the guide above
 
