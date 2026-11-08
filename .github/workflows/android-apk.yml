@@ -13,7 +13,7 @@
 # DEBUG signing, deliberately: it installs by sideload for testing and nothing
 # more. A release build needs an upload key, which belongs in repository
 # secrets and is a separate, deliberate step — not something a CI file should
-# quietly start doing.
+# quietly start doing. That step is android-release.yml, run by hand.
 name: Build Android APK
 
 on:

@@ -1,5 +1,18 @@
 apply plugin: 'com.android.application'
 
+// Play Store release signing comes from the environment, never from a file in
+// this repository: the repository is public, and the upload key is what lets
+// a build be published as VegDrop. .github/workflows/android-release.yml
+// decodes the key from Actions secrets into a temporary file and sets these.
+// Without them a release build is simply left unsigned, so a local
+// `bundleRelease` still runs; it just produces nothing Play will accept.
+def uploadKeystore = System.getenv('VEGDROP_UPLOAD_KEYSTORE')
+
+// Play refuses an upload whose versionCode is not higher than every earlier
+// one, so CI passes its run number. Local builds stay at 1.
+def releaseVersionCode = (System.getenv('VEGDROP_VERSION_CODE') ?: '1').toInteger()
+def releaseVersionName = System.getenv('VEGDROP_VERSION_NAME') ?: '1.0'
+
 android {
     namespace = "com.vegdrop.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +20,8 @@ android {
         applicationId "com.vegdrop.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode releaseVersionCode
+        versionName releaseVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +29,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (uploadKeystore) {
+                storeFile file(uploadKeystore)
+                storePassword System.getenv('VEGDROP_UPLOAD_STORE_PASSWORD')
+                keyAlias System.getenv('VEGDROP_UPLOAD_KEY_ALIAS')
+                keyPassword System.getenv('VEGDROP_UPLOAD_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (uploadKeystore) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
